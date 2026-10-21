@@ -20,7 +20,7 @@ export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUnifo
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
 
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2
-export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4";
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a";
 
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
@@ -57,6 +57,9 @@ export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): 
 
 // export: computePdfTemplateBaselineDigestV1
 export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplateBaselineContentV1): Promise<string>;
+
+// export: CURATED_PDF_TEMPLATE_RECIPES_V2
+export declare const CURATED_PDF_TEMPLATE_RECIPES_V2: Readonly<Record<string, WikiPdfTemplateRecipeV2>>;
 
 // export: DocxUniformPageBorderInputV1
 export interface DocxUniformPageBorderInputV1 {
@@ -528,7 +531,7 @@ export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
 
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V4
-export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814";
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "fc3cbaa1ae31e085ef7151b458400510646b9cd0f7868ca9dde707d4f41d3e9d";
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
@@ -570,7 +573,7 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf7
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V4
-export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7";
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "0c7735cb6c70a6d18918fa38114b515a1c4d8f951c8956fb46c014c4aa8f9be6";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -1585,7 +1588,7 @@ export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUnifo
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
 
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2
-export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4";
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a";
 
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
@@ -1622,6 +1625,9 @@ export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): 
 
 // export: computePdfTemplateBaselineDigestV1
 export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplateBaselineContentV1): Promise<string>;
+
+// export: CURATED_PDF_TEMPLATE_RECIPES_V2
+export declare const CURATED_PDF_TEMPLATE_RECIPES_V2: Readonly<Record<string, WikiPdfTemplateRecipeV2>>;
 
 // export: DocxUniformPageBorderInputV1
 export interface DocxUniformPageBorderInputV1 {
@@ -2093,7 +2099,7 @@ export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
 
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V4
-export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814";
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "fc3cbaa1ae31e085ef7151b458400510646b9cd0f7868ca9dde707d4f41d3e9d";
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
@@ -2135,7 +2141,7 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf7
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V4
-export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7";
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "0c7735cb6c70a6d18918fa38114b515a1c4d8f951c8956fb46c014c4aa8f9be6";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -3150,7 +3156,7 @@ export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUnifo
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
 
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2
-export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4";
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a";
 
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
@@ -3187,6 +3193,9 @@ export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): 
 
 // export: computePdfTemplateBaselineDigestV1
 export declare function computePdfTemplateBaselineDigestV1(baseline: PdfTemplateBaselineContentV1): Promise<string>;
+
+// export: CURATED_PDF_TEMPLATE_RECIPES_V2
+export declare const CURATED_PDF_TEMPLATE_RECIPES_V2: Readonly<Record<string, WikiPdfTemplateRecipeV2>>;
 
 // export: DocxUniformPageBorderInputV1
 export interface DocxUniformPageBorderInputV1 {
@@ -3658,7 +3667,7 @@ export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
 
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V4
-export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814";
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "fc3cbaa1ae31e085ef7151b458400510646b9cd0f7868ca9dde707d4f41d3e9d";
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
@@ -3700,7 +3709,7 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf7
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V4
-export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7";
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "0c7735cb6c70a6d18918fa38114b515a1c4d8f951c8956fb46c014c4aa8f9be6";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -4735,6 +4744,8 @@ export interface AtlcliTypstTemplateOptions {
     decorationModelV5?: AtlcliTypstDecorationModelV5;
     imageGeometryV5?: boolean;
     typographyModelV5?: DesignTypography;
+    titleBlockV5?: boolean;
+    revision6?: boolean;
 }
 
 // export: buildUniformPdfPageBorderV1
@@ -4750,7 +4761,7 @@ export declare const BUILTIN_PDF_FALLBACK_LABELS: Record<string, string>;
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
 
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2
-export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4";
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a";
 
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
@@ -4803,7 +4814,7 @@ export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesign
 export declare function createAtlcliTypstTemplateV4(design: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, baseSource?: string): string;
 
 // export: createAtlcliTypstTemplateV5
-export declare function createAtlcliTypstTemplateV5(design: WikiPdfTemplateDesignV3, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
+export declare function createAtlcliTypstTemplateV5(design: WikiPdfTemplateDesignV3, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, revision?: "5" | "6"): string;
 
 // export: DEFAULT_PDF_THEME
 export declare const DEFAULT_PDF_THEME: Readonly<PdfTheme>;
@@ -5010,7 +5021,7 @@ export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
 
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V4
-export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814";
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "fc3cbaa1ae31e085ef7151b458400510646b9cd0f7868ca9dde707d4f41d3e9d";
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
@@ -5061,7 +5072,7 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf7
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V4
-export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7";
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "0c7735cb6c70a6d18918fa38114b515a1c4d8f951c8956fb46c014c4aa8f9be6";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -5372,6 +5383,8 @@ export interface AtlcliTypstTemplateOptions {
     decorationModelV5?: AtlcliTypstDecorationModelV5;
     imageGeometryV5?: boolean;
     typographyModelV5?: DesignTypography;
+    titleBlockV5?: boolean;
+    revision6?: boolean;
 }
 
 // export: createAtlcliTypstTemplate

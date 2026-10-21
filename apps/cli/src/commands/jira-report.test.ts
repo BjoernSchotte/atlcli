@@ -3,7 +3,7 @@ import { TemplateEngine, parseTemplate } from "@atlcli/core";
 import { extractPageTasks, markdownToStorage } from "@atlcli/confluence";
 import { buildReportData, type JiraIssue } from "@atlcli/jira";
 import { BUNDLED_REPORT_TEMPLATES } from "./jira-report-templates.js";
-import { REPORT_TOC_MIN_HEADINGS, decideReportTarget, reportExportFlags, reportNeedsToc } from "./jira-report.js";
+import { REPORT_EXPORT_TEMPLATE, REPORT_TOC_MIN_HEADINGS, decideReportTarget, reportExportFlags, reportNeedsToc } from "./jira-report.js";
 
 const BASE = "https://x.atlassian.net";
 const issue = (key: string, type: string, category: string, summary = `Summary ${key}`, description?: unknown): JiraIssue =>
@@ -113,6 +113,11 @@ describe("reportExportFlags", () => {
       template: "brand.wiki-pdf-template",
       "no-toc": true,
     });
+  });
+
+  test("the built-in Report template applies to PDF only", () => {
+    expect(reportExportFlags("notes.pdf", "## One", REPORT_EXPORT_TEMPLATE)).toMatchObject({ template: "report" });
+    expect(reportExportFlags("notes.docx", "## One", REPORT_EXPORT_TEMPLATE)).toEqual({ output: "notes.docx", format: "docx", force: true });
   });
 
   test("DOCX: overwrite only", () => {

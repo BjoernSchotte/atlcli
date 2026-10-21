@@ -855,6 +855,8 @@ export interface DesignPageToggleV3 {
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
   cover: DesignCoverCompositionV1 & DesignPageToggleV3;
   closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
+  /** Catalog V4: a compact title on page 1 whenever no cover page renders. */
+  titleBlock?: { enabled: boolean };
   running: {
     header: DesignRunningRegionV3;
     footer: DesignRunningRegionV3;
@@ -1376,10 +1378,20 @@ function withPageToggleV3<T>(
 
 function validatePageCompositionsV3(value: unknown, path: string): DesignPageCompositionsV3 {
   if (!isObject(value)) fail(path, "must be an object");
-  exactKeys(value, ["cover", "closingPage", "running"], path);
+  exactKeys(value, ["cover", "closingPage", "titleBlock", "running"], path);
   if (!isObject(value.running)) fail(`${path}.running`, "must be an object");
   exactKeys(value.running, ["header", "footer"], `${path}.running`);
+  let titleBlock: { enabled: boolean } | undefined;
+  if (value.titleBlock !== undefined) {
+    if (!isObject(value.titleBlock)) fail(`${path}.titleBlock`, "must be an object");
+    exactKeys(value.titleBlock, ["enabled"], `${path}.titleBlock`);
+    if (typeof value.titleBlock.enabled !== "boolean") {
+      fail(`${path}.titleBlock.enabled`, "must be a boolean");
+    }
+    titleBlock = { enabled: value.titleBlock.enabled };
+  }
   return {
+    ...(titleBlock === undefined ? {} : { titleBlock }),
     cover: withPageToggleV3(value.cover, `${path}.cover`, validateCoverComposition),
     closingPage: withPageToggleV3(
       value.closingPage,

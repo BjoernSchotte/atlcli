@@ -94,6 +94,7 @@ export function createAtlcliTypstTemplateV5(
   design: WikiPdfTemplateDesignV3,
   labels: Record<string, string> = {},
   visuals?: PdfTemplateVisualsV1,
+  revision: "5" | "6" = "5",
 ): string {
   const validated = validatePdfTemplateDesignV3(design, "design", {
     availableFonts: PDF_RUNTIME_ASSETS.fonts,
@@ -119,6 +120,8 @@ export function createAtlcliTypstTemplateV5(
       },
       imageGeometryV5: true,
       typographyModelV5: validated.typography,
+      ...(validated.compositions.titleBlock?.enabled ? { titleBlockV5: true } : {}),
+      ...(revision === "6" ? { revision6: true } : {}),
     },
   );
   return createAtlcliTypstTemplateV4(

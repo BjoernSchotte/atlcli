@@ -158,7 +158,7 @@ Two versions of `atlcli.editorial` are installed, both targeting Typst
 | `version` | `catalogVersion` | `digest` | Canonical revision | Adds |
 |---|---|---|---|---|
 | `1` | `3` | `46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a` | 5 | — |
-| `2` | `4` | `17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4` | 6 | [Cover and closing-page toggles](#cover-and-closing-page) |
+| `2` | `4` | `0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a` | 6 | [Cover and closing-page toggles, title block](#cover-and-closing-page) |
 
 Existing recipes stay on version 1 and build unchanged packs. Move a recipe to
 version 2 by changing all three pinned values; every version-1 design override
@@ -223,14 +223,14 @@ localization field remains present.
 ## Cover and closing page
 
 Requires baseline version 2 (`catalogVersion: 4`). Both pages render unless
-the template turns them off:
+the template turns them off; a title block can take the cover's place:
 
 ```yaml
 baseline:
   id: atlcli.editorial
   version: 2
   catalogVersion: 4
-  digest: 17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4
+  digest: 0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a
 
 design:
   compositions:
@@ -238,12 +238,21 @@ design:
       enabled: false
     closingPage:
       enabled: false
+    titleBlock:
+      enabled: true
 ```
 
 | Field | Type | Default | Required | Constraints |
 |---|---|---|---|---|
 | `compositions.cover.enabled` | boolean | `true` | No | Catalog V4 only. `false` leaves out the cover page. |
 | `compositions.closingPage.enabled` | boolean | `true` | No | Catalog V4 only. `false` leaves out the closing page. |
+| `compositions.titleBlock.enabled` | boolean | `false` | No | Catalog V4 only. `true` opens page 1 with a compact title block whenever no cover page renders. |
+
+The title block is the compact form of the cover: the space eyebrow, the
+document title, a rule, and version, export date, and exporter on one line. It
+uses the cover roles and tokens (`coverEyebrow`, `coverTitle`, `coverMetaLabel`,
+`coverMetaValue`, `coverTitleGap`, …), so set a smaller `coverTitle` size when
+you use it. When an export brings the cover back, the title block is left out.
 
 The contents page is controlled by `navigation.contents.enabled`. These values
 are the template's defaults: `wiki export --no-cover`, `--no-toc`, and
@@ -255,29 +264,32 @@ fails.
 
 ## Curated Report template
 
-The [Report recipe](https://atlcli.sh/examples/pdf-template-recipe-v2-report/recipe.yaml)
-is a ready-made template for short documents such as release notes, sprint
-reviews, and status reports:
+The Report template ships with atlcli for short documents such as release
+notes, sprint reviews, and status reports. Jira [report pages](../jira/report-pages.md)
+export with it by default.
 
-- no cover or closing page; a thin accent band across the top of the first page,
-- the document title and space in the running header, the export date and
-  "page x of y" in the footer,
+- no cover or closing page; a title block and a thin accent band open page 1,
+- the document title and space in the running header from page 2, the export
+  date and "page x of y" in the footer,
 - Source Sans 3 throughout, a teal accent, banded tables, and filled callouts,
 - a contents page down to the second heading level (remove it per export with
   `--no-toc`).
 
-Build it once and pass the pack to any PDF export:
+Select it by name:
+
+```bash
+atlcli wiki export <page-id> --format pdf --template report --output ./report.pdf
+```
+
+To adapt it, download its [recipe](https://atlcli.sh/examples/pdf-template-recipe-v2-report/recipe.yaml),
+change `template.id`, then the colors under `branding` and `tokens.colors`, and
+build your own pack; the recipe needs no asset files:
 
 ```bash
 mkdir report && curl -fsSL -o report/recipe.yaml \
   https://atlcli.sh/examples/pdf-template-recipe-v2-report/recipe.yaml
 atlcli pdf-template build ./report/recipe.yaml --output ./report.wiki-pdf-template
-atlcli wiki export <page-id> --format pdf --template ./report.wiki-pdf-template \
-  --output ./report.pdf
 ```
-
-To adapt it, change `template.id`, then the colors under `branding` and
-`tokens.colors`; the recipe needs no asset files.
 
 ## Recipe field reference
 

@@ -14,6 +14,7 @@ import { sha256Hex } from "@atlcli/core";
 import { fileURLToPath } from "node:url";
 import {
   BUILTIN_PDF_TEMPLATE_MANIFEST,
+  CURATED_PDF_TEMPLATE_RECIPES_V2,
   loadPdfTemplatePack,
 } from "@atlcli/pdf";
 import {
@@ -251,6 +252,10 @@ describe("strict PDF template recipe YAML", () => {
         import.meta.url
       )
     );
+    // The download is the same recipe `--template report` builds.
+    expect(parsePdfTemplateRecipeYaml(await readFile(documented, "utf8"))).toEqual(
+      CURATED_PDF_TEMPLATE_RECIPES_V2.report!
+    );
     const materialized = await materializePdfTemplateYamlRecipe({
       recipePath: documented,
       compiler,
@@ -260,9 +265,11 @@ describe("strict PDF template recipe YAML", () => {
     const design = materialized.manifest.design as WikiPdfTemplateDesignV3;
     expect(design.compositions.cover.enabled).toBe(false);
     expect(design.compositions.closingPage.enabled).toBe(false);
+    expect(design.compositions.titleBlock).toEqual({ enabled: true });
     if (!("canonicalTypst" in materialized)) throw new Error("expected a Recipe V2 result");
     expect(materialized.canonicalTypst).toContain('cover-config.at("enabled", default: false)');
     expect(materialized.canonicalTypst).toContain('closing-config.at("enabled", default: false)');
+    expect(materialized.canonicalTypst).toContain('if not cover-config.at("enabled", default: false) {');
   });
 
   it("rejects malformed YAML, duplicate keys, custom tags, aliases, and multiple documents", () => {

@@ -1101,6 +1101,7 @@ function canonicalSourceFor(
         manifest.design as WikiPdfTemplateDesignV3,
         { ...labels },
         visuals,
+        revision,
       );
     default:
       reject(

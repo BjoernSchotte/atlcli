@@ -664,6 +664,9 @@ export interface DesignPageCompositionsV1 {
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1 & DesignPageToggleV3;
     closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
+    titleBlock?: {
+        enabled: boolean;
+    };
     running: {
         header: DesignRunningRegionV3;
         footer: DesignRunningRegionV3;
@@ -2174,6 +2177,9 @@ export interface DesignPageCompositionsV1 {
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1 & DesignPageToggleV3;
     closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
+    titleBlock?: {
+        enabled: boolean;
+    };
     running: {
         header: DesignRunningRegionV3;
         footer: DesignRunningRegionV3;
@@ -3684,6 +3690,9 @@ export interface DesignPageCompositionsV1 {
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1 & DesignPageToggleV3;
     closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
+    titleBlock?: {
+        enabled: boolean;
+    };
     running: {
         header: DesignRunningRegionV3;
         footer: DesignRunningRegionV3;
@@ -5194,6 +5203,9 @@ export interface DesignPageCompositionsV1 {
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
     cover: DesignCoverCompositionV1 & DesignPageToggleV3;
     closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
+    titleBlock?: {
+        enabled: boolean;
+    };
     running: {
         header: DesignRunningRegionV3;
         footer: DesignRunningRegionV3;

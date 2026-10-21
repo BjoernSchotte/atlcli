@@ -1,8 +1,9 @@
 schema: wiki.pdf-template-recipe/v2
 
-# A compact report: no cover or closing page, the title in the running head,
-# "page x of y" in the footer, and a calm teal palette. Built on the editorial
-# baseline version 2 (Catalog V4), which adds the page toggles.
+# A compact report: no cover or closing page but a title block on page 1, the
+# title in the running head of the following pages, "page x of y" in the
+# footer, and a calm teal palette. Built on the editorial baseline version 2
+# (Catalog V4), which adds the page toggles and the title block.
 template:
   id: atlcli.report
   name: Report
@@ -12,7 +13,7 @@ baseline:
   id: atlcli.editorial
   version: 2
   catalogVersion: 4
-  digest: 17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4
+  digest: 0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a
 
 design:
   page:
@@ -28,13 +29,13 @@ design:
       enabled: false
     closingPage:
       enabled: false
+    titleBlock:
+      enabled: true
     running:
       header:
         enabled: true
         layout: split
-        first:
-          start: { field: documentTitle }
-          end: { field: spaceName }
+        first: hide
         odd:
           start: { field: documentTitle }
           end: { field: spaceName }
@@ -78,6 +79,9 @@ design:
       h1: { font: heading, size: 19pt, weight: bold }
       h2: { font: heading, size: 13.5pt, weight: semibold }
       h3: { font: heading, size: 11pt, weight: semibold }
+      # The title block reuses the cover roles.
+      coverTitle: { font: heading, size: 24pt, weight: bold }
+      coverEyebrow: { font: heading, size: 7.5pt, weight: semibold, tracking: 0.12em }
       runningHead: { font: heading, size: 7.5pt }
 
   tokens:
@@ -92,6 +96,13 @@ design:
       tableHeaderBackground: "#EEF4F5"
       codeBackground: "#F3F6F7"
       smartCardInlineBackground: "#E2F0F1"
+    # The title block reuses the cover spacing; tighten it for page 1.
+    layout:
+      coverTitleLeading: 0.4em
+      coverEyebrowGap: 8pt
+      coverTitleGap: 12pt
+      coverRuleLength: 36mm
+      coverMetaGap: 8pt
 
   # A thin accent band across the top of the first page.
   paints:

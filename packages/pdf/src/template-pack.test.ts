@@ -544,8 +544,12 @@ describe("PDF template manifest phase", () => {
   it("compiles revision-6 page toggles into the template defaults", () => {
     const visuals = { assets: {}, decorations: [] };
     const defaults = generateCanonicalPdfTemplateSourceV1(revision6Manifest(), visuals);
-    // Absent toggles render both pages, exactly like revision 5.
-    expect(defaults).toBe(generateCanonicalPdfTemplateSourceV1(revision5Manifest(), visuals));
+    // Absent toggles render both pages, like revision 5. Only revision 6
+    // drops the header rule on pages whose header variant is hidden.
+    const rev5 = generateCanonicalPdfTemplateSourceV1(revision5Manifest(), visuals);
+    const hiddenRule = "if (if current-page == 1 { false }";
+    expect(defaults).toContain(hiddenRule);
+    expect(rev5).not.toContain(hiddenRule);
     expect(defaults).toContain('cover-config.at("enabled", default: true)');
     expect(defaults).toContain('closing-config.at("enabled", default: true)');
 
