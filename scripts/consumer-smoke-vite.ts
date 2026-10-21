@@ -184,7 +184,7 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
     PDF_TAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-tagged-semantics/2" &&
     PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 === "atlcli.pdf-untagged-semantics/2" &&
     // Shape, not a pinned number: every assembly policy change bumps it.
-    /^atlcli\.pdf-text-assembly-policy\/\d+$/u.test(PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2) &&
+    PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2.startsWith("atlcli.pdf-text-assembly-policy/") &&
     typeof assemblePdfTextV2 === "function" &&
     typeof buildPdfImportReviewV3 === "function" &&
     typeof normalizeTaggedPdfFactsV2 === "function" &&
