@@ -56,6 +56,8 @@ const reviewedPdfiumFunctions = [
   "FPDFText_GetFontSize",
   "FPDFText_GetFontInfo",
   "FPDFText_GetFontWeight",
+  "FPDFText_GetMatrix",
+  "FPDFTextObj_GetTextRenderMode",
   "FPDFText_GetTextObject",
   "FPDFText_GetUnicode",
   "FPDFText_HasUnicodeMapError",

@@ -270,7 +270,7 @@ export declare const PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3: "pdf/character-
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION_V2
-export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/4";
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/5";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
@@ -301,7 +301,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/9";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/10";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -417,7 +417,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/9";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/10";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -1575,6 +1575,7 @@ export interface PdfTextCharacterFact {
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
     textRunId: string | null;
     boldFontName?: true;
+    invisible?: true;
 }
 
 // export: PdfTextDirection
@@ -2071,7 +2072,7 @@ export declare const PDF_DEGENERATE_TAG_MAX_WIDTH = 0.01;
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION_V2
-export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/4";
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/5";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
@@ -2105,7 +2106,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/9";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/10";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -2221,7 +2222,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/9";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/10";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -3417,6 +3418,7 @@ export interface PdfTextCharacterFact {
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
     textRunId: string | null;
     boldFontName?: true;
+    invisible?: true;
 }
 
 // export: PdfTextDirection
@@ -3886,7 +3888,7 @@ export declare const PDF_CHARACTER_OWNERSHIP_FAILED_DECISION_V3: "pdf/character-
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION_V2
-export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/4";
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/5";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
@@ -3917,7 +3919,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/9";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/10";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -4033,7 +4035,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/9";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/10";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -5191,6 +5193,7 @@ export interface PdfTextCharacterFact {
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
     textRunId: string | null;
     boldFontName?: true;
+    invisible?: true;
 }
 
 // export: PdfTextDirection
@@ -5696,7 +5699,7 @@ export declare const PDF_DEGENERATE_TAG_MAX_WIDTH = 0.01;
 export declare const PDF_FACTS_ADAPTER_REVISION: "atlcli.pdfium-public-fpdf/1";
 
 // export: PDF_FACTS_ADAPTER_REVISION_V2
-export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/4";
+export declare const PDF_FACTS_ADAPTER_REVISION_V2: "atlcli.pdfium-public-fpdf/5";
 
 // export: PDF_FACTS_SCHEMA_V1
 export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
@@ -5730,7 +5733,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/9";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/10";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -5846,7 +5849,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/9";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/10";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -7042,6 +7045,7 @@ export interface PdfTextCharacterFact {
 export interface PdfTextCharacterFactV2 extends PdfTextCharacterFact {
     textRunId: string | null;
     boldFontName?: true;
+    invisible?: true;
 }
 
 // export: PdfTextDirection

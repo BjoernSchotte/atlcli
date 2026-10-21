@@ -9,6 +9,7 @@ license and contains no customer content. Each export was sanitized with
 |---|---|---|---|
 | `word-table-breaks.pdf` | Microsoft Word for Mac 16.113.4, **Save As PDF** | `source.ts` (`table-breaks.docx`) | a ruled table broken between rows, a table with inside rules only across pages, a ruled table whose tall row is split by the page break |
 | `libreoffice-table-breaks.pdf` | LibreOffice 7.1.1.2 Writer | `source.ts` (`table-breaks.docx`) | the same document from a second producer |
+| `libreoffice-contents.pdf` | LibreOffice 7.1.1.2 Writer | `source.ts` (`contents.docx`) | a table of contents set in the heading styles it lists, numbered headings of two levels in one size (bold and regular), 10 pt body text |
 | `libreoffice-deck.pdf` | LibreOffice 7.1.1.2 Impress | `deck.fodp` | slides: title, subtitle, a bulleted list, a filled callout box, a borderless table |
 
 What the exports showed: both word processors draw the table frame across a
@@ -19,6 +20,10 @@ rules only with one vertical rule fewer than it has columns.
 
 A scanned page with an invisible OCR text layer is generated inside the test;
 it needs no pinned bytes.
+
+Word must open files from its sandbox container
+(`~/Library/Containers/com.microsoft.Word/Data/Documents`) or ask for file
+access first.
 
 Not covered, because no producer was available locally: Adobe InDesign,
 Google Docs, Microsoft PowerPoint, Apple Pages and Keynote.
@@ -33,6 +38,7 @@ osascript -e 'on run argv' -e 'tell application "Microsoft Word"' \
   -e 'close active document saving no' -e 'end tell' -e 'end run' \
   "$PWD/.tmp/producers/table-breaks.docx" "$PWD/.tmp/producers/word.raw.pdf"
 soffice --headless --convert-to pdf --outdir .tmp/producers .tmp/producers/table-breaks.docx
+soffice --headless --convert-to pdf --outdir .tmp/producers .tmp/producers/contents.docx
 soffice --headless --convert-to pdf --outdir .tmp/producers specs/pdf-import-quality/fixtures/producers/deck.fodp
 bun specs/pdf-import-quality/fixtures/producer-tools.ts sanitize-export \
   --input .tmp/producers/word.raw.pdf \
@@ -41,5 +47,5 @@ bun specs/pdf-import-quality/fixtures/producer-tools.ts sanitize-export \
 ```
 
 Sanitize the LibreOffice exports the same way (`--title "Neutral Table
-Breaks"` and `--title "Neutral Field Review"`), render every page, inspect it,
+Breaks"`, `--title "Neutral Service Manual"` and `--title "Neutral Field Review"`), render every page, inspect it,
 and rerun `bun run test packages/import-pdf/src/producers.test.ts`.

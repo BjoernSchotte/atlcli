@@ -270,6 +270,22 @@ function rawFsRect(
   });
 }
 
+/**
+ * `FPDFText_GetFontSize` is the `Tf` operand alone. Word sets text in a
+ * one-point font and scales it with the text matrix, so the set size is the
+ * operand times the matrix's vertical scale (`FS_MATRIX`: six floats).
+ */
+function effectiveFontSize(module: WrappedPdfiumModule, textPage: number, characterIndex: number): number {
+  const size = module.FPDFText_GetFontSize(textPage, characterIndex);
+  const scale = withPointer(module, 24, (pointer) => {
+    if (!module.FPDFText_GetMatrix(textPage, characterIndex, pointer)) return 1;
+    const heap = memory(module).HEAPF32;
+    const index = pointer >>> 2;
+    return Math.hypot(heap[index + 2] ?? 0, heap[index + 3] ?? 0) || 1;
+  });
+  return size * scale;
+}
+
 /** `FPDFText_GetCharBox` writes four doubles: left, right, bottom, top. */
 function rawCharacterRect(
   module: WrappedPdfiumModule,
@@ -571,19 +587,22 @@ function extractTextV2(
       }
       const fontWeight = Math.max(0, module.FPDFText_GetFontWeight(textPage, index));
       let boldFontName = false;
-      if (fontWeight === 0 && textObject) {
+      if (fontWeight < 600 && textObject) {
         // One font per text object; read its name once.
         boldFontName = boldByTextObject.get(textObject) ?? BOLD_FONT_NAME.test(fontName(module, textPage, index));
         boldByTextObject.set(textObject, boldFontName);
       }
+      // Text render mode 3 paints nothing: the OCR layer of a scan.
+      const invisible = textObject ? module.FPDFTextObj_GetTextRenderMode(textObject) === 3 : false;
       characters.push({
         index,
         unicode,
         value: unicode > 0 && unicode <= 0x10ffff ? String.fromCodePoint(unicode) : "",
         bbox: normalizeRect(raw, pageWidth, pageHeight),
-        fontSizePoints: round(module.FPDFText_GetFontSize(textPage, index)),
+        fontSizePoints: round(effectiveFontSize(module, textPage, index)),
         fontWeight,
         ...(boldFontName ? { boldFontName: true as const } : {}),
+        ...(invisible ? { invisible: true as const } : {}),
         angleRadians: round(module.FPDFText_GetCharAngle(textPage, index), 6),
         mcid: mcid >= 0 ? mcid : null,
         textRunId,

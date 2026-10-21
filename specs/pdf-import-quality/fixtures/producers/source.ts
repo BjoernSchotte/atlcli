@@ -5,15 +5,18 @@
  * `table-breaks.docx` holds the three ways a table meets a page break: a
  * fully ruled table broken between rows, a table drawn with inside rules only
  * (Word's "no outer border"), and a ruled table whose tall row is split by the
- * break. Desktop producers export it; `producers.test.ts` checks every export
- * against the model below. Nothing in the model is taken from importer output.
+ * break. `contents.docx` holds a table of contents set in the styles of the
+ * headings it lists, and numbered headings of two levels in one size, bold
+ * and regular. Desktop producers export them; `producers.test.ts` checks
+ * every export against the models below. Nothing in the models is taken from
+ * importer output.
  *
  *   bun specs/pdf-import-quality/fixtures/producers/source.ts <output-dir>
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { strToU8, zipSync } from "fflate";
-import { type Cell, R, W, heading, paragraph, table } from "../untagged-source.js";
+import { type Cell, R, W, heading, paragraph, run, table } from "../untagged-source.js";
 
 export const LEDGER_ROWS = 50;
 export const ROSTER_ROWS = 50;
@@ -51,10 +54,58 @@ export function tableBreaksDocx(): Uint8Array {
     paragraph("End of the table breaks."),
     `<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1134" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>`,
   ].join("");
+  return packageDocx(body, `<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="100"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>`);
+}
+
+export const CONTENTS_TITLE = "Neutral Service Manual";
+/** Sections by page: number, title, and the page the section starts on. */
+export const CONTENTS_SECTIONS = [
+  { number: "1", title: "Scope", page: 2 },
+  { number: "1.1", title: "Terms", page: 2 },
+  { number: "1.2", title: "Records", page: 2 },
+  { number: "2", title: "Process", page: 3 },
+  { number: "2.1", title: "Intake", page: 3 },
+  { number: "2.2", title: "Review", page: 3 },
+  { number: "3", title: "Closure", page: 4 },
+  { number: "3.1", title: "Archive", page: 4 },
+] as const;
+export const contentsBody = (number: string) => `Section ${number} describes how every neutral record is handled.`;
+
+export function contentsDocx(): Uint8Array {
+  const pageBreak = `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+  const entries = CONTENTS_SECTIONS.map(({ number, title, page }) =>
+    `<w:p><w:pPr><w:pStyle w:val="TOC${number.includes(".") ? 2 : 1}"/></w:pPr>${run(`${number} ${title}`)}<w:r><w:tab/></w:r>${run(String(page))}</w:p>`
+  );
+  const sections = CONTENTS_SECTIONS.flatMap(({ number, title }, index) => [
+    ...(index > 0 && !number.includes(".") ? [pageBreak] : []),
+    heading(`${number} ${title}`, number.includes(".") ? 2 : 1),
+    paragraph(contentsBody(number)),
+  ]);
+  const body = [
+    paragraph(CONTENTS_TITLE, `<w:pStyle w:val="Title"/>`),
+    ...entries,
+    pageBreak,
+    ...sections,
+    `<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1134" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>`,
+  ].join("");
+  const style = (id: string, name: string, properties: string, runProperties: string) =>
+    `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:pPr>${properties}</w:pPr><w:rPr>${runProperties}</w:rPr></w:style>`;
+  const tabs = `<w:tabs><w:tab w:val="right" w:pos="9000"/></w:tabs>`;
+  return packageDocx(body, [
+    style("Title", "Title", `<w:spacing w:after="240"/>`, `<w:b/><w:sz w:val="48"/>`),
+    style("Heading1", "heading 1", `<w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="0"/>`, `<w:b/><w:sz w:val="24"/>`),
+    style("Heading2", "heading 2", `<w:spacing w:before="200" w:after="100"/><w:outlineLvl w:val="1"/>`, `<w:sz w:val="24"/>`),
+    style("TOC1", "toc 1", `${tabs}<w:spacing w:after="60"/>`, `<w:b/><w:sz w:val="24"/>`),
+    style("TOC2", "toc 2", `${tabs}<w:spacing w:after="60"/><w:ind w:left="220"/>`, `<w:sz w:val="24"/>`),
+  ].join(""), 20);
+}
+
+/** A DOCX package with Arial body text in `bodySize` half-points and extra paragraph styles. */
+function packageDocx(body: string, extraStyles: string, bodySize = 22): Uint8Array {
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="${W}">`
-    + `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="22"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120"/></w:pPr></w:pPrDefault></w:docDefaults>`
+    + `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="${bodySize}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120"/></w:pPr></w:pPrDefault></w:docDefaults>`
     + `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>`
-    + `<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="200" w:after="100"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>`
+    + extraStyles
     + `</w:styles>`;
   const rel = (id: string, type: string, target: string) => `<Relationship Id="${id}" Type="${type}" Target="${target}"/>`;
   const relationships = (entries: string) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${entries}</Relationships>`;
@@ -74,5 +125,6 @@ if (import.meta.main) {
   const output = resolve(process.argv[2] ?? ".tmp/producers");
   await mkdir(output, { recursive: true });
   await writeFile(resolve(output, "table-breaks.docx"), tableBreaksDocx());
-  process.stdout.write(`wrote ${output}/table-breaks.docx\n`);
+  await writeFile(resolve(output, "contents.docx"), contentsDocx());
+  process.stdout.write(`wrote ${output}/table-breaks.docx and contents.docx\n`);
 }

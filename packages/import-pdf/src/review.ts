@@ -22,6 +22,7 @@ import {
   applyPdfFallbackPresentation,
   type PdfVisualFallbackPlacementV1,
 } from "./fallback-presentation.js";
+import { attachPdfOcrTextV2 } from "./ocr-text.js";
 import {
   PDF_VISUAL_FALLBACK_POLICY_REVISION,
   assessPdfVisualFallbacks,
@@ -488,6 +489,7 @@ export async function buildPdfImportReviewV2(
   const pagesRequiringFallback = fallbackAssessmentPageIndexes(fallbackAssessments);
   const withPageImages = scanPolicy === "page-image"
     ? await materializePdfVisualFallbacksV2(sourceBytes, adapter, visual.document, visual.evidence, fallbackAssessments)
+      .then(({ document, evidence }) => ({ document: attachPdfOcrTextV2(analyzed.facts, document), evidence }))
     : { document: visual.document, evidence: visual.evidence };
   const ownershipAudit = auditPdfCharacterOwnershipV2(analyzed.facts, base.evidence);
   const attachedFallbackPages = new Set(scanPolicy === "page-image"
