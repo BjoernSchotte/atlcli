@@ -285,13 +285,16 @@ async function publishReport(
     const exportFlags = reportExportFlags(
       exportPath,
       markdown,
-      getFlag(flags, "export-template"),
+      getFlag(flags, "export-template") ?? REPORT_EXPORT_TEMPLATE,
     );
     const profileFlag = getFlag(flags, "profile");
     if (profileFlag) exportFlags.profile = profileFlag;
     await handleExport([pageId], exportFlags, opts);
   }
 }
+
+/** Built-in PDF template a report exports with unless `--export-template` names another. */
+export const REPORT_EXPORT_TEMPLATE = "report";
 
 /** `wiki export` flags for a report's `--export` file. */
 export function reportExportFlags(
@@ -302,7 +305,10 @@ export function reportExportFlags(
   const format = exportPath.toLowerCase().endsWith(".pdf") ? "pdf" : "docx";
   // Regenerated on every run, so the file is replaced like the page is.
   const flags: Flags = { output: exportPath, format, force: true };
-  if (template) flags.template = template;
+  // The PDF default names a PDF template; DOCX keeps its own default.
+  if (template && (format === "pdf" || template !== REPORT_EXPORT_TEMPLATE)) {
+    flags.template = template;
+  }
   if (format === "pdf") {
     // A report is short: no cover or closing page on the built-in template. A
     // chosen template keeps its own page defaults.

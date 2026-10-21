@@ -187,6 +187,7 @@ export {
   materializePdfTemplateRecipeV1,
   materializePdfTemplateRecipeV2,
 } from "./template-recipe.js";
+export { CURATED_PDF_TEMPLATE_RECIPES_V2 } from "./curated-recipes.js";
 export type {
   MaterializePdfTemplateRecipeInputV1,
   MaterializePdfTemplateRecipeInputV2,

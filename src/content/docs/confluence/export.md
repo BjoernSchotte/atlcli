@@ -208,7 +208,7 @@ Pass one or the other, never both.
 | `--no-toc` | Leave out the table of contents |
 | `--no-closing-page` | Leave out the closing "End of document" page |
 | `--pdf-images-ppi <n>` | Exact target density in `[72, 1200]`; requires `--pdf-images standard` or `print` |
-| `--template, -t <path>` | Direct path to a verified `.wiki-pdf-template` pack; omission keeps Editorial Indigo |
+| `--template, -t <path\|name>` | Path to a verified `.wiki-pdf-template` pack, or `report` for the built-in [Report template](./pdf-template-from-yaml.md#curated-report-template); omission keeps Editorial Indigo |
 | `--report json` | Synonym for `--json` |
 
 All [scope and label options](#scope-options) work with `--format pdf` too.

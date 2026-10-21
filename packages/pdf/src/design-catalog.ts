@@ -531,7 +531,12 @@ const OWNED_DESCRIPTORS_V4: readonly OwnedDescriptorV3[] = [
       consumers: ["pdf.renderer.v6"],
       proofs: ["contract", "canonical-source", "compile", "semantic-pdf"]
     })
-  )
+  ),
+  descriptorV3("compositions.titleBlock.enabled", "boolean", "primary", {
+    required: false,
+    consumers: ["pdf.renderer.v6"],
+    proofs: ["contract", "canonical-source", "compile", "visual-pdf"]
+  })
 ];
 
 export const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1 =
@@ -888,9 +893,9 @@ export const PDF_TEMPLATE_CAPABILITY_DIGEST_V3 =
 export const PDF_TEMPLATE_PRESENTATION_REVISION_V3 =
   "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a" as const;
 export const PDF_TEMPLATE_CAPABILITY_DIGEST_V4 =
-  "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814" as const;
+  "fc3cbaa1ae31e085ef7151b458400510646b9cd0f7868ca9dde707d4f41d3e9d" as const;
 export const PDF_TEMPLATE_PRESENTATION_REVISION_V4 =
-  "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7" as const;
+  "0c7735cb6c70a6d18918fa38114b515a1c4d8f951c8956fb46c014c4aa8f9be6" as const;
 
 /** Exact aliases used by the pre-catalog renderer for sparse V1 manifests. */
 export const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<

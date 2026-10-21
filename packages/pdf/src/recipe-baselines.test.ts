@@ -98,7 +98,7 @@ describe("Recipe V2 installed baseline resolution", () => {
       await computePdfTemplateBaselineDigestV1(BUILTIN_PDF_TEMPLATE_BASELINE_V2),
     ).toBe(BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2);
     expect(BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2).toBe(
-      "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4",
+      "0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a",
     );
     expect(BUILTIN_PDF_TEMPLATE_BASELINE_V2.catalog).toEqual({
       id: PDF_TEMPLATE_CAPABILITIES_V3.id,

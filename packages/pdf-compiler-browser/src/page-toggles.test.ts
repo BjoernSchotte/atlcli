@@ -47,8 +47,13 @@ async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>>
   return new Uint8Array(await Bun.file(fileURLToPath(import.meta.resolve(specifier))).arrayBuffer());
 }
 
-function revision6(toggles: { cover?: boolean; closingPage?: boolean }): PdfTemplateManifestV5 {
+function revision6(
+  toggles: { cover?: boolean; closingPage?: boolean; titleBlock?: boolean },
+): PdfTemplateManifestV5 {
   const design = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V2.design);
+  if (toggles.titleBlock !== undefined) {
+    design.compositions.titleBlock = { enabled: toggles.titleBlock };
+  }
   if (toggles.cover !== undefined) design.compositions.cover.enabled = toggles.cover;
   if (toggles.closingPage !== undefined) design.compositions.closingPage.enabled = toggles.closingPage;
   return validateManifestV3({
@@ -144,5 +149,17 @@ describe("cover and closing-page toggles (real compiler)", () => {
     expect(hasClosing(forced)).toBe(true);
     const suppressed = await pages({ outline: false, cover: false, closingPage: false }, revision6({}));
     expect(suppressed).toHaveLength(bare.length);
+  }, 120_000);
+
+  it("opens page 1 with the title block only while no cover renders", async () => {
+    const titled = await pages({ outline: false }, revision6({ cover: false, titleBlock: true }));
+    expect(titled[0]).toMatch(/^.*Page toggles.*EXPORTED BY.*Release notes/su);
+    // A cover forced back on replaces the title block instead of repeating it.
+    const covered = await pages({ outline: false, cover: true }, revision6({ cover: false, titleBlock: true }));
+    expect(hasCover(covered)).toBe(true);
+    expect(covered[1]).not.toMatch(/EXPORTED BY/u);
+    // Without the capability the body starts directly.
+    const plain = await pages({ outline: false }, revision6({ cover: false }));
+    expect(plain[0]).not.toMatch(/EXPORTED BY/u);
   }, 120_000);
 });

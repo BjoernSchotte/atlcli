@@ -53,27 +53,22 @@ The page shows the sprint goal, dates, issue and story-point counts, and done an
 | `--dry-run` | flag | off | Print the markdown and the planned action; write nothing |
 | `--force` | flag | off | Overwrite a same-title page atlcli did not create |
 | `--export` | path ending in `.pdf` or `.docx` | none | Export the page after writing it; an existing file is replaced |
-| `--export-template` | path or name | bundled | Export template (as `atlcli wiki export --template`) |
+| `--export-template` | path or name | `report` (PDF) | Export template (as `atlcli wiki export --template`) |
 | `--list-templates` | flag | off | List the bundled templates |
 | `--print-template` | template name | none | Print a bundled template to start your own |
 
 ## PDF layout
 
-A report PDF is laid out for reading on screen or sending around:
+A report PDF uses the built-in [Report template](../confluence/pdf-template-from-yaml.md#curated-report-template) and is laid out for reading on screen or sending around:
 
-- no cover page; the page title and metadata sit in the running header,
+- no cover page; a title block with space, version, and export date opens page 1,
+- the title in the running header from page 2, the export date and "page x of y" in the footer,
 - a contents page only when the report has 8 or more sections (`##` headings),
 - issue keys shown as pills (`ATLCLI-53`) that link to Jira,
 - each issue with its summary in bold and the first two lines or so of its description,
 - no closing "End of document" page.
 
-With `--export-template`, the template decides about the cover and closing page; the contents rule above still applies. The [Report template](../confluence/pdf-template-from-yaml.md#curated-report-template) is made for these pages: no cover or closing page, the title in the running header, and "page x of y" in the footer.
-
-```bash
-atlcli pdf-template build ./report/recipe.yaml --output ./report.wiki-pdf-template
-atlcli jira version notes 2026.10 --project ATLCLI --space DOCS \
-  --export notes.pdf --export-template ./report.wiki-pdf-template
-```
+Pass `--export-template <pack>` to use your own PDF template instead; it then decides about the cover, title block, and closing page, and the contents rule above still applies. DOCX exports keep the bundled DOCX template.
 
 ## Running it again
 

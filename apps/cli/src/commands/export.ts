@@ -55,8 +55,10 @@ import {
 } from "@atlcli/export-jobs";
 import { createFileExportJobPersistence } from "@atlcli/export-node";
 import {
+  CURATED_PDF_TEMPLATE_RECIPES_V2,
   PDF_OUTPUT_STANDARDS_V1,
   loadPdfTemplatePack,
+  materializePdfTemplateRecipeV2,
   type PdfOutputPolicyV1,
 } from "@atlcli/pdf";
 import type { ExportReport as DocxEngineReport } from "@atlcli/docx";
@@ -315,6 +317,29 @@ export async function handleExport(
 }
 
 /**
+ * `--template` for PDF: a `.wiki-pdf-template` pack path, or the name of a
+ * curated template that is built into a pack here (deterministic bytes).
+ */
+async function readPdfTemplatePack(value: string): Promise<Uint8Array> {
+  const curated = CURATED_PDF_TEMPLATE_RECIPES_V2[value];
+  if (curated) {
+    const { CliGeneratedPdfTemplateCompiler } = await import("./pdf-template-runtime.js");
+    const built = await materializePdfTemplateRecipeV2({
+      recipe: curated,
+      resolvedAssets: {},
+      compiler: new CliGeneratedPdfTemplateCompiler(),
+    });
+    return built.bytes;
+  }
+  if (!value.endsWith(".wiki-pdf-template")) {
+    throw new Error(
+      `PDF --template must point to a .wiki-pdf-template pack or name a built-in template (${Object.keys(CURATED_PDF_TEMPLATE_RECIPES_V2).join(", ")}).`
+    );
+  }
+  return new Uint8Array(await readFile(resolve(value)));
+}
+
+/**
  * `--format pdf` command path (spec 008 T3.2/T3.3). Format-aware validation:
  * PDF accepts a verified `.wiki-pdf-template` pack through `--template` and
  * forbids `--engine` (PDF is its own isomorphic engine). Output goes to `--output` OR
@@ -439,12 +464,7 @@ async function handlePdfExport(
   const pdfTemplatePath = templateFlag(flags);
   if (pdfTemplatePath) {
     try {
-      if (!pdfTemplatePath.endsWith(".wiki-pdf-template")) {
-        throw new Error(
-          "PDF --template must point to a .wiki-pdf-template pack."
-        );
-      }
-      const packBytes = new Uint8Array(await readFile(resolve(pdfTemplatePath)));
+      const packBytes = await readPdfTemplatePack(pdfTemplatePath);
       // Full validation happens before profile resolution or client creation,
       // so an invalid local pack can never trigger a Confluence request.
       await loadPdfTemplatePack(packBytes);
@@ -2129,10 +2149,11 @@ Arguments:
 Options:
   --format <fmt>      Output format: "docx" (default) or "pdf"
   --template, -t      DOCX: optional template name/path. PDF: verified
-                      .wiki-pdf-template pack path. Without it, each format
-                      uses its bundled default; DOCX reports that fallback.
-                      DOCX template names follow the resolution order below;
-                      PDF requires a direct pack path.
+                      .wiki-pdf-template pack path, or "report" for the
+                      built-in Report template (no cover or closing page).
+                      Without it, each format uses its bundled default;
+                      DOCX reports that fallback. DOCX template names follow
+                      the resolution order below.
                       The DOCX engine fills $scroll.* placeholders only — a
                       docxtpl/Jinja template ({{ … }}, {% … %}) exports with
                       those left as literal text and a warning note.

@@ -2253,6 +2253,7 @@ ${body}${commentAppendix}
             ),
             settings.labels,
             settings.templateVisuals,
+            options.templateManifest!.canonicalSource!.revision as "5" | "6",
           )
         : createAtlcliTypstTemplate(
             settings.design,

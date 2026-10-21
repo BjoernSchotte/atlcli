@@ -617,10 +617,10 @@ describe("PDF template capability catalog V3 declaration", () => {
       )
     ).toBe(PDF_TEMPLATE_PRESENTATION_REVISION_V3);
     expect(await computeCapabilityCatalogDigestV2(PDF_TEMPLATE_CAPABILITIES_V4)).toBe(
-      "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814"
+      "fc3cbaa1ae31e085ef7151b458400510646b9cd0f7868ca9dde707d4f41d3e9d"
     );
     expect(PDF_TEMPLATE_CAPABILITY_DIGEST_V4).toBe(
-      "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814"
+      "fc3cbaa1ae31e085ef7151b458400510646b9cd0f7868ca9dde707d4f41d3e9d"
     );
     expect(
       await computeCapabilityPresentationRevisionV2(
@@ -629,13 +629,17 @@ describe("PDF template capability catalog V3 declaration", () => {
         PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4
       )
     ).toBe(PDF_TEMPLATE_PRESENTATION_REVISION_V4);
-    // V4 is exactly V3 plus the two optional page toggles.
+    // V4 is exactly V3 plus the optional page toggles and the title block.
     const v3Paths = PDF_TEMPLATE_CAPABILITIES_V3.descriptors.map(({ path }) => path);
     expect(
       PDF_TEMPLATE_CAPABILITIES_V4.descriptors
         .map(({ path }) => path)
         .filter((path) => !v3Paths.includes(path))
-    ).toEqual(["compositions.cover.enabled", "compositions.closingPage.enabled"]);
+    ).toEqual([
+      "compositions.cover.enabled",
+      "compositions.closingPage.enabled",
+      "compositions.titleBlock.enabled",
+    ]);
     expect(PDF_TEMPLATE_CAPABILITIES_V4.constraints).toEqual(PDF_TEMPLATE_CAPABILITIES_V3.constraints);
   });
 

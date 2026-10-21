@@ -103,6 +103,13 @@ export interface AtlcliTypstTemplateOptions {
   imageGeometryV5?: boolean;
   /** Exact Catalog-V3 text policy; absent keeps revisions 1-4 byte-identical. */
   typographyModelV5?: DesignTypography;
+  /**
+   * Revision 6: when no cover page renders, open page 1 with a compact title
+   * block built from the cover roles and tokens.
+   */
+  titleBlockV5?: boolean;
+  /** Revision 6: hidden running-header variants draw no rule. */
+  revision6?: boolean;
 }
 
 function headingNumberingPatternV5(
@@ -202,6 +209,7 @@ function runningRegionSourceV5(
   kind: "header" | "footer",
   headerRule: string,
   pageNumbersEnabled: boolean,
+  hiddenWithoutRule = false,
 ): string {
   if (!region.enabled) return "      []";
   const first = runningVariantSourceV5(
@@ -219,9 +227,16 @@ function runningRegionSourceV5(
     region.layout,
     pageNumbersEnabled,
   );
-  const body = kind === "header"
-    ? `block(width: 100%)[#running-content #line(length: 100%, stroke: ${headerRule})]`
-    : "running-content";
+  const ruled = `block(width: 100%)[#running-content #line(length: 100%, stroke: ${headerRule})]`;
+  const shown = (variant: "hide" | DesignRunningVariantV3): string =>
+    variant === "hide" ? "false" : "true";
+  // Revision 6: a hidden header variant leaves no orphaned rule behind.
+  const body = kind !== "header"
+    ? "running-content"
+    : hiddenWithoutRule &&
+        [region.first, region.odd, region.even].includes("hide")
+      ? `if (if current-page == 1 { ${shown(region.first)} } else if calc.odd(current-page) { ${shown(region.odd)} } else { ${shown(region.even)} }) { ${ruled} } else { [] }`
+      : ruled;
   return String.raw`      let current-page = here().page()
       let running-content = if current-page == 1 {
         ${first}
@@ -381,6 +396,32 @@ export function createAtlcliTypstTemplate(
   const coverDefault = catalogDesign.features.cover.enabled ? "true" : "false";
   const outlineDefault = catalogDesign.features.outline.enabled ? "true" : "false";
   const outlineDepthDefault = catalogDesign.features.outline.depth;
+  // The compact form of the cover: same roles and tokens, no page of its own,
+  // metadata on one line. Shown only while the cover itself does not render.
+  const titleBlockMeta = (label: string, value: string): string =>
+    `text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate${roleTextExtrasV5("coverMetaLabel")}, upper(${label})),\n        text(size: ${rsize("coverMetaValue")}, fill: ink${roleTextExtrasV5("coverMetaValue")}, ${value}),`;
+  const titleBlockSource = options.titleBlockV5 !== true ? "" : `  if not cover-config.at("enabled", default: ${coverDefault}) {
+    block(width: 100%, below: ${L("h1Above")})[
+      #set text(font: ${fontStack(F("heading"))})
+      #text(size: ${rsize("coverEyebrow")}, weight: "${rweight("coverEyebrow")}", tracking: ${rtrack("coverEyebrow")}, fill: indigo${roleTextExtrasV5("coverEyebrow")}, space-label)
+      #v(${L("coverEyebrowGap")})
+      #block(width: 100%)[
+        #set par(leading: ${L("coverTitleLeading")})
+        #text(font: ${fontStack(roleFont("coverTitle"))}, size: ${rsize("coverTitle")}, weight: "${rweight("coverTitle")}", fill: ink${roleTextExtrasV5("coverTitle")})[#meta.title]
+      ]
+      #v(${L("coverTitleGap")})
+      #line(length: ${L("coverRuleLength")}, stroke: ${L("coverRuleStroke")} + indigo)
+      #v(${L("coverMetaGap")})
+      #grid(
+        columns: 6,
+        column-gutter: ${L("coverMetaColGutter")},
+        ${titleBlockMeta("version-label", "meta.version")}
+        ${titleBlockMeta("exported-label", "meta.exported-label")}
+        ${titleBlockMeta("exporter-label", "meta.exporter")}
+      )
+    ]
+  }
+`;
 
   // Running-head mode. This is static design (not settings-driven), so it is
   // resolved and interpolated when the template string is generated: the
@@ -569,6 +610,7 @@ ${runningRegionSourceV5(
   "header",
   `rgb("${C("hairline")}")`,
   pageNumbersEnabledV5,
+  options.revision6 === true,
 )}
     },
     footer: context {${footerDecorationSource}
@@ -932,7 +974,7 @@ ${positionedLogoSource}
     pagebreak()
   }
   set page(fill: white)
-  if outline-config.at("enabled", default: ${outlineDefault}) {
+${titleBlockSource}  if outline-config.at("enabled", default: ${outlineDefault}) {
 ${outlineEntrySourceV5}
 ${outlineInvocationSourceV5}
     pagebreak()

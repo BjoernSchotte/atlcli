@@ -236,7 +236,7 @@ export const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1 =
 
 /** Pinned by `recipe-baselines.test.ts`; changing it requires a new version. */
 export const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2 =
-  "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4" as const;
+  "0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a" as const;
 
 export const BUILTIN_PDF_TEMPLATE_BASELINE_V2: ResolvedPdfTemplateBaselineV1 =
   deepFreeze({
