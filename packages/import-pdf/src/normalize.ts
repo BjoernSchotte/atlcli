@@ -47,7 +47,6 @@ import {
   correlateTaggedText,
   descendantMcids,
   orderedDescendantMcidsV2,
-  unresolvedStructureKidIndexesV2,
 } from "./text.js";
 import { PdfImportError } from "./issues.js";
 import {
@@ -60,6 +59,7 @@ import {
 } from "./tables.js";
 import {
   PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
+  pdfDocumentLexiconV2,
   type PdfTextBoundaryDecisionV2,
   type PdfTextTransformationV2,
 } from "./text-assembly.js";
@@ -379,6 +379,8 @@ interface MutableProjectionV2 {
   /** Native projections of tables that span pages, keyed by logical table identity. */
   logicalTables: ReadonlyMap<string, PdfTableProjectionV2>;
   emittedLogicalTables: Set<string>;
+  /** Lowercase compounds hyphenated inside a line anywhere in the document. */
+  documentLexicon: ReadonlySet<string>;
 }
 
 function locatorV2(
@@ -419,7 +421,7 @@ function reportDeferredV2(
   state: MutableProjectionV2,
   feature: "table" | "figure" | "unsupported",
 ): void {
-  const correlated = correlateTaggedTextWithLinksV2(page, node);
+  const correlated = correlateTaggedTextWithLinksV2(page, node, state.documentLexicon);
   correlated.characters.forEach((character) => state.claimedCharacterIndexes.add(character.index));
   appendPdfTextAssemblyV2(state, correlated.assembly);
   state.issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, node.id));
@@ -453,10 +455,14 @@ function projectNodeV2(
 ): void {
   const role = structureRoleV2(node);
   const container = isSemanticContainer(role) && role !== "Span";
+  // Tables, lists and figures place their children by position: a missing
+  // child would shift cells or items without leaving any text unclaimed.
+  const positional = !container && ["Table", "L", "Figure"].includes(role);
   if (unresolvedNodeIds.has(node.id)) {
-    // A container still projects its resolved children in order; whatever the
-    // unresolved child showed stays unclaimed and the ownership audit decides.
-    if (!container) state.corruptTagCount += 1;
+    // Every other element still projects its resolved children in order;
+    // whatever the unresolved child showed stays unclaimed and the ownership
+    // audit decides.
+    if (positional) state.corruptTagCount += 1;
     state.issues.push({
       code: "pdf-import/tagged-structure-kid-unresolved",
       severity: "warning",
@@ -475,7 +481,7 @@ function projectNodeV2(
       analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
       boundaryDecisionIds: [],
     });
-    if (!container) return;
+    if (positional) return;
   }
   if (container) {
     for (const child of structureChildrenV2(node)) {
@@ -500,7 +506,7 @@ function projectNodeV2(
       }
       return;
     }
-    const table = projectTaggedTableV2(page, node, corruptMcids);
+    const table = projectTaggedTableV2(page, node, corruptMcids, state.documentLexicon);
     state.blocks.push(...table.blocks);
     state.evidence.push(...table.evidence);
     state.issues.push(...table.issues);
@@ -517,7 +523,7 @@ function projectNodeV2(
     return;
   }
   if (role === "L") {
-    const list = projectTaggedListV2(page, node, corruptMcids);
+    const list = projectTaggedListV2(page, node, corruptMcids, state.documentLexicon);
     state.evidence.push(...list.evidence);
     state.issues.push(...list.issues);
     state.boundaries.push(...list.boundaries);
@@ -550,14 +556,13 @@ function projectNodeV2(
     }
     return;
   }
-  const correlated = correlateTaggedTextWithLinksV2(page, node);
+  const correlated = correlateTaggedTextWithLinksV2(page, node, state.documentLexicon);
   appendPdfTextAssemblyV2(state, correlated.assembly);
   state.issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, node.id));
   const mcids = orderedDescendantMcidsV2(node);
   const degenerateTextGeometry = lacksMaterialTaggedTextGeometry(page, correlated.characters);
   const corrupt = mcids.length === 0
     || mcids.some((mcid) => corruptMcids.has(mcid))
-    || unresolvedStructureKidIndexesV2(node).length > 0
     || correlated.hasUnicodeError
     || correlated.text.length === 0
     || degenerateTextGeometry;
@@ -671,7 +676,8 @@ export async function normalizeTaggedPdfFactsV2(
   const pageOutcomes: PdfTaggedPageOutcomeV2[] = [];
   const requiresGeometryPages: number[] = [];
   let previousHeadingLevel: number | null = null;
-  const logicalTables = projectMultiPageTablesV2(facts, issues);
+  const documentLexicon = pdfDocumentLexiconV2(facts.pages);
+  const logicalTables = projectMultiPageTablesV2(facts, issues, documentLexicon);
   const emittedLogicalTables = new Set<string>();
   for (const page of facts.pages) {
     const pageBlockStart = blocks.length;
@@ -688,6 +694,7 @@ export async function normalizeTaggedPdfFactsV2(
       previousHeadingLevel,
       logicalTables,
       emittedLogicalTables,
+      documentLexicon,
     };
     if (!facts.tagged || page.structures.length === 0) {
       state.corruptTagCount += 1;
@@ -778,14 +785,18 @@ export async function normalizeTaggedPdfFactsV2(
  * projects each as one native table (PIQ-15). Tables that do not qualify are
  * left to the page-local projection and its fallbacks.
  */
-function projectMultiPageTablesV2(facts: PdfFactsV2, issues: ImportIssue[]): Map<string, PdfTableProjectionV2> {
+function projectMultiPageTablesV2(
+  facts: PdfFactsV2,
+  issues: ImportIssue[],
+  documentLexicon: ReadonlySet<string>,
+): Map<string, PdfTableProjectionV2> {
   const parts = new Map<string, PdfTaggedTablePartV2[]>();
   for (const page of facts.pages) {
     const corruptMcids = indexTaggedStructureV2(page).duplicateMcids;
     for (const node of flattenStructureV2(page.structures)) {
       if (!node.logicalId || structureRoleV2(node) !== "Table") continue;
       const list = parts.get(node.logicalId) ?? [];
-      list.push({ page, table: node, corruptMcids });
+      list.push({ page, table: node, corruptMcids, documentLexicon });
       parts.set(node.logicalId, list);
     }
   }

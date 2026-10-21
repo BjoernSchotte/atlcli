@@ -203,7 +203,9 @@ editable semantics cannot be preserved safely. Choose an explicit alternative:
   `--accept-reported-pages`.
 
 There is no OCR fallback. Hidden OCR text is treated as evidence to validate,
-not as permission to duplicate or invent visible content.
+not as permission to duplicate or invent visible content: a scanned page whose
+image covers most of the page stays a page image even when it carries an
+invisible OCR text layer.
 
 `--visual-fallback auto|inline|collapsed|appendix` is the clearer opt-in and
 implies `--scan-policy page-image`. `auto` is recommended: localized unsafe
@@ -235,8 +237,10 @@ A structure element with one child that cannot be resolved still keeps its
 other children, in their original order; the unresolved child is reported as
 `pdf-import/tagged-structure-kid-unresolved`. Children shown on another page
 are skipped on this page. If text on the page belongs to no remaining element,
-the page falls back as before. A paragraph, list, figure, or table cell with
-an unresolved child is never treated as complete.
+the page falls back as before. A paragraph or heading with an unresolved child
+keeps its resolved text the same way. A list, figure, or table with an
+unresolved child is never treated as complete: a missing child would shift
+items or cells without leaving any text unclaimed.
 
 A tagged table becomes one native Confluence table when its grid is complete:
 
@@ -261,15 +265,23 @@ tables from the drawing itself, without learned models:
 |---|---|
 | Borders drawn on every cell | One native table; a missing separator merges cells into a span |
 | No outer side borders (a common Word table style), or no top rule on a continued page | The open side is implied where every row rule or column rule ends; native table |
-| Row split by a page break | One row; each cell's text continues as one paragraph |
+| Inside rules only (Word's "no outer border", any number of columns) | Native table with its first and last row; one table across pages |
+| Row split by a page break, frame drawn but left open on both sides of the break | One row; each cell's text continues as one paragraph |
+| Row split by a page break, frame drawn across the break (Word and LibreOffice by default) | Two rows: the rest leaves the finished cells blank. Reported as `pdf-import/table-row-split-unproven`, because a row left partly blank on purpose looks the same |
 | Several text pieces on one line of a cell, one set slightly higher (another font size) | Read left to right in the line |
 | Only horizontal rules between rows | Rows from the rules, columns from left text edges shared by several rows; wrapped cell text stays in its cell |
 | No lines, three or more columns of single-line cells | Native table when every row has the same cells and the columns are clearly separated |
 | Table continues on the next page with the same columns | One table; a repeated bold header row is kept once |
-| Shading or a highlight behind text | Background: the text stays editable, no image |
+| Shading or a highlight behind text, or a filled text box on a slide | Background: the text stays editable, no image |
 | Text that crosses a drawn cell edge, a frame open where its lines do not end evenly, two-column text | No table; the text stays in reading order or the page falls back |
 | Aligned text that is not a proven table | Rows linearized as `cell \| cell` paragraphs plus a rendered crop of the region; the rest of the page stays editable. The page falls back only when other text lies inside that region |
 | A page of a multi-page table falls back | The table's parts on the other pages are imported as their own table |
+
+Headings on untagged pages come from font size: text set clearly larger than
+the size most characters are set in. Word for Mac reports no usable font size,
+so sizes are estimated from glyph heights; headings of one style share one
+level. The same compound and dehyphenation rules apply to tagged pages and
+table cells.
 
 Bold header rows are recognized from the font name when the PDF reports no
 font weight. Clause numbers, terms, and table-of-contents page numbers beside
@@ -284,7 +296,7 @@ Reading order on untagged pages:
 | Underscore inside a word (`neutral_field`) | Kept in its word; its flat glyph below the baseline is not a second line |
 | Line ending in a digit, an underscore, or a symbol such as `+` | Joined with the next line by one space |
 | Hyphen at a line end, next line starts with a capital (`Kunden-` / `Projekt`) | Hyphen kept: `Kunden-Projekt` |
-| Hyphen at a line end, next line starts lowercase | Removed as a syllable break, unless the same compound appears with its hyphen inside a line elsewhere in the PDF (`end-to-end`); then kept |
+| Hyphen at a line end, next line starts lowercase | Removed as a syllable break, unless the same compound appears with its hyphen inside a line elsewhere in the PDF (`end-to-end`); then kept. When neither the compound nor the joined word appears elsewhere, the removal is reported as `pdf-import/text-dehyphenation-unproven` (info) |
 | Hyphen at the end of a cell line with the next cell's text on the same line | The two are kept apart |
 
 ### Optional table-structure model
@@ -556,6 +568,8 @@ release claim.
 | A tagged table becomes a page image or linearized text | The table nests another table, or a cell's text has an unresolved boundary or invalid Unicode | Check `pdf-import/table-tagged-linearized` and its `reason` in the JSON preview. Re-export with tagging enabled, or flatten the nested table in the source. |
 | Issue `pdf-import/table-continuation-unjoined`: the table repeats on every page | One page part does not qualify as a grid, or the table exceeds 5,000 rows | Check the issue `reason`. Each page part stays a native table when it qualifies on its own. |
 | `The table model is not installed` or `The table model runtime is not installed` | `--table-model` was given before the model was pulled | Run `atlcli models pull table-transformer`, or set `ATLCLI_MODELS_DIR` to the directory you pulled into. |
+| Issue `pdf-import/table-row-split-unproven` | The first row after a page break leaves cells blank that the row before fills | Open the page and check the two rows: if they are one split row, join them after import, or set **Allow row to break across pages** off in the source. |
+| Issue `pdf-import/text-dehyphenation-unproven` | A line-end hyphen before a lowercase word was removed without evidence elsewhere in the PDF | Usually correct (a split syllable). Check compound words such as `well-known` in the listed blocks. |
 | An untagged table arrives as paragraphs | No drawn grid or row rules, fewer than three aligned columns, or text crossing a cell edge | Export with table borders, or as a tagged PDF. The text is complete and in reading order either way. |
 | Issue `pdf-import/document-structure-unavailable` | The structure tree could not be read as a whole (damaged cross-references or budget) | Import continues with page-scoped structure; multi-page tables may fall back. Re-save the PDF from its producer. |
 | Image-only page blocks publication | Default scan policy forbids silent empty output | Choose `page-image`, or use `report` plus both publication acknowledgements. |

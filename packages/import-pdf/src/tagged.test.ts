@@ -29,7 +29,7 @@ import { flattenStructureV2, structureRoleV2 } from "./structure.js";
 import { textDirection } from "./text.js";
 import { digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
 import { PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 } from "./text-assembly.js";
-import { generateMixedContainerProbe, generateUnresolvedStructureKidProbe } from "../../../specs/pdf-import-quality/fixtures/generate-core.js";
+import { generateMixedContainerProbe, generateTaggedCompoundProbe, generateUnresolvedStructureKidProbe } from "../../../specs/pdf-import-quality/fixtures/generate-core.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
 const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
@@ -400,9 +400,37 @@ describe("tagged PDF semantic extraction", () => {
     )).toBe(true);
   });
 
-  it("demotes an unresolved V2 structure child without exposing source text in diagnostics", async () => {
+  it("keeps a paragraph's resolved children around an unresolved child that showed nothing", async () => {
+    // Regression: one unresolved child sent the whole page to geometry.
     const raw = await (await createNodePdfiumFactsAdapterV2()).analyze(
       generateUnresolvedStructureKidProbe(),
+    );
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+
+    expect(result.document.blocks.map((block) => "runs" in block ? block.runs.map((run) => run.kind === "text" ? run.text : "").join("") : block.type))
+      .toEqual(["Neutral evidence."]);
+    expect(result.requiresGeometryPages).toEqual([]);
+    expect(result.pageOutcomes[0]).toMatchObject({ mode: "tagged-native", corruptTagCount: 0, unclaimedCharacterCount: 0 });
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-structure-kid-unresolved",
+      outcome: "reported",
+      context: { pageIndex: 0 },
+    }));
+  });
+
+  it("sends a page to geometry when visible text belongs to no paragraph or the unresolved child sits in a table", async () => {
+    for (const options of [{ orphanText: true }, { role: "Table" as const }]) {
+      const raw = await (await createNodePdfiumFactsAdapterV2()).analyze(generateUnresolvedStructureKidProbe(options));
+      const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+
+      expect(result.requiresGeometryPages).toEqual([0]);
+      expect(result.pageOutcomes[0]!.mode).toBe("geometry-required");
+    }
+  });
+
+  it("reports an unresolved V2 structure child without exposing source text in diagnostics", async () => {
+    const raw = await (await createNodePdfiumFactsAdapterV2()).analyze(
+      generateUnresolvedStructureKidProbe({ role: "Table" }),
     );
     const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
 
@@ -425,6 +453,22 @@ describe("tagged PDF semantic extraction", () => {
       boundaryDecisionIds: [],
     }));
     expect(JSON.stringify(result.document.issues)).not.toContain("Unresolved Harbor");
+  });
+
+  it("keeps a wrapped lowercase compound in tagged paragraphs and cells when the document shows it unbroken", async () => {
+    // Regression: only geometry pages received the document's compounds.
+    const raw = await (await createNodePdfiumFactsAdapterV2()).analyze(generateTaggedCompoundProbe());
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+    const text = (block: (typeof result.document.blocks)[number]): unknown => block.type === "table"
+      ? block.rows.map((row) => row.cells.map((cell) => cell.blocks.map(text).join("")))
+      : "runs" in block ? block.runs.map((run) => run.kind === "text" ? run.text : "").join("") : block.type;
+
+    expect(result.document.blocks.map(text)).toEqual([
+      "The form is hand-written today.",
+      [["Kind", "A hand-written card"], ["Size", "Small"]],
+      "Every hand-written note counts.",
+    ]);
+    expect(result.boundaries.filter((boundary) => boundary.basis.includes("document-compound"))).toHaveLength(2);
   });
 
   it("keeps the usable siblings of an unresolved or page-external child in source order", async () => {

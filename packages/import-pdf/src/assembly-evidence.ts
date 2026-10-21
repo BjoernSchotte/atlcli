@@ -50,6 +50,23 @@ export function pdfTextAssemblyIssuesV2(
       context: { pageIndex, boundaries: assembly.unresolvedBoundaryCount },
     });
   }
+  // Neither the compound nor the joined word occurs elsewhere: the hyphen
+  // was most likely a split syllable, but nothing in the document proves it.
+  const unproven = assembly.boundaries.filter((boundary) =>
+    boundary.action === "dehyphenate"
+    && !boundary.basis.includes("document-word")
+    && !boundary.basis.includes("actual-text")
+  ).length;
+  if (unproven > 0) {
+    issues.push({
+      code: "pdf-import/text-dehyphenation-unproven",
+      severity: "info",
+      outcome: "native",
+      message: "A line-end hyphen before a lowercase word was removed; the document shows neither the joined word nor the hyphenated compound elsewhere.",
+      sourceRefs: [sourceId],
+      context: { pageIndex, boundaries: unproven },
+    });
+  }
   if (assembly.issues.some((issue) => issue.code === "pdf-import/actual-text-mark-unmapped")) {
     issues.push({
       code: "pdf-import/actual-text-mark-unmapped",

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.presentation">
+<office:automatic-styles>
+<style:style style:name="box" style:family="graphic"><style:graphic-properties draw:fill="none" draw:stroke="none"/></style:style>
+<style:style style:name="callout" style:family="graphic"><style:graphic-properties draw:fill="solid" draw:fill-color="#dde7f3" draw:stroke="none"/></style:style>
+<style:style style:name="title" style:family="paragraph"><style:text-properties fo:font-size="36pt" fo:font-weight="bold" style:font-name="Arial"/></style:style>
+<style:style style:name="body" style:family="paragraph"><style:text-properties fo:font-size="20pt" style:font-name="Arial"/></style:style>
+<text:list-style style:name="bullets"><text:list-level-style-bullet text:level="1" text:bullet-char="•"><style:list-level-properties text:space-before="0cm" text:min-label-width="0.8cm"/></text:list-level-style-bullet></text:list-style>
+</office:automatic-styles>
+<office:body><office:presentation>
+<draw:page draw:name="s1">
+<draw:frame draw:style-name="box" svg:x="2cm" svg:y="6cm" svg:width="24cm" svg:height="3cm"><draw:text-box><text:p text:style-name="title">Neutral Field Review</text:p></draw:text-box></draw:frame>
+<draw:frame draw:style-name="box" svg:x="2cm" svg:y="10cm" svg:width="24cm" svg:height="2cm"><draw:text-box><text:p text:style-name="body">Quarterly summary for import acceptance</text:p></draw:text-box></draw:frame>
+</draw:page>
+<draw:page draw:name="s2">
+<draw:frame draw:style-name="box" svg:x="2cm" svg:y="1.5cm" svg:width="24cm" svg:height="2.5cm"><draw:text-box><text:p text:style-name="title">Findings</text:p></draw:text-box></draw:frame>
+<draw:frame draw:style-name="box" svg:x="2cm" svg:y="5cm" svg:width="24cm" svg:height="7cm"><draw:text-box>
+<text:list text:style-name="bullets"><text:list-item><text:p text:style-name="body">Every record was checked.</text:p></text:list-item><text:list-item><text:p text:style-name="body">Quantities match the ledger.</text:p></text:list-item><text:list-item><text:p text:style-name="body">Archive the review.</text:p></text:list-item></text:list>
+</draw:text-box></draw:frame>
+<draw:frame draw:style-name="callout" svg:x="2cm" svg:y="13cm" svg:width="24cm" svg:height="1.5cm"><draw:text-box><text:p text:style-name="body">Note: figures are neutral.</text:p></draw:text-box></draw:frame>
+</draw:page>
+<draw:page draw:name="s3">
+<draw:frame draw:style-name="box" svg:x="2cm" svg:y="1.5cm" svg:width="24cm" svg:height="2.5cm"><draw:text-box><text:p text:style-name="title">Totals</text:p></draw:text-box></draw:frame>
+<draw:frame draw:style-name="box" svg:x="2cm" svg:y="5cm" svg:width="18cm" svg:height="4cm"><table:table>
+<table:table-column table:number-columns-repeated="3"/>
+<table:table-row><table:table-cell><text:p>Region</text:p></table:table-cell><table:table-cell><text:p>Items</text:p></table:table-cell><table:table-cell><text:p>State</text:p></table:table-cell></table:table-row>
+<table:table-row><table:table-cell><text:p>North</text:p></table:table-cell><table:table-cell><text:p>12</text:p></table:table-cell><table:table-cell><text:p>Open</text:p></table:table-cell></table:table-row>
+<table:table-row><table:table-cell><text:p>South</text:p></table:table-cell><table:table-cell><text:p>9</text:p></table:table-cell><table:table-cell><text:p>Done</text:p></table:table-cell></table:table-row>
+</table:table></draw:frame>
+</draw:page>
+</office:presentation></office:body></office:document>

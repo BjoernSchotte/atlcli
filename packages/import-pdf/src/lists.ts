@@ -185,6 +185,7 @@ export function projectTaggedListV2(
   page: PdfPageFactsV2,
   node: PdfStructureNodeFactV2,
   corruptMcids: ReadonlySet<number>,
+  documentLexicon?: ReadonlySet<string>,
 ): TaggedListProjectionV2 {
   const evidence: PdfDecisionEvidenceV2[] = [];
   const issues: ImportIssue[] = [];
@@ -205,7 +206,7 @@ export function projectTaggedListV2(
         kid.kind !== "element" || structureRoleV2(kid.node) !== "Lbl"
       ),
     };
-    const labelCorrelation = label ? correlateTaggedTextWithLinksV2(page, label) : null;
+    const labelCorrelation = label ? correlateTaggedTextWithLinksV2(page, label, documentLexicon) : null;
     if (labelCorrelation) {
       appendPdfTextAssemblyV2(aggregate, labelCorrelation.assembly);
       issues.push(...pdfTextAssemblyIssuesV2(labelCorrelation.assembly, page.index, label!.id));
@@ -253,7 +254,7 @@ export function projectTaggedListV2(
       ...(compatibleNested ? [] : nestedNodes),
     ];
     for (const [residualIndex, residual] of residualNodes.entries()) {
-      const correlated = correlateTaggedTextWithLinksV2(page, residual);
+      const correlated = correlateTaggedTextWithLinksV2(page, residual, documentLexicon);
       appendPdfTextAssemblyV2(aggregate, correlated.assembly);
       issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, residual.id));
       evidence.push({
@@ -291,7 +292,7 @@ export function projectTaggedListV2(
 
     const blocks: ImportListBlock["items"][number]["blocks"] = [];
     for (const [paragraphIndex, paragraph] of paragraphNodes.entries()) {
-      const correlated = correlateTaggedTextWithLinksV2(page, paragraph);
+      const correlated = correlateTaggedTextWithLinksV2(page, paragraph, documentLexicon);
       appendPdfTextAssemblyV2(aggregate, correlated.assembly);
       issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, paragraph.id));
       const mcids = orderedDescendantMcidsV2(paragraph);
@@ -379,7 +380,7 @@ export function projectTaggedListV2(
       });
     }
     const nested = compatibleNested ? nestedNodes[0] : undefined;
-    const child = nested ? projectTaggedListV2(page, nested, corruptMcids) : null;
+    const child = nested ? projectTaggedListV2(page, nested, corruptMcids, documentLexicon) : null;
     if (child) {
       child.claimedCharacterIndexes.forEach((index) => claimed.add(index));
       aggregate.boundaries.push(...child.boundaries);

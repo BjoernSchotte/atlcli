@@ -373,3 +373,53 @@ describe("PDF table reconstruction", () => {
       .every((item) => item.outcome !== "native")).toBe(true);
   });
 });
+
+describe("painted untagged grids", () => {
+  /** One page of filled-rectangle rules and Helvetica text, in points (595 x 842). */
+  function gridPdf(texts: Array<[string, number, number]>): Uint8Array {
+    const rules = [[60, 700, 300, 0.5], [60, 660, 300, 0.5], [60, 600, 300, 0.5], [60, 600, 0.5, 100], [160, 600, 0.5, 100], [360, 600, 0.5, 100]];
+    const content = [
+      ...rules.map(([x, y, w, h]) => `${x} ${y} ${w} ${h} re f`),
+      ...texts.map(([text, x, y]) => `BT /F1 11 Tf ${x} ${y} Td (${text}) Tj ET`),
+    ].join("\n");
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>",
+      `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    ];
+    let body = "%PDF-1.4\n";
+    const offsets = objects.map((object, index) => {
+      const offset = body.length;
+      body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+      return offset;
+    });
+    const xref = body.length;
+    body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")}`;
+    body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    return new TextEncoder().encode(body);
+  }
+  async function cellTexts(texts: Array<[string, number, number]>, compounds?: ReadonlySet<string>) {
+    const { facts } = await (await createNodePdfiumFactsAdapterV2()).analyze(gridPdf(texts));
+    const page = facts.pages[0]!;
+    const table = analyzeUntaggedTableV2(page, analyzeGeometryReadingOrderV2(page), compounds);
+    return tableBlock(table.blocks).rows.map((row) => row.cells.map((cell) => textRuns(cell.blocks[0]!)));
+  }
+  const header: Array<[string, number, number]> = [["Kind", 66, 684], ["Note", 166, 684], ["Card", 66, 640]];
+
+  it("keeps a wrapped lowercase compound the document shows unbroken", async () => {
+    // Regression: this path never received the document's compounds.
+    const wrapped = [...header, ["A hand-", 166, 640], ["written card", 166, 626]] as Array<[string, number, number]>;
+
+    expect((await cellTexts(wrapped))[1]![1]).toBe("A handwritten card");
+    expect((await cellTexts(wrapped, new Set(["hand-written"])))[1]![1]).toBe("A hand-written card");
+  });
+
+  it("reads a cell line whose second fragment sits a hair higher in line order", async () => {
+    // Regression: cell fragments were sorted by raw y.
+    const raised = [...header, ["Alpha", 166, 640], ["one", 166, 626], ["two", 240, 626.4]] as Array<[string, number, number]>;
+
+    expect((await cellTexts(raised))[1]![1]).toBe("Alpha one two");
+  });
+});

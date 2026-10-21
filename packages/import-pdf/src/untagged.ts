@@ -59,7 +59,7 @@ import {
   type PdfTextAssemblyV2,
   type PdfTextBoundaryDecisionV2,
   type PdfTextTransformationV2,
-  pdfHyphenatedCompoundsV2,
+  pdfDocumentLexiconV2,
 } from "./text-assembly.js";
 
 interface ListMarker {
@@ -474,10 +474,19 @@ function headingLevelsV2(
       )
     )
     .map((fragment) => fragment.fontSizePoints))].sort((left, right) => right - left);
-  return new Map(sizes.slice(0, 6).map((size, index) => [
-    size,
-    (index + 1) as 1 | 2 | 3 | 4 | 5 | 6,
-  ]));
+  // Estimated sizes of one style differ in the last digits: one level each.
+  const levels = new Map<number, 1 | 2 | 3 | 4 | 5 | 6>();
+  let level = 0;
+  let top = Infinity;
+  for (const size of sizes) {
+    if (size < top * (1 - PDF_GEOMETRY_POLICY_V2.headingSizeTolerance)) {
+      level += 1;
+      top = size;
+    }
+    if (level > 6) break;
+    levels.set(size, level as 1 | 2 | 3 | 4 | 5 | 6);
+  }
+  return levels;
 }
 
 /**
@@ -658,7 +667,7 @@ function projectQualifiedPageV2(
   suppressed: ReadonlySet<string>,
   headingLevelByFont: ReadonlyMap<number, 1 | 2 | 3 | 4 | 5 | 6>,
   tables: readonly PdfTableProjectionV2[],
-  hyphenatedCompounds: ReadonlySet<string>,
+  documentLexicon: ReadonlySet<string>,
 ): GeometryProjectionV2 {
   const projection: GeometryProjectionV2 = {
     blocks: [],
@@ -706,7 +715,7 @@ function projectQualifiedPageV2(
       : `${fragment.id}:through:${group.at(-1)!.id}`;
     const assembly = group.length === 1
       ? fragment.assembly
-      : assembleGeometryFragmentsV2(page, sourceId, group, hyphenatedCompounds);
+      : assembleGeometryFragmentsV2(page, sourceId, group, documentLexicon);
     addAssemblyV2(projection, assembly, page.index, sourceId);
     const outcome = pdfTextAssemblyOutcomeV2(assembly);
     if (outcome !== "native") projection.unresolved = true;
@@ -773,18 +782,18 @@ export async function normalizeUntaggedPdfFactsV2(
     );
   }
   const rawAnalyses = facts.pages.map((page) => analyzeGeometryReadingOrderV2(page));
-  const hyphenatedCompounds = pdfHyphenatedCompoundsV2(facts.pages);
+  const documentLexicon = pdfDocumentLexiconV2(facts.pages);
   const project = () => {
     const geometryTables = projectUntaggedGeometryTablesV2(
       facts.pages,
       rawAnalyses,
       detectRepeatedRegions(rawAnalyses, 2),
       options.proposedGrids,
-      hyphenatedCompounds,
+      documentLexicon,
     );
     const tables = rawAnalyses.map((analysis) => {
       if (geometryTables[analysis.pageIndex]!.length > 0) return geometryTables[analysis.pageIndex]!;
-      const legacy = analyzeUntaggedTableV2(facts.pages[analysis.pageIndex]!, analysis);
+      const legacy = analyzeUntaggedTableV2(facts.pages[analysis.pageIndex]!, analysis, documentLexicon);
       return legacy.mode === "none" ? [] : [legacy];
     });
     // Linearized tables own their fragments too: their text and a rendered
@@ -793,7 +802,7 @@ export async function normalizeUntaggedPdfFactsV2(
       page,
       new Set(tables[page.index]!.flatMap((table) => table.fragmentIds)),
     ));
-    calibrateGeometryFontSizesV2(analyses);
+    calibrateGeometryFontSizesV2(analyses, rawAnalyses);
     const repeated = detectRepeatedRegions(analyses, 2);
     const automaticallySuppressed = new Set<string>([
       ...repeated,
@@ -859,7 +868,7 @@ export async function normalizeUntaggedPdfFactsV2(
             automaticallySuppressed,
             headingLevelByFont,
             pageTables,
-            hyphenatedCompounds,
+            documentLexicon,
           )
         : null;
       if (projection?.unresolved) reasons.add("unresolved-text-boundary");

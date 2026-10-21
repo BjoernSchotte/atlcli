@@ -92,12 +92,14 @@ export function markedCharacterIndexesV2(
 export function correlateTaggedTextWithLinksV2(
   page: PdfPageFactsV2,
   node: PdfStructureNodeFactV2,
+  documentLexicon?: ReadonlySet<string>,
 ): CorrelatedTaggedTextV2 {
   const characters = charactersForOrderedMcidsV2(page, orderedDescendantMcidsV2(node));
   return correlateTaggedTextV2(
     page,
     node,
     markedCharacterIndexesV2(characters, page.annotations),
+    documentLexicon,
   );
 }
 

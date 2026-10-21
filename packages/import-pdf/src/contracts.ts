@@ -364,16 +364,16 @@ export interface PdfFactsAdapterV2 {
 export const PDF_TAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-tagged-semantics/1" as const;
 export const PDF_TAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-tagged-semantics/2" as const;
 export const PDF_TAGGED_POLICY_REVISION = "atlcli.pdf-tagged-policy/1" as const;
-export const PDF_TAGGED_POLICY_REVISION_V2 = "atlcli.pdf-tagged-policy/5" as const;
+export const PDF_TAGGED_POLICY_REVISION_V2 = "atlcli.pdf-tagged-policy/6" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V1 = "atlcli.pdf-untagged-semantics/1" as const;
 export const PDF_UNTAGGED_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-untagged-semantics/2" as const;
 export const PDF_HYBRID_SEMANTICS_SCHEMA_V2 = "atlcli.pdf-hybrid-semantics/2" as const;
 export const PDF_GEOMETRY_POLICY_REVISION = "atlcli.pdf-geometry-policy/1" as const;
-export const PDF_GEOMETRY_POLICY_REVISION_V2 = "atlcli.pdf-geometry-policy/8" as const;
+export const PDF_GEOMETRY_POLICY_REVISION_V2 = "atlcli.pdf-geometry-policy/9" as const;
 export const PDF_HYBRID_POLICY_REVISION_V2 = "atlcli.pdf-hybrid-policy/3" as const;
 export const PDF_TABLE_POLICY_REVISION = "atlcli.pdf-table-policy/1" as const;
-export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/8" as const;
-export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/2" as const;
+export const PDF_TABLE_POLICY_REVISION_V2 = "atlcli.pdf-table-policy/9" as const;
+export const PDF_FIGURE_POLICY_REVISION = "atlcli.pdf-figure-policy/3" as const;
 export const PDF_VISUAL_FALLBACK_POLICY_REVISION = "atlcli.pdf-visual-fallback-policy/1" as const;
 
 export interface PdfSourceLocatorV1 {

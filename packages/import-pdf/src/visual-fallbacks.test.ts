@@ -3,6 +3,7 @@ import { sha256Hex } from "@atlcli/core";
 import { IMPORT_DOCUMENT_SCHEMA_V2, type ImportDocumentV2 } from "@atlcli/import-core";
 import {
   PDF_ASSET_MATERIALIZER_REVISION,
+  PDF_TAGGED_POLICY_REVISION_V2,
   type PdfDecisionEvidenceV1,
   type PdfDecisionEvidenceV2,
   type PdfFactsAdapter,
@@ -71,7 +72,7 @@ function evidenceV2(sourceId: string, targetNodeId: string, y: number): PdfDecis
   return {
     ...evidence(sourceId, targetNodeId, y),
     boundaryDecisionIds: [],
-    analyzerRevision: "atlcli.pdf-tagged-policy/5",
+    analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
   };
 }
 
