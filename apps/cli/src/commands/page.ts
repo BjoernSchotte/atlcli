@@ -121,6 +121,12 @@ export async function handlePage(args: string[], flags: Record<string, string | 
     case "unlink-issue":
       await handleUnlinkIssue(flags, opts);
       return;
+    case "tasks-to-issues": {
+      // Lazy: keeps the Jira client out of every other wiki command.
+      const { handlePageTasksToIssues } = await import("./page-tasks-to-issues.js");
+      await handlePageTasksToIssues(flags, opts);
+      return;
+    }
     case "convert":
       await handleConvert(flags, opts);
       return;
@@ -2236,6 +2242,12 @@ Commands:
   link-issue --id <id> --issue <key>   Link a Jira issue to this page
   issues --id <id> [--project <key>]   List Jira issues linked to this page
   unlink-issue --issue <key> --id <id> Remove Jira issue link from page
+  tasks-to-issues --id <id> --project <key> [--confirm]
+                                       Turn the page's task items into Jira issues
+                                       (preview unless --confirm; --type, --label,
+                                       --parent, --include-done, --no-link, --no-mark)
+  tasks-to-issues --id <id> --sync [--confirm]
+                                       Tick tasks whose linked issues are done
   convert --id <id> --to-new-editor    Convert page to new editor (v2)
   convert --id <id> --to-legacy-editor Convert page to legacy editor (v1)
 
@@ -2286,6 +2298,9 @@ Examples:
   atlcli wiki page issues --id 12345
   atlcli wiki page issues --id 12345 --project PROJ
   atlcli wiki page unlink-issue --id 12345 --issue PROJ-100
+  atlcli wiki page tasks-to-issues --id 12345 --project PROJ
+  atlcli wiki page tasks-to-issues --id 12345 --project PROJ --label meeting --confirm
+  atlcli wiki page tasks-to-issues --id 12345 --project PROJ --sync --confirm
   atlcli wiki page convert --id 12345 --to-new-editor
   atlcli wiki page convert --id 12345 --to-legacy-editor
 

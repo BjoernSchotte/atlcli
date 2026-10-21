@@ -29,6 +29,8 @@ These answer the original open questions and override the body where they confli
 - A1b: `JiraClient` honours an explicit `profile.deploymentType` (custom-domain Cloud); without it the `*.atlassian.net` heuristic stays.
 - A1b: core `parseArgs` now treats a lone `-` after a long flag as its value, so `--description-file -` reads stdin.
 - A1b: fixed `bulk edit --set` reading only the first `--set` and splitting `labels=a,b` at the comma.
+- A2: tasks are addressed by document position and text fingerprint, not `<ac:task-id>`: atlcli's markdown push numbers ids per list, so ids repeat on one page. The ledger is keyed by issue key (`{v:1, issues:{KEY:{fingerprint, createdAt, tickedBySync}}}`); `tickedBySync` is what lets `--sync` untick only the tasks it ticked.
+- A2: the page marker is an inline smart link to `/browse/KEY` instead of a Jira macro (a macro without `serverId` may not render on Cloud). `docs pull` turns it into a plain link; both forms count as linked.
 
 ## Summary decision
 

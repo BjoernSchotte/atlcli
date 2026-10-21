@@ -359,6 +359,70 @@ atlcli wiki page issues --id 12345 --project PROJ
 atlcli wiki page unlink-issue --id 12345 --issue PROJ-123
 ```
 
+### Turn Task Items into Jira Issues
+
+`tasks-to-issues` reads the task items (`- [ ]` checkboxes) on a page, for example action items in meeting notes, and creates one Jira issue per open task. Without `--confirm` it only shows the plan.
+
+```bash
+# Preview
+atlcli wiki page tasks-to-issues --id 12345 --project PROJ
+
+# Create the issues
+atlcli wiki page tasks-to-issues --id 12345 --project PROJ --label meeting --confirm
+```
+
+For each created issue atlcli:
+
+- uses the task text as the summary and the task (as markdown) plus a link back to the page as the description,
+- assigns the first person mentioned in the task (`@Name`) and sets the first date in the task as the due date,
+- adds a Jira remote link to the page (skip with `--no-link`),
+- puts a smart link to the new issue at the start of the task on the page (skip with `--no-mark`).
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--id` | page ID | required | Page with the tasks |
+| `--project` | project key | required unless `--sync` alone | Project for new issues |
+| `--type` | issue type | `Task` | Issue type for new issues |
+| `--label` | string, repeatable | none | Labels for new issues |
+| `--parent` | issue key | none | Parent (epic) for new issues |
+| `--include-done` | flag | off | Also create issues for ticked tasks |
+| `--no-link` | flag | off | Do not add a remote link on the issue |
+| `--no-mark` | flag | off | Do not add the issue link to the task |
+| `--sync` | flag | off | Tick tasks whose issues are done (see below) |
+| `--confirm` | flag | off | Apply the plan; without it nothing is written |
+
+#### Running it again
+
+Running the command again creates nothing twice. A task that already links to an issue (the smart link atlcli added, or any link to `/browse/KEY` or a Jira macro you added yourself) is skipped. On Confluence Cloud atlcli also records each new issue in the page property `atlcli.tasks-to-issues` right after creating it, so a run that stops before updating the page still does not create the issue again. The issue links survive `atlcli wiki docs pull` and `push`.
+
+#### Keep task status in sync
+
+```bash
+atlcli wiki page tasks-to-issues --id 12345 --sync --confirm
+```
+
+`--sync` follows Jira:
+
+| Situation | Result |
+|-----------|--------|
+| Task open, all linked issues done | Task is ticked |
+| Task ticked by `--sync`, an issue was reopened | Task is unticked |
+| Task ticked by hand, issue still open | Reported as `report:ticked-but-open`; nothing changes, the issue is not transitioned |
+| Linked issue missing or not visible | Reported as `report:missing` |
+
+Combine `--project` and `--sync` to create issues for new tasks and update the status of the others in one run, for example from a scheduled job.
+
+#### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Task shows `skip:empty` | The task holds only a mention or date | Add text to the task |
+| Assignee not set | Jira Data Center, or the mentioned user cannot be assigned in the project | Assign in Jira |
+| Warning about the ledger on Data Center | Page properties are written through the Cloud API | Nothing to do; the task links still prevent duplicates |
+| Task was ticked by hand and stays ticked though its issue reopened | `--sync` only unticks what it ticked itself | Untick it by hand |
+
+See the recipe [Meeting Notes to Jira](../recipes/meeting-notes-to-jira.md) for a full workflow.
+
 ## JSON Output
 
 All commands support `--json`:

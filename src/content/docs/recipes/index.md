@@ -20,6 +20,7 @@ Real-world workflows and use cases for atlcli.
 - [Export Automation](export-automation.md) - Export pages to PDF/DOCX in CI/CD
 - [Confluence for Coding Agents](confluence-vfs-agents.md) - Teach an agent to use Confluence as a filesystem
 - [Issue Triage](issue-triage.md) - Bulk issue triage workflow
+- [Meeting Notes to Jira](meeting-notes-to-jira.md) - Turn action items into Jira issues and keep them in sync
 
 ## Common Patterns
 

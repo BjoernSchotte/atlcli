@@ -337,6 +337,9 @@ export declare class AnchorRegistry {
     resolve(rawKey: string): string | undefined;
 }
 
+// export: annotateTasksWithIssueLinks
+export declare function annotateTasksWithIssueLinks(storage: string, tasks: readonly PageTask[], links: ReadonlyMap<number, string>): string;
+
 // export: applyLabelFilter
 export declare function applyLabelFilter(nodes: readonly ExportNode[], labelsById: ReadonlyMap<string, readonly string[]>, filter: LabelFilter, options?: ApplyLabelFilterOptions): {
     nodes: ExportNode[];
@@ -2108,6 +2111,9 @@ export declare function extractExportViewMacros(html: string): Map<string, strin
 // export: extractMacroBody
 export declare function extractMacroBody(storage: string, macroNames: readonly string[], name: string): string | undefined;
 
+// export: extractPageTasks
+export declare function extractPageTasks(storage: string): PageTask[];
+
 // export: fetchExportTree
 export declare function fetchExportTree(source: TreeSource, scope: ExportScope, opts?: TreeFetchOptions): Promise<FetchExportTreeResult>;
 
@@ -2640,6 +2646,22 @@ export interface PagePropertiesMacro {
     rows: Map<string, string>;
 }
 
+// export: PageTask
+export interface PageTask {
+    index: number;
+    taskId: string;
+    status: "complete" | "incomplete";
+    text: string;
+    bodyStorage: string;
+    assigneeAccountId?: string;
+    mentionAccountIds: string[];
+    dueDate?: string;
+    linkedIssueKeys: string[];
+    bodyStart: number;
+    statusStart: number;
+    statusEnd: number;
+}
+
 // export: PageVersion
 export interface PageVersion {
     number: number;
@@ -2884,6 +2906,9 @@ export interface SemanticDiffRenderOptions {
     maxValueCharacters?: number;
 }
 
+// export: setTaskStatuses
+export declare function setTaskStatuses(storage: string, tasks: readonly PageTask[], statuses: ReadonlyMap<number, PageTask["status"]>): string;
+
 // export: SmartCardAppearance
 export type SmartCardAppearance = "inline" | "block" | "embed";
 
@@ -3072,6 +3097,9 @@ export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaRe
     termination: PageAttachmentMediaTermination;
     unresolvedRequiredFileIds: string[];
 }
+
+// export: taskFingerprint
+export declare function taskFingerprint(task: Pick<PageTask, "text">): string;
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -3728,6 +3756,9 @@ export declare class AnchorRegistry {
     resolve(rawKey: string): string | undefined;
 }
 
+// export: annotateTasksWithIssueLinks
+export declare function annotateTasksWithIssueLinks(storage: string, tasks: readonly PageTask[], links: ReadonlyMap<number, string>): string;
+
 // export: applyLabelFilter
 export declare function applyLabelFilter(nodes: readonly ExportNode[], labelsById: ReadonlyMap<string, readonly string[]>, filter: LabelFilter, options?: ApplyLabelFilterOptions): {
     nodes: ExportNode[];
@@ -5499,6 +5530,9 @@ export declare function extractExportViewMacros(html: string): Map<string, strin
 // export: extractMacroBody
 export declare function extractMacroBody(storage: string, macroNames: readonly string[], name: string): string | undefined;
 
+// export: extractPageTasks
+export declare function extractPageTasks(storage: string): PageTask[];
+
 // export: fetchExportTree
 export declare function fetchExportTree(source: TreeSource, scope: ExportScope, opts?: TreeFetchOptions): Promise<FetchExportTreeResult>;
 
@@ -6031,6 +6065,22 @@ export interface PagePropertiesMacro {
     rows: Map<string, string>;
 }
 
+// export: PageTask
+export interface PageTask {
+    index: number;
+    taskId: string;
+    status: "complete" | "incomplete";
+    text: string;
+    bodyStorage: string;
+    assigneeAccountId?: string;
+    mentionAccountIds: string[];
+    dueDate?: string;
+    linkedIssueKeys: string[];
+    bodyStart: number;
+    statusStart: number;
+    statusEnd: number;
+}
+
 // export: PageVersion
 export interface PageVersion {
     number: number;
@@ -6275,6 +6325,9 @@ export interface SemanticDiffRenderOptions {
     maxValueCharacters?: number;
 }
 
+// export: setTaskStatuses
+export declare function setTaskStatuses(storage: string, tasks: readonly PageTask[], statuses: ReadonlyMap<number, PageTask["status"]>): string;
+
 // export: SmartCardAppearance
 export type SmartCardAppearance = "inline" | "block" | "embed";
 
@@ -6463,6 +6516,9 @@ export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaRe
     termination: PageAttachmentMediaTermination;
     unresolvedRequiredFileIds: string[];
 }
+
+// export: taskFingerprint
+export declare function taskFingerprint(task: Pick<PageTask, "text">): string;
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -7119,6 +7175,9 @@ export declare class AnchorRegistry {
     resolve(rawKey: string): string | undefined;
 }
 
+// export: annotateTasksWithIssueLinks
+export declare function annotateTasksWithIssueLinks(storage: string, tasks: readonly PageTask[], links: ReadonlyMap<number, string>): string;
+
 // export: applyLabelFilter
 export declare function applyLabelFilter(nodes: readonly ExportNode[], labelsById: ReadonlyMap<string, readonly string[]>, filter: LabelFilter, options?: ApplyLabelFilterOptions): {
     nodes: ExportNode[];
@@ -8890,6 +8949,9 @@ export declare function extractExportViewMacros(html: string): Map<string, strin
 // export: extractMacroBody
 export declare function extractMacroBody(storage: string, macroNames: readonly string[], name: string): string | undefined;
 
+// export: extractPageTasks
+export declare function extractPageTasks(storage: string): PageTask[];
+
 // export: fetchExportTree
 export declare function fetchExportTree(source: TreeSource, scope: ExportScope, opts?: TreeFetchOptions): Promise<FetchExportTreeResult>;
 
@@ -9422,6 +9484,22 @@ export interface PagePropertiesMacro {
     rows: Map<string, string>;
 }
 
+// export: PageTask
+export interface PageTask {
+    index: number;
+    taskId: string;
+    status: "complete" | "incomplete";
+    text: string;
+    bodyStorage: string;
+    assigneeAccountId?: string;
+    mentionAccountIds: string[];
+    dueDate?: string;
+    linkedIssueKeys: string[];
+    bodyStart: number;
+    statusStart: number;
+    statusEnd: number;
+}
+
 // export: PageVersion
 export interface PageVersion {
     number: number;
@@ -9666,6 +9744,9 @@ export interface SemanticDiffRenderOptions {
     maxValueCharacters?: number;
 }
 
+// export: setTaskStatuses
+export declare function setTaskStatuses(storage: string, tasks: readonly PageTask[], statuses: ReadonlyMap<number, PageTask["status"]>): string;
+
 // export: SmartCardAppearance
 export type SmartCardAppearance = "inline" | "block" | "embed";
 
@@ -9854,6 +9935,9 @@ export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaRe
     termination: PageAttachmentMediaTermination;
     unresolvedRequiredFileIds: string[];
 }
+
+// export: taskFingerprint
+export declare function taskFingerprint(task: Pick<PageTask, "text">): string;
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -13995,6 +14079,9 @@ export declare class AnchorRegistry {
     resolve(rawKey: string): string | undefined;
 }
 
+// export: annotateTasksWithIssueLinks
+export declare function annotateTasksWithIssueLinks(storage: string, tasks: readonly PageTask[], links: ReadonlyMap<number, string>): string;
+
 // export: applyLabelFilter
 export declare function applyLabelFilter(nodes: readonly ExportNode[], labelsById: ReadonlyMap<string, readonly string[]>, filter: LabelFilter, options?: ApplyLabelFilterOptions): {
     nodes: ExportNode[];
@@ -15766,6 +15853,9 @@ export declare function extractExportViewMacros(html: string): Map<string, strin
 // export: extractMacroBody
 export declare function extractMacroBody(storage: string, macroNames: readonly string[], name: string): string | undefined;
 
+// export: extractPageTasks
+export declare function extractPageTasks(storage: string): PageTask[];
+
 // export: fetchExportTree
 export declare function fetchExportTree(source: TreeSource, scope: ExportScope, opts?: TreeFetchOptions): Promise<FetchExportTreeResult>;
 
@@ -16298,6 +16388,22 @@ export interface PagePropertiesMacro {
     rows: Map<string, string>;
 }
 
+// export: PageTask
+export interface PageTask {
+    index: number;
+    taskId: string;
+    status: "complete" | "incomplete";
+    text: string;
+    bodyStorage: string;
+    assigneeAccountId?: string;
+    mentionAccountIds: string[];
+    dueDate?: string;
+    linkedIssueKeys: string[];
+    bodyStart: number;
+    statusStart: number;
+    statusEnd: number;
+}
+
 // export: PageVersion
 export interface PageVersion {
     number: number;
@@ -16542,6 +16648,9 @@ export interface SemanticDiffRenderOptions {
     maxValueCharacters?: number;
 }
 
+// export: setTaskStatuses
+export declare function setTaskStatuses(storage: string, tasks: readonly PageTask[], statuses: ReadonlyMap<number, PageTask["status"]>): string;
+
 // export: SmartCardAppearance
 export type SmartCardAppearance = "inline" | "block" | "embed";
 
@@ -16730,6 +16839,9 @@ export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaRe
     termination: PageAttachmentMediaTermination;
     unresolvedRequiredFileIds: string[];
 }
+
+// export: taskFingerprint
+export declare function taskFingerprint(task: Pick<PageTask, "text">): string;
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;

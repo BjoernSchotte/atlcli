@@ -116,6 +116,7 @@ export default defineConfig({
             { label: 'CI/CD Docs', link: '/recipes/ci-cd-docs/' },
             { label: 'Export Automation', link: '/recipes/export-automation/' },
             { label: 'Issue Triage', link: '/recipes/issue-triage/' },
+            { label: 'Meeting Notes to Jira', link: '/recipes/meeting-notes-to-jira/' },
             { label: 'Confluence for Coding Agents', link: '/recipes/confluence-vfs-agents/' },
           ],
         },
