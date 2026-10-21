@@ -1,1 +1,0 @@
-import{t as e}from"./pagefind-search-client.CU3frwE9.js";document.querySelectorAll(`[data-atlcli-search]`).forEach(e);
