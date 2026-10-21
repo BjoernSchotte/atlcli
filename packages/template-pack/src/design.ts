@@ -844,7 +844,17 @@ export interface DesignRunningRegionV3 {
   even: DesignRunningVariantV3;
 }
 
+/**
+ * Catalog V4 page toggle. Absent means the page renders, which keeps every
+ * Catalog-V3 design (that never carries it) unchanged.
+ */
+export interface DesignPageToggleV3 {
+  enabled?: boolean;
+}
+
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+  cover: DesignCoverCompositionV1 & DesignPageToggleV3;
+  closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
   running: {
     header: DesignRunningRegionV3;
     footer: DesignRunningRegionV3;
@@ -1352,14 +1362,30 @@ function validateRunningRegionV3(value: unknown, path: string): DesignRunningReg
   };
 }
 
+/** Split the optional V4 `enabled` toggle off before the shared V1 validator. */
+function withPageToggleV3<T>(
+  value: unknown,
+  path: string,
+  validate: (value: unknown, path: string) => T,
+): T & DesignPageToggleV3 {
+  if (!isObject(value) || value.enabled === undefined) return validate(value, path) as T & DesignPageToggleV3;
+  const { enabled, ...rest } = value;
+  if (typeof enabled !== "boolean") fail(`${path}.enabled`, "must be a boolean");
+  return { enabled, ...validate(rest, path) };
+}
+
 function validatePageCompositionsV3(value: unknown, path: string): DesignPageCompositionsV3 {
   if (!isObject(value)) fail(path, "must be an object");
   exactKeys(value, ["cover", "closingPage", "running"], path);
   if (!isObject(value.running)) fail(`${path}.running`, "must be an object");
   exactKeys(value.running, ["header", "footer"], `${path}.running`);
   return {
-    cover: validateCoverComposition(value.cover, `${path}.cover`),
-    closingPage: validateClosingPageComposition(value.closingPage, `${path}.closingPage`),
+    cover: withPageToggleV3(value.cover, `${path}.cover`, validateCoverComposition),
+    closingPage: withPageToggleV3(
+      value.closingPage,
+      `${path}.closingPage`,
+      validateClosingPageComposition,
+    ),
     running: {
       header: validateRunningRegionV3(value.running.header, `${path}.running.header`),
       footer: validateRunningRegionV3(value.running.footer, `${path}.running.footer`),

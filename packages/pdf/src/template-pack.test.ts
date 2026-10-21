@@ -4,6 +4,7 @@ import {
   validateManifest,
   validateManifestV3,
   type TemplateManifest,
+  type WikiPdfTemplateDesignV3,
 } from "@atlcli/template-pack";
 import {
   PDF_TEMPLATE_WRITERS_V1,
@@ -13,6 +14,7 @@ import {
   PDF_CANONICAL_SOURCE_REVISION_3,
   PDF_CANONICAL_SOURCE_REVISION_4,
   PDF_CANONICAL_SOURCE_REVISION_5,
+  PDF_CANONICAL_SOURCE_REVISION_6,
   PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
   PdfTemplateValidationError,
   buildUniformPdfPageBorderV1,
@@ -29,13 +31,18 @@ import {
   PDF_TEMPLATE_CAPABILITIES_V1,
   PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CAPABILITIES_V4,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
 } from "./design-catalog.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
-import { BUILTIN_PDF_TEMPLATE_BASELINE_V1 } from "./recipe-baselines.js";
+import {
+  BUILTIN_PDF_TEMPLATE_BASELINE_V1,
+  BUILTIN_PDF_TEMPLATE_BASELINE_V2,
+} from "./recipe-baselines.js";
 
 const encoder = new TextEncoder();
 
@@ -280,6 +287,30 @@ function revision5Manifest(): PdfTemplateManifestV5 {
   });
 }
 
+function revision6Manifest(
+  toggles: { cover?: boolean; closingPage?: boolean } = {},
+): PdfTemplateManifestV5 {
+  const design = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V2.design) as WikiPdfTemplateDesignV3;
+  if (toggles.cover !== undefined) design.compositions.cover.enabled = toggles.cover;
+  if (toggles.closingPage !== undefined) {
+    design.compositions.closingPage.enabled = toggles.closingPage;
+  }
+  return validateManifestV3({
+    ...revision5Manifest(),
+    id: "fixture.catalog-v4",
+    canonicalSource: {
+      api: "wiki.pdf-canonical-typst",
+      revision: PDF_CANONICAL_SOURCE_REVISION_6,
+    },
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V4.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V4.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
+    },
+    design,
+  });
+}
+
 function visualsForManifest(manifest: AnyPdfTemplateManifest): PdfTemplateVisualsV1 {
   return {
     assets: Object.fromEntries(
@@ -448,7 +479,7 @@ describe("PDF template manifest phase", () => {
     );
   });
 
-  it("keeps revisions 1-4 pinned and registers revision 5 only with Catalog V3", async () => {
+  it("keeps revisions 1-4 pinned and registers revisions 5/6 only with Catalog V3/V4", async () => {
     expect(PDF_CANONICAL_SOURCE_REVISION).toBe("3");
     expect(PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION).toBe("3");
     expect([
@@ -457,7 +488,8 @@ describe("PDF template manifest phase", () => {
       PDF_CANONICAL_SOURCE_REVISION_3,
       PDF_CANONICAL_SOURCE_REVISION_4,
       PDF_CANONICAL_SOURCE_REVISION_5,
-    ]).toEqual(["1", "2", "3", "4", "5"]);
+      PDF_CANONICAL_SOURCE_REVISION_6,
+    ]).toEqual(["1", "2", "3", "4", "5", "6"]);
     const prior = await manifestWith({}, { canonical: true });
     expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
 
@@ -481,8 +513,25 @@ describe("PDF template manifest phase", () => {
       "canonical-source-mismatch",
     );
 
+    // Catalog V4 executes only as revision 6, never as revision 5.
+    const revision6 = revision6Manifest();
+    expect(validatePdfTemplateManifest(revision6)).toBe(revision6);
+    const crossed = structuredClone(revision6);
+    crossed.canonicalSource!.revision = PDF_CANONICAL_SOURCE_REVISION_5;
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(crossed),
+      "canonical-source-mismatch",
+    );
+    // A page toggle is a Catalog-V4 capability: revision 5 rejects it.
+    const toggledV5 = structuredClone(revision5);
+    toggledV5.design!.compositions.cover.enabled = false;
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(toggledV5),
+      "invalid-composition",
+    );
+
     const future = structuredClone(prior.manifest);
-    future.canonicalSource!.revision = "6";
+    future.canonicalSource!.revision = "7";
     await expectPdfReason(
       () => validatePdfTemplateManifest(future),
       "unsupported-canonical-revision"
@@ -490,6 +539,22 @@ describe("PDF template manifest phase", () => {
     expect(() => validatePdfTemplateManifest(future)).toThrow(
       /explicit template migration/
     );
+  });
+
+  it("compiles revision-6 page toggles into the template defaults", () => {
+    const visuals = { assets: {}, decorations: [] };
+    const defaults = generateCanonicalPdfTemplateSourceV1(revision6Manifest(), visuals);
+    // Absent toggles render both pages, exactly like revision 5.
+    expect(defaults).toBe(generateCanonicalPdfTemplateSourceV1(revision5Manifest(), visuals));
+    expect(defaults).toContain('cover-config.at("enabled", default: true)');
+    expect(defaults).toContain('closing-config.at("enabled", default: true)');
+
+    const off = generateCanonicalPdfTemplateSourceV1(
+      revision6Manifest({ cover: false, closingPage: false }),
+      visuals,
+    );
+    expect(off).toContain('cover-config.at("enabled", default: false)');
+    expect(off).toContain('closing-config.at("enabled", default: false)');
   });
 
   it("validates revision 4 only with Catalog V2 and complete conditional composition data", async () => {

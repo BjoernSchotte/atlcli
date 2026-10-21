@@ -496,6 +496,7 @@ async function handlePdfExport(
     settings: {
       ...(hasFlag(flags, "no-cover") ? { cover: false } : {}),
       ...(hasFlag(flags, "no-toc") ? { outline: false } : {}),
+      ...(hasFlag(flags, "no-closing-page") ? { closingPage: false } : {}),
     },
   });
   const { exportPdfAsOrdinaryJob } = await import("./export-pdf.js");
@@ -2171,6 +2172,7 @@ PDF Options (--format pdf):
   --force                   Overwrite an existing regular output file
   --no-cover                Leave out the cover page
   --no-toc                  Leave out the table of contents
+  --no-closing-page         Leave out the closing "End of document" page
   --strict                  Exit code 2 if the export completed with warnings
   --no-cache                Do not persist downloaded assets across invocations
   --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also

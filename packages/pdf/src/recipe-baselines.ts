@@ -24,7 +24,9 @@ import {
 } from "./catalog-runtime.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CAPABILITIES_V4,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
   projectPdfDesignThroughCatalogSchemaV2,
 } from "./design-catalog.js";
 
@@ -32,6 +34,8 @@ export const PDF_TEMPLATE_BASELINE_SCHEMA_V1 =
   "atlcli.pdf-template-baseline/1" as const;
 export const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1 = "atlcli.editorial" as const;
 export const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1 = 1 as const;
+/** Same editorial design as version 1, targeting Catalog V4 (page toggles). */
+export const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2 = 2 as const;
 
 export interface PdfTemplateBaselineContentV1 {
   schema: typeof PDF_TEMPLATE_BASELINE_SCHEMA_V1;
@@ -63,7 +67,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
   catalog: TemplateCapabilityCatalogReferenceV1;
   canonicalSource: {
     api: "wiki.pdf-canonical-typst";
-    revision: "5";
+    revision: "5" | "6";
   };
   compilerRange: string;
   design: WikiPdfTemplateDesignV3;
@@ -169,23 +173,22 @@ function neutralCatalogV3Design(): Record<string, unknown> {
   return inherited;
 }
 
-const BUILTIN_BASELINE_CONTENT: PdfTemplateBaselineContentV1 = deepFreeze({
-  schema: PDF_TEMPLATE_BASELINE_SCHEMA_V1,
-  id: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1,
-  version: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1,
-  catalog: {
-    id: PDF_TEMPLATE_CAPABILITIES_V3.id,
-    version: PDF_TEMPLATE_CAPABILITIES_V3.version,
-    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
-  },
-  design: validatePdfTemplateDesignV3(
-    projectPdfDesignThroughCatalogSchemaV2(
-      neutralCatalogV3Design(),
-      PDF_TEMPLATE_CAPABILITIES_V3,
+function builtinBaselineContent(
+  version: number,
+  catalog: typeof PDF_TEMPLATE_CAPABILITIES_V3,
+  digest: string,
+): PdfTemplateBaselineContentV1 {
+  return deepFreeze({
+    schema: PDF_TEMPLATE_BASELINE_SCHEMA_V1,
+    id: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1,
+    version,
+    catalog: { id: catalog.id, version: catalog.version, digest },
+    design: validatePdfTemplateDesignV3(
+      projectPdfDesignThroughCatalogSchemaV2(neutralCatalogV3Design(), catalog),
     ),
-  ),
-  localization: structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST.localization!),
-});
+    localization: structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST.localization!),
+  });
+}
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(
@@ -223,17 +226,35 @@ export const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1 =
 
 export const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1 =
   deepFreeze({
-    ...BUILTIN_BASELINE_CONTENT,
+    ...builtinBaselineContent(
+      BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1,
+      PDF_TEMPLATE_CAPABILITIES_V3,
+      PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+    ),
     digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+  });
+
+/** Pinned by `recipe-baselines.test.ts`; changing it requires a new version. */
+export const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2 =
+  "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4" as const;
+
+export const BUILTIN_PDF_TEMPLATE_BASELINE_V2: ResolvedPdfTemplateBaselineV1 =
+  deepFreeze({
+    ...builtinBaselineContent(
+      BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2,
+      PDF_TEMPLATE_CAPABILITIES_V4,
+      PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
+    ),
+    digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2,
   });
 
 export const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBaselineRegistryV1 =
   Object.freeze({
     resolve(reference: Pick<PdfTemplateRecipeBaselineV2, "id" | "version">) {
-      return reference.id === BUILTIN_PDF_TEMPLATE_BASELINE_V1.id &&
-        reference.version === BUILTIN_PDF_TEMPLATE_BASELINE_V1.version
-        ? BUILTIN_PDF_TEMPLATE_BASELINE_V1
-        : undefined;
+      return [BUILTIN_PDF_TEMPLATE_BASELINE_V1, BUILTIN_PDF_TEMPLATE_BASELINE_V2].find(
+        (baseline) =>
+          baseline.id === reference.id && baseline.version === reference.version,
+      );
     },
   });
 
@@ -322,13 +343,16 @@ export async function resolvePdfTemplateRecipeV2Design(
       `PDF template baseline ${baseline.id}@${baseline.version} failed its pinned digest`,
     );
   }
+  let target;
+  try {
+    target = resolvePdfCatalogAuthoringTarget(baseline.catalog);
+  } catch {
+    target = undefined;
+  }
   if (
+    !target ||
     baseline.catalog.version !== recipe.baseline.catalogVersion ||
-    !sameCatalog(baseline.catalog, {
-      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
-      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
-      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
-    })
+    !sameCatalog(baseline.catalog, target.reference)
   ) {
     throw new PdfTemplateRecipeV2ResolutionError(
       "catalog-mismatch",
@@ -336,7 +360,6 @@ export async function resolvePdfTemplateRecipeV2Design(
     );
   }
 
-  const target = resolvePdfCatalogAuthoringTarget(baseline.catalog);
   const design = structuredClone(
     projectPdfDesignThroughCatalogSchemaV2(baseline.design, target.catalog),
   );

@@ -28,6 +28,8 @@ recipe.yaml
 - [Minimal working recipe](#minimal-working-recipe)
 - [Recipe V2 and installed baselines](#recipe-v2-and-installed-baselines)
 - [Advanced Recipe V2 example](#advanced-recipe-v2-example)
+- [Cover and closing page](#cover-and-closing-page)
+- [Curated Report template](#curated-report-template)
 - [Recipe field reference](#recipe-field-reference)
 - [Cover composition](#cover-composition)
 - [Closing-page composition](#closing-page-composition)
@@ -142,16 +144,25 @@ classes. It never returns asset bytes or absolute local paths.
 | `template.version` | semver string | — | Yes | `MAJOR.MINOR.PATCH`, optional prerelease. |
 | `baseline.id` | stable identifier | — | Yes | Must be shipped by this atlcli installation; URL-like and path-like values are rejected. |
 | `baseline.version` | positive integer | — | Yes | Exact version; there is no `latest`. |
-| `baseline.catalogVersion` | positive integer | — | Yes | Must match the installed baseline; currently `3`. |
+| `baseline.catalogVersion` | positive integer | — | Yes | Must match the installed baseline: `3` for version 1, `4` for version 2. |
 | `baseline.digest` | SHA-256 hex | — | Yes | Must match both the recipe and recomputed installed content. |
-| `design` | sparse object | `{}` | Yes | Only Catalog V3 paths; `null` is not a delete operator. Object/array capabilities replace atomically. |
+| `design` | sparse object | `{}` | Yes | Only paths of the baseline's catalog; `null` is not a delete operator. Object/array capabilities replace atomically. |
 | `localization` | complete localization object | installed baseline | No | Replacement, not a sparse merge; fallback labels remain mandatory. |
 | `assets` | asset declaration map | `{}` | Yes | Relative local declarations only; bytes and hashes are host-resolved. |
 
 Resolution is local and fail-closed. atlcli never downloads baselines, accepts
 an implicit newest version, widens a compiler range, or follows a baseline URL.
-The installed baseline targets Typst `>=0.15.1 <0.16`, Catalog V3, and canonical
-source revision 5.
+Two versions of `atlcli.editorial` are installed, both targeting Typst
+`>=0.15.1 <0.16` with the same design:
+
+| `version` | `catalogVersion` | `digest` | Canonical revision | Adds |
+|---|---|---|---|---|
+| `1` | `3` | `46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a` | 5 | — |
+| `2` | `4` | `17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4` | 6 | [Cover and closing-page toggles](#cover-and-closing-page) |
+
+Existing recipes stay on version 1 and build unchanged packs. Move a recipe to
+version 2 by changing all three pinned values; every version-1 design override
+remains valid.
 
 ## Advanced Recipe V2 example
 
@@ -208,6 +219,65 @@ design:
 This excerpt is not a standalone recipe. Start from the downloadable complete
 file so every required typography, color, layout, ratio, palette, and
 localization field remains present.
+
+## Cover and closing page
+
+Requires baseline version 2 (`catalogVersion: 4`). Both pages render unless
+the template turns them off:
+
+```yaml
+baseline:
+  id: atlcli.editorial
+  version: 2
+  catalogVersion: 4
+  digest: 17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4
+
+design:
+  compositions:
+    cover:
+      enabled: false
+    closingPage:
+      enabled: false
+```
+
+| Field | Type | Default | Required | Constraints |
+|---|---|---|---|---|
+| `compositions.cover.enabled` | boolean | `true` | No | Catalog V4 only. `false` leaves out the cover page. |
+| `compositions.closingPage.enabled` | boolean | `true` | No | Catalog V4 only. `false` leaves out the closing page. |
+
+The contents page is controlled by `navigation.contents.enabled`. These values
+are the template's defaults: `wiki export --no-cover`, `--no-toc`, and
+`--no-closing-page` still remove a page for one export; the CLI has no flag
+to bring back a page the template turns off. A disabled cover or
+closing page keeps its composition settings, so turning it back on needs no
+other edit. On a version-1 baseline the toggles are unknown paths and the build
+fails.
+
+## Curated Report template
+
+The [Report recipe](https://atlcli.sh/examples/pdf-template-recipe-v2-report/recipe.yaml)
+is a ready-made template for short documents such as release notes, sprint
+reviews, and status reports:
+
+- no cover or closing page; a thin accent band across the top of the first page,
+- the document title and space in the running header, the export date and
+  "page x of y" in the footer,
+- Source Sans 3 throughout, a teal accent, banded tables, and filled callouts,
+- a contents page down to the second heading level (remove it per export with
+  `--no-toc`).
+
+Build it once and pass the pack to any PDF export:
+
+```bash
+mkdir report && curl -fsSL -o report/recipe.yaml \
+  https://atlcli.sh/examples/pdf-template-recipe-v2-report/recipe.yaml
+atlcli pdf-template build ./report/recipe.yaml --output ./report.wiki-pdf-template
+atlcli wiki export <page-id> --format pdf --template ./report.wiki-pdf-template \
+  --output ./report.pdf
+```
+
+To adapt it, change `template.id`, then the colors under `branding` and
+`tokens.colors`; the recipe needs no asset files.
 
 ## Recipe field reference
 
@@ -420,7 +490,9 @@ real PDF and inspect the first page. The renderer does not analyze the image.
 
 ### The closing page is missing
 
-Set `features.closingPage.enabled: true`. For a branded closing page, also set
+In Recipe V2, check `compositions.closingPage.enabled` (absent means shown) and
+that the export does not pass `--no-closing-page`. In Recipe V1, set
+`features.closingPage.enabled: true`. For a branded closing page, also set
 `compositions.closingPage.kind: brand-lockup` and provide every field required
 by the elements whose visibility is `show`.
 

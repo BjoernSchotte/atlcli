@@ -290,8 +290,11 @@ export interface PdfLogoAsset {
 export interface PdfTemplateSettings {
   page?: "a4" | "letter";
   orientation?: "portrait" | "landscape";
+  /** Overrides the template's cover default for this export. */
   cover?: boolean;
   outline?: boolean;
+  /** Overrides the template's closing-page default; absent keeps the template's. */
+  closingPage?: boolean;
   headerText?: string;
   footerText?: string;
   /** `#RRGGBB`; default the built-in indigo `#4B57A3`. */

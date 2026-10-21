@@ -282,9 +282,11 @@ async function publishReport(
     // Same code path as `atlcli wiki export`; with --json its report follows
     // the page result as a second JSON document.
     const { handleExport } = await import("./export.js");
-    const exportFlags = reportExportFlags(exportPath, markdown);
-    const exportTemplate = getFlag(flags, "export-template");
-    if (exportTemplate) exportFlags.template = exportTemplate;
+    const exportFlags = reportExportFlags(
+      exportPath,
+      markdown,
+      getFlag(flags, "export-template"),
+    );
     const profileFlag = getFlag(flags, "profile");
     if (profileFlag) exportFlags.profile = profileFlag;
     await handleExport([pageId], exportFlags, opts);
@@ -292,13 +294,23 @@ async function publishReport(
 }
 
 /** `wiki export` flags for a report's `--export` file. */
-export function reportExportFlags(exportPath: string, markdown: string): Flags {
+export function reportExportFlags(
+  exportPath: string,
+  markdown: string,
+  template?: string,
+): Flags {
   const format = exportPath.toLowerCase().endsWith(".pdf") ? "pdf" : "docx";
   // Regenerated on every run, so the file is replaced like the page is.
   const flags: Flags = { output: exportPath, format, force: true };
-  // A report is short: no cover page, and a contents page only once it has many sections.
+  if (template) flags.template = template;
   if (format === "pdf") {
-    flags["no-cover"] = true;
+    // A report is short: no cover or closing page on the built-in template. A
+    // chosen template keeps its own page defaults.
+    if (!template) {
+      flags["no-cover"] = true;
+      flags["no-closing-page"] = true;
+    }
+    // A contents page only once it has many sections.
     if (!reportNeedsToc(markdown)) flags["no-toc"] = true;
   }
   return flags;

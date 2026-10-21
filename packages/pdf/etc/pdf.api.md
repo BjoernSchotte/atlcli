@@ -19,6 +19,9 @@ export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUnifo
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
 
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4";
+
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
 
@@ -28,8 +31,14 @@ export declare const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBasel
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1;
 
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V2: ResolvedPdfTemplateBaselineV1;
+
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1: 1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2: 2;
 
 // export: BUILTIN_PDF_TEMPLATE_ID
 export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
@@ -439,6 +448,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 // export: PDF_CANONICAL_SOURCE_REVISION_5
 export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_6
+export declare const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -475,7 +487,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "2",
     "3",
     "4",
-    "5"
+    "5",
+    "6"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -502,6 +515,9 @@ export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
 // export: PDF_TEMPLATE_CAPABILITIES_V3
 export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V4
+export declare const PDF_TEMPLATE_CAPABILITIES_V4: TemplateCapabilityCatalogV2;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
@@ -511,6 +527,9 @@ export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V4
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
 
@@ -519,6 +538,9 @@ export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapability
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
 export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
@@ -535,6 +557,9 @@ export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
 // export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
 export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
 
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4: readonly string[];
+
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
 
@@ -543,6 +568,9 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf7
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V4
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -966,6 +994,7 @@ export interface PdfTemplateSettings {
     orientation?: "portrait" | "landscape";
     cover?: boolean;
     outline?: boolean;
+    closingPage?: boolean;
     headerText?: string;
     footerText?: string;
     accentColor?: string;
@@ -1303,6 +1332,7 @@ export interface ResolvedPdfSettings {
     orientation: "portrait" | "landscape";
     cover: boolean;
     outline: boolean;
+    closingPage?: boolean;
     headerText?: string;
     footerText?: string;
     accentColor: string;
@@ -1354,7 +1384,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     catalog: TemplateCapabilityCatalogReferenceV1;
     canonicalSource: {
         api: "wiki.pdf-canonical-typst";
-        revision: "5";
+        revision: "5" | "6";
     };
     compilerRange: string;
     design: WikiPdfTemplateDesignV3;
@@ -1554,6 +1584,9 @@ export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUnifo
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
 
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4";
+
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
 
@@ -1563,8 +1596,14 @@ export declare const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBasel
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1;
 
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V2: ResolvedPdfTemplateBaselineV1;
+
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1: 1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2: 2;
 
 // export: BUILTIN_PDF_TEMPLATE_ID
 export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
@@ -1974,6 +2013,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 // export: PDF_CANONICAL_SOURCE_REVISION_5
 export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_6
+export declare const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -2010,7 +2052,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "2",
     "3",
     "4",
-    "5"
+    "5",
+    "6"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -2037,6 +2080,9 @@ export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
 // export: PDF_TEMPLATE_CAPABILITIES_V3
 export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V4
+export declare const PDF_TEMPLATE_CAPABILITIES_V4: TemplateCapabilityCatalogV2;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
@@ -2046,6 +2092,9 @@ export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V4
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
 
@@ -2054,6 +2103,9 @@ export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapability
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
 export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
@@ -2070,6 +2122,9 @@ export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
 // export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
 export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
 
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4: readonly string[];
+
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
 
@@ -2078,6 +2133,9 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf7
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V4
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -2501,6 +2559,7 @@ export interface PdfTemplateSettings {
     orientation?: "portrait" | "landscape";
     cover?: boolean;
     outline?: boolean;
+    closingPage?: boolean;
     headerText?: string;
     footerText?: string;
     accentColor?: string;
@@ -2838,6 +2897,7 @@ export interface ResolvedPdfSettings {
     orientation: "portrait" | "landscape";
     cover: boolean;
     outline: boolean;
+    closingPage?: boolean;
     headerText?: string;
     footerText?: string;
     accentColor: string;
@@ -2889,7 +2949,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     catalog: TemplateCapabilityCatalogReferenceV1;
     canonicalSource: {
         api: "wiki.pdf-canonical-typst";
-        revision: "5";
+        revision: "5" | "6";
     };
     compilerRange: string;
     design: WikiPdfTemplateDesignV3;
@@ -3089,6 +3149,9 @@ export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUnifo
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
 
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4";
+
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
 
@@ -3098,8 +3161,14 @@ export declare const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBasel
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1;
 
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V2: ResolvedPdfTemplateBaselineV1;
+
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1: 1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2: 2;
 
 // export: BUILTIN_PDF_TEMPLATE_ID
 export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
@@ -3509,6 +3578,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 // export: PDF_CANONICAL_SOURCE_REVISION_5
 export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_6
+export declare const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -3545,7 +3617,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "2",
     "3",
     "4",
-    "5"
+    "5",
+    "6"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -3572,6 +3645,9 @@ export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
 // export: PDF_TEMPLATE_CAPABILITIES_V3
 export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V4
+export declare const PDF_TEMPLATE_CAPABILITIES_V4: TemplateCapabilityCatalogV2;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
@@ -3581,6 +3657,9 @@ export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V4
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
 
@@ -3589,6 +3668,9 @@ export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapability
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
 export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
@@ -3605,6 +3687,9 @@ export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
 // export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
 export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
 
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4: readonly string[];
+
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
 
@@ -3613,6 +3698,9 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf7
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V4
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -4036,6 +4124,7 @@ export interface PdfTemplateSettings {
     orientation?: "portrait" | "landscape";
     cover?: boolean;
     outline?: boolean;
+    closingPage?: boolean;
     headerText?: string;
     footerText?: string;
     accentColor?: string;
@@ -4373,6 +4462,7 @@ export interface ResolvedPdfSettings {
     orientation: "portrait" | "landscape";
     cover: boolean;
     outline: boolean;
+    closingPage?: boolean;
     headerText?: string;
     footerText?: string;
     accentColor: string;
@@ -4424,7 +4514,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     catalog: TemplateCapabilityCatalogReferenceV1;
     canonicalSource: {
         api: "wiki.pdf-canonical-typst";
-        revision: "5";
+        revision: "5" | "6";
     };
     compilerRange: string;
     design: WikiPdfTemplateDesignV3;
@@ -4639,6 +4729,7 @@ export interface AtlcliTypstSemanticModelV5 {
 // export: AtlcliTypstTemplateOptions
 export interface AtlcliTypstTemplateOptions {
     positionedLogo?: boolean;
+    closingPageSetting?: boolean;
     pageModelV5?: AtlcliTypstPageModelV5;
     semanticModelV5?: AtlcliTypstSemanticModelV5;
     decorationModelV5?: AtlcliTypstDecorationModelV5;
@@ -4658,6 +4749,9 @@ export declare const BUILTIN_PDF_FALLBACK_LABELS: Record<string, string>;
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1: "46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a";
 
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2: "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4";
+
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1: "atlcli.editorial";
 
@@ -4667,8 +4761,14 @@ export declare const BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1: PdfTemplateBasel
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V1: ResolvedPdfTemplateBaselineV1;
 
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_V2: ResolvedPdfTemplateBaselineV1;
+
 // export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1
 export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V1: 1;
+
+// export: BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2
+export declare const BUILTIN_PDF_TEMPLATE_BASELINE_VERSION_V2: 2;
 
 // export: BUILTIN_PDF_TEMPLATE_ID
 export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
@@ -4851,6 +4951,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 // export: PDF_CANONICAL_SOURCE_REVISION_5
 export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_6
+export declare const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -4869,7 +4972,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "2",
     "3",
     "4",
-    "5"
+    "5",
+    "6"
 ];
 
 // export: PDF_TEMPLATE_ASSET_SLOTS_V1
@@ -4893,6 +4997,9 @@ export declare const PDF_TEMPLATE_CAPABILITIES_V2: TemplateCapabilityCatalogV1;
 // export: PDF_TEMPLATE_CAPABILITIES_V3
 export declare const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2;
 
+// export: PDF_TEMPLATE_CAPABILITIES_V4
+export declare const PDF_TEMPLATE_CAPABILITIES_V4: TemplateCapabilityCatalogV2;
+
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
@@ -4902,6 +5009,9 @@ export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V2: "bf635cc84dcad85e2a5b91e
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V3
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V3: "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd";
 
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V4
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V4: "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814";
+
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
 
@@ -4910,6 +5020,9 @@ export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V2: TemplateCapability
 
 // export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3
 export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4: TemplateCapabilityPresentationRegistryV1;
 
 // export: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE
 export declare const PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE: ">=0.15.1 <0.16";
@@ -4932,6 +5045,9 @@ export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2: readonly string[
 // export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
 export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[];
 
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4: readonly string[];
+
 // export: PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
 export declare const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<Record<string, string>>;
 
@@ -4943,6 +5059,9 @@ export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V2: "60bbedbf085b411cdf7
 
 // export: PDF_TEMPLATE_PRESENTATION_REVISION_V3
 export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V3: "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a";
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V4
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V4: "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7";
 
 // export: PDF_TEMPLATE_WRITERS_V1
 export declare const PDF_TEMPLATE_WRITERS_V1: {
@@ -5170,7 +5289,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     catalog: TemplateCapabilityCatalogReferenceV1;
     canonicalSource: {
         api: "wiki.pdf-canonical-typst";
-        revision: "5";
+        revision: "5" | "6";
     };
     compilerRange: string;
     design: WikiPdfTemplateDesignV3;
@@ -5247,6 +5366,7 @@ export interface AtlcliTypstSemanticModelV5 {
 // export: AtlcliTypstTemplateOptions
 export interface AtlcliTypstTemplateOptions {
     positionedLogo?: boolean;
+    closingPageSetting?: boolean;
     pageModelV5?: AtlcliTypstPageModelV5;
     semanticModelV5?: AtlcliTypstSemanticModelV5;
     decorationModelV5?: AtlcliTypstDecorationModelV5;

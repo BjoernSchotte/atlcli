@@ -747,12 +747,18 @@ export async function exportPdfAsOrdinaryJob(
           input: {
             metadata,
             filename: basename(resolvedOutputPath),
-            // The CLI sets only the cover/outline switches (`--no-cover`, `--no-toc`).
-            ...(request.settings.cover !== undefined || request.settings.outline !== undefined
+            // The CLI sets only the page switches (`--no-cover`, `--no-toc`,
+            // `--no-closing-page`); absent ones keep the template defaults.
+            ...(request.settings.cover !== undefined ||
+            request.settings.outline !== undefined ||
+            request.settings.closingPage !== undefined
               ? {
                   settings: {
                     ...(request.settings.cover !== undefined ? { cover: request.settings.cover } : {}),
                     ...(request.settings.outline !== undefined ? { outline: request.settings.outline } : {}),
+                    ...(request.settings.closingPage !== undefined
+                      ? { closingPage: request.settings.closingPage }
+                      : {}),
                   },
                 }
               : {}),

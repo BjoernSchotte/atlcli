@@ -519,6 +519,21 @@ const OWNED_DESCRIPTORS_V3: readonly OwnedDescriptorV3[] = [
   ...OWNED_DESCRIPTORS_V3_ONLY
 ];
 
+/**
+ * Catalog V4 is Catalog V3 plus optional cover/closing-page toggles. Absent
+ * toggles render the page, so a V3 design projects through V4 unchanged.
+ */
+const OWNED_DESCRIPTORS_V4: readonly OwnedDescriptorV3[] = [
+  ...OWNED_DESCRIPTORS_V3,
+  ...(["cover", "closingPage"] as const).map((page) =>
+    descriptorV3(`compositions.${page}.enabled`, "boolean", "primary", {
+      required: false,
+      consumers: ["pdf.renderer.v6"],
+      proofs: ["contract", "canonical-source", "compile", "semantic-pdf"]
+    })
+  )
+];
+
 export const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1 =
   validateCapabilityCatalogV1({
     schema: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1,
@@ -547,6 +562,20 @@ export const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2 = validat
   id: "atlcli.pdf-template",
   version: 3,
   descriptors: OWNED_DESCRIPTORS_V3.map(({ journey: _journey, ...capability }) => capability),
+  ...catalogV3Rules()
+});
+
+/** Catalog V4: the V3 contract plus the page toggles; executed by revision 6. */
+export const PDF_TEMPLATE_CAPABILITIES_V4: TemplateCapabilityCatalogV2 = validateCapabilityCatalogV2({
+  schema: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V2,
+  id: "atlcli.pdf-template",
+  version: 4,
+  descriptors: OWNED_DESCRIPTORS_V4.map(({ journey: _journey, ...capability }) => capability),
+  ...catalogV3Rules()
+});
+
+function catalogV3Rules(): Pick<TemplateCapabilityCatalogV2, "assets" | "labels" | "constraints"> {
+  return {
   assets: [
     "asset.coverBackground",
     "asset.footerDecoration",
@@ -662,7 +691,8 @@ export const PDF_TEMPLATE_CAPABILITIES_V3: TemplateCapabilityCatalogV2 = validat
       ]
     }
   ]
-});
+  };
+}
 
 export const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1: readonly string[] = Object.freeze(
   OWNED_DESCRIPTORS_V1.filter(({ journey }) => journey === "details")
@@ -678,6 +708,12 @@ export const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V2: readonly string[] = Obje
 
 export const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3: readonly string[] = Object.freeze(
   OWNED_DESCRIPTORS_V3.filter(({ journey }) => journey === "details")
+    .map(({ path }) => path)
+    .sort()
+);
+
+export const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4: readonly string[] = Object.freeze(
+  OWNED_DESCRIPTORS_V4.filter(({ journey }) => journey === "details")
     .map(({ path }) => path)
     .sort()
 );
@@ -814,6 +850,26 @@ export const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V3: TemplateCapabilityPresenta
     PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
   );
 
+export const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4: TemplateCapabilityPresentationRegistryV1 =
+  validateCapabilityPresentationRegistryV2(
+    PDF_TEMPLATE_CAPABILITIES_V4,
+    {
+      schema: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1,
+      id: "atlcli.pdf-template.primary",
+      version: 4,
+      descriptors: OWNED_DESCRIPTORS_V4.filter(({ journey }) => journey === "primary").map(
+        ({ path, valueKind }, order) => ({
+          target: path,
+          section: presentationSection(path),
+          order,
+          messageCode: `ATLCLI_PDF_CAPABILITY_${presentationSection(path).replaceAll("-", "_").toUpperCase()}_VALUE`,
+          ...presentationShapeV2(valueKind)
+        })
+      )
+    },
+    PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4
+  );
+
 /**
  * Pinned SHA-256 values are filled from the canonical functions and asserted in
  * `design-catalog.test.ts`. They are copied into authoring snapshots/projects
@@ -831,6 +887,10 @@ export const PDF_TEMPLATE_CAPABILITY_DIGEST_V3 =
   "33610de2c362f101413690b3dd3dbee6d5b71571ab762d43374673b445b885dd" as const;
 export const PDF_TEMPLATE_PRESENTATION_REVISION_V3 =
   "a40f5cc18c02d34db74408e329fd1fe1e704c91ec06685f4477e3150fdf11a5a" as const;
+export const PDF_TEMPLATE_CAPABILITY_DIGEST_V4 =
+  "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814" as const;
+export const PDF_TEMPLATE_PRESENTATION_REVISION_V4 =
+  "435747c02502d682d06516ba9e0af96d0048bb55e60a71c215f12d4e0daf8ca7" as const;
 
 /** Exact aliases used by the pre-catalog renderer for sparse V1 manifests. */
 export const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<

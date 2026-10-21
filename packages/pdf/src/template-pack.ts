@@ -31,15 +31,19 @@ import {
   PDF_TEMPLATE_CAPABILITIES_V1,
   PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CAPABILITIES_V4,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
 } from "./design-catalog.js";
 import {
   type AnyPdfCatalogRuntime,
   resolvePdfCatalogRuntime,
   resolvePdfCatalogRuntimeV3,
   type PdfCatalogRuntime,
+  type PdfCatalogRuntimeV3,
+  isCompleteDesignPdfRevision,
 } from "./catalog-runtime.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
@@ -79,6 +83,8 @@ export const PDF_CANONICAL_SOURCE_REVISION_2 = "2";
 export const PDF_CANONICAL_SOURCE_REVISION_3 = "3";
 export const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 export const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
+/** Revision-5 renderer executing Catalog V4 (cover/closing-page toggles). */
+export const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
 /** Durable DOCX-derived authoring remains pinned to its characterized renderer. */
 export const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION =
   PDF_CANONICAL_SOURCE_REVISION_3;
@@ -91,6 +97,7 @@ export const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS = [
   PDF_CANONICAL_SOURCE_REVISION_3,
   PDF_CANONICAL_SOURCE_REVISION_4,
   PDF_CANONICAL_SOURCE_REVISION_5,
+  PDF_CANONICAL_SOURCE_REVISION_6,
 ] as const;
 
 export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
@@ -237,6 +244,11 @@ const PDF_CATALOG_RUNTIME_V3 = resolvePdfCatalogRuntimeV3({
   version: PDF_TEMPLATE_CAPABILITIES_V3.version,
   digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
 });
+const PDF_CATALOG_RUNTIME_V4 = resolvePdfCatalogRuntimeV3({
+  id: PDF_TEMPLATE_CAPABILITIES_V4.id,
+  version: PDF_TEMPLATE_CAPABILITIES_V4.version,
+  digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
+});
 
 const CANONICAL_REVISION_CONTRACTS: Readonly<
   Record<string, PdfCanonicalRevisionContract>
@@ -259,6 +271,10 @@ const CANONICAL_REVISION_CONTRACTS: Readonly<
   },
   [PDF_CANONICAL_SOURCE_REVISION_5]: {
     runtime: PDF_CATALOG_RUNTIME_V3,
+    catalogRequired: true,
+  },
+  [PDF_CANONICAL_SOURCE_REVISION_6]: {
+    runtime: PDF_CATALOG_RUNTIME_V4,
     catalogRequired: true,
   },
 });
@@ -650,18 +666,18 @@ export function validatePdfTemplateManifest(
     }
   }
 
-  if (revision === PDF_CANONICAL_SOURCE_REVISION_5) {
+  if (isCompleteDesignPdfRevision(revision)) {
     const manifestV5 = manifest as PdfTemplateManifestV5;
     if (!manifestV5.design) {
       reject(
         "pdf-manifest",
         "invalid-composition",
         "design",
-        "canonical revision 5 requires a complete Catalog-V3 design",
+        `canonical revision ${revision} requires a complete Catalog-V${contract.runtime.reference.version} design`,
       );
     }
     try {
-      PDF_CATALOG_RUNTIME_V3.project(manifestV5.design);
+      (contract.runtime as PdfCatalogRuntimeV3).project(manifestV5.design);
     } catch (error) {
       reject(
         "pdf-manifest",
@@ -711,7 +727,7 @@ export function validatePdfTemplateManifest(
         validatePlacementGeometry(
           reference.placement,
           `assets.${slot}.placement`,
-          revision === PDF_CANONICAL_SOURCE_REVISION_5,
+          isCompleteDesignPdfRevision(revision),
         );
       }
     } else if (reference.placement) {
@@ -806,7 +822,7 @@ export function validatePdfTemplateManifest(
     validateGeometry(
       decoration,
       path,
-      revision === PDF_CANONICAL_SOURCE_REVISION_5,
+      isCompleteDesignPdfRevision(revision),
     );
   }
 
@@ -1080,6 +1096,7 @@ function canonicalSourceFor(
         visuals
       );
     case "5":
+    case "6":
       return createAtlcliTypstTemplateV5(
         manifest.design as WikiPdfTemplateDesignV3,
         { ...labels },
@@ -1431,8 +1448,9 @@ export async function loadPdfTemplatePack(
   const declaresRevision5 =
     typeof canonicalSource === "object" &&
     canonicalSource !== null &&
-    (canonicalSource as Record<string, unknown>).revision ===
-      PDF_CANONICAL_SOURCE_REVISION_5;
+    isCompleteDesignPdfRevision(
+      String((canonicalSource as Record<string, unknown>).revision),
+    );
   const validatePortableManifest = declaresRevision5
     ? validateManifestV3
     : validateManifest;

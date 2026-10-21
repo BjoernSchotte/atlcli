@@ -75,6 +75,8 @@ export interface PdfExportSettingsV1 {
   orientation?: "portrait" | "landscape";
   cover?: boolean;
   outline?: boolean;
+  /** Absent keeps the template's closing-page default. */
+  closingPage?: boolean;
   headerText?: string;
   footerText?: string;
   accentColor?: string;

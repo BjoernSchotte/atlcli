@@ -1,0 +1,109 @@
+schema: wiki.pdf-template-recipe/v2
+
+# A compact report: no cover or closing page, the title in the running head,
+# "page x of y" in the footer, and a calm teal palette. Built on the editorial
+# baseline version 2 (Catalog V4), which adds the page toggles.
+template:
+  id: atlcli.report
+  name: Report
+  version: 1.0.0
+
+baseline:
+  id: atlcli.editorial
+  version: 2
+  catalogVersion: 4
+  digest: 17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4
+
+design:
+  page:
+    margin:
+      mode: physical
+      top: 24mm
+      bottom: 20mm
+      left: 20mm
+      right: 20mm
+
+  compositions:
+    cover:
+      enabled: false
+    closingPage:
+      enabled: false
+    running:
+      header:
+        enabled: true
+        layout: split
+        first:
+          start: { field: documentTitle }
+          end: { field: spaceName }
+        odd:
+          start: { field: documentTitle }
+          end: { field: spaceName }
+        even:
+          start: { field: documentTitle }
+          end: { field: spaceName }
+      footer:
+        enabled: true
+        layout: split
+        first:
+          start: { field: exportDate }
+          end: { field: pageNumber, numbering: current-of-total }
+        odd:
+          start: { field: exportDate }
+          end: { field: pageNumber, numbering: current-of-total }
+        even:
+          start: { field: exportDate }
+          end: { field: pageNumber, numbering: current-of-total }
+
+  navigation:
+    contents:
+      enabled: true
+      depth: 2
+      pageNumbers: show
+      leader: dots
+
+  components:
+    table: { repeatHeader: true, banding: rows, borders: horizontal }
+    callout: { preset: filled, icon: show }
+    outline: { leader: dots, pageNumbers: show }
+
+  branding:
+    accent: "#0F6E74"
+
+  typography:
+    fonts:
+      body: Source Sans 3
+      heading: Source Sans 3
+    roles:
+      body: { font: body, size: 10pt }
+      h1: { font: heading, size: 19pt, weight: bold }
+      h2: { font: heading, size: 13.5pt, weight: semibold }
+      h3: { font: heading, size: 11pt, weight: semibold }
+      runningHead: { font: heading, size: 7.5pt }
+
+  tokens:
+    colors:
+      accent: "#0F6E74"
+      ink: "#1E2A36"
+      heading3: "#24414B"
+      mention: "#0F6E74"
+      taskChecked: "#0F6E74"
+      hairline: "#D9E2E4"
+      tableStroke: "#D9E2E4"
+      tableHeaderBackground: "#EEF4F5"
+      codeBackground: "#F3F6F7"
+      smartCardInlineBackground: "#E2F0F1"
+
+  # A thin accent band across the top of the first page.
+  paints:
+    band:
+      kind: solid
+      color: accent
+
+  decorations:
+    - kind: rect
+      scope: first
+      layer: page-background
+      box: { x: 0mm, y: 0mm, width: 210mm, height: 4mm }
+      fill: band
+
+assets: {}

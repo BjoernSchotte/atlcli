@@ -64,9 +64,16 @@ A report PDF is laid out for reading on screen or sending around:
 - no cover page; the page title and metadata sit in the running header,
 - a contents page only when the report has 8 or more sections (`##` headings),
 - issue keys shown as pills (`ATLCLI-53`) that link to Jira,
-- each issue with its summary in bold and the first two lines or so of its description.
+- each issue with its summary in bold and the first two lines or so of its description,
+- no closing "End of document" page.
 
-The closing "End of document" page of the default export template is kept. For full control, pass your own PDF template with `--export-template` (see [Create a PDF template from YAML](../confluence/pdf-template-from-yaml.md)).
+With `--export-template`, the template decides about the cover and closing page; the contents rule above still applies. The [Report template](../confluence/pdf-template-from-yaml.md#curated-report-template) is made for these pages: no cover or closing page, the title in the running header, and "page x of y" in the footer.
+
+```bash
+atlcli pdf-template build ./report/recipe.yaml --output ./report.wiki-pdf-template
+atlcli jira version notes 2026.10 --project ATLCLI --space DOCS \
+  --export notes.pdf --export-template ./report.wiki-pdf-template
+```
 
 ## Running it again
 

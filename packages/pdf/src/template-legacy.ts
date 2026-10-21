@@ -62,7 +62,7 @@ export function createAtlcliTypstTemplateLegacy(
   design: WikiPdfTemplateDesignV1 = BUILTIN_PDF_DESIGN,
   labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS,
   visuals?: PdfTemplateVisualsV1,
-  options: { positionedLogo?: boolean } = {}
+  options: { positionedLogo?: boolean; closingPageSetting?: boolean } = {}
 ): string {
   const catalogDesign = projectPdfDesignThroughCatalog(design);
   const fonts = catalogDesign.typography.fonts;
@@ -73,6 +73,16 @@ export function createAtlcliTypstTemplateLegacy(
   const callouts = catalogDesign.semanticPalettes.callouts;
   const margin = catalogDesign.page.margin;
   const positionedLogo = options.positionedLogo === true;
+  // Pack sources of revisions 1-4 are byte-pinned, so only freshly generated
+  // sources (the built-in and curated manifests) gate the closing page on
+  // the per-export `closingPage` setting; its absence keeps the page.
+  const closingPageSource = (closing: string): string =>
+    options.closingPageSetting === true
+      ? `  if features.at("closingPage", default: (:)).at("enabled", default: true) {\n${closing
+          .split("\n")
+          .map((line) => (line ? `  ${line}` : line))
+          .join("\n")}\n  }`
+      : closing;
 
   const need = <T>(map: Record<string, T>, key: string, kind: string): T => {
     const value = map[key];
@@ -446,7 +456,7 @@ ${positionedLogoSource}
     pagebreak()
   }
   body
-  pagebreak()
+${closingPageSource(`  pagebreak()
   set page(fill: cover-paper)
   v(${L("closingTopPad")})
   block(width: ${RN("closingBlockWidth")}%)[
@@ -476,7 +486,7 @@ ${positionedLogoSource}
       #generated-with
       #link("https://atlcli.sh/")[#text(weight: "semibold", fill: indigo)[atlcli]]
     ]
-  ]
+  ]`)}
 }
 
 #let callout(kind: "info", title: none, custom_color: none, icon: none, icon_alt: none, body) = {

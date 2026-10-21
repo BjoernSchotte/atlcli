@@ -393,6 +393,20 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
 });
 
 describe("typstSettingsDict", () => {
+  it("emits closingPage only for an explicit per-export switch", () => {
+    expect(typstSettingsDict(resolvePdfSettings({}))).not.toContain("closingPage");
+    expect(typstSettingsDict(resolvePdfSettings({ closingPage: false }))).toContain(
+      "closingPage: (enabled: false)"
+    );
+    expect(typstSettingsDict(resolvePdfSettings({ closingPage: true }))).toContain(
+      "closingPage: (enabled: true)"
+    );
+    expectSettingsError(
+      () => resolvePdfSettings({ closingPage: "no" as unknown as boolean }),
+      "closingPage"
+    );
+  });
+
   it("fails closed for every unknown declared catalog identity", () => {
     for (const capabilityCatalog of [
       {

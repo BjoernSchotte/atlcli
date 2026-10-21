@@ -37,6 +37,13 @@ function coverPhysicalMargins(
   };
 }
 
+function withoutToggle<T extends { enabled?: boolean }>(
+  composition: T,
+): Omit<T, "enabled"> {
+  const { enabled: _enabled, ...rest } = composition;
+  return rest;
+}
+
 export function projectPdfDesignV5RuntimeSettings(
   design: WikiPdfTemplateDesignV3,
 ): WikiPdfTemplateDesignV1 {
@@ -59,14 +66,14 @@ export function projectPdfDesignV5RuntimeSettings(
       margin: coverPhysicalMargins(design.page.margin, design.page.binding),
     },
     features: {
-      cover: { enabled: true },
+      cover: { enabled: design.compositions.cover.enabled ?? true },
       outline: { enabled: contents.enabled, depth: contents.depth },
       header: {
         enabled: design.compositions.running.header.enabled,
         mode: "title",
       },
       footer: { enabled: design.compositions.running.footer.enabled },
-      closingPage: { enabled: true },
+      closingPage: { enabled: design.compositions.closingPage.enabled ?? true },
     },
     branding: design.branding,
     typography: {
@@ -75,9 +82,10 @@ export function projectPdfDesignV5RuntimeSettings(
     },
     tokens: design.tokens,
     semanticPalettes: design.semanticPalettes,
+    // The V1 projection carries the toggles in `features`, not compositions.
     compositions: {
-      cover: design.compositions.cover,
-      closingPage: design.compositions.closingPage,
+      cover: withoutToggle(design.compositions.cover),
+      closingPage: withoutToggle(design.compositions.closingPage),
     },
   };
 }

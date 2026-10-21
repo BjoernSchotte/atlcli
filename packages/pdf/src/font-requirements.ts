@@ -13,6 +13,7 @@ import type {
   TemplateManifest,
   TypographyRoleV3,
 } from "@atlcli/template-pack";
+import { isCompleteDesignPdfRevision } from "./catalog-runtime.js";
 import type {
   AnyPdfTemplateManifest,
   PdfTemplateManifestV5,
@@ -247,7 +248,7 @@ export function resolvePdfFontRequirementsV1(
   input: ResolvePdfFontRequirementsInputV1,
 ): ResolvedPdfFontRequirementsV1 {
   const manifest = input.manifest ?? BUILTIN_PDF_TEMPLATE_MANIFEST;
-  const designV5 = manifest.canonicalSource?.revision === "5"
+  const designV5 = isCompleteDesignPdfRevision(manifest.canonicalSource?.revision)
     ? (manifest as PdfTemplateManifestV5).design
     : undefined;
   const design = input.settings.design;
