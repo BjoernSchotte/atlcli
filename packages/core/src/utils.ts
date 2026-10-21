@@ -49,7 +49,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
       const next = argv[i + 1];
-      if (next && !next.startsWith("-")) {
+      // A lone "-" is a value (stdin/stdout), not a flag: `--body-file -`.
+      if (next && (next === "-" || !next.startsWith("-"))) {
         addFlag(key, next);
         i += 1;
       } else {

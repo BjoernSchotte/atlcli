@@ -1,5 +1,10 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { assertCliAuthSupported } from "./session-guard.js";
+import {
+  buildConfluencePageRemoteLink,
+  confluencePageGlobalId,
+  linkedPageComment,
+} from "./jira-confluence-link.js";
 import { basename, dirname } from "node:path";
 import {
   ERROR_CODES,
@@ -18,6 +23,7 @@ import {
 import {
   JiraClient,
   JiraAttachment,
+  JiraComment,
   JiraIssue,
   JiraTransition,
   JiraSprint,
@@ -88,6 +94,10 @@ import {
   formatAttachmentSize,
   formatAttachmentsTable,
   toAttachmentJson,
+  // Rich text (spec jira-content-workflows A1)
+  AdfDocument,
+  adfToMarkdown,
+  toJiraRichText,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -216,6 +226,35 @@ async function getClient(
     return { client, defaults: resolveDefaults(config, profile) };
   }
   return client;
+}
+
+/**
+ * Markdown for a rich-text flag: `--<name> <markdown>` or `--<name>-file
+ * <path|->` (`-` reads stdin). Giving both is a usage error.
+ */
+async function readRichTextFlag(
+  flags: Record<string, string | boolean | string[]>,
+  name: string,
+  opts: OutputOptions
+): Promise<string | undefined> {
+  const inline = getFlag(flags, name);
+  const file = getFlag(flags, `${name}-file`);
+  if (inline !== undefined && file !== undefined) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Use either --${name} or --${name}-file, not both.`);
+  }
+  if (file === undefined) return inline;
+  try {
+    return file === "-" ? await Bun.stdin.text() : await readFile(file, "utf8");
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Cannot read --${name}-file ${file}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Markdown → request body for a Jira rich-text field; conversion notes go to stderr. */
+function richText(client: JiraClient, markdown: string): AdfDocument | string {
+  return toJiraRichText(client, markdown, {
+    onWarning: (message) => process.stderr.write(`Warning: ${message}\n`),
+  });
 }
 
 /**
@@ -434,10 +473,19 @@ async function handleIssue(
       await handleIssueAssign(flags, opts);
       return;
     case "comment":
-      await handleIssueComment(args.slice(1), flags, opts);
+      await handleIssueCommentAdd(args.slice(1), flags, opts);
+      return;
+    case "comments":
+      await handleIssueComments(args.slice(1), flags, opts);
+      return;
+    case "history":
+      await handleIssueHistory(flags, opts);
       return;
     case "link":
       await handleIssueLink(flags, opts);
+      return;
+    case "unlink":
+      await handleIssueUnlink(flags, opts);
       return;
     case "attach":
       await handleIssueAttach(args.slice(1), flags, opts);
@@ -476,10 +524,37 @@ async function handleIssueGet(
   }
 
   const expand = getFlag(flags, "expand");
+  const format = getFlag(flags, "format") ?? "json";
+  if (format !== "json" && format !== "markdown") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--format must be json or markdown.");
+  }
   const client = await getClient(flags, opts);
   const issue = await client.getIssue(key, { expand });
 
-  output({ schemaVersion: "1", issue: formatIssue(issue) }, opts);
+  if (format === "markdown" && !opts.json) {
+    output(formatIssueMarkdown(issue, client.siteUrl), opts);
+    return;
+  }
+  output({ schemaVersion: "1", issue: { ...formatIssue(issue), descriptionMarkdown: adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl }) } }, opts);
+}
+
+/** YAML front block + description markdown, ready to edit and feed back via --description-file. */
+function formatIssueMarkdown(issue: JiraIssue, baseUrl: string): string {
+  const f = issue.fields;
+  const yaml = (value: string | undefined) => JSON.stringify(value ?? "");
+  const lines = [
+    "---",
+    `key: ${issue.key}`,
+    `summary: ${yaml(f.summary)}`,
+    `status: ${yaml(f.status?.name)}`,
+    `type: ${yaml(f.issuetype?.name)}`,
+    `assignee: ${yaml(f.assignee?.displayName)}`,
+    `labels: [${(f.labels ?? []).map(yaml).join(", ")}]`,
+    "---",
+    "",
+    adfToMarkdown(f.description, { baseUrl }),
+  ];
+  return `${lines.join("\n").trimEnd()}\n`;
 }
 
 async function handleIssueCreate(
@@ -490,7 +565,7 @@ async function handleIssueCreate(
   const project = getFlag(flags, "project") ?? defaults.project;
   const type = getFlag(flags, "type");
   const summary = getFlag(flags, "summary");
-  const description = getFlag(flags, "description");
+  const description = await readRichTextFlag(flags, "description", opts);
   const priority = getFlag(flags, "priority");
   const assignee = getFlag(flags, "assignee");
   const labels = getFlag(flags, "labels");
@@ -505,7 +580,7 @@ async function handleIssueCreate(
       project: { key: project },
       issuetype: { name: type },
       summary,
-      description: description ? client.textToAdf(description) : undefined,
+      description: description ? richText(client, description) : undefined,
       priority: priority ? { name: priority } : undefined,
       assignee: assignee ? { accountId: assignee } : undefined,
       labels: labels ? labels.split(",").map((l) => l.trim()) : undefined,
@@ -527,7 +602,7 @@ async function handleIssueUpdate(
   }
 
   const summary = getFlag(flags, "summary");
-  const description = getFlag(flags, "description");
+  const description = await readRichTextFlag(flags, "description", opts);
   const priority = getFlag(flags, "priority");
   const assignee = getFlag(flags, "assignee");
   const addLabels = getFlag(flags, "add-labels");
@@ -538,7 +613,7 @@ async function handleIssueUpdate(
 
   const fields: Record<string, unknown> = { ...customFields };
   if (summary) fields.summary = summary;
-  if (description) fields.description = client.textToAdf(description);
+  if (description !== undefined) fields.description = richText(client, description);
   if (priority) fields.priority = { name: priority };
   if (assignee) fields.assignee = assignee === "none" ? null : { accountId: assignee };
 
@@ -652,24 +727,182 @@ async function handleIssueAssign(
   output({ schemaVersion: "1", issue: formatIssue(issue) }, opts);
 }
 
-async function handleIssueComment(
+/** `issue comment` / `issue comments add`: markdown body from args, --body or --body-file. */
+async function handleIssueCommentAdd(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
-  const body = args.join(" ") || getFlag(flags, "body");
-
   if (!key) {
     fail(opts, 1, ERROR_CODES.USAGE, "--key is required.");
   }
+  const positional = args.join(" ");
+  if (positional && (getFlag(flags, "body") !== undefined || getFlag(flags, "body-file") !== undefined)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Give the comment as text, --body or --body-file, not several.");
+  }
+  const body = positional || (await readRichTextFlag(flags, "body", opts));
   if (!body) {
     fail(opts, 1, ERROR_CODES.USAGE, "Comment body is required.");
   }
 
   const client = await getClient(flags, opts);
-  const comment = await client.addComment(key, body);
-  output({ schemaVersion: "1", comment }, opts);
+  const comment = await client.addComment(key, richText(client, body));
+  output({ schemaVersion: "1", comment: formatComment(comment, client.siteUrl) }, opts);
+}
+
+async function handleIssueComments(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  const key = getFlag(flags, "key");
+  if (sub && !["list", "add", "edit", "delete"].includes(sub)) {
+    unknownSubcommand(sub, issueHelp(), opts);
+    return;
+  }
+  if (sub === "add") {
+    await handleIssueCommentAdd(rest, flags, opts);
+    return;
+  }
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--key is required.");
+  }
+  const client = await getClient(flags, opts);
+
+  if (!sub || sub === "list") {
+    const limit = Number(getFlag(flags, "limit") ?? 100);
+    const comments: JiraComment[] = [];
+    for (let startAt = 0; comments.length < limit; ) {
+      const page = await client.getComments(key, { startAt, maxResults: Math.min(100, limit - comments.length) });
+      comments.push(...page.comments);
+      startAt += page.comments.length;
+      if (page.comments.length === 0 || startAt >= page.total) break;
+    }
+    if (getFlag(flags, "format") === "markdown" && !opts.json) {
+      output(
+        comments
+          .map((c) => `## ${c.author?.displayName ?? "Unknown"} · ${c.created} · id ${c.id}\n\n${adfToMarkdown(c.body, { baseUrl: client.siteUrl })}`)
+          .join("\n\n"),
+        opts
+      );
+      return;
+    }
+    output({ schemaVersion: "1", issueKey: key, comments: comments.map((c) => formatComment(c, client.siteUrl)), total: comments.length }, opts);
+    return;
+  }
+
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+  if (sub === "edit") {
+    const body = await readRichTextFlag(flags, "body", opts);
+    if (!body) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--body or --body-file is required.");
+    }
+    const comment = await client.updateComment(key, id, richText(client, body));
+    output({ schemaVersion: "1", comment: formatComment(comment, client.siteUrl) }, opts);
+    return;
+  }
+  // delete
+  if (!hasFlag(flags, "confirm")) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a comment.");
+  }
+  await client.deleteComment(key, id);
+  output({ schemaVersion: "1", deleted: { issueKey: key, commentId: id } }, opts);
+}
+
+function formatComment(comment: JiraComment, baseUrl: string): Record<string, unknown> {
+  return {
+    id: comment.id,
+    author: comment.author?.displayName,
+    authorId: comment.author?.accountId,
+    created: comment.created,
+    updated: comment.updated,
+    body: adfToMarkdown(comment.body, { baseUrl }),
+  };
+}
+
+/** `issue history`: flattened changelog rows, newest first. */
+async function handleIssueHistory(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const key = getFlag(flags, "key");
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--key is required.");
+  }
+  const field = getFlag(flags, "field")?.toLowerCase();
+  const limit = Number(getFlag(flags, "limit") ?? 100);
+  const client = await getClient(flags, opts);
+
+  const entries = [];
+  for (let startAt = 0; ; ) {
+    const page = await client.getChangelog(key, { startAt });
+    entries.push(...page.values);
+    startAt += page.values.length;
+    if (page.isLast || page.values.length === 0) break;
+  }
+  const rows = entries
+    .flatMap((entry) =>
+      entry.items.map((item) => ({
+        id: entry.id,
+        created: entry.created,
+        author: entry.author?.displayName,
+        field: item.field,
+        from: Object.hasOwn(item, "fromString") ? item.fromString : item.from,
+        to: Object.hasOwn(item, "toString") ? item.toString : item.to,
+      }))
+    )
+    .filter((row) => !field || row.field.toLowerCase() === field)
+    .sort((a, b) => b.created.localeCompare(a.created))
+    .slice(0, Number.isNaN(limit) ? 100 : limit);
+
+  output({ schemaVersion: "1", issueKey: key, history: rows, total: rows.length }, opts);
+}
+
+/** `issue unlink`: remove an issue-to-issue link by id, or by the two keys. */
+async function handleIssueUnlink(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const linkId = getFlag(flags, "link");
+  const from = getFlag(flags, "from");
+  const to = getFlag(flags, "to");
+  const type = getFlag(flags, "type")?.toLowerCase();
+  if (!linkId && !(from && to)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--link <id> or --from <key> --to <key> is required.");
+  }
+  const client = await getClient(flags, opts);
+
+  if (linkId) {
+    await client.deleteIssueLink(linkId);
+    output({ schemaVersion: "1", unlinked: { linkId } }, opts);
+    return;
+  }
+
+  const issue = await client.getIssue(from!, { fields: ["issuelinks"] });
+  const candidates = (issue.fields.issuelinks ?? []).filter(
+    (link) =>
+      (link.outwardIssue?.key === to || link.inwardIssue?.key === to) &&
+      (!type || [link.type.name, link.type.inward, link.type.outward].some((n) => n?.toLowerCase() === type))
+  );
+  if (candidates.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, `No link between ${from} and ${to}${type ? ` of type "${type}"` : ""}.`);
+  }
+  if (candidates.length > 1) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Several links between ${from} and ${to}; use --type or --link <id>.`, {
+      links: candidates.map((link) => ({ id: link.id, type: link.type.name })),
+    });
+  }
+  const [link] = candidates;
+  if (!hasFlag(flags, "confirm")) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Would remove link ${link!.id} (${link!.type.name}) between ${from} and ${to}. Add --confirm.`);
+  }
+  await client.deleteIssueLink(link!.id);
+  output({ schemaVersion: "1", unlinked: { linkId: link!.id, from, to, type: link!.type.name } }, opts);
 }
 
 async function handleIssueLink(
@@ -1131,15 +1364,21 @@ function issueHelp(): string {
   return `atlcli jira issue <command>
 
 Commands:
-  get --key <key> [--expand <fields>]
-  create --project <key> --type <name> --summary <text> [--description <text>] [--priority <name>] [--assignee <accountId>] [--labels <a,b,c>] [--parent <key>] [--field <id>=<value> ...]
-  update --key <key> [--summary <text>] [--description <text>] [--priority <name>] [--assignee <accountId>|none] [--add-labels <a,b>] [--remove-labels <c,d>] [--field <id>=<value> ...]
+  get --key <key> [--expand <fields>] [--format json|markdown]
+  create --project <key> --type <name> --summary <text> [--description <md> | --description-file <path|->] [--priority <name>] [--assignee <accountId>] [--labels <a,b,c>] [--parent <key>] [--field <id>=<value> ...]
+  update --key <key> [--summary <text>] [--description <md> | --description-file <path|->] [--priority <name>] [--assignee <accountId>|none] [--add-labels <a,b>] [--remove-labels <c,d>] [--field <id>=<value> ...]
   delete --key <key> --confirm [--delete-subtasks]
   transition --key <key> --to <status>
   transitions --key <key>              List available transitions
   assign --key <key> --assignee <accountId>|none
-  comment --key <key> <text>
+  comment --key <key> <text>           Add a comment (same as comments add)
+  comments list --key <key> [--limit <n>] [--format markdown]
+  comments add --key <key> (<text> | --body <md> | --body-file <path|->)
+  comments edit --key <key> --id <id> (--body <md> | --body-file <path|->)
+  comments delete --key <key> --id <id> --confirm
+  history --key <key> [--field <name>] [--limit <n>]   Change history, newest first
   link --from <key> --to <key> --type <name>
+  unlink (--link <id> | --from <key> --to <key> [--type <name>] --confirm)
   attach <key> <file> [file...] [--comment <text>]   Attach files to an issue
   attachments <key>                    List attachments on an issue
   attachment download <id>|<key> <filename> [-o <path>] [--overwrite]
@@ -1153,6 +1392,11 @@ Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
   --comment <text>   Post a comment (attach, link-page)
+
+Descriptions and comments are markdown: **bold**, lists, - [ ] tasks, tables,
+\`\`\`code\`\`\`, @[Name](accountId), {jira:KEY}, {date:YYYY-MM-DD}, :::info panels.
+Content without a markdown form is kept as <!--adf:...--> markers; leave them in place.
+
   --field <id>=<value>  Set a custom field (repeatable). Value is auto-coerced:
                          numbers → number, JSON strings → parsed, plain text → string.
                          Example: --field customfield_10028=5 --field customfield_10077={"value":"Bug"}
@@ -1199,29 +1443,12 @@ async function handleIssueLinkPage(
     `/spaces/${page.spaceKey}/pages/${page.id}`
   );
 
-  // Create remote link
-  const globalId = `atlcli-confluence-${pageId}`;
-  const linkResult = await jiraClient.createRemoteLink(key, {
-    globalId,
-    application: {
-      type: "com.atlassian.confluence",
-      name: "Confluence",
-    },
-    relationship: "mentioned in",
-    object: {
-      url: pageUrl,
-      title: page.title,
-      summary: page.spaceKey ? `Space: ${page.spaceKey}` : undefined,
-      icon: {
-        url16x16: buildConfluenceUrl(profile, "/favicon.ico"),
-        title: "Confluence Page",
-      },
-    },
-  });
+  const linkedPage = { id: page.id, title: page.title, url: pageUrl, spaceKey: page.spaceKey };
+  const linkResult = await jiraClient.createRemoteLink(key, buildConfluencePageRemoteLink(profile, linkedPage));
 
   // Optionally add a comment
   if (addComment) {
-    await jiraClient.addComment(key, `Linked to Confluence page: [${page.title}|${pageUrl}]`);
+    await jiraClient.addComment(key, linkedPageComment(jiraClient, linkedPage));
   }
 
   output({
@@ -1300,8 +1527,7 @@ async function handleIssueUnlinkPage(
     output({ schemaVersion: "1", unlinked: { issueKey: key, linkId: Number(linkId) } }, opts);
   } else if (pageId) {
     // Delete by global ID (page ID)
-    const globalId = `atlcli-confluence-${pageId}`;
-    await client.deleteRemoteLinkByGlobalId(key, globalId);
+    await client.deleteRemoteLinkByGlobalId(key, confluencePageGlobalId(pageId));
     output({ schemaVersion: "1", unlinked: { issueKey: key, pageId } }, opts);
   }
 }
@@ -1477,6 +1703,11 @@ async function handleSprint(
     case "report":
       await handleSprintReport(args.slice(1), flags, opts);
       return;
+    case "review": {
+      const { handleSprintReview } = await import("./jira-report.js");
+      await handleSprintReview(args.slice(1), flags, opts);
+      return;
+    }
     default:
       unknownSubcommand(sub, sprintHelp(), opts);
       return;
@@ -1767,6 +1998,9 @@ Commands:
   add <issue>... --sprint <id>           Add issues to sprint
   remove <issue>...                      Move issues to backlog
   report <sprintId> [--points-field <id>]   Sprint metrics report
+  review <sprintId> --space <key> [--parent <id>] [--title <t>] [--template <name>]
+         [--var k=v ...] [--dry-run] [--force] [--export <file.pdf|.docx>]
+                                         Create or update a sprint review page
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -1775,6 +2009,8 @@ Options:
 Examples:
   jira sprint list --board 123
   jira sprint report 456 --json
+  jira sprint review 456 --space TEAM --dry-run
+  jira sprint review 456 --space TEAM --export review.pdf
 `;
 }
 
@@ -1863,7 +2099,7 @@ async function handleWorklogAdd(
 
   const worklog = await client.addWorklog(issueKey, timeSeconds, {
     started,
-    comment,
+    comment: comment ? richText(client, comment) : undefined,
   });
 
   output(
@@ -1924,7 +2160,7 @@ async function handleWorklogUpdate(
   const updates: {
     timeSpentSeconds?: number;
     started?: string;
-    comment?: string;
+    comment?: string | AdfDocument;
   } = {};
 
   if (timeArg) {
@@ -1943,11 +2179,10 @@ async function handleWorklogUpdate(
     }
   }
 
-  if (comment) {
-    updates.comment = comment;
-  }
-
   const client = await getClient(flags, opts);
+  if (comment) {
+    updates.comment = richText(client, comment);
+  }
   const worklog = await client.updateWorklog(issueKey, worklogId, updates);
 
   output({ schemaVersion: "1", worklog: formatWorklog(worklog) }, opts);
@@ -2288,7 +2523,7 @@ async function handleTimerStop(
   try {
     worklog = await client.addWorklog(timer.issueKey, elapsedSeconds, {
       started: timer.startedAt.replace("Z", "+0000"),
-      comment,
+      comment: comment ? richText(client, comment) : undefined,
     });
   } catch (e) {
     failTimerPreserved(
@@ -2584,7 +2819,7 @@ async function handleEpicCreate(
   const { client, defaults } = await getClient(flags, opts, true);
   const project = getFlag(flags, "project") ?? defaults.project;
   const summary = getFlag(flags, "summary");
-  const description = getFlag(flags, "description");
+  const description = await readRichTextFlag(flags, "description", opts);
 
   if (!project) {
     fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set defaults.project in config).");
@@ -2598,7 +2833,7 @@ async function handleEpicCreate(
       project: { key: project },
       issuetype: { name: "Epic" },
       summary,
-      description: description ? client.textToAdf(description) : undefined,
+      description: description ? richText(client, description) : undefined,
     },
   });
 
@@ -3259,6 +3494,9 @@ async function handleBulk(
     case "link-page":
       await handleBulkLinkPage(flags, opts);
       return;
+    case "move":
+      await handleBulkMove(flags, opts);
+      return;
     default:
       unknownSubcommand(sub, bulkHelp(), opts);
       return;
@@ -3271,22 +3509,141 @@ async function handleBulk(
 async function fetchAllIssues(
   client: JiraClient,
   jql: string,
-  maxResults: number = 1000
+  maxResults: number = 1000,
+  fields: string[] = ["summary", "status", "labels", "priority", "assignee"]
 ): Promise<JiraIssue[]> {
+  return (await fetchIssuePages(client, jql, maxResults, fields)).issues;
+}
+
+/**
+ * Page through `/search/jql` until `limit` issues or the last page. Reports
+ * whether more matched, since the endpoint returns no total.
+ */
+async function fetchIssuePages(
+  client: JiraClient,
+  jql: string,
+  limit: number,
+  fields?: string[]
+): Promise<{ issues: JiraIssue[]; hasMore: boolean; nextPageToken?: string }> {
   const issues: JiraIssue[] = [];
   let nextPageToken: string | undefined;
 
   do {
     const result = await client.search(jql, {
-      maxResults: Math.min(100, maxResults - issues.length),
+      maxResults: Math.min(100, limit - issues.length),
       nextPageToken,
-      fields: ["summary", "status", "labels", "priority", "assignee"],
+      fields,
     });
     issues.push(...result.issues);
     nextPageToken = result.nextPageToken;
-  } while (nextPageToken && issues.length < maxResults);
+    if (result.issues.length === 0) break;
+  } while (nextPageToken && issues.length < limit);
 
-  return issues;
+  return { issues: issues.slice(0, limit), hasMore: Boolean(nextPageToken), nextPageToken };
+}
+
+/**
+ * Bulk selection: `--jql <query>` or `--issues K1,K2` (→ `key in (...)`).
+ * Exactly one is required.
+ */
+function resolveBulkJql(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): string {
+  const jql = getFlag(flags, "jql");
+  const keys = (getFlag(flags, "issues") ?? "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+  if (jql && keys.length > 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Use either --jql or --issues, not both.");
+  }
+  if (keys.length > 0) {
+    const invalid = keys.filter((key) => !/^[A-Z][A-Z0-9_]*-\d+$/.test(key));
+    if (invalid.length > 0) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Invalid issue key(s): ${invalid.join(", ")}`);
+    }
+    return `key in (${keys.join(", ")})`;
+  }
+  if (!jql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--jql or --issues is required.");
+  }
+  return jql;
+}
+
+/** Agile API cap for issues per sprint/backlog move request. */
+const AGILE_MOVE_CHUNK = 50;
+
+/** `bulk move --sprint <id> | --backlog`: chunked Agile API moves. */
+async function handleBulkMove(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const jql = resolveBulkJql(flags, opts);
+  const sprint = getFlag(flags, "sprint");
+  const backlog = hasFlag(flags, "backlog");
+  const dryRun = hasFlag(flags, "dry-run");
+  const limit = Number(getFlag(flags, "limit") ?? 1000);
+
+  if (Boolean(sprint) === backlog) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Give exactly one of --sprint <id> or --backlog.");
+  }
+  const sprintId = Number(sprint);
+  if (sprint && !Number.isInteger(sprintId)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--sprint must be a numeric sprint id.");
+  }
+  const target = backlog ? "backlog" : `sprint ${sprintId}`;
+
+  const client = await getClient(flags, opts);
+  const issues = await fetchAllIssues(client, jql, limit);
+  const keys = issues.map((issue) => issue.key);
+
+  if (dryRun || keys.length === 0) {
+    output(
+      {
+        schemaVersion: "1",
+        dryRun,
+        operation: "move",
+        jql,
+        target,
+        affectedIssues: issues.map((i) => ({ key: i.key, summary: i.fields.summary })),
+        count: keys.length,
+      },
+      opts
+    );
+    return;
+  }
+
+  const summary: BulkOperationSummary = { total: keys.length, successful: 0, failed: 0, errors: [] };
+  for (let i = 0; i < keys.length; i += AGILE_MOVE_CHUNK) {
+    const chunk = keys.slice(i, i + AGILE_MOVE_CHUNK);
+    try {
+      if (backlog) await client.moveIssuesToBacklog(chunk);
+      else await client.moveIssuesToSprint(sprintId, chunk);
+      summary.successful += chunk.length;
+    } catch (err) {
+      summary.failed += chunk.length;
+      const error = err instanceof Error ? err.message : String(err);
+      summary.errors.push(...chunk.map((key) => ({ key, error })));
+    }
+  }
+
+  output({ schemaVersion: "1", operation: "move", jql, target, result: summary }, opts);
+}
+
+/** Hard ceiling for `--all` on search/my. */
+const SEARCH_ALL_CEILING = 5000;
+
+function searchLimit(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): number {
+  if (hasFlag(flags, "all-results")) {
+    process.stderr.write(`Warning: --all-results stops at ${SEARCH_ALL_CEILING} issues.\n`);
+    return SEARCH_ALL_CEILING;
+  }
+  const limit = Number(getFlag(flags, "limit") ?? 25);
+  if (!Number.isInteger(limit) || limit < 1) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--limit must be a positive integer.");
+  }
+  return limit;
 }
 
 /**
@@ -3365,22 +3722,23 @@ async function handleBulkEdit(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const jql = getFlag(flags, "jql");
-  const setFlag = getFlag(flags, "set");
+  const jql = resolveBulkJql(flags, opts);
+  const setFlags = getFlags(flags, "set");
   const dryRun = hasFlag(flags, "dry-run");
   const limit = Number(getFlag(flags, "limit") ?? 1000);
 
-  if (!jql) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
-  }
-  if (!setFlag) {
+  if (setFlags.length === 0) {
     fail(opts, 1, ERROR_CODES.USAGE, "--set is required. Use --set field=value.");
   }
 
-  // Parse field assignments (support multiple --set flags via comma)
+  // `--set` is repeatable; one value may also hold several assignments
+  // ("priority=High,assignee=x"). Split only before a `key=`, so commas inside
+  // a value ("labels=a,b") stay in that value.
   let fieldUpdates: Record<string, unknown>;
   try {
-    fieldUpdates = parseFieldAssignments(setFlag.split(",").map((s) => s.trim()));
+    fieldUpdates = parseFieldAssignments(
+      setFlags.flatMap((value) => value.split(/,(?=\s*[\w.-]+=)/)).map((s) => s.trim())
+    );
   } catch (e) {
     fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
   }
@@ -3434,14 +3792,11 @@ async function handleBulkTransition(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const jql = getFlag(flags, "jql");
+  const jql = resolveBulkJql(flags, opts);
   const toStatus = getFlag(flags, "to");
   const dryRun = hasFlag(flags, "dry-run");
   const limit = Number(getFlag(flags, "limit") ?? 1000);
 
-  if (!jql) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
-  }
   if (!toStatus) {
     fail(opts, 1, ERROR_CODES.USAGE, "--to is required. Specify target status.");
   }
@@ -3522,15 +3877,12 @@ async function handleBulkLabel(
   }
 
   const label = labelArgs[0] || getFlag(flags, "label");
-  const jql = getFlag(flags, "jql");
+  const jql = resolveBulkJql(flags, opts);
   const dryRun = hasFlag(flags, "dry-run");
   const limit = Number(getFlag(flags, "limit") ?? 1000);
 
   if (!label) {
     fail(opts, 1, ERROR_CODES.USAGE, "Label is required.");
-  }
-  if (!jql) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
   }
 
   const client = await getClient(flags, opts);
@@ -3590,14 +3942,11 @@ async function handleBulkDelete(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const jql = getFlag(flags, "jql");
+  const jql = resolveBulkJql(flags, opts);
   const confirm = hasFlag(flags, "confirm");
   const dryRun = hasFlag(flags, "dry-run");
   const limit = Number(getFlag(flags, "limit") ?? 1000);
 
-  if (!jql) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
-  }
 
   const client = await getClient(flags, opts);
   const issues = await fetchAllIssues(client, jql, limit);
@@ -3657,15 +4006,12 @@ async function handleBulkLinkPage(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const jql = getFlag(flags, "jql");
+  const jql = resolveBulkJql(flags, opts);
   const pageId = getFlag(flags, "page");
   const dryRun = hasFlag(flags, "dry-run");
   const limit = Number(getFlag(flags, "limit") ?? 1000);
   const comment = getFlag(flags, "comment");
 
-  if (!jql) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
-  }
   if (!pageId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--page is required.");
   }
@@ -3704,7 +4050,7 @@ async function handleBulkLinkPage(
   }
 
   const pageUrl = page.url ?? buildConfluenceUrl(profile, `/pages/${page.id}`);
-  const globalId = `atlcli-confluence-${page.id}`;
+  const linkedPage = { id: page.id, title: page.title, url: pageUrl };
 
   // Dry run - show preview
   if (dryRun) {
@@ -3727,27 +4073,11 @@ async function handleBulkLinkPage(
 
   // Execute bulk link
   const summary = await executeInBatches(issues, async (issue) => {
-    const input: CreateRemoteLinkInput = {
-      globalId,
-      application: {
-        type: "com.atlassian.confluence",
-        name: "Confluence",
-      },
-      relationship: "mentioned in",
-      object: {
-        url: pageUrl,
-        title: page.title,
-        icon: {
-          url16x16: buildConfluenceUrl(profile, "/favicon.ico"),
-          title: "Confluence",
-        },
-      },
-    };
-    await jiraClient.createRemoteLink(issue.key, input);
+    await jiraClient.createRemoteLink(issue.key, buildConfluencePageRemoteLink(profile, linkedPage));
 
     // Add comment if requested
     if (comment) {
-      await jiraClient.addComment(issue.key, `Linked to Confluence page: [${page.title}|${pageUrl}]`);
+      await jiraClient.addComment(issue.key, linkedPageComment(jiraClient, linkedPage));
     }
   });
 
@@ -3787,10 +4117,16 @@ Commands:
   link-page --jql <query> --page <id> [--comment] [--dry-run] [--limit <n>]
       Link a Confluence page to all matching issues
 
+  move --jql <query> (--sprint <id> | --backlog) [--dry-run] [--limit <n>]
+      Move matching issues into a sprint or back to the backlog
+
+Every command also accepts --issues <K1,K2,...> instead of --jql.
+
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
   --jql <query>      JQL query to select issues
+  --issues <keys>    Comma-separated issue keys instead of --jql
   --dry-run          Preview changes without applying
   --limit <n>        Max issues to process (default: 1000)
   --confirm          Required for delete operations
@@ -4178,18 +4514,17 @@ async function handleSearch(
     jql = parts.length > 0 ? parts.join(" AND ") : "ORDER BY created DESC";
   }
 
-  const limit = Number(getFlag(flags, "limit") ?? 25);
-
-  const result = await client.search(jql, {
-    maxResults: Number.isNaN(limit) ? 25 : limit,
-  });
+  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
 
   output(
     {
       schemaVersion: "1",
       jql,
-      issues: result.issues.map(formatIssue),
-      total: result.total,
+      issues: result.issues.map((issue) => formatIssue(issue)),
+      // `/search/jql` reports no total: this is the number returned.
+      total: result.issues.length,
+      hasMore: result.hasMore,
+      nextPageToken: result.nextPageToken,
     },
     opts
   );
@@ -4220,17 +4555,16 @@ async function handleMy(
 
   // Order by updated
   const jql = parts.join(" AND ") + " ORDER BY updated DESC";
-  const limit = Number(getFlag(flags, "limit") ?? 25);
-  const result = await client.search(jql, {
-    maxResults: Number.isNaN(limit) ? 25 : limit,
-  });
+  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
 
   output(
     {
       schemaVersion: "1",
       jql,
-      issues: result.issues.map(formatIssue),
-      total: result.total,
+      issues: result.issues.map((issue) => formatIssue(issue)),
+      total: result.issues.length,
+      hasMore: result.hasMore,
+      nextPageToken: result.nextPageToken,
     },
     opts
   );
@@ -4384,10 +4718,20 @@ async function handleImport(
     return;
   }
 
+  // `--map-field "CSV Column=field"` (repeatable) renames columns before mapping.
+  const fieldMap: Record<string, string> = {};
+  for (const mapping of getFlags(flags, "map-field")) {
+    const eq = mapping.lastIndexOf("=");
+    if (eq <= 0 || eq === mapping.length - 1) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Invalid --map-field "${mapping}". Use "CSV Column=field".`);
+    }
+    fieldMap[mapping.slice(0, eq).trim()] = mapping.slice(eq + 1).trim();
+  }
+
   // Parse the import file
   let issues;
   try {
-    issues = await parseImportFile(filePath);
+    issues = await parseImportFile(filePath, { fieldMap });
   } catch (err) {
     fail(opts, 1, ERROR_CODES.USAGE, `Failed to parse import file: ${err instanceof Error ? err.message : String(err)}`);
     return;
@@ -4480,6 +4824,7 @@ Options:
   --project <key>      Target project key (required)
   --dry-run            Preview import without creating issues
   --skip-attachments   Skip attachment uploads
+  --map-field <col=field>  Rename a CSV column before mapping (repeatable, CSV only)
   --profile <name>     Use a specific auth profile
   --json               JSON output
 
@@ -4488,8 +4833,11 @@ Notes:
   - Issues with existing keys are skipped
   - Required fields: summary, issuetype
   - Comments and attachments are included if present in file
+  - Text descriptions and comments are markdown; quoted CSV cells may span lines
+  - CSV labels and components are comma-separated inside one quoted cell
 
 Examples:
+  jira import --file issues.csv --project PROJ --map-field "Title=summary" --map-field "Body=description"
   jira import --file issues.json --project PROJ --dry-run
   jira import --file backup.csv --project PERSONAL
   jira import --file export.json --project PROJ --skip-attachments
@@ -4875,7 +5223,7 @@ async function handleSubtaskCreate(
 ): Promise<void> {
   const parentKey = args[0] || getFlag(flags, "parent");
   const summary = getFlag(flags, "summary");
-  const description = getFlag(flags, "description");
+  const description = await readRichTextFlag(flags, "description", opts);
   const assignee = getFlag(flags, "assignee");
   const priority = getFlag(flags, "priority");
 
@@ -4901,7 +5249,7 @@ async function handleSubtaskCreate(
       project: { key: projectKey },
       issuetype: { id: subtaskType.id },
       summary,
-      description: description ? client.textToAdf(description) : undefined,
+      description: description ? richText(client, description) : undefined,
       assignee: assignee ? { accountId: assignee } : undefined,
       priority: priority ? { name: priority } : undefined,
       parent: { key: parentKey },
@@ -5193,6 +5541,11 @@ async function handleVersion(
     case "delete":
       await handleVersionDelete(rest, flags, opts);
       return;
+    case "notes": {
+      const { handleVersionNotes } = await import("./jira-report.js");
+      await handleVersionNotes(rest, flags, opts);
+      return;
+    }
     default:
       unknownSubcommand(sub, versionHelp(), opts);
       return;
@@ -5393,6 +5746,11 @@ Commands:
   delete <id> --confirm
       Delete a version
 
+  notes <id|name> --space <key> [--project <key>] [--group-by type|epic] [--template <name>]
+        [--parent <id>] [--title <t>] [--var k=v ...] [--dry-run] [--force] [--export <file>]
+      Create or update a release notes page in Confluence
+      (--list-templates, --print-template <name> show the bundled templates)
+
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
@@ -5401,6 +5759,8 @@ Examples:
   jira version list --project PROJ
   jira version create --project PROJ --name "1.0.0" --release-date 2026-02-01
   jira version release 10001
+  jira version notes "1.0.0" --project PROJ --space DOCS --dry-run
+  jira version notes 10001 --space DOCS --group-by epic --export notes.pdf
   jira version delete 10001 --confirm
 `;
 }

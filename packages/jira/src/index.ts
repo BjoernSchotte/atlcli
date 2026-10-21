@@ -14,6 +14,7 @@ export * from "./index.browser.js";
 export * from "./attachments.js";
 export * from "./worklog.js";
 export * from "./analysis.js";
+export * from "./report-data.js";
 export * from "./export.js";
 export * from "./import.js";
 export * from "./webhook-server.js";

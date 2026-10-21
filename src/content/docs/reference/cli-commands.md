@@ -525,9 +525,13 @@ digest; `explain` performs no asset I/O. PDF output standards remain a separate
 ```bash
 atlcli jira issue get --key <key>       # Get issue details
 atlcli jira issue get --key <key> --expand all
+atlcli jira issue get --key <key> --format markdown  # Description as markdown
 atlcli jira issue create --project <key> --type <type> --summary <text>
 atlcli jira issue create --project <key> --type <type> --summary <text> \
-  --description <text> --assignee <email> --labels <labels>
+  --description <markdown> --assignee <email> --labels <labels>
+atlcli jira issue create --project <key> --type <type> --summary <text> \
+  --description-file <path|->           # Markdown description from file or stdin
+atlcli jira issue update --key <key> --description-file <path|->
 atlcli jira issue create --project <key> --type <type> --summary <text> \
   --field customfield_10028=5 --field customfield_10077='{"value":"Feature"}'
 atlcli jira issue update --key <key> --summary <text>
@@ -542,6 +546,9 @@ atlcli jira issue transitions --key <key>  # List available transitions
 atlcli jira issue assign --key <key> --assignee <email>
 atlcli jira issue assign --key <key> --assignee none  # Unassign
 atlcli jira issue link --from <key> --to <key> --type <type>
+atlcli jira issue unlink --link <id>    # Remove an issue link
+atlcli jira issue unlink --from <key> --to <key> [--type <type>] --confirm
+atlcli jira issue history --key <key> [--field <name>] [--limit <n>]  # Change history
 atlcli jira issue attach <key> <file> [file...] [--comment <text>]  # Attach files
 atlcli jira issue attachments <key>     # List attachments
 atlcli jira issue attachment download <id> [-o <path>] [--overwrite]
@@ -573,7 +580,8 @@ atlcli jira search --type Bug
 atlcli jira search --type Bug,Task      # Multiple types
 atlcli jira search --label <label>      # Filter by label
 atlcli jira search --sprint <id>        # Filter by sprint
-atlcli jira search --limit <n>
+atlcli jira search --limit <n>          # Pages through results above 100
+atlcli jira search --all-results        # All matches, up to 5000
 ```
 
 ### Current User
@@ -596,7 +604,11 @@ atlcli jira my --limit <n>              # Limit results (default 25)
 ### Comments
 
 ```bash
-atlcli jira issue comment --key <key> "Comment text"
+atlcli jira issue comment --key <key> "Comment **markdown**"
+atlcli jira issue comments list --key <key> [--format markdown]
+atlcli jira issue comments add --key <key> --body-file <path|->
+atlcli jira issue comments edit --key <key> --id <id> --body <markdown>
+atlcli jira issue comments delete --key <key> --id <id> --confirm
 ```
 
 ### Worklogs
@@ -653,6 +665,7 @@ atlcli jira sprint delete --id <id> --confirm
 atlcli jira sprint add <issues...> --sprint <id>
 atlcli jira sprint remove <issues...>   # Move to backlog
 atlcli jira sprint report <id>          # Sprint metrics report
+atlcli jira sprint review <id> --space <key> [--export <file>]  # Sprint review page
 ```
 
 ### Epics
@@ -698,6 +711,7 @@ atlcli jira version create --project <key> --name <name> \
   --start-date <date> --release-date <date>
 atlcli jira version release --id <id>
 atlcli jira version delete --id <id> --confirm
+atlcli jira version notes <id|name> --space <key> [--project <key>] [--group-by type|epic] [--export <file>]  # Release notes page
 ```
 
 ### Templates
@@ -757,6 +771,8 @@ atlcli jira bulk transition --jql <query> --to <status> --dry-run
 atlcli jira bulk label add <label> --jql <query>
 atlcli jira bulk label remove <label> --jql <query>
 atlcli jira bulk delete --jql <query> --confirm
+atlcli jira bulk move --jql <query> --sprint <id>   # Or --backlog
+atlcli jira bulk edit --issues <K1,K2> --set "labels=a,b"  # --issues instead of --jql
 ```
 
 ### Filters
@@ -796,10 +812,11 @@ atlcli jira field options --id <id>     # List field options
 ### Import/Export
 
 ```bash
-atlcli jira export --jql <query> -o <file>.csv
+atlcli jira export --jql <query> --format csv -o <file>.csv
 atlcli jira export --jql <query> -o <file>.json
-atlcli jira export --jql <query> --fields key,summary,status
+atlcli jira export --jql <query> -o <file>.json --no-comments --no-attachments
 atlcli jira import --file <path>.csv --project <key>
+atlcli jira import --file <path>.csv --project <key> --map-field "Title=summary"
 atlcli jira import --file <path>.json --project <key>
 atlcli jira import --file <path> --dry-run
 ```

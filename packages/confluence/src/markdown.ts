@@ -1087,7 +1087,10 @@ ${md.render(trimmedContent).trim()}
         return match; // Leave as regular markdown link
       }
 
-      const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+      // Plain-text placeholder, not an HTML comment: a comment at the start of
+      // a line opens a raw HTML block in markdown-it, so the rest of that line
+      // ("[PROJ-1](url) Fix \*this\*") would skip inline markdown entirely.
+      const placeholder = `ATLCLISMARTLINK${placeholderIndex++}X`;
       const displayMode = appearance || "inline";
 
       // Use anchor tag for all appearances - Confluence strips attributes from div elements

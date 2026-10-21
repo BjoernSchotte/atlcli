@@ -20,6 +20,7 @@ import type {
   JiraSearchResults,
   JiraTransition,
   JiraComment,
+  JiraChangelogEntry,
   JiraWorklog,
   JiraUser,
   JiraSprint,
@@ -113,7 +114,11 @@ export class JiraClient {
 
   constructor(profile: Profile, options: JiraClientOptions = {}) {
     this.baseUrl = profile.baseUrl.replace(/\/+$/, "");
-    this.isCloud = this.baseUrl.includes(".atlassian.net");
+    // An explicit deploymentType wins (custom-domain Cloud sites); otherwise
+    // keep the historical *.atlassian.net heuristic.
+    this.isCloud = profile.deploymentType
+      ? profile.deploymentType === "cloud"
+      : this.baseUrl.includes(".atlassian.net");
 
     if (profile.auth.type === "oauth") {
       throw new Error("OAuth is not implemented yet. Use API token or bearer auth.");
@@ -129,6 +134,16 @@ export class JiraClient {
     this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
       siteOrigin: this.baseUrl,
     });
+  }
+
+  /** Whether this client talks to Jira Cloud (API v3, ADF bodies). */
+  get isCloudSite(): boolean {
+    return this.isCloud;
+  }
+
+  /** Site base URL without trailing slash (e.g. for `/browse/KEY` links). */
+  get siteUrl(): string {
+    return this.baseUrl;
   }
 
   /** API version path - v3 for Cloud, v2 for Server */
@@ -1193,12 +1208,63 @@ export class JiraClient {
     keyOrId: string,
     body: AdfDocument | string
   ): Promise<JiraComment> {
-    const commentBody = typeof body === "string" ? this.textToAdf(body) : body;
-
     return this.request<JiraComment>(`/issue/${keyOrId}/comment`, {
       method: "POST",
-      body: { body: commentBody },
+      body: { body: this.plainBody(body) },
     });
+  }
+
+  /**
+   * Replace a comment's body.
+   *
+   * PUT /rest/api/3/issue/{issueIdOrKey}/comment/{id}
+   */
+  async updateComment(
+    keyOrId: string,
+    commentId: string,
+    body: AdfDocument | string
+  ): Promise<JiraComment> {
+    return this.request<JiraComment>(`/issue/${keyOrId}/comment/${commentId}`, {
+      method: "PUT",
+      body: { body: this.plainBody(body) },
+    });
+  }
+
+  /**
+   * Delete a comment.
+   *
+   * DELETE /rest/api/3/issue/{issueIdOrKey}/comment/{id}
+   */
+  async deleteComment(keyOrId: string, commentId: string): Promise<void> {
+    await this.request<void>(`/issue/${keyOrId}/comment/${commentId}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * One page of an issue's change history, oldest first.
+   *
+   * GET /rest/api/3/issue/{issueIdOrKey}/changelog. Unlike
+   * `getIssue(expand=changelog)` this endpoint pages past ~100 entries.
+   */
+  async getChangelog(
+    keyOrId: string,
+    options: { startAt?: number; maxResults?: number } = {}
+  ): Promise<{ values: JiraChangelogEntry[]; startAt: number; total: number; isLast: boolean }> {
+    const page = await this.request<{
+      values?: JiraChangelogEntry[];
+      histories?: JiraChangelogEntry[];
+      startAt?: number;
+      total?: number;
+      isLast?: boolean;
+    }>(`/issue/${keyOrId}/changelog`, {
+      query: { startAt: options.startAt ?? 0, maxResults: options.maxResults ?? 100 },
+    });
+    // Data Center returns `histories` instead of `values`.
+    const values = page.values ?? page.histories ?? [];
+    const startAt = page.startAt ?? options.startAt ?? 0;
+    const total = page.total ?? startAt + values.length;
+    return { values, startAt, total, isLast: page.isLast ?? startAt + values.length >= total };
   }
 
   // ============ Worklogs ============
@@ -1246,7 +1312,7 @@ export class JiraClient {
     timeSpentSeconds: number,
     options: {
       started?: string; // ISO 8601 format
-      comment?: string;
+      comment?: string | AdfDocument;
       adjustEstimate?: "auto" | "leave" | "manual" | "new";
       newEstimate?: string;
       reduceBy?: string;
@@ -1261,7 +1327,7 @@ export class JiraClient {
     }
 
     if (options.comment) {
-      body.comment = this.textToAdf(options.comment);
+      body.comment = this.plainBody(options.comment);
     }
 
     return this.request<JiraWorklog>(`/issue/${keyOrId}/worklog`, {
@@ -1286,7 +1352,7 @@ export class JiraClient {
     updates: {
       timeSpentSeconds?: number;
       started?: string;
-      comment?: string;
+      comment?: string | AdfDocument;
     }
   ): Promise<JiraWorklog> {
     const body: Record<string, unknown> = {};
@@ -1300,7 +1366,7 @@ export class JiraClient {
     }
 
     if (updates.comment) {
-      body.comment = this.textToAdf(updates.comment);
+      body.comment = this.plainBody(updates.comment);
     }
 
     return this.request<JiraWorklog>(
@@ -2120,7 +2186,19 @@ export class JiraClient {
   // ============ Helpers ============
 
   /**
+   * Request body for a rich-text field given as a plain string or ADF. Cloud
+   * (API v3) needs ADF, so a string becomes one paragraph; Data Center (API v2)
+   * takes the string as-is. Callers wanting markdown pass `toJiraRichText(...)`.
+   */
+  private plainBody(body: AdfDocument | string): AdfDocument | string {
+    if (typeof body !== "string") return body;
+    return this.isCloud ? this.textToAdf(body) : body;
+  }
+
+  /**
    * Convert plain text to ADF (Atlassian Document Format).
+   *
+   * @deprecated Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
    */
   textToAdf(text: string): AdfDocument {
     return {
@@ -2142,6 +2220,8 @@ export class JiraClient {
 
   /**
    * Convert ADF to plain text (basic extraction).
+   *
+   * @deprecated Drops all structure. Use `adfToMarkdown`.
    */
   adfToText(adf: AdfDocument | string | null | undefined): string {
     if (!adf) return "";

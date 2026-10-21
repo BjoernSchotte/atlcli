@@ -24,6 +24,7 @@ Options:
 |------|-------------|
 | `--key` | Issue key (required) |
 | `--expand` | Expand: `changelog`, `comments`, `transitions` |
+| `--format` | `json` (default) or `markdown`: a YAML front block plus the description as markdown |
 
 ### Examples
 
@@ -31,9 +32,54 @@ Options:
 # Get issue with changelog
 atlcli jira issue get --key PROJ-123 --expand changelog
 
-# JSON output
+# JSON output (includes descriptionMarkdown next to the raw ADF description)
 atlcli jira issue get --key PROJ-123 --json
+
+# Edit the description in your editor and write it back
+atlcli jira issue get --key PROJ-123 --json | jq -r .issue.descriptionMarkdown > desc.md
+$EDITOR desc.md
+atlcli jira issue update --key PROJ-123 --description-file desc.md
 ```
+
+## Markdown descriptions and comments
+
+Descriptions, comments and worklog comments are written and read as markdown. atlcli converts them to and from Jira's rich-text format (ADF), using the same markdown dialect as Confluence sync.
+
+| Markdown | Jira result |
+|----------|-------------|
+| `# Heading` … `######` | Heading 1–6 |
+| `**bold**`, `*italic*`, `~~strike~~`, `` `code` `` | Text formatting |
+| `[text](https://…)` | Link |
+| `-` / `1.` lists, nested by indentation | Bullet / numbered list |
+| `- [ ] open` / `- [x] done` | Action items (task list) |
+| ```` ```ts ```` fenced code | Code block with language |
+| GFM table with a header row | Table |
+| `> quote`, `---` | Quote, divider |
+| `@[Jane Doe](557058:abc…)` | Mention (account ID required) |
+| `{jira:PROJ-123}` or a bare `…/browse/PROJ-123` URL | Issue smart link |
+| `<https://…>` | Smart link |
+| `{date:2026-12-31}` | Date |
+| `{status:green}Done{status}` | Status lozenge (`grey`, `blue`, `green`, `yellow`, `red`, `purple`) |
+| `:smile:` | Emoji |
+| `:::info` / `:::note` / `:::warning` / `:::error` / `:::success` (`:::tip` = success) | Panel |
+| `:::expand Title` | Expand |
+
+### What markdown cannot hold
+
+| Jira content | In markdown | Written back |
+|--------------|-------------|--------------|
+| Images and attachments, macros/extensions, layouts, tables without a header row or with merged cells | An invisible `<!--adf:…-->` marker | Unchanged. Leave the marker in place when editing. |
+| Text colour, underline, sub/superscript | Text only | The formatting is lost |
+| Card or embed appearance of a smart link | `<url>` | Becomes an inline smart link |
+| Local images such as `![shot](./a.png)` | — | Kept as a link, with a warning. Upload the file with `jira issue attach`. |
+
+:::note[Data Center]
+Jira Data Center's API takes plain strings, not ADF. On Data Center atlcli sends your markdown text unchanged, so it shows up as typed.
+:::
+
+:::caution[Behaviour change]
+`--description` and comment text used to be sent as one plain paragraph. They are now markdown, so `*`, `_`, `#` and backticks format text. Escape them with `\` if you mean the literal character.
+:::
 
 ## Create Issue
 
@@ -48,7 +94,8 @@ Options:
 | `--project` | Project key (required) |
 | `--type` | Issue type (required) |
 | `--summary` | Issue summary (required) |
-| `--description` | Issue description |
+| `--description` | Issue description (markdown) |
+| `--description-file` | Read the description from a markdown file, or `-` for stdin. Not together with `--description`. |
 | `--assignee` | Assignee account ID |
 | `--priority` | Priority name |
 | `--labels` | Comma-separated labels |
@@ -69,6 +116,14 @@ atlcli jira issue create --project PROJ --type Bug \
 atlcli jira issue create --project PROJ --type Task \
   --summary "Update docs" \
   --assignee 557058:abc123
+
+# Description from a markdown file
+atlcli jira issue create --project PROJ --type Bug \
+  --summary "Export drops tables" --description-file bug.md
+
+# Description from stdin
+printf '## Steps\n\n1. Open export\n2. Pick PDF\n' | \
+  atlcli jira issue create --project PROJ --type Bug --summary "Export" --description-file -
 ```
 
 :::tip[Adding to Epics or Sprints]
@@ -141,7 +196,8 @@ Options:
 |------|-------------|
 | `--key` | Issue key (required) |
 | `--summary` | New summary |
-| `--description` | New description |
+| `--description` | New description (markdown) |
+| `--description-file` | New description from a markdown file, or `-` for stdin |
 | `--priority` | New priority |
 | `--add-labels` | Add labels (comma-separated) |
 | `--remove-labels` | Remove labels (comma-separated) |
@@ -209,13 +265,45 @@ ID    NAME           TO STATUS
 
 ## Comments
 
-Add a comment to an issue:
+Comment bodies are markdown (see [Markdown descriptions and comments](#markdown-descriptions-and-comments)).
 
 ```bash
-atlcli jira issue comment --key PROJ-123 "Working on this"
+# Add a comment (positional text, --body or --body-file)
+atlcli jira issue comment --key PROJ-123 "Working on **this**"
+atlcli jira issue comments add --key PROJ-123 --body-file notes.md
+
+# List comments as JSON (bodies converted to markdown) or as readable markdown
+atlcli jira issue comments list --key PROJ-123 --json
+atlcli jira issue comments list --key PROJ-123 --format markdown
+
+# Edit and delete by comment id
+atlcli jira issue comments edit --key PROJ-123 --id 10042 --body "Fixed in **v2**"
+atlcli jira issue comments delete --key PROJ-123 --id 10042 --confirm
 ```
 
-The comment text is passed as a positional argument after `--key`.
+| Command | Required flags | Notes |
+|---------|----------------|-------|
+| `comment` / `comments add` | `--key`, one of text / `--body` / `--body-file` | `--body-file -` reads stdin |
+| `comments list` | `--key` | `--limit` (default 100), `--format markdown` |
+| `comments edit` | `--key`, `--id`, `--body` or `--body-file` | Replaces the whole body |
+| `comments delete` | `--key`, `--id`, `--confirm` | |
+
+## History
+
+Show who changed which field, newest first:
+
+```bash
+atlcli jira issue history --key PROJ-123
+atlcli jira issue history --key PROJ-123 --field status --limit 20 --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--key` | Issue key (required) |
+| `--field` | Only changes to this field (for example `status`, `assignee`, `summary`) |
+| `--limit` | Maximum rows (default 100) |
+
+Unlike `issue get --expand changelog`, `history` pages through the full change history.
 
 ## Links
 
@@ -231,6 +319,18 @@ Options:
 | `--from` | Source issue key (required) |
 | `--to` | Target issue key (required) |
 | `--type` | Link type name (required) |
+
+### Remove a Link
+
+```bash
+# By link id (from issue get --json, fields.issuelinks)
+atlcli jira issue unlink --link 69875
+
+# By the two issues; --type picks one when several links exist
+atlcli jira issue unlink --from PROJ-123 --to PROJ-456 --type blocks --confirm
+```
+
+When the link is found by `--from`/`--to`, atlcli shows which link it would remove and needs `--confirm`. If several links connect the two issues, it lists them and asks for `--type` or `--link`.
 
 ### Link Types
 

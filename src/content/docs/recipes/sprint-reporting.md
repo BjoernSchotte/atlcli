@@ -22,6 +22,28 @@ At the end of each sprint, generate a report including:
 - Carry-over items
 - Time logged
 
+## Sprint Review Page in One Command
+
+`atlcli jira sprint review` writes the review straight to Confluence and can export it:
+
+```bash
+# Preview the page
+atlcli jira sprint review 456 --space TEAM --dry-run
+
+# Create or update the page under the team's sprint folder, export a PDF for stakeholders
+atlcli jira sprint review 456 --space TEAM --parent 67890 --export sprint-456.pdf
+```
+
+Running it again updates the same page. To change the layout, start from the bundled template:
+
+```bash
+atlcli jira sprint review --print-template sprint-review > sprint-review.md
+```
+
+See [Release Notes and Sprint Review Pages](../jira/report-pages.md). For release notes per version, use `atlcli jira version notes`.
+
+The scripts below build a fully custom markdown report instead.
+
 ## Sprint Summary Script
 
 ```bash
@@ -43,13 +65,13 @@ atlcli jira sprint get --id $SPRINT_ID
 echo ""
 echo "## Completed"
 atlcli jira search --jql "sprint = $SPRINT_ID AND status = Done" --json | \
-  jq -r '.issues[] | "- [\(.key)] \(.fields.summary)"'
+  jq -r '.issues[] | "- [\(.key)] \(.summary)"'
 
 # Incomplete issues
 echo ""
 echo "## Carry-over"
 atlcli jira search --jql "sprint = $SPRINT_ID AND status != Done" --json | \
-  jq -r '.issues[] | "- [\(.key)] \(.fields.summary) (\(.fields.status.name))"'
+  jq -r '.issues[] | "- [\(.key)] \(.summary) (\(.status))"'
 
 # Velocity
 echo ""
@@ -91,13 +113,13 @@ $(atlcli jira analyze burndown --sprint $SPRINT_ID)
 ## Completed Issues
 
 $(atlcli jira search --jql "sprint = $SPRINT_ID AND status = Done" --json | \
-  jq -r '.issues[] | "| \(.key) | \(.fields.summary) | \(.fields.issuetype.name) |"' | \
+  jq -r '.issues[] | "| \(.key) | \(.summary) | \(.type) |"' | \
   { echo "| Key | Summary | Type |"; echo "|-----|---------|------|"; cat; })
 
 ## Carry-over
 
 $(atlcli jira search --jql "sprint = $SPRINT_ID AND status != Done" --json | \
-  jq -r '.issues[] | "| \(.key) | \(.fields.summary) | \(.fields.status.name) |"' | \
+  jq -r '.issues[] | "| \(.key) | \(.summary) | \(.status) |"' | \
   { echo "| Key | Summary | Status |"; echo "|-----|---------|--------|"; cat; })
 
 EOF

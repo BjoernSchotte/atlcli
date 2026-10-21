@@ -63,11 +63,9 @@ beforeAll(async () => {
       }
 
       if (req.method === "POST" && pathname === `/rest/api/2/issue/${ISSUE}/comment`) {
-        const body = (await req.json()) as {
-          body?: { content?: Array<{ content?: Array<{ text?: string }> }> };
-        };
-        const text = body.body?.content?.[0]?.content?.[0]?.text ?? "";
-        comments.push(text);
+        // Data Center (API v2) takes the comment body as a string, not ADF.
+        const body = (await req.json()) as { body?: unknown };
+        comments.push(typeof body.body === "string" ? body.body : `<non-string body: ${JSON.stringify(body.body)}>`);
         return Response.json({ id: "30001", body: body.body });
       }
 

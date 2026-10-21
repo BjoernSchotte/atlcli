@@ -25,11 +25,12 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--jql` | JQL query to select issues |
-| `--issues` | Comma-separated issue keys |
-| `--set` | Set field value: `field=value` (repeatable) |
+| `--issues` | Comma-separated issue keys (instead of `--jql`) |
+| `--set` | Set field value: `field=value` (repeatable). Commas inside a value, as in `labels=a,b`, stay part of that value. |
 | `--dry-run` | Preview changes without applying |
-| `--limit` | Maximum issues to update |
-| `--confirm` | Skip confirmation prompt |
+| `--limit` | Maximum issues to update (default 1000) |
+
+Every bulk command takes either `--jql` or `--issues`, not both.
 
 ### Examples
 
@@ -82,6 +83,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--jql` | JQL query to select issues |
+| `--issues` | Comma-separated issue keys (instead of `--jql`) |
 | `--to` | Target status name (required) |
 | `--dry-run` | Preview changes |
 | `--limit` | Maximum issues to process |
@@ -102,7 +104,7 @@ atlcli jira bulk transition \
 
 ## Bulk Move
 
-Move issues between sprints or projects:
+Move issues into a sprint or back to the backlog:
 
 ```bash
 # Move to sprint
@@ -110,6 +112,9 @@ atlcli jira bulk move --jql "labels = release-2.0" --sprint 456
 
 # Move to backlog
 atlcli jira bulk move --jql "sprint = 123 AND status = 'To Do'" --backlog
+
+# Specific issues, preview first
+atlcli jira bulk move --issues PROJ-1,PROJ-2 --sprint 456 --dry-run
 ```
 
 Options:
@@ -117,11 +122,13 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--jql` | JQL query |
-| `--issues` | Comma-separated keys |
-| `--sprint` | Target sprint ID |
-| `--backlog` | Move to backlog |
-| `--dry-run` | Preview changes |
-| `--confirm` | Skip confirmation |
+| `--issues` | Comma-separated keys (instead of `--jql`) |
+| `--sprint` | Target sprint ID (numeric) |
+| `--backlog` | Move to the backlog |
+| `--dry-run` | List the issues and the target without moving anything |
+| `--limit` | Maximum issues to move (default 1000) |
+
+Give exactly one of `--sprint` or `--backlog`. Issues are moved 50 at a time, the Jira Agile API maximum per request; a failed chunk is reported in `result.errors` and the remaining chunks still run. Moving issues between projects is not supported. For a single sprint, `atlcli jira sprint add` and `sprint remove` do the same job.
 
 ## Bulk Delete
 
@@ -163,36 +170,37 @@ atlcli jira bulk edit --jql "..." --set "priority=High" --dry-run
 
 Output:
 
-```
-Dry run - no changes will be made
-
-Issues to update (15 total):
-  PROJ-101  Fix login bug
-  PROJ-102  Update documentation
-  PROJ-103  Refactor auth module
-  ... and 12 more
-
-Changes:
-  priority: Current → High
-
-Run without --dry-run to apply changes.
-```
-
-## Progress and Errors
-
-For large batches, progress is shown:
-
-```
-Updating issues: 45/100 [████████░░░░░░░░░░░░] 45%
+```json
+{
+  "schemaVersion": "1",
+  "dryRun": true,
+  "operation": "edit",
+  "jql": "project = PROJ AND type = Bug",
+  "fields": { "priority": { "name": "High" } },
+  "affectedIssues": [
+    { "key": "PROJ-101", "summary": "Fix login bug" },
+    { "key": "PROJ-102", "summary": "Update documentation" }
+  ],
+  "count": 2
+}
 ```
 
-Failed updates are reported:
+## Errors
 
-```
-Completed: 98/100
-Failed: 2
-  PROJ-150: Permission denied
-  PROJ-175: Invalid transition
+Issues are processed in parallel batches of 10. A failing issue does not stop the others; failures are listed in `result.errors`:
+
+```json
+{
+  "result": {
+    "total": 100,
+    "successful": 98,
+    "failed": 2,
+    "errors": [
+      { "key": "PROJ-150", "error": "Permission denied" },
+      { "key": "PROJ-175", "error": "Invalid transition" }
+    ]
+  }
+}
 ```
 
 ## Rate Limiting
@@ -213,13 +221,9 @@ atlcli jira bulk edit --jql "..." --set "priority=High" --json
 {
   "schemaVersion": "1",
   "operation": "edit",
-  "total": 15,
-  "successful": 15,
-  "failed": 0,
-  "issues": [
-    {"key": "PROJ-101", "status": "updated"},
-    {"key": "PROJ-102", "status": "updated"}
-  ]
+  "jql": "project = PROJ AND type = Bug",
+  "fields": { "priority": { "name": "High" } },
+  "result": { "total": 15, "successful": 15, "failed": 0, "errors": [] }
 }
 ```
 

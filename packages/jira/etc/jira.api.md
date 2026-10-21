@@ -23,6 +23,14 @@ export interface AdfNode {
     text?: string;
 }
 
+// export: adfToMarkdown
+export declare function adfToMarkdown(adf: AdfDocument | string | null | undefined, options?: AdfToMarkdownOptions): string;
+
+// export: AdfToMarkdownOptions
+export interface AdfToMarkdownOptions {
+    baseUrl?: string;
+}
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -248,6 +256,8 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
+// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
+// @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
     private authHeader;
@@ -260,6 +270,8 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    get isCloudSite(): boolean;
+    get siteUrl(): string;
     private get apiPath();
     private get agilePath();
     private sleep;
@@ -419,6 +431,17 @@ export declare class JiraClient {
         total: number;
     }>;
     addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
+    deleteComment(keyOrId: string, commentId: string): Promise<void>;
+    getChangelog(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        values: JiraChangelogEntry[];
+        startAt: number;
+        total: number;
+        isLast: boolean;
+    }>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -429,7 +452,7 @@ export declare class JiraClient {
     getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
     addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
         newEstimate?: string;
         reduceBy?: string;
@@ -437,7 +460,7 @@ export declare class JiraClient {
     updateWorklog(keyOrId: string, worklogId: string, updates: {
         timeSpentSeconds?: number;
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
     }): Promise<JiraWorklog>;
     deleteWorklog(keyOrId: string, worklogId: string, options?: {
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
@@ -618,6 +641,7 @@ export declare class JiraClient {
     refreshWebhooks(webhookIds: number[]): Promise<{
         expirationDate: string;
     }>;
+    private plainBody;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
@@ -985,6 +1009,15 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: markdownToAdf
+export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
+
+// export: MarkdownToAdfOptions
+export interface MarkdownToAdfOptions {
+    baseUrl?: string;
+    onWarning?: (message: string) => void;
+}
+
 // export: planJiraFieldChangesV1
 export declare function planJiraFieldChangesV1(issue: JiraIssue, updateInput: UpdateIssueInput): Promise<ChangeSetV1>;
 
@@ -1009,6 +1042,12 @@ export interface SprintMetrics {
     scopeChangePercent: number;
     sayDoRatio: number;
 }
+
+// export: toJiraRichText
+export declare function toJiraRichText(client: {
+    readonly isCloudSite: boolean;
+    readonly siteUrl: string;
+}, markdown: string, options?: Omit<MarkdownToAdfOptions, "baseUrl">): AdfDocument | string;
 
 // export: TransitionIssueInput
 export interface TransitionIssueInput {
@@ -1110,6 +1149,14 @@ export interface AdfNode {
     text?: string;
 }
 
+// export: adfToMarkdown
+export declare function adfToMarkdown(adf: AdfDocument | string | null | undefined, options?: AdfToMarkdownOptions): string;
+
+// export: AdfToMarkdownOptions
+export interface AdfToMarkdownOptions {
+    baseUrl?: string;
+}
+
 // export: aggregateWorklogs
 export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: string, userId: string | undefined, dateRange: {
     from: string;
@@ -1163,6 +1210,30 @@ export type AttachRequestResult = {
     ok: false;
     error: string;
 };
+
+// export: buildReportData
+export declare function buildReportData(input: BuildReportInput): ReportData;
+
+// export: BuildReportInput
+export interface BuildReportInput {
+    kind: "release" | "sprint";
+    source: {
+        id: string;
+        name: string;
+        description?: string;
+        goal?: string;
+        state?: string;
+        released?: boolean;
+        startDate?: string;
+        endDate?: string;
+        releaseDate?: string;
+    };
+    issues: JiraIssue[];
+    baseUrl: string;
+    pointsField?: string;
+    sprintMetrics?: SprintMetrics;
+    now: Date;
+}
 
 // export: BulkCreateResult
 export interface BulkCreateResult {
@@ -1296,6 +1367,11 @@ export interface CreateRemoteLinkInput {
     };
 }
 
+// export: CsvImportOptions
+export interface CsvImportOptions {
+    fieldMap?: Record<string, string>;
+}
+
 // export: deleteTemplate
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
 export declare function deleteTemplate(name: string): Promise<void>;
@@ -1306,6 +1382,9 @@ export declare function ensureMigrated(): Promise<{
     skipped: string[];
     errors: string[];
 } | null>;
+
+// export: escapeMarkdown
+export declare function escapeMarkdown(text: string): string;
 
 // export: ExportData
 export interface ExportData {
@@ -1493,6 +1572,8 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
+// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
+// @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
     private authHeader;
@@ -1505,6 +1586,8 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    get isCloudSite(): boolean;
+    get siteUrl(): string;
     private get apiPath();
     private get agilePath();
     private sleep;
@@ -1664,6 +1747,17 @@ export declare class JiraClient {
         total: number;
     }>;
     addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
+    deleteComment(keyOrId: string, commentId: string): Promise<void>;
+    getChangelog(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        values: JiraChangelogEntry[];
+        startAt: number;
+        total: number;
+        isLast: boolean;
+    }>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -1674,7 +1768,7 @@ export declare class JiraClient {
     getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
     addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
         newEstimate?: string;
         reduceBy?: string;
@@ -1682,7 +1776,7 @@ export declare class JiraClient {
     updateWorklog(keyOrId: string, worklogId: string, updates: {
         timeSpentSeconds?: number;
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
     }): Promise<JiraWorklog>;
     deleteWorklog(keyOrId: string, worklogId: string, options?: {
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
@@ -1863,6 +1957,7 @@ export declare class JiraClient {
     refreshWebhooks(webhookIds: number[]): Promise<{
         expirationDate: string;
     }>;
+    private plainBody;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
@@ -2430,6 +2525,15 @@ export declare function loadTemplate(name: string): Promise<JiraTemplate>;
 // export: loadTimer
 export declare function loadTimer(): TimerState | null;
 
+// export: markdownToAdf
+export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
+
+// export: MarkdownToAdfOptions
+export interface MarkdownToAdfOptions {
+    baseUrl?: string;
+    onWarning?: (message: string) => void;
+}
+
 // export: migrateTemplates
 export declare function migrateTemplates(): Promise<{
     migrated: string[];
@@ -2450,13 +2554,13 @@ export declare function parseAttachmentTarget(args: string[]): AttachmentTargetR
 export declare function parseAttachRequest(args: string[], keyFlag?: string): AttachRequestResult;
 
 // export: parseCsv
-export declare function parseCsv(content: string): ImportIssue[];
+export declare function parseCsv(content: string, options?: CsvImportOptions): ImportIssue[];
 
 // export: parseDateInput
 export declare function parseDateInput(input: string): Date;
 
 // export: parseImportFile
-export declare function parseImportFile(filePath: string): Promise<ImportIssue[]>;
+export declare function parseImportFile(filePath: string, options?: CsvImportOptions): Promise<ImportIssue[]>;
 
 // export: parseJson
 export declare function parseJson(content: string): ImportIssue[];
@@ -2516,6 +2620,86 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getLevel(): "project";
     protected getProject(): string;
 }
+
+// export: ReportData
+export interface ReportData {
+    kind: "release" | "sprint";
+    source: ReportSource;
+    issues: ReportIssue[];
+    doneIssues: ReportIssue[];
+    openIssues: ReportIssue[];
+    byType: ReportGroup[];
+    byEpic: ReportGroup[];
+    contributors: Array<{
+        name: string;
+        nameMd: string;
+        count: number;
+    }>;
+    metrics: {
+        total: number;
+        done: number;
+        inProgress: number;
+        todo: number;
+        donePercent: number;
+        points?: {
+            committed: number;
+            completed: number;
+        };
+        sayDoRatio?: number;
+    };
+    generatedAt: string;
+}
+
+// export: ReportGroup
+export interface ReportGroup {
+    name: string;
+    nameMd: string;
+    key?: string;
+    url?: string;
+    count: number;
+    issues: ReportIssue[];
+}
+
+// export: ReportIssue
+export interface ReportIssue {
+    key: string;
+    url: string;
+    link: string;
+    summary: string;
+    summaryMd: string;
+    type: string;
+    status: string;
+    statusCategory: ReportStatusCategory;
+    done: boolean;
+    assignee?: string;
+    epic?: {
+        key: string;
+        url: string;
+        summary: string;
+        summaryMd: string;
+    };
+    points?: number;
+}
+
+// export: ReportSource
+export interface ReportSource {
+    id: string;
+    name: string;
+    nameMd: string;
+    description?: string;
+    descriptionMd?: string;
+    goal?: string;
+    goalMd?: string;
+    state?: string;
+    released?: boolean;
+    startDay?: string;
+    endDay?: string;
+    releaseDay?: string;
+    releaseDateMd?: string;
+}
+
+// export: ReportStatusCategory
+export type ReportStatusCategory = "todo" | "inprogress" | "done";
 
 // export: resolveDownloadPath
 export declare function resolveDownloadPath(output: string | undefined, filename: string, opts: {
@@ -2609,6 +2793,12 @@ export interface TimerState {
 
 // export: toAttachmentJson
 export declare function toAttachmentJson(attachment: JiraAttachment): AttachmentJson;
+
+// export: toJiraRichText
+export declare function toJiraRichText(client: {
+    readonly isCloudSite: boolean;
+    readonly siteUrl: string;
+}, markdown: string, options?: Omit<MarkdownToAdfOptions, "baseUrl">): AdfDocument | string;
 
 // export: toWorklogWithIssue
 export declare function toWorklogWithIssue(worklog: JiraWorklog, issueKey: string, issueSummary: string): WorklogWithIssue;
@@ -2716,6 +2906,14 @@ export interface AdfNode {
     text?: string;
 }
 
+// export: adfToMarkdown
+export declare function adfToMarkdown(adf: AdfDocument | string | null | undefined, options?: AdfToMarkdownOptions): string;
+
+// export: AdfToMarkdownOptions
+export interface AdfToMarkdownOptions {
+    baseUrl?: string;
+}
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -2941,6 +3139,8 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
+// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
+// @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
     private authHeader;
@@ -2953,6 +3153,8 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    get isCloudSite(): boolean;
+    get siteUrl(): string;
     private get apiPath();
     private get agilePath();
     private sleep;
@@ -3112,6 +3314,17 @@ export declare class JiraClient {
         total: number;
     }>;
     addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
+    deleteComment(keyOrId: string, commentId: string): Promise<void>;
+    getChangelog(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        values: JiraChangelogEntry[];
+        startAt: number;
+        total: number;
+        isLast: boolean;
+    }>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -3122,7 +3335,7 @@ export declare class JiraClient {
     getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
     addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
         newEstimate?: string;
         reduceBy?: string;
@@ -3130,7 +3343,7 @@ export declare class JiraClient {
     updateWorklog(keyOrId: string, worklogId: string, updates: {
         timeSpentSeconds?: number;
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
     }): Promise<JiraWorklog>;
     deleteWorklog(keyOrId: string, worklogId: string, options?: {
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
@@ -3311,6 +3524,7 @@ export declare class JiraClient {
     refreshWebhooks(webhookIds: number[]): Promise<{
         expirationDate: string;
     }>;
+    private plainBody;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
@@ -3678,6 +3892,15 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: markdownToAdf
+export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
+
+// export: MarkdownToAdfOptions
+export interface MarkdownToAdfOptions {
+    baseUrl?: string;
+    onWarning?: (message: string) => void;
+}
+
 // export: planJiraFieldChangesV1
 export declare function planJiraFieldChangesV1(issue: JiraIssue, updateInput: UpdateIssueInput): Promise<ChangeSetV1>;
 
@@ -3702,6 +3925,12 @@ export interface SprintMetrics {
     scopeChangePercent: number;
     sayDoRatio: number;
 }
+
+// export: toJiraRichText
+export declare function toJiraRichText(client: {
+    readonly isCloudSite: boolean;
+    readonly siteUrl: string;
+}, markdown: string, options?: Omit<MarkdownToAdfOptions, "baseUrl">): AdfDocument | string;
 
 // export: TransitionIssueInput
 export interface TransitionIssueInput {
@@ -3803,6 +4032,14 @@ export interface AdfNode {
     text?: string;
 }
 
+// export: adfToMarkdown
+export declare function adfToMarkdown(adf: AdfDocument | string | null | undefined, options?: AdfToMarkdownOptions): string;
+
+// export: AdfToMarkdownOptions
+export interface AdfToMarkdownOptions {
+    baseUrl?: string;
+}
+
 // export: aggregateWorklogs
 export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: string, userId: string | undefined, dateRange: {
     from: string;
@@ -3856,6 +4093,30 @@ export type AttachRequestResult = {
     ok: false;
     error: string;
 };
+
+// export: buildReportData
+export declare function buildReportData(input: BuildReportInput): ReportData;
+
+// export: BuildReportInput
+export interface BuildReportInput {
+    kind: "release" | "sprint";
+    source: {
+        id: string;
+        name: string;
+        description?: string;
+        goal?: string;
+        state?: string;
+        released?: boolean;
+        startDate?: string;
+        endDate?: string;
+        releaseDate?: string;
+    };
+    issues: JiraIssue[];
+    baseUrl: string;
+    pointsField?: string;
+    sprintMetrics?: SprintMetrics;
+    now: Date;
+}
 
 // export: BulkCreateResult
 export interface BulkCreateResult {
@@ -3989,6 +4250,11 @@ export interface CreateRemoteLinkInput {
     };
 }
 
+// export: CsvImportOptions
+export interface CsvImportOptions {
+    fieldMap?: Record<string, string>;
+}
+
 // export: deleteTemplate
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
 export declare function deleteTemplate(name: string): Promise<void>;
@@ -3999,6 +4265,9 @@ export declare function ensureMigrated(): Promise<{
     skipped: string[];
     errors: string[];
 } | null>;
+
+// export: escapeMarkdown
+export declare function escapeMarkdown(text: string): string;
 
 // export: ExportData
 export interface ExportData {
@@ -4186,6 +4455,8 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
+// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
+// @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
     private authHeader;
@@ -4198,6 +4469,8 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    get isCloudSite(): boolean;
+    get siteUrl(): string;
     private get apiPath();
     private get agilePath();
     private sleep;
@@ -4357,6 +4630,17 @@ export declare class JiraClient {
         total: number;
     }>;
     addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
+    deleteComment(keyOrId: string, commentId: string): Promise<void>;
+    getChangelog(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        values: JiraChangelogEntry[];
+        startAt: number;
+        total: number;
+        isLast: boolean;
+    }>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -4367,7 +4651,7 @@ export declare class JiraClient {
     getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
     addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
         newEstimate?: string;
         reduceBy?: string;
@@ -4375,7 +4659,7 @@ export declare class JiraClient {
     updateWorklog(keyOrId: string, worklogId: string, updates: {
         timeSpentSeconds?: number;
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
     }): Promise<JiraWorklog>;
     deleteWorklog(keyOrId: string, worklogId: string, options?: {
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
@@ -4556,6 +4840,7 @@ export declare class JiraClient {
     refreshWebhooks(webhookIds: number[]): Promise<{
         expirationDate: string;
     }>;
+    private plainBody;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
@@ -5123,6 +5408,15 @@ export declare function loadTemplate(name: string): Promise<JiraTemplate>;
 // export: loadTimer
 export declare function loadTimer(): TimerState | null;
 
+// export: markdownToAdf
+export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
+
+// export: MarkdownToAdfOptions
+export interface MarkdownToAdfOptions {
+    baseUrl?: string;
+    onWarning?: (message: string) => void;
+}
+
 // export: migrateTemplates
 export declare function migrateTemplates(): Promise<{
     migrated: string[];
@@ -5143,13 +5437,13 @@ export declare function parseAttachmentTarget(args: string[]): AttachmentTargetR
 export declare function parseAttachRequest(args: string[], keyFlag?: string): AttachRequestResult;
 
 // export: parseCsv
-export declare function parseCsv(content: string): ImportIssue[];
+export declare function parseCsv(content: string, options?: CsvImportOptions): ImportIssue[];
 
 // export: parseDateInput
 export declare function parseDateInput(input: string): Date;
 
 // export: parseImportFile
-export declare function parseImportFile(filePath: string): Promise<ImportIssue[]>;
+export declare function parseImportFile(filePath: string, options?: CsvImportOptions): Promise<ImportIssue[]>;
 
 // export: parseJson
 export declare function parseJson(content: string): ImportIssue[];
@@ -5209,6 +5503,86 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getLevel(): "project";
     protected getProject(): string;
 }
+
+// export: ReportData
+export interface ReportData {
+    kind: "release" | "sprint";
+    source: ReportSource;
+    issues: ReportIssue[];
+    doneIssues: ReportIssue[];
+    openIssues: ReportIssue[];
+    byType: ReportGroup[];
+    byEpic: ReportGroup[];
+    contributors: Array<{
+        name: string;
+        nameMd: string;
+        count: number;
+    }>;
+    metrics: {
+        total: number;
+        done: number;
+        inProgress: number;
+        todo: number;
+        donePercent: number;
+        points?: {
+            committed: number;
+            completed: number;
+        };
+        sayDoRatio?: number;
+    };
+    generatedAt: string;
+}
+
+// export: ReportGroup
+export interface ReportGroup {
+    name: string;
+    nameMd: string;
+    key?: string;
+    url?: string;
+    count: number;
+    issues: ReportIssue[];
+}
+
+// export: ReportIssue
+export interface ReportIssue {
+    key: string;
+    url: string;
+    link: string;
+    summary: string;
+    summaryMd: string;
+    type: string;
+    status: string;
+    statusCategory: ReportStatusCategory;
+    done: boolean;
+    assignee?: string;
+    epic?: {
+        key: string;
+        url: string;
+        summary: string;
+        summaryMd: string;
+    };
+    points?: number;
+}
+
+// export: ReportSource
+export interface ReportSource {
+    id: string;
+    name: string;
+    nameMd: string;
+    description?: string;
+    descriptionMd?: string;
+    goal?: string;
+    goalMd?: string;
+    state?: string;
+    released?: boolean;
+    startDay?: string;
+    endDay?: string;
+    releaseDay?: string;
+    releaseDateMd?: string;
+}
+
+// export: ReportStatusCategory
+export type ReportStatusCategory = "todo" | "inprogress" | "done";
 
 // export: resolveDownloadPath
 export declare function resolveDownloadPath(output: string | undefined, filename: string, opts: {
@@ -5302,6 +5676,12 @@ export interface TimerState {
 
 // export: toAttachmentJson
 export declare function toAttachmentJson(attachment: JiraAttachment): AttachmentJson;
+
+// export: toJiraRichText
+export declare function toJiraRichText(client: {
+    readonly isCloudSite: boolean;
+    readonly siteUrl: string;
+}, markdown: string, options?: Omit<MarkdownToAdfOptions, "baseUrl">): AdfDocument | string;
 
 // export: toWorklogWithIssue
 export declare function toWorklogWithIssue(worklog: JiraWorklog, issueKey: string, issueSummary: string): WorklogWithIssue;
