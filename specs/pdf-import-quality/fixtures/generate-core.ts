@@ -486,16 +486,23 @@ export function generateCoreFixtures(): Record<keyof typeof CORE_FIXTURES, Uint8
 }
 
 /** Runtime-only malformed structure probe; intentionally not part of the committed PDF corpus. */
-export function generateUnresolvedStructureKidProbe(): Uint8Array {
+/**
+ * A paragraph whose middle child is unresolved, or with `role: "Table"` a
+ * one-cell table whose row is. With `orphanText`, the page also shows text
+ * that only the unresolved child could own.
+ */
+export function generateUnresolvedStructureKidProbe(options: { orphanText?: boolean; role?: "P" | "Table" } = {}): Uint8Array {
+  const orphan = options.orphanText ? [contentText("P", 2, "Orphan.", 72, 740)] : [];
   return buildDocument({
     title: "Neutral Unresolved Structure Probe",
     tagged: true,
     pages: [{
-      content: [
-        contentText("P", 0, "Neutral", 72, 775),
-        contentText("P", 1, "evidence.", 115, 775),
-      ],
-      structures: [{ role: "P", page: 0, kids: [0, { unresolved: true }, 1] }],
+      content: options.role === "Table"
+        ? [contentText("TD", 0, "Neutral", 72, 775), contentText("TD", 1, "evidence.", 220, 775), ...orphan]
+        : [contentText("P", 0, "Neutral", 72, 775), contentText("P", 1, "evidence.", 115, 775), ...orphan],
+      structures: [options.role === "Table"
+        ? { role: "Table", page: 0, kids: [{ role: "TR", page: 0, kids: [{ role: "TD", page: 0, kids: [0] }, { role: "TD", page: 0, kids: [1] }] }, { unresolved: true }] }
+        : { role: "P", page: 0, kids: [0, { unresolved: true }, 1] }],
     }],
   });
 }
@@ -544,6 +551,41 @@ export function generateMixedContainerProbe(options: { orphanText?: boolean } = 
         contentText("TD", 2, "Busy", 220, 775),
         contentText("P", 0, "Next page paragraph.", 72, 740),
       ],
+    }],
+  });
+}
+
+/**
+ * A tagged paragraph and a tagged table cell, each wrapping the compound
+ * "hand-written" at its hyphen; a third paragraph shows it unbroken.
+ */
+export function generateTaggedCompoundProbe(): Uint8Array {
+  return buildDocument({
+    title: "Neutral Tagged Compound Probe",
+    tagged: true,
+    pages: [{
+      content: [
+        contentText("P", 0, "The form is hand-", 72, 775),
+        contentText("P", 1, "written today.", 72, 761),
+        contentText("TD", 2, "Kind", 72, 720),
+        contentText("TD", 3, "A hand-", 220, 720),
+        contentText("TD", 4, "written card", 220, 706),
+        contentText("TD", 5, "Size", 72, 680),
+        contentText("TD", 6, "Small", 220, 680),
+        contentText("P", 7, "Every hand-written note counts.", 72, 640),
+      ],
+      structures: [{
+        role: "Document",
+        page: 0,
+        kids: [
+          { role: "P", page: 0, kids: [0, 1] },
+          { role: "Table", page: 0, kids: [
+            { role: "TR", page: 0, kids: [{ role: "TD", page: 0, kids: [2] }, { role: "TD", page: 0, kids: [3, 4] }] },
+            { role: "TR", page: 0, kids: [{ role: "TD", page: 0, kids: [5] }, { role: "TD", page: 0, kids: [6] }] },
+          ] },
+          { role: "P", page: 0, kids: [7] },
+        ],
+      }],
     }],
   });
 }

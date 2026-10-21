@@ -200,6 +200,48 @@ Tagged policy V2 `/5`.
   block's `sourceRefs` so issues and overrides can name them. Figure policy
   `/2`.
 
+## Producer-evidence follow-ups (2026-10-21)
+
+Neutral exports from Word for Mac 16.113.4 and LibreOffice 7.1.1.2
+(`fixtures/producers/`) replaced assumptions about how tables meet a page
+break.
+
+- **Split rows.** Both producers draw the frame across a split row. The
+  first row of a continued page is joined to the previous row only when the
+  frame is drawn but open on both sides of the break; a table drawn without
+  outer rules is open on every page and no longer joins rows. Where the frame
+  is drawn across, the rest of the row stays a row of its own and is reported
+  as `pdf-import/table-row-split-unproven`. Table policy V2 `/9`.
+- **Inside rules only.** Word draws one vertical rule fewer than columns; the
+  grid counted columns before implying its open sides and fell back to row
+  rules, losing the first and last row of each page. Fixed.
+- **Untagged headings.** Body size is the size most characters are set in, not
+  most fragments; font sizes of Word's scaled fonts are estimated from glyph
+  heights against all page text, including tables; heading sizes within 1.5%
+  share one level. Before, same-style headings landed on one level each and
+  headings beyond six distinct sizes became paragraphs. Geometry policy V2
+  `/9`.
+- **Filled text boxes.** A rectangle drawn as moveto, four linetos and a close
+  (LibreOffice) is a background like `re`, not a figure that repeats its
+  text. Figure policy `/3`.
+- **Document lexicon everywhere.** The compound lexicon also reaches tagged
+  paragraphs, lists, tagged tables and the legacy untagged grid, and it holds
+  the document's words: a removed hyphen is proven when the joined word
+  appears (basis `document-word`); a removal nothing proves is reported as
+  `pdf-import/text-dehyphenation-unproven` (info, native). Text assembly V2
+  `/10`.
+- **Unresolved children of text elements.** A paragraph or heading with an
+  unresolved child keeps its resolved text; the ownership audit still sends the
+  page to geometry when visible text belongs to no element. Tables, lists and
+  figures stay fail-closed. Tagged policy V2 `/6`.
+- **OCR scans.** A generated scan with an invisible text layer stays a page
+  image; pinned by `producers.test.ts`.
+
+The private documents were re-checked locally and body-free only: no page
+fallback, unresolved boundary, unowned or duplicate character appeared; the
+recovered untagged headings follow the pattern of the author-tagged ones.
+Nothing derived from them is recorded here.
+
 ## PIQ-18
 
 Result: **PASS** for the neutral corpus and the automated DOCSY proof. The

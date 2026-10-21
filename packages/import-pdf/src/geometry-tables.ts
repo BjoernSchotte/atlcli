@@ -94,6 +94,8 @@ export interface PdfGeometryGridV2 {
   fragmentIds: string[];
   /** The top side has no rule: the first row may continue the previous page's last row. */
   openTop?: boolean;
+  /** The bottom side has no rule: the last row may continue on the next page. */
+  openBottom?: boolean;
 }
 
 const P = PDF_GEOMETRY_TABLE_POLICY_V2;
@@ -229,10 +231,10 @@ function ruledGrid(
   const component = lines.some((ruling) => ruling.horizontal) && lines.some((ruling) => !ruling.horizontal) ? lines : connected;
   const xs = clusterCoordinates(component.filter((ruling) => !ruling.horizontal).map((ruling) => ruling.at));
   const ys = clusterCoordinates(component.filter((ruling) => ruling.horizontal).map((ruling) => ruling.at));
-  if (xs.length < 3 && ys.length >= 3) return rowRuledGrid(page, connected, component, ys, fragments);
-  if (xs.length < 3 || ys.length < 3) return null; // at least two columns and two rows
   const open = { left: false, right: false, top: false, bottom: false };
-  if (lines.length === component.length) {
+  // Before counting columns: a table with inside rules only (Word's
+  // "no outer border") draws one vertical line fewer than it has columns.
+  if (lines.length === component.length && xs.length > 0 && ys.length > 0) {
     const sides = {
       left: impliedFrameEdge(component, true, ys, true),
       right: impliedFrameEdge(component, true, ys, false),
@@ -244,6 +246,8 @@ function ruledGrid(
     if (sides.top !== null && ys[0]! - sides.top >= P.minimumBand) { ys.unshift(sides.top); open.top = true; }
     if (sides.bottom !== null && sides.bottom - ys.at(-1)! >= P.minimumBand) { ys.push(sides.bottom); open.bottom = true; }
   }
+  if (xs.length < 3 && ys.length >= 3) return rowRuledGrid(page, connected, component, ys, fragments);
+  if (xs.length < 3 || ys.length < 3) return null; // at least two columns and two rows
   const rows = ys.length - 1;
   const columns = xs.length - 1;
   if (rows > P.maximumRows || columns > P.maximumColumns) return null;
@@ -335,6 +339,7 @@ function ruledGrid(
     pathIds: [...new Set(connected.map((ruling) => ruling.pathId))],
     fragmentIds: inside.map((fragment) => fragment.id),
     ...(open.top ? { openTop: true } : {}),
+    ...(open.bottom ? { openBottom: true } : {}),
   };
 }
 
@@ -535,7 +540,9 @@ export function geometryDecorationPathIdsV2(page: PdfPageFactsV2, grids: readonl
   const ids = new Set(grids.flatMap((grid) => grid.pathIds));
   for (const path of page.paths) {
     const box = path.bbox;
-    if (!box || box.width <= P.rulingThickness || box.height <= P.rulingThickness || path.segmentCount > 5) continue;
+    // A rectangle: `re` is five segments; LibreOffice draws it as a moveto,
+    // four linetos and a close.
+    if (!box || box.width <= P.rulingThickness || box.height <= P.rulingThickness || path.segmentCount > 6) continue;
     const holdsText = page.characters.some((character) =>
       character.bbox && character.value.trim().length > 0 && within(character.bbox, box, 0)
     );
@@ -610,7 +617,7 @@ function repeatedHeaderRows(first: PdfGeometryGridV2, next: PdfGeometryGridV2): 
  */
 export function projectGeometryTableV2(
   parts: readonly PdfGeometryTablePartV2[],
-  hyphenatedCompounds?: ReadonlySet<string>,
+  documentLexicon?: ReadonlySet<string>,
 ): Map<number, PdfTableProjectionV2> {
   const first = parts[0]!;
   const tableId = `pdf:p${first.page.index}:${first.grid.kind}-table-v2:${first.grid.bbox.x.toFixed(6)}:${first.grid.bbox.y.toFixed(6)}`;
@@ -633,14 +640,34 @@ export function projectGeometryTableV2(
   let lastRow = new Map<number, ImportTableRow["cells"][number]>();
   for (const [partIndex, { page, grid }] of parts.entries()) {
     const skip = partIndex === 0 ? 0 : repeatedHeaderRows(first.grid, grid);
-    // Without a top rule and a repeated header, the first row is the rest of
-    // the previous page's last row when both rows have the same simple cells.
-    const splitRow = partIndex > 0 && skip === 0 && grid.openTop === true
-      && grid.cells.filter((cell) => cell.row === 0).every((cell) =>
+    // A table whose frame is drawn but which is open on both sides of the
+    // page break, without a repeated header: the first row is the rest of the
+    // previous page's last row when both rows have the same simple cells. A
+    // table drawn without outer rules is open on every page and proves
+    // nothing; Word and LibreOffice draw the frame across a split row.
+    const firstCells = grid.cells.filter((cell) => cell.row === 0);
+    const sameSimpleCells = partIndex > 0 && skip === 0 && lastRow.size === grid.columnCount
+      && firstCells.every((cell) =>
         cell.rowspan === 1 && cell.colspan === 1 && lastRow.get(cell.column)?.rowspan === undefined
         && lastRow.get(cell.column)?.colspan === undefined
-      )
-      && lastRow.size === grid.columnCount;
+      );
+    const splitRow = sameSimpleCells && grid.openTop === true
+      && first.grid.openTop !== true && parts[partIndex - 1]!.grid.openBottom === true;
+    // Word and LibreOffice draw the frame across a split row, so its rest is
+    // a row of its own whose finished cells are blank: indistinguishable from
+    // a row that leaves cells blank on purpose. Say so instead of guessing.
+    if (sameSimpleCells && !splitRow
+      && firstCells.some((cell) => cell.fragments.length > 0)
+      && firstCells.some((cell) => cell.fragments.length === 0 && (lastRow.get(cell.column)?.blocks.length ?? 0) > 0)) {
+      issues.push({
+        code: "pdf-import/table-row-split-unproven",
+        severity: "warning",
+        outcome: "native",
+        message: "The first row after a page break leaves cells blank that the row before fills; it may be the rest of a row split by the break.",
+        sourceRefs: [tableId],
+        context: { pageIndex: page.index, rowIndex: rows.length },
+      });
+    }
     const rowOffset = rows.length - skip - (splitRow ? 1 : 0);
     for (let row = 0; row < grid.rowCount; row += 1) {
       const repeat = row < skip;
@@ -669,7 +696,7 @@ export function projectGeometryTableV2(
             boundaryDecisionIds: [],
           });
         } else {
-          const assembly = assembleGeometryFragmentsV2(page, `${id}:p${page.index}`, fragments, hyphenatedCompounds);
+          const assembly = assembleGeometryFragmentsV2(page, `${id}:p${page.index}`, fragments, documentLexicon);
           appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
           issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, id));
           const cellOutcome = pdfTextAssemblyOutcomeV2(assembly);
@@ -790,7 +817,7 @@ export function projectUntaggedGeometryTablesV2(
   analyses: readonly PdfReadingOrderPageV2[],
   ignoredFragmentIds: ReadonlySet<string>,
   proposedGrids: readonly PdfGeometryGridV2[] = [],
-  hyphenatedCompounds?: ReadonlySet<string>,
+  documentLexicon?: ReadonlySet<string>,
 ): PdfTableProjectionV2[][] {
   const overlaps = (a: PdfNormalizedRect, b: PdfNormalizedRect) =>
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -832,7 +859,7 @@ export function projectUntaggedGeometryTablesV2(
   }
   const result: PdfTableProjectionV2[][] = pages.map(() => []);
   for (const parts of tables) {
-    const projections = projectGeometryTableV2(parts, hyphenatedCompounds);
+    const projections = projectGeometryTableV2(parts, documentLexicon);
     if ([...projections.values()].some((projection) => projection.mode !== "native")) continue;
     for (const [pageIndex, projection] of projections) result[pageIndex]!.push(projection);
   }

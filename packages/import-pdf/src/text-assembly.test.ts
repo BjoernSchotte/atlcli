@@ -8,8 +8,9 @@ import {
   canonicalizePdfTextSourceFragmentV2,
   digestPdfTextAssemblyV2,
   type PdfTextAssemblyInputV2,
-  pdfHyphenatedCompoundsV2,
+  pdfDocumentLexiconV2,
 } from "./text-assembly.js";
+import { pdfTextAssemblyIssuesV2, pdfTextAssemblyOutcomeV2 } from "./assembly-evidence.js";
 import { createNodePdfiumFactsAdapterV2 } from "./node.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
@@ -281,17 +282,46 @@ describe("PDF V2 text assembly", () => {
         character("\u0002", 3, 0.13, { hyphen: true }),
         ...word("to", 4, 0.1, { run: "pdf:p0:text-run:1", y: 0.15 }),
       ]),
-      ...(compounds ? { hyphenatedCompounds: compounds } : {}),
+      ...(compounds ? { documentLexicon: compounds } : {}),
     });
-    const compounds = pdfHyphenatedCompoundsV2([{ text: "An End-to-end test, a hand-\u0002\r\nwritten note." }]);
+    const compounds = pdfDocumentLexiconV2([{ text: "An End-to-end test, a hand-\u0002\r\nwritten note." }]);
 
-    expect([...compounds].sort()).toEqual(["end-to", "to-end"]);
+    expect(["end-to", "to-end"].every((compound) => compounds.has(compound))).toBe(true);
+    expect(compounds.has("hand-written") || compounds.has("handwritten")).toBe(false);
     expect(wrapped().text).toBe("endto");
     expect(wrapped(compounds).text).toBe("end-to");
     expect(wrapped(compounds).boundaries).toEqual([expect.objectContaining({
       action: "retain-hyphen",
       basis: expect.arrayContaining(["document-compound"]),
     })]);
+  });
+
+  it("proves a removed line-end hyphen by the joined word and reports a removal nothing proves", () => {
+    const wrapped = (lexicon: ReadonlySet<string>) => assemblePdfTextV2({
+      ...input("lowercase-wrap", [
+        ...word("end", 0, 0.1),
+        character("\u0002", 3, 0.13, { hyphen: true }),
+        ...word("less", 4, 0.1, { run: "pdf:p0:text-run:1", y: 0.15 }),
+      ]),
+      documentLexicon: lexicon,
+    });
+    const proven = wrapped(pdfDocumentLexiconV2([{ text: "An endless task." }]));
+    const unproven = wrapped(pdfDocumentLexiconV2([{ text: "A short task." }]));
+
+    expect(proven.text).toBe("endless");
+    expect(proven.boundaries).toEqual([expect.objectContaining({
+      action: "dehyphenate",
+      basis: expect.arrayContaining(["document-word"]),
+    })]);
+    expect(pdfTextAssemblyIssuesV2(proven, 0, "p")).toEqual([]);
+    expect(unproven.text).toBe("endless");
+    expect(pdfTextAssemblyIssuesV2(unproven, 0, "p")).toEqual([expect.objectContaining({
+      code: "pdf-import/text-dehyphenation-unproven",
+      severity: "info",
+      outcome: "native",
+      context: { pageIndex: 0, boundaries: 1 },
+    })]);
+    expect(pdfTextAssemblyOutcomeV2(unproven)).toBe("native");
   });
 
   it("expands only allowlisted presentation ligatures and keeps NFC stable", () => {

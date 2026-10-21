@@ -225,6 +225,7 @@ export function correlateTaggedTextV2(
   page: PdfPageFactsV2,
   node: PdfStructureNodeFactV2,
   markedCharacterIndexes: readonly number[] = [],
+  documentLexicon?: ReadonlySet<string>,
 ): CorrelatedTaggedTextV2 {
   const characters = charactersForOrderedMcidsV2(page, orderedDescendantMcidsV2(node));
   const sourceAssembly = assemblePdfTextV2({
@@ -233,6 +234,7 @@ export function correlateTaggedTextV2(
     orderBasis: "structure-order",
     ...(node.actualText.length > 0 ? { actualText: node.actualText } : {}),
     ...(markedCharacterIndexes.length > 0 ? { markedCharacterIndexes } : {}),
+    ...(documentLexicon ? { documentLexicon } : {}),
   });
   const childCorrelations = node.actualText.length > 0
     ? []
@@ -243,7 +245,7 @@ export function correlateTaggedTextV2(
           const character = page.characters.find((candidate) => candidate.index === index);
           return character?.mcid !== null && character !== undefined && childIndexes.has(character.mcid);
         });
-        const correlated = correlateTaggedTextV2(page, kid.node, childMarked);
+        const correlated = correlateTaggedTextV2(page, kid.node, childMarked, documentLexicon);
         return correlated.usedActualText ? [correlated] : [];
       });
   let assembly = sourceAssembly;

@@ -402,8 +402,8 @@ function tableLocatorV2(
   };
 }
 
-function taggedCellV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2) {
-  const correlated = correlateTaggedTextWithLinksV2(page, node);
+function taggedCellV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, documentLexicon?: ReadonlySet<string>) {
+  const correlated = correlateTaggedTextWithLinksV2(page, node, documentLexicon);
   const linked = taggedRunsV2(correlated.assembly, correlated.characters, page.annotations);
   const rowspan = attributeNumber(node.attributes, "rowspan")!;
   const colspan = attributeNumber(node.attributes, "colspan")!;
@@ -431,12 +431,15 @@ export interface PdfTaggedTablePartV2 {
   page: PdfPageFactsV2;
   table: PdfStructureNodeFactV2;
   corruptMcids: ReadonlySet<number>;
+  /** Lowercase compounds hyphenated inside a line elsewhere in the document. */
+  documentLexicon?: ReadonlySet<string>;
 }
 
 interface TaggedCellViewV2 {
   page: PdfPageFactsV2;
   node: PdfStructureNodeFactV2;
   corruptMcids: ReadonlySet<number>;
+  documentLexicon?: ReadonlySet<string>;
 }
 
 /**
@@ -508,7 +511,7 @@ function collectLogicalRowsV2(
     let repeatIndex = 0;
     for (const node of collected.rows) {
       const cells = structureChildrenV2(node);
-      const view = (cell: PdfStructureNodeFactV2) => ({ page: part.page, node: cell, corruptMcids: part.corruptMcids });
+      const view = (cell: PdfStructureNodeFactV2) => ({ page: part.page, node: cell, corruptMcids: part.corruptMcids, documentLexicon: part.documentLexicon });
       // A producer may tag the header repeated at the top of a continuation
       // page as a new row. It is the same header only when it is header-only,
       // starts the part, and every cell carries identical characters.
@@ -650,6 +653,7 @@ function linearizeTaggedTableV2(
   table: PdfStructureNodeFactV2,
   rows: readonly PdfStructureNodeFactV2[],
   reason: string,
+  documentLexicon?: ReadonlySet<string>,
 ): PdfTableProjectionV2 {
   const blocks: ImportBlock[] = [];
   const evidence: PdfDecisionEvidenceV2[] = [];
@@ -663,7 +667,7 @@ function linearizeTaggedTableV2(
       ["TH", "TD"].includes(structureRoleV2(cell))
     );
     const texts = cells.map((cell) => {
-      const correlated = correlateTaggedTextWithLinksV2(page, cell);
+      const correlated = correlateTaggedTextWithLinksV2(page, cell, documentLexicon);
       appendPdfTextAssemblyV2({ boundaries, transformations }, correlated.assembly);
       issues.push(...pdfTextAssemblyIssuesV2(correlated.assembly, page.index, cell.id));
       correlated.characters.forEach((character) => claimed.add(character.index));
@@ -679,7 +683,7 @@ function linearizeTaggedTableV2(
       sourceRefs: cells.map((cell) => cell.id),
     });
     for (const cell of cells) {
-      const correlated = correlateTaggedTextWithLinksV2(page, cell);
+      const correlated = correlateTaggedTextWithLinksV2(page, cell, documentLexicon);
       const unresolved = correlated.assembly.unresolvedBoundaryCount > 0;
       evidence.push({
         sourceId: cell.id,
@@ -730,9 +734,10 @@ export function projectTaggedTableV2(
   page: PdfPageFactsV2,
   table: PdfStructureNodeFactV2,
   corruptMcids: ReadonlySet<number>,
+  documentLexicon?: ReadonlySet<string>,
 ): PdfTableProjectionV2 {
-  return projectTaggedLogicalTableV2([{ page, table, corruptMcids }])
-    ?? linearizeTaggedTableV2(page, table, collectTaggedTableRowsV2(table).rows, qualifyTaggedTableV2([{ page, table, corruptMcids }]).reason);
+  return projectTaggedLogicalTableV2([{ page, table, corruptMcids, ...(documentLexicon ? { documentLexicon } : {}) }])
+    ?? linearizeTaggedTableV2(page, table, collectTaggedTableRowsV2(table).rows, qualifyTaggedTableV2([{ page, table, corruptMcids }]).reason, documentLexicon);
 }
 
 /** Why page views of one table element do not qualify as one native table. */
@@ -803,7 +808,7 @@ export function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2
         });
         continue;
       }
-      const projectedViews = textViews.map((view) => ({ view, projected: taggedCellV2(view.page, view.node) }));
+      const projectedViews = textViews.map((view) => ({ view, projected: taggedCellV2(view.page, view.node, view.documentLexicon) }));
       const signatures = projectedViews.map(({ projected }) =>
         projected.correlated.characters.map((character) => character.value).join("")
       );
@@ -1204,6 +1209,7 @@ export function analyzeUntaggedTable(
 function nativeUntaggedGridV2(
   page: PdfPageFactsV2,
   analysis: PdfReadingOrderPageV2,
+  documentLexicon?: ReadonlySet<string>,
 ): PdfTableProjectionV2 | null {
   const paths = page.paths.filter((path) =>
     path.segmentCount >= 2
@@ -1307,13 +1313,14 @@ function nativeUntaggedGridV2(
   let tableOutcome: ReturnType<typeof pdfTextAssemblyOutcomeV2> = "native";
   const rows: ImportTableRow[] = cells.map((row, rowIndex) => ({
     cells: row.map((fragments, columnIndex) => {
+      // Physical lines, not raw y: text of one line can sit a hair higher.
       fragments.sort((left, right) =>
-        left.bbox.y - right.bbox.y
+        left.physicalLineIndex - right.physicalLineIndex
         || left.bbox.x - right.bbox.x
         || left.sourceOrder - right.sourceOrder
       );
       const id = `${tableId}:cell:${rowIndex}:${columnIndex}`;
-      const assembly = assembleGeometryFragmentsV2(page, id, fragments);
+      const assembly = assembleGeometryFragmentsV2(page, id, fragments, documentLexicon);
       appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
       issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, id));
       const outcome = pdfTextAssemblyOutcomeV2(assembly);
@@ -1501,8 +1508,9 @@ function linearizedUntaggedCandidateV2(
 export function analyzeUntaggedTableV2(
   page: PdfPageFactsV2,
   analysis: PdfReadingOrderPageV2,
+  documentLexicon?: ReadonlySet<string>,
 ): PdfTableProjectionV2 {
-  return nativeUntaggedGridV2(page, analysis)
+  return nativeUntaggedGridV2(page, analysis, documentLexicon)
     ?? linearizedUntaggedCandidateV2(page, analysis)
     ?? {
       mode: "none",

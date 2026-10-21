@@ -17,7 +17,7 @@ export declare function analyzeGeometryReadingOrderV2(page: PdfPageFactsV2, igno
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
 
 // export: analyzeUntaggedTableV2
-export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2): PdfTableProjectionV2;
+export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2, documentLexicon?: ReadonlySet<string>): PdfTableProjectionV2;
 
 // export: AppliedPdfImportOverridesV1
 export interface AppliedPdfImportOverridesV1 {
@@ -34,7 +34,7 @@ export interface AppliedPdfImportOverridesV1 {
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
 // export: assembleGeometryFragmentsV2
-export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], hyphenatedCompounds?: ReadonlySet<string>): PdfTextAssemblyV2;
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], documentLexicon?: ReadonlySet<string>): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -66,7 +66,7 @@ export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter:
 export declare function buildPdfImportReviewV3(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: PdfImportReviewBuildOptionsV2): Promise<PdfImportReviewV3>;
 
 // export: calibrateGeometryFontSizesV2
-export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
+export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[], sample?: readonly PdfReadingOrderPageV2[]): void;
 
 // export: canonicalizePdfTextSourceFragmentV2
 export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
@@ -111,10 +111,10 @@ export interface CorrelatedTaggedTextV2 {
 export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStructureNodeFact): CorrelatedTaggedText;
 
 // export: correlateTaggedTextV2
-export declare function correlateTaggedTextV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, markedCharacterIndexes?: readonly number[]): CorrelatedTaggedTextV2;
+export declare function correlateTaggedTextV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, markedCharacterIndexes?: readonly number[], documentLexicon?: ReadonlySet<string>): CorrelatedTaggedTextV2;
 
 // export: correlateTaggedTextWithLinksV2
-export declare function correlateTaggedTextWithLinksV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2): CorrelatedTaggedTextV2;
+export declare function correlateTaggedTextWithLinksV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, documentLexicon?: ReadonlySet<string>): CorrelatedTaggedTextV2;
 
 // export: createBrowserPdfiumFactsAdapter
 export declare function createBrowserPdfiumFactsAdapter(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapter;
@@ -279,7 +279,7 @@ export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
 export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 
 // export: PDF_FIGURE_POLICY_REVISION
-export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/2";
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/3";
 
 // export: PDF_FIGURE_POLICY_V1
 export declare const PDF_FIGURE_POLICY_V1: Readonly<{
@@ -301,7 +301,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/8";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/9";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -315,6 +315,7 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
     readonly headingFontRatio: 1.15;
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
+    readonly headingSizeTolerance: 0.015;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
 
@@ -330,6 +331,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly headingFontRatio: 1.15;
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
+    readonly headingSizeTolerance: 0.015;
     readonly maximumHorizontalAngleRadians: 0.12;
     readonly minimumColumnEvidenceWidth: 0.15;
     readonly lineClusterCenterGlyphFactor: 0.7;
@@ -415,7 +417,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/8";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/9";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -445,7 +447,7 @@ export declare const PDF_TABLE_PROPOSAL_RENDER_DPI = 150;
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/5";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/6";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -454,11 +456,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/9";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/10";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/9";
+    readonly revision: "atlcli.pdf-text-assembly-policy/10";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -712,6 +714,11 @@ export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "anal
 // export: PdfDocumentClassification
 export type PdfDocumentClassification = "tagged" | "digital-untagged" | "scan" | "mixed" | "blank" | "encrypted" | "rejected";
 
+// export: pdfDocumentLexiconV2
+export declare function pdfDocumentLexiconV2(pages: readonly {
+    text: string;
+}[]): Set<string>;
+
 // export: PdfEngineCapabilitiesV1
 export interface PdfEngineCapabilitiesV1 {
     textCharacters: true;
@@ -911,6 +918,7 @@ export interface PdfGeometryGridV2 {
     pathIds: string[];
     fragmentIds: string[];
     openTop?: boolean;
+    openBottom?: boolean;
 }
 
 // export: PdfHybridPageOutcomeV2
@@ -948,11 +956,6 @@ export interface PdfHybridSemanticsV2 {
     requiresFallbackPages: number[];
     semanticDigest: string;
 }
-
-// export: pdfHyphenatedCompoundsV2
-export declare function pdfHyphenatedCompoundsV2(pages: readonly {
-    text: string;
-}[]): Set<string>;
 
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
@@ -1491,6 +1494,7 @@ export interface PdfTaggedTablePartV2 {
     page: PdfPageFactsV2;
     table: PdfStructureNodeFactV2;
     corruptMcids: ReadonlySet<number>;
+    documentLexicon?: ReadonlySet<string>;
 }
 
 // export: PdfTaggedTableRowsV2
@@ -1507,7 +1511,7 @@ export interface PdfTextAssemblyInputV2 {
     orderBasis: "structure-order" | "geometry";
     actualText?: string;
     markedCharacterIndexes?: readonly number[];
-    hyphenatedCompounds?: ReadonlySet<string>;
+    documentLexicon?: ReadonlySet<string>;
 }
 
 // export: PdfTextAssemblyIssueV2
@@ -1540,7 +1544,7 @@ export interface PdfTextAssemblyV2 {
 export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
 
 // export: PdfTextBoundaryBasisV2
-export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound";
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound" | "document-word";
 
 // export: PdfTextBoundaryDecisionV2
 export interface PdfTextBoundaryDecisionV2 {
@@ -1655,7 +1659,7 @@ export declare function preservePdfFiguresV2(facts: PdfFactsV2, factsDigest: str
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
 
 // export: projectTaggedListV2
-export declare function projectTaggedListV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): TaggedListProjectionV2;
+export declare function projectTaggedListV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>, documentLexicon?: ReadonlySet<string>): TaggedListProjectionV2;
 
 // export: projectTaggedLogicalTableV2
 export declare function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2[]): PdfTableProjectionV2 | null;
@@ -1664,7 +1668,7 @@ export declare function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTab
 export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): PdfTableProjectionV1;
 
 // export: projectTaggedTableV2
-export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): PdfTableProjectionV2;
+export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>, documentLexicon?: ReadonlySet<string>): PdfTableProjectionV2;
 
 // export: proposeUntaggedTablesV2
 export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, facts: PdfFactsV2, proposer: PdfTableStructureProposerV1): Promise<PdfTableProposalOutcomeV1>;
@@ -1781,7 +1785,7 @@ export declare function analyzeGeometryReadingOrderV2(page: PdfPageFactsV2, igno
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
 
 // export: analyzeUntaggedTableV2
-export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2): PdfTableProjectionV2;
+export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2, documentLexicon?: ReadonlySet<string>): PdfTableProjectionV2;
 
 // export: AppliedPdfImportOverridesV1
 export interface AppliedPdfImportOverridesV1 {
@@ -1801,7 +1805,7 @@ export declare function applyPdfFallbackPresentation(document: ImportDocumentV2,
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
 // export: assembleGeometryFragmentsV2
-export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], hyphenatedCompounds?: ReadonlySet<string>): PdfTextAssemblyV2;
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], documentLexicon?: ReadonlySet<string>): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -1836,7 +1840,7 @@ export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter:
 export declare function buildPdfImportReviewV3(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: PdfImportReviewBuildOptionsV2): Promise<PdfImportReviewV3>;
 
 // export: calibrateGeometryFontSizesV2
-export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
+export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[], sample?: readonly PdfReadingOrderPageV2[]): void;
 
 // export: canonicalizePdfTextSourceFragmentV2
 export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
@@ -1881,10 +1885,10 @@ export interface CorrelatedTaggedTextV2 {
 export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStructureNodeFact): CorrelatedTaggedText;
 
 // export: correlateTaggedTextV2
-export declare function correlateTaggedTextV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, markedCharacterIndexes?: readonly number[]): CorrelatedTaggedTextV2;
+export declare function correlateTaggedTextV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, markedCharacterIndexes?: readonly number[], documentLexicon?: ReadonlySet<string>): CorrelatedTaggedTextV2;
 
 // export: correlateTaggedTextWithLinksV2
-export declare function correlateTaggedTextWithLinksV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2): CorrelatedTaggedTextV2;
+export declare function correlateTaggedTextWithLinksV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, documentLexicon?: ReadonlySet<string>): CorrelatedTaggedTextV2;
 
 // export: createPdfiumFactsAdapter
 export declare function createPdfiumFactsAdapter(config: PdfiumAdapterConfig): PdfiumFactsAdapter;
@@ -2079,7 +2083,7 @@ export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 export declare const PDF_FALLBACK_PRESENTATION_REVISION: "atlcli.pdf-fallback-presentation/1";
 
 // export: PDF_FIGURE_POLICY_REVISION
-export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/2";
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/3";
 
 // export: PDF_FIGURE_POLICY_V1
 export declare const PDF_FIGURE_POLICY_V1: Readonly<{
@@ -2101,7 +2105,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/8";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/9";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -2115,6 +2119,7 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
     readonly headingFontRatio: 1.15;
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
+    readonly headingSizeTolerance: 0.015;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
 
@@ -2130,6 +2135,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly headingFontRatio: 1.15;
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
+    readonly headingSizeTolerance: 0.015;
     readonly maximumHorizontalAngleRadians: 0.12;
     readonly minimumColumnEvidenceWidth: 0.15;
     readonly lineClusterCenterGlyphFactor: 0.7;
@@ -2215,7 +2221,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/8";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/9";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -2245,7 +2251,7 @@ export declare const PDF_TABLE_PROPOSAL_RENDER_DPI = 150;
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/5";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/6";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -2254,11 +2260,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/9";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/10";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/9";
+    readonly revision: "atlcli.pdf-text-assembly-policy/10";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -2521,6 +2527,11 @@ export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "anal
 // export: PdfDocumentClassification
 export type PdfDocumentClassification = "tagged" | "digital-untagged" | "scan" | "mixed" | "blank" | "encrypted" | "rejected";
 
+// export: pdfDocumentLexiconV2
+export declare function pdfDocumentLexiconV2(pages: readonly {
+    text: string;
+}[]): Set<string>;
+
 // export: PdfEngineCapabilitiesV1
 export interface PdfEngineCapabilitiesV1 {
     textCharacters: true;
@@ -2739,6 +2750,7 @@ export interface PdfGeometryGridV2 {
     pathIds: string[];
     fragmentIds: string[];
     openTop?: boolean;
+    openBottom?: boolean;
 }
 
 // export: PdfHybridPageOutcomeV2
@@ -2776,11 +2788,6 @@ export interface PdfHybridSemanticsV2 {
     requiresFallbackPages: number[];
     semanticDigest: string;
 }
-
-// export: pdfHyphenatedCompoundsV2
-export declare function pdfHyphenatedCompoundsV2(pages: readonly {
-    text: string;
-}[]): Set<string>;
 
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
@@ -3329,6 +3336,7 @@ export interface PdfTaggedTablePartV2 {
     page: PdfPageFactsV2;
     table: PdfStructureNodeFactV2;
     corruptMcids: ReadonlySet<number>;
+    documentLexicon?: ReadonlySet<string>;
 }
 
 // export: PdfTaggedTableRowsV2
@@ -3345,7 +3353,7 @@ export interface PdfTextAssemblyInputV2 {
     orderBasis: "structure-order" | "geometry";
     actualText?: string;
     markedCharacterIndexes?: readonly number[];
-    hyphenatedCompounds?: ReadonlySet<string>;
+    documentLexicon?: ReadonlySet<string>;
 }
 
 // export: PdfTextAssemblyIssueV2
@@ -3378,7 +3386,7 @@ export interface PdfTextAssemblyV2 {
 export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
 
 // export: PdfTextBoundaryBasisV2
-export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound";
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound" | "document-word";
 
 // export: PdfTextBoundaryDecisionV2
 export interface PdfTextBoundaryDecisionV2 {
@@ -3499,7 +3507,7 @@ export declare function preservePdfFiguresV2(facts: PdfFactsV2, factsDigest: str
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
 
 // export: projectTaggedListV2
-export declare function projectTaggedListV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): TaggedListProjectionV2;
+export declare function projectTaggedListV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>, documentLexicon?: ReadonlySet<string>): TaggedListProjectionV2;
 
 // export: projectTaggedLogicalTableV2
 export declare function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2[]): PdfTableProjectionV2 | null;
@@ -3508,7 +3516,7 @@ export declare function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTab
 export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): PdfTableProjectionV1;
 
 // export: projectTaggedTableV2
-export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): PdfTableProjectionV2;
+export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>, documentLexicon?: ReadonlySet<string>): PdfTableProjectionV2;
 
 // export: proposeUntaggedTablesV2
 export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, facts: PdfFactsV2, proposer: PdfTableStructureProposerV1): Promise<PdfTableProposalOutcomeV1>;
@@ -3625,7 +3633,7 @@ export declare function analyzeGeometryReadingOrderV2(page: PdfPageFactsV2, igno
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
 
 // export: analyzeUntaggedTableV2
-export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2): PdfTableProjectionV2;
+export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2, documentLexicon?: ReadonlySet<string>): PdfTableProjectionV2;
 
 // export: AppliedPdfImportOverridesV1
 export interface AppliedPdfImportOverridesV1 {
@@ -3642,7 +3650,7 @@ export interface AppliedPdfImportOverridesV1 {
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
 // export: assembleGeometryFragmentsV2
-export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], hyphenatedCompounds?: ReadonlySet<string>): PdfTextAssemblyV2;
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], documentLexicon?: ReadonlySet<string>): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -3674,7 +3682,7 @@ export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter:
 export declare function buildPdfImportReviewV3(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: PdfImportReviewBuildOptionsV2): Promise<PdfImportReviewV3>;
 
 // export: calibrateGeometryFontSizesV2
-export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
+export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[], sample?: readonly PdfReadingOrderPageV2[]): void;
 
 // export: canonicalizePdfTextSourceFragmentV2
 export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
@@ -3719,10 +3727,10 @@ export interface CorrelatedTaggedTextV2 {
 export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStructureNodeFact): CorrelatedTaggedText;
 
 // export: correlateTaggedTextV2
-export declare function correlateTaggedTextV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, markedCharacterIndexes?: readonly number[]): CorrelatedTaggedTextV2;
+export declare function correlateTaggedTextV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, markedCharacterIndexes?: readonly number[], documentLexicon?: ReadonlySet<string>): CorrelatedTaggedTextV2;
 
 // export: correlateTaggedTextWithLinksV2
-export declare function correlateTaggedTextWithLinksV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2): CorrelatedTaggedTextV2;
+export declare function correlateTaggedTextWithLinksV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, documentLexicon?: ReadonlySet<string>): CorrelatedTaggedTextV2;
 
 // export: createBrowserPdfiumFactsAdapter
 export declare function createBrowserPdfiumFactsAdapter(config: PdfiumAdapterConfig): import("../contracts.js").PdfFactsAdapter;
@@ -3887,7 +3895,7 @@ export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
 export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 
 // export: PDF_FIGURE_POLICY_REVISION
-export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/2";
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/3";
 
 // export: PDF_FIGURE_POLICY_V1
 export declare const PDF_FIGURE_POLICY_V1: Readonly<{
@@ -3909,7 +3917,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/8";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/9";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -3923,6 +3931,7 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
     readonly headingFontRatio: 1.15;
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
+    readonly headingSizeTolerance: 0.015;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
 
@@ -3938,6 +3947,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly headingFontRatio: 1.15;
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
+    readonly headingSizeTolerance: 0.015;
     readonly maximumHorizontalAngleRadians: 0.12;
     readonly minimumColumnEvidenceWidth: 0.15;
     readonly lineClusterCenterGlyphFactor: 0.7;
@@ -4023,7 +4033,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/8";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/9";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -4053,7 +4063,7 @@ export declare const PDF_TABLE_PROPOSAL_RENDER_DPI = 150;
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/5";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/6";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -4062,11 +4072,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/9";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/10";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/9";
+    readonly revision: "atlcli.pdf-text-assembly-policy/10";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -4320,6 +4330,11 @@ export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "anal
 // export: PdfDocumentClassification
 export type PdfDocumentClassification = "tagged" | "digital-untagged" | "scan" | "mixed" | "blank" | "encrypted" | "rejected";
 
+// export: pdfDocumentLexiconV2
+export declare function pdfDocumentLexiconV2(pages: readonly {
+    text: string;
+}[]): Set<string>;
+
 // export: PdfEngineCapabilitiesV1
 export interface PdfEngineCapabilitiesV1 {
     textCharacters: true;
@@ -4519,6 +4534,7 @@ export interface PdfGeometryGridV2 {
     pathIds: string[];
     fragmentIds: string[];
     openTop?: boolean;
+    openBottom?: boolean;
 }
 
 // export: PdfHybridPageOutcomeV2
@@ -4556,11 +4572,6 @@ export interface PdfHybridSemanticsV2 {
     requiresFallbackPages: number[];
     semanticDigest: string;
 }
-
-// export: pdfHyphenatedCompoundsV2
-export declare function pdfHyphenatedCompoundsV2(pages: readonly {
-    text: string;
-}[]): Set<string>;
 
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
@@ -5099,6 +5110,7 @@ export interface PdfTaggedTablePartV2 {
     page: PdfPageFactsV2;
     table: PdfStructureNodeFactV2;
     corruptMcids: ReadonlySet<number>;
+    documentLexicon?: ReadonlySet<string>;
 }
 
 // export: PdfTaggedTableRowsV2
@@ -5115,7 +5127,7 @@ export interface PdfTextAssemblyInputV2 {
     orderBasis: "structure-order" | "geometry";
     actualText?: string;
     markedCharacterIndexes?: readonly number[];
-    hyphenatedCompounds?: ReadonlySet<string>;
+    documentLexicon?: ReadonlySet<string>;
 }
 
 // export: PdfTextAssemblyIssueV2
@@ -5148,7 +5160,7 @@ export interface PdfTextAssemblyV2 {
 export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
 
 // export: PdfTextBoundaryBasisV2
-export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound";
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound" | "document-word";
 
 // export: PdfTextBoundaryDecisionV2
 export interface PdfTextBoundaryDecisionV2 {
@@ -5263,7 +5275,7 @@ export declare function preservePdfFiguresV2(facts: PdfFactsV2, factsDigest: str
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
 
 // export: projectTaggedListV2
-export declare function projectTaggedListV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): TaggedListProjectionV2;
+export declare function projectTaggedListV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>, documentLexicon?: ReadonlySet<string>): TaggedListProjectionV2;
 
 // export: projectTaggedLogicalTableV2
 export declare function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2[]): PdfTableProjectionV2 | null;
@@ -5272,7 +5284,7 @@ export declare function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTab
 export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): PdfTableProjectionV1;
 
 // export: projectTaggedTableV2
-export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): PdfTableProjectionV2;
+export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>, documentLexicon?: ReadonlySet<string>): PdfTableProjectionV2;
 
 // export: proposeUntaggedTablesV2
 export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, facts: PdfFactsV2, proposer: PdfTableStructureProposerV1): Promise<PdfTableProposalOutcomeV1>;
@@ -5389,7 +5401,7 @@ export declare function analyzeGeometryReadingOrderV2(page: PdfPageFactsV2, igno
 export declare function analyzeUntaggedTable(page: PdfPageFactsV1, analysis: PdfReadingOrderPageV1): PdfTableProjectionV1;
 
 // export: analyzeUntaggedTableV2
-export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2): PdfTableProjectionV2;
+export declare function analyzeUntaggedTableV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2, documentLexicon?: ReadonlySet<string>): PdfTableProjectionV2;
 
 // export: AppliedPdfImportOverridesV1
 export interface AppliedPdfImportOverridesV1 {
@@ -5409,7 +5421,7 @@ export declare function applyPdfFallbackPresentation(document: ImportDocumentV2,
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
 // export: assembleGeometryFragmentsV2
-export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], hyphenatedCompounds?: ReadonlySet<string>): PdfTextAssemblyV2;
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], documentLexicon?: ReadonlySet<string>): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -5444,7 +5456,7 @@ export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter:
 export declare function buildPdfImportReviewV3(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: PdfImportReviewBuildOptionsV2): Promise<PdfImportReviewV3>;
 
 // export: calibrateGeometryFontSizesV2
-export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void;
+export declare function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[], sample?: readonly PdfReadingOrderPageV2[]): void;
 
 // export: canonicalizePdfTextSourceFragmentV2
 export declare function canonicalizePdfTextSourceFragmentV2(value: string): string;
@@ -5489,10 +5501,10 @@ export interface CorrelatedTaggedTextV2 {
 export declare function correlateTaggedText(page: PdfPageFactsV1, node: PdfStructureNodeFact): CorrelatedTaggedText;
 
 // export: correlateTaggedTextV2
-export declare function correlateTaggedTextV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, markedCharacterIndexes?: readonly number[]): CorrelatedTaggedTextV2;
+export declare function correlateTaggedTextV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, markedCharacterIndexes?: readonly number[], documentLexicon?: ReadonlySet<string>): CorrelatedTaggedTextV2;
 
 // export: correlateTaggedTextWithLinksV2
-export declare function correlateTaggedTextWithLinksV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2): CorrelatedTaggedTextV2;
+export declare function correlateTaggedTextWithLinksV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, documentLexicon?: ReadonlySet<string>): CorrelatedTaggedTextV2;
 
 // export: createNodePdfiumFactsAdapter
 export declare function createNodePdfiumFactsAdapter(): Promise<PdfiumFactsAdapter>;
@@ -5696,7 +5708,7 @@ export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 export declare const PDF_FALLBACK_PRESENTATION_REVISION: "atlcli.pdf-fallback-presentation/1";
 
 // export: PDF_FIGURE_POLICY_REVISION
-export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/2";
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/3";
 
 // export: PDF_FIGURE_POLICY_V1
 export declare const PDF_FIGURE_POLICY_V1: Readonly<{
@@ -5718,7 +5730,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/8";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/9";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -5732,6 +5744,7 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
     readonly headingFontRatio: 1.15;
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
+    readonly headingSizeTolerance: 0.015;
     readonly maximumHorizontalAngleRadians: 0.12;
 }>;
 
@@ -5747,6 +5760,7 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly headingFontRatio: 1.15;
     readonly headingFontDeltaPoints: 1.5;
     readonly maximumHeadingLength: 120;
+    readonly headingSizeTolerance: 0.015;
     readonly maximumHorizontalAngleRadians: 0.12;
     readonly minimumColumnEvidenceWidth: 0.15;
     readonly lineClusterCenterGlyphFactor: 0.7;
@@ -5832,7 +5846,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/8";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/9";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -5862,7 +5876,7 @@ export declare const PDF_TABLE_PROPOSAL_RENDER_DPI = 150;
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/5";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/6";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -5871,11 +5885,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/9";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/10";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/9";
+    readonly revision: "atlcli.pdf-text-assembly-policy/10";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -6138,6 +6152,11 @@ export interface PdfDecisionEvidenceV2 extends Omit<PdfDecisionEvidenceV1, "anal
 // export: PdfDocumentClassification
 export type PdfDocumentClassification = "tagged" | "digital-untagged" | "scan" | "mixed" | "blank" | "encrypted" | "rejected";
 
+// export: pdfDocumentLexiconV2
+export declare function pdfDocumentLexiconV2(pages: readonly {
+    text: string;
+}[]): Set<string>;
+
 // export: PdfEngineCapabilitiesV1
 export interface PdfEngineCapabilitiesV1 {
     textCharacters: true;
@@ -6356,6 +6375,7 @@ export interface PdfGeometryGridV2 {
     pathIds: string[];
     fragmentIds: string[];
     openTop?: boolean;
+    openBottom?: boolean;
 }
 
 // export: PdfHybridPageOutcomeV2
@@ -6393,11 +6413,6 @@ export interface PdfHybridSemanticsV2 {
     requiresFallbackPages: number[];
     semanticDigest: string;
 }
-
-// export: pdfHyphenatedCompoundsV2
-export declare function pdfHyphenatedCompoundsV2(pages: readonly {
-    text: string;
-}[]): Set<string>;
 
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
@@ -6946,6 +6961,7 @@ export interface PdfTaggedTablePartV2 {
     page: PdfPageFactsV2;
     table: PdfStructureNodeFactV2;
     corruptMcids: ReadonlySet<number>;
+    documentLexicon?: ReadonlySet<string>;
 }
 
 // export: PdfTaggedTableRowsV2
@@ -6962,7 +6978,7 @@ export interface PdfTextAssemblyInputV2 {
     orderBasis: "structure-order" | "geometry";
     actualText?: string;
     markedCharacterIndexes?: readonly number[];
-    hyphenatedCompounds?: ReadonlySet<string>;
+    documentLexicon?: ReadonlySet<string>;
 }
 
 // export: PdfTextAssemblyIssueV2
@@ -6995,7 +7011,7 @@ export interface PdfTextAssemblyV2 {
 export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
 
 // export: PdfTextBoundaryBasisV2
-export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound";
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound" | "document-word";
 
 // export: PdfTextBoundaryDecisionV2
 export interface PdfTextBoundaryDecisionV2 {
@@ -7116,7 +7132,7 @@ export declare function preservePdfFiguresV2(facts: PdfFactsV2, factsDigest: str
 export declare function projectTaggedList(page: PdfPageFactsV1, node: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): TaggedListProjection;
 
 // export: projectTaggedListV2
-export declare function projectTaggedListV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): TaggedListProjectionV2;
+export declare function projectTaggedListV2(page: PdfPageFactsV2, node: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>, documentLexicon?: ReadonlySet<string>): TaggedListProjectionV2;
 
 // export: projectTaggedLogicalTableV2
 export declare function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTablePartV2[]): PdfTableProjectionV2 | null;
@@ -7125,7 +7141,7 @@ export declare function projectTaggedLogicalTableV2(parts: readonly PdfTaggedTab
 export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStructureNodeFact, corruptMcids: ReadonlySet<number>): PdfTableProjectionV1;
 
 // export: projectTaggedTableV2
-export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): PdfTableProjectionV2;
+export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>, documentLexicon?: ReadonlySet<string>): PdfTableProjectionV2;
 
 // export: proposeUntaggedTablesV2
 export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, facts: PdfFactsV2, proposer: PdfTableStructureProposerV1): Promise<PdfTableProposalOutcomeV1>;

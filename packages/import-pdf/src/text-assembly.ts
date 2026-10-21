@@ -3,7 +3,7 @@ import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
-  "atlcli.pdf-text-assembly-policy/9" as const;
+  "atlcli.pdf-text-assembly-policy/10" as const;
 
 const PRESENTATION_LIGATURES = Object.freeze({
   "\ufb00": "ff",
@@ -76,7 +76,9 @@ export type PdfTextBoundaryBasisV2 =
   /** The block encodes word spaces as literal glyphs and none were generated. */
   | "whitespace-convention"
   /** The same hyphenated compound appears inside a line elsewhere in the document. */
-  | "document-compound";
+  | "document-compound"
+  /** The joined word appears unbroken elsewhere in the document. */
+  | "document-word";
 
 export interface PdfTextBoundaryDecisionV2 {
   id: string;
@@ -108,23 +110,25 @@ export interface PdfTextAssemblyInputV2 {
   actualText?: string;
   /** Source characters carrying a mark such as a link. */
   markedCharacterIndexes?: readonly number[];
-  /** Lowercase `left-right` compounds hyphenated inside a line elsewhere in the document. */
-  hyphenatedCompounds?: ReadonlySet<string>;
+  /** The document's lowercase words and `left-right` compounds seen inside a line, from `pdfDocumentLexiconV2`. */
+  documentLexicon?: ReadonlySet<string>;
 }
 
 /**
- * Every `left-right` word pair joined by a hyphen inside a line, lowercased.
- * A line-end hyphen before a lowercase word is a hard hyphen only when the
- * document shows the same compound unbroken.
+ * Every word and every `left-right` word pair joined by a hyphen inside a
+ * line, lowercased. A line-end hyphen before a lowercase word is a hard
+ * hyphen when the document shows the compound unbroken, and a split syllable
+ * when it shows the joined word.
  */
-export function pdfHyphenatedCompoundsV2(pages: readonly { text: string }[]): Set<string> {
-  const compounds = new Set<string>();
+export function pdfDocumentLexiconV2(pages: readonly { text: string }[]): Set<string> {
+  const lexicon = new Set<string>();
   for (const page of pages) {
     for (const match of page.text.matchAll(/([\p{L}\p{M}]+)[-\u2010](?=([\p{L}\p{M}]+))/gu)) {
-      compounds.add(`${match[1]}-${match[2]}`.toLowerCase());
+      lexicon.add(`${match[1]}-${match[2]}`.toLowerCase());
     }
+    for (const [word] of page.text.matchAll(/[\p{L}\p{M}]+/gu)) lexicon.add(word.toLowerCase());
   }
-  return compounds;
+  return lexicon;
 }
 
 export interface PdfTextAssemblyV2 {
@@ -537,9 +541,9 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
         }
       } else if (generatedHyphens.length > 0) {
         const capital = /^\p{Lu}/u.test(anchor.value);
-        const knownCompound = !capital && input.hyphenatedCompounds?.has(
-          `${wordFrom(anchorIndex - 1, -1)}-${wordFrom(anchorIndex, 1)}`.toLowerCase(),
-        ) === true;
+        const [left, right] = [wordFrom(anchorIndex - 1, -1), wordFrom(anchorIndex, 1)];
+        const knownCompound = !capital && input.documentLexicon?.has(`${left}-${right}`.toLowerCase()) === true;
+        const knownWord = input.documentLexicon?.has(`${left}${right}`.toLowerCase()) === true;
         if (wordPair && scriptMatch && relation.sameLine === false && (capital || knownCompound)) {
           // PDFium flags any hyphen at a line end (some producers give it no
           // Unicode, U+0002). A capital after the wrap continues a compound
@@ -569,6 +573,7 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
               ...(orderedBasis ? ["structure-order" as const] : []),
               "baseline",
               "script",
+              ...(knownWord ? ["document-word" as const] : []),
             ],
             PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.dehyphenated,
           );

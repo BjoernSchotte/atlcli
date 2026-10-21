@@ -19,6 +19,8 @@ export const PDF_GEOMETRY_POLICY_V1 = Object.freeze({
   headingFontRatio: 1.15,
   headingFontDeltaPoints: 1.5,
   maximumHeadingLength: 120,
+  /** Heading sizes within this fraction of a larger one share its level. */
+  headingSizeTolerance: 0.015,
   maximumHorizontalAngleRadians: 0.12,
 } as const);
 
@@ -687,7 +689,7 @@ export function assembleGeometryFragmentsV2(
   page: PdfPageFactsV2,
   sourceId: string,
   fragments: readonly PdfGeometryFragmentV2[],
-  hyphenatedCompounds?: ReadonlySet<string>,
+  documentLexicon?: ReadonlySet<string>,
 ): PdfTextAssemblyV2 {
   const characters: PdfTextCharacterFactV2[] = [];
   const seen = new Set<number>();
@@ -704,32 +706,46 @@ export function assembleGeometryFragmentsV2(
       characters.push(character);
     }
   }
-  return assemblePdfTextV2({ sourceId, characters, orderBasis: "geometry", hyphenatedCompounds });
+  return assemblePdfTextV2({ sourceId, characters, orderBasis: "geometry", documentLexicon });
 }
 
+/**
+ * The size most characters are set in. Counting fragments instead let a page
+ * whose body text sits in tables take its few short headings for body text.
+ */
 export function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number {
   return median(pages.flatMap((page) => page.ordered
-    .map((fragment) => fragment.fontSizePoints)
-    .filter((size) => size > 0)));
+    .filter((fragment) => fragment.fontSizePoints > 0)
+    .flatMap((fragment) => Array<number>(fragment.text.replace(/\s/gu, "").length).fill(fragment.fontSizePoints))));
 }
 
-export function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPageV2[]): void {
+/**
+ * Estimates the size of fragments whose font reports none (Word scales a
+ * one-point font): glyph heights against the same glyph's median height.
+ * `sample` supplies those medians, so a page whose text sits mostly in
+ * tables still measures its remaining text against all of it.
+ */
+export function calibrateGeometryFontSizesV2(
+  pages: readonly PdfReadingOrderPageV2[],
+  sample: readonly PdfReadingOrderPageV2[] = pages,
+): void {
   const fragments = pages.flatMap((page) => page.ordered);
-  const reportedSizes = fragments.map((fragment) => fragment.fontSizePoints)
+  const sampleFragments = sample.flatMap((page) => page.ordered);
+  const reportedSizes = sampleFragments.map((fragment) => fragment.fontSizePoints)
     .filter((size) => size > 1);
   const referenceSize = median(reportedSizes) || 10;
   const samples = new Map<string, Array<{ fragmentId: string; width: number }>>();
-  for (const fragment of fragments) {
+  for (const fragment of sampleFragments) {
     for (const character of fragment.characters) {
       const key = character.value.normalize("NFC").toLocaleLowerCase("und");
       if (
         character.generated
         || !character.bbox
-        || character.bbox.width <= 0
+        || character.bbox.height <= 0
         || !/^[\p{L}\p{N}]$/u.test(key)
       ) continue;
       const values = samples.get(key) ?? [];
-      values.push({ fragmentId: fragment.id, width: character.bbox.width });
+      values.push({ fragmentId: fragment.id, width: character.bbox.height });
       samples.set(key, values);
     }
   }
@@ -743,8 +759,8 @@ export function calibrateGeometryFontSizesV2(pages: readonly PdfReadingOrderPage
     const ratios = fragment.characters.flatMap((character) => {
       const key = character.value.normalize("NFC").toLocaleLowerCase("und");
       const baseline = baselines.get(key);
-      return character.bbox && character.bbox.width > 0 && baseline && baseline > 0
-        ? [character.bbox.width / baseline]
+      return character.bbox && character.bbox.height > 0 && baseline && baseline > 0
+        ? [character.bbox.height / baseline]
         : [];
     });
     fragment.fontSizePoints = ratios.length >= 5 ? referenceSize * median(ratios) : referenceSize;

@@ -408,21 +408,22 @@ const tableTexts = (table: ReturnType<typeof tables>[number]) => table.type === 
 
 /**
  * A Word-style table without outer side borders: full-width row rules from
- * x 60 to 460 and column rules at 160, 260, 360 between `top` and `bottom`.
+ * x 60 to 460 and column rules between the columns, from `top` to `bottom`.
  * Rows are 24 points high; `rows` hold the cell texts, top row first.
  */
-function openSidedTable(rows: string[][], top: number, rules: { topRule: boolean; verticalTop?: number }) {
+function openSidedTable(rows: string[][], top: number, rules: { topRule: boolean; bottomRule?: boolean; verticalTop?: number }) {
   const bottom = top - rows.length * 24;
   const ys = Array.from({ length: rows.length + 1 }, (_, index) => top - index * 24)
-    .filter((y, index) => index > 0 || rules.topRule);
+    .filter((y, index) => (index > 0 || rules.topRule) && (index < rows.length || rules.bottomRule !== false));
   const verticalTop = rules.verticalTop ?? top;
+  const width = 400 / rows[0]!.length;
   return {
     rects: [
       ...ys.map((y) => [60, y, 400, 0.5] as [number, number, number, number]),
-      ...[160, 260, 360].map((x) => [x, bottom, 0.5, verticalTop - bottom] as [number, number, number, number]),
+      ...rows[0]!.slice(1).map((_, index) => [60 + (index + 1) * width, bottom, 0.5, verticalTop - bottom] as [number, number, number, number]),
     ],
     texts: rows.flatMap((cells, row) => cells.flatMap((text, column) =>
-      text ? [[text, 66 + column * 100, top - row * 24 - 16] as [string, number, number]] : []
+      text ? [[text, 66 + column * width, top - row * 24 - 16] as [string, number, number]] : []
     )),
   };
 }
@@ -443,10 +444,25 @@ describe("open-sided and continued ruled tables", () => {
     ]]);
   });
 
+  it("reads the outer rows of a three-column table drawn with inside rules only", async () => {
+    // Regression: two drawn column rules counted as one column too few, so
+    // the grid fell back to its row rules and lost the first and last rows.
+    const result = await normalizePdf(pagesPdf([openSidedTable([
+      ["Item", "Owner", "Due"],
+      ["Alpha", "North", "May"],
+      ["Beta", "South", "June"],
+      ["Gamma", "East", "July"],
+    ], 700, { topRule: false, bottomRule: false })]));
+
+    expect(result.requiresFallbackPages).toEqual([]);
+    expect(tables(result).map(tableTexts)).toEqual([[["Item", "Owner", "Due"], ["Alpha", "North", "May"], ["Beta", "South", "June"], ["Gamma", "East", "July"]]]);
+  });
+
   it("continues a row split by a page break in the same cells", async () => {
     // Regression: the continued page has no top rule, so its grid was not
-    // closed, and the rest of the split row became a row of its own.
-    const first = openSidedTable([["Item", "Owner", "Due", "State"], ["Alpha", "North", "May", "Open"]], 120, { topRule: true });
+    // closed, and the rest of the split row became a row of its own. The
+    // frame is drawn but left open on both sides of the break.
+    const first = openSidedTable([["Item", "Owner", "Due", "State"], ["Alpha", "North", "May", "Open"]], 120, { topRule: true, bottomRule: false });
     const next = openSidedTable([["", "region", "", ""], ["Beta", "South", "June", "Done"], ["Gamma", "East", "July", "Open"]], 790, { topRule: false, verticalTop: 814 });
     const result = await normalizePdf(pagesPdf([first, next]));
 
@@ -456,6 +472,40 @@ describe("open-sided and continued ruled tables", () => {
       ["Alpha", "North region", "May", "Open"],
       ["Beta", "South", "June", "Done"],
       ["Gamma", "East", "July", "Open"],
+    ]]);
+  });
+
+  it("keeps a row after a break that closes the previous frame and says it may be split", async () => {
+    // Word and LibreOffice draw the frame across a split row: the rest is a
+    // row of its own, indistinguishable from a row left partly blank.
+    const first = openSidedTable([["Item", "Owner", "Due", "State"], ["Alpha", "North", "May", "Open"]], 120, { topRule: true });
+    const next = openSidedTable([["", "region", "", ""], ["Beta", "South", "June", "Done"]], 790, { topRule: false, verticalTop: 814 });
+    const result = await normalizePdf(pagesPdf([first, next]));
+
+    expect(tables(result).map(tableTexts)).toEqual([[
+      ["Item", "Owner", "Due", "State"],
+      ["Alpha", "North", "May", "Open"],
+      ["", "region", "", ""],
+      ["Beta", "South", "June", "Done"],
+    ]]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/table-row-split-unproven",
+      context: { pageIndex: 1, rowIndex: 2 },
+    }));
+  });
+
+  it("does not join rows across a break of a table drawn without outer rules", async () => {
+    // Regression: such a table is open on every page, so every continued
+    // page's first row was taken for the rest of the previous page's last.
+    const first = openSidedTable([["Item", "Owner", "Due"], ["Alpha", "North", "May"]], 120, { topRule: false, bottomRule: false });
+    const next = openSidedTable([["Beta", "South", "June"], ["Gamma", "East", "July"]], 790, { topRule: false, bottomRule: false });
+    const result = await normalizePdf(pagesPdf([first, next]));
+
+    expect(tables(result).map(tableTexts)).toEqual([[
+      ["Item", "Owner", "Due"],
+      ["Alpha", "North", "May"],
+      ["Beta", "South", "June"],
+      ["Gamma", "East", "July"],
     ]]);
   });
 

@@ -41,20 +41,21 @@ export function untaggedInventoryRow(index: number): [string, string, string] {
   return [`Item ${index}`, index === UNTAGGED_BLANK_ROW ? "" : `${index * 3}`, `Remark ${index}, checked.`];
 }
 
-const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+export const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+export const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const xml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-const run = (text: string, bold = false) =>
+export const run = (text: string, bold = false) =>
   `<w:r>${bold ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t xml:space="preserve">${xml(text)}</w:t></w:r>`;
-const paragraph = (text: string, properties = "") => `<w:p>${properties ? `<w:pPr>${properties}</w:pPr>` : ""}${text ? run(text) : ""}</w:p>`;
-const heading = (text: string, level: 1 | 2) => paragraph(text, `<w:pStyle w:val="Heading${level}"/>`);
+export const paragraph = (text: string, properties = "") => `<w:p>${properties ? `<w:pPr>${properties}</w:pPr>` : ""}${text ? run(text) : ""}</w:p>`;
+export const heading = (text: string, level: 1 | 2) => paragraph(text, `<w:pStyle w:val="Heading${level}"/>`);
 const shade = (fill: string) => `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`;
 
-interface Cell { text: string; bold?: boolean; fill?: string; span?: number; vMerge?: "restart" | "continue" }
+export interface Cell { text: string; bold?: boolean; fill?: string; span?: number; vMerge?: "restart" | "continue" }
 
-function table(rows: readonly (readonly Cell[])[], widths: readonly number[], options: { borders: boolean; repeatHeader?: number }): string {
+/** A WordprocessingML table; `borders: "inside"` draws inside rules only (Word's "no outer border"). */
+export function table(rows: readonly (readonly Cell[])[], widths: readonly number[], options: { borders: boolean | "inside"; repeatHeader?: number }): string {
   const sides = ["top", "left", "bottom", "right", "insideH", "insideV"];
-  const borders = sides.map((side) => options.borders
+  const borders = sides.map((side) => options.borders === true || options.borders === "inside" && side.startsWith("inside")
     ? `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="000000"/>`
     : `<w:${side} w:val="nil"/>`).join("");
   return `<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((sum, width) => sum + width, 0)}" w:type="dxa"/><w:tblBorders>${borders}</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr>`
