@@ -24,6 +24,7 @@ import { handleFlag } from "./commands/flag.js";
 import { handleUpdate } from "./commands/update.js";
 import { handleWiki } from "./commands/wiki.js";
 import { handleLog } from "./commands/log.js";
+import { handleModels } from "./commands/models.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleJira } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
@@ -168,6 +169,9 @@ async function main(): Promise<void> {
       case "log":
         await handleLog(rest, parsed.flags, opts);
         break;
+      case "models":
+        await handleModels(rest, parsed.flags, opts);
+        break;
       case "plugin":
         await handlePlugin(rest, parsed.flags, opts);
         break;
@@ -282,6 +286,9 @@ function showCommandHelp(
     case "log":
       handleLog(subArgs, helpFlags, opts);
       break;
+    case "models":
+      handleModels(subArgs, helpFlags, opts);
+      break;
     case "plugin":
       handlePlugin(subArgs, helpFlags, opts);
       break;
@@ -395,6 +402,7 @@ Commands:
   chat        Ask a read-only Jira or Confluence question
   pdf-template Create reviewed PDF template packs from Word documents
   log         Query and manage logs
+  models      Optional local models (table structure for PDF import)
   plugin      Manage plugins
   update      Check for and install updates
   version     Show version

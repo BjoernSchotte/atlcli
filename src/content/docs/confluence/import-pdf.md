@@ -287,6 +287,43 @@ Reading order on untagged pages:
 | Hyphen at a line end, next line starts lowercase | Removed as a syllable break, unless the same compound appears with its hyphen inside a line elsewhere in the PDF (`end-to-end`); then kept |
 | Hyphen at the end of a cell line with the next cell's text on the same line | The two are kept apart |
 
+### Optional table-structure model
+
+Some untagged tables have no rules and no unambiguous alignment, for example
+two columns of wrapped text or a header that spans columns without borders.
+For these, you can opt in to a local
+[Table Transformer](https://github.com/microsoft/table-transformer) model
+(Microsoft, MIT). It runs on your machine; nothing is sent anywhere.
+
+1. Install the model and its runtime once (pinned digests, about 200 MB
+   download):
+
+   ```bash
+   atlcli models pull table-transformer
+   ```
+
+2. Import with the model:
+
+   ```bash
+   atlcli wiki import contract.pdf --space DOCS --table-model table-transformer
+   # Use the GPU (CoreML on macOS, CUDA on Linux, DirectML on Windows):
+   atlcli wiki import contract.pdf --space DOCS --table-model table-transformer --table-model-device gpu
+   ```
+
+The model only sees areas the deterministic pass could not turn into a table,
+and only proposes rows, columns, header rows and spanning cells. AtlCLI accepts
+a proposal only when every character of the area fits exactly one cell and
+every row and column holds text; it never adds or changes text. Accepted and
+rejected proposals appear as `pdf-import/table-model-proposal-accepted` and
+`-rejected` in the preview. A CPU is fast enough (tens of milliseconds per
+table); `--table-model-device gpu` is optional.
+
+| Option | Values | Default | Notes |
+|---|---|---|---|
+| `--table-model` | `table-transformer` | off | Requires `atlcli models pull table-transformer` |
+| `--table-model-device` | `auto`, `cpu`, `gpu` | `auto` (CPU) | `gpu` falls back to CPU for unsupported operations |
+| `ATLCLI_MODELS_DIR` | path | `~/.atlcli/models` | Where models and the runtime are installed |
+
 > **Tip.** Export PDFs from Word, LibreOffice, or a browser with tagging
 > ("accessible PDF") enabled. Tagged exports keep tables, lists, and reading
 > order far better than untagged ones. In LibreOffice, enable
@@ -518,6 +555,7 @@ release claim.
 | `pdf/character-ownership-failed` blocks publication | A visible character is unowned or has competing semantic owners | Review the page locator and fallback scope. Do not bypass the blocker without explicit reported/fallback coverage. |
 | A tagged table becomes a page image or linearized text | The table nests another table, or a cell's text has an unresolved boundary or invalid Unicode | Check `pdf-import/table-tagged-linearized` and its `reason` in the JSON preview. Re-export with tagging enabled, or flatten the nested table in the source. |
 | Issue `pdf-import/table-continuation-unjoined`: the table repeats on every page | One page part does not qualify as a grid, or the table exceeds 5,000 rows | Check the issue `reason`. Each page part stays a native table when it qualifies on its own. |
+| `The table model is not installed` or `The table model runtime is not installed` | `--table-model` was given before the model was pulled | Run `atlcli models pull table-transformer`, or set `ATLCLI_MODELS_DIR` to the directory you pulled into. |
 | An untagged table arrives as paragraphs | No drawn grid or row rules, fewer than three aligned columns, or text crossing a cell edge | Export with table borders, or as a tagged PDF. The text is complete and in reading order either way. |
 | Issue `pdf-import/document-structure-unavailable` | The structure tree could not be read as a whole (damaged cross-references or budget) | Import continues with page-scoped structure; multi-page tables may fall back. Re-save the PDF from its producer. |
 | Image-only page blocks publication | Default scan policy forbids silent empty output | Choose `page-image`, or use `report` plus both publication acknowledgements. |

@@ -1,4 +1,5 @@
 import { sha256Hex } from "@atlcli/core";
+import { proposeUntaggedTablesV2, type PdfTableStructureProposerV1 } from "./table-proposer.js";
 import type { ImportBlock, ImportDocumentV2, ImportIssue } from "@atlcli/import-core";
 import { digestPdfCanonical } from "./canonical.js";
 import {
@@ -163,6 +164,11 @@ export interface PdfImportReviewBuildOptionsV2 {
   unsupported?: "report" | "fail";
   attachSource?: boolean;
   overrides?: ParsedPdfImportOverridesV1;
+  /**
+   * Opt-in structure proposals for untagged tables the deterministic pass
+   * cannot resolve. Proposals are verified against the PDF's characters.
+   */
+  tableStructureProposer?: PdfTableStructureProposerV1;
 }
 
 type PdfImportReview = PdfImportReviewV1 | PdfImportReviewV2 | PdfImportReviewV3;
@@ -455,11 +461,19 @@ export async function buildPdfImportReviewV2(
   if (readingOrder === "tags" && !analyzed.facts.tagged) {
     throw new PdfImportError("pdf/incomplete", "--reading-order tags requires a tagged PDF.");
   }
+  const geometryLane = !(readingOrder === "auto" && analyzed.facts.tagged) && readingOrder !== "tags";
+  const proposals = geometryLane && options.tableStructureProposer
+    ? await proposeUntaggedTablesV2(sourceBytes, adapter, analyzed.facts, options.tableStructureProposer)
+    : null;
   const base = readingOrder === "auto" && analyzed.facts.tagged
     ? await normalizeHybridPdfFactsV2(analyzed.facts, analyzed.factsDigest)
     : readingOrder === "tags"
       ? await normalizeTaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest)
-      : await normalizeUntaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest, { allowTagged: readingOrder === "geometry" });
+      : await normalizeUntaggedPdfFactsV2(analyzed.facts, analyzed.factsDigest, {
+        allowTagged: readingOrder === "geometry",
+        ...(proposals ? { proposedGrids: proposals.grids } : {}),
+      });
+  if (proposals) base.document.issues.push(...proposals.issues);
   const visual = await preservePdfFiguresV2(
     analyzed.facts,
     analyzed.factsDigest,
@@ -512,6 +526,7 @@ export async function buildPdfImportReviewV2(
   const semanticDigest = await digestPdfCanonical({
     schema: PDF_IMPORT_REVIEW_SCHEMA_V2,
     factsDigest: analyzed.factsDigest,
+    ...(proposals ? { tableStructureProposer: options.tableStructureProposer!.id } : {}),
     policyRevision: base.policyRevision,
     textAssemblyPolicyRevision: base.textAssemblyPolicyRevision,
     visualFallbackPolicyRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,

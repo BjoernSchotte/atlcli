@@ -95,6 +95,17 @@ atlcli doctor --json          # JSON output for scripting
 
 **Exit codes:** 0 = all passed, 1 = failures detected
 
+## Optional Models
+
+Nothing is downloaded unless you ask for it. See
+[Import PDF: optional table-structure model](/confluence/import-pdf/#optional-table-structure-model).
+
+```bash
+atlcli models pull table-transformer                  # weights (116 MB) + runtime (~90 MB on disk)
+atlcli models pull table-transformer --variant quantized   # 30 MB weights
+atlcli models list                                    # installed models and runtime
+```
+
 ## Confluence
 
 ### Sync

@@ -1,4 +1,5 @@
 import pdfiumWasm from "@atlcli/import-pdf/wasm" with { type: "file" };
+import { createTableTransformerProposer } from "../table-model.js";
 import { basename, isAbsolute, resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import {
@@ -73,6 +74,8 @@ const VALUE_FLAGS = [
   "visual-fallback",
   "reading-order",
   "unsupported",
+  "table-model",
+  "table-model-device",
   "overrides",
   "overrides-template",
   "title-conflict",
@@ -207,6 +210,20 @@ export async function handlePdfWikiImport(
     "report",
     opts,
   );
+  const tableModel = getFlag(flags, "table-model");
+  if (tableModel !== undefined && tableModel !== "table-transformer") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--table-model must be table-transformer.", {});
+  }
+  const tableModelDevice = validateChoice(
+    getFlag(flags, "table-model-device"),
+    ["auto", "cpu", "gpu"] as const,
+    "--table-model-device",
+    "auto",
+    opts,
+  );
+  if (hasFlag(flags, "table-model-device") && tableModel === undefined) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "--table-model-device requires --table-model.", {});
+  }
   const titleConflict = validateChoice(
     getFlag(flags, "title-conflict"),
     ["fail", "rename"] as const,
@@ -280,7 +297,16 @@ export async function handlePdfWikiImport(
     const adapter = createPdfiumFactsAdapterV2({ wasmBinary: wasm });
     const sourceSha256 = await sha256Hex(bytes);
     const overrides = await loadOverrides(getFlag(flags, "overrides"), sourceSha256, opts);
+    let tableStructureProposer: Awaited<ReturnType<typeof createTableTransformerProposer>> | undefined;
+    if (tableModel) {
+      try {
+        tableStructureProposer = await createTableTransformerProposer({ device: tableModelDevice });
+      } catch (error) {
+        fail(opts, 1, ERROR_CODES.VALIDATION, (error as Error).message, {});
+      }
+    }
     const review = await buildPdfImportReviewV3(bytes, adapter, {
+      ...(tableStructureProposer ? { tableStructureProposer } : {}),
       target,
       splitPolicy,
       titleConflict,

@@ -3,11 +3,16 @@
  * accepted shapes and the fail-closed cases. Real producer output is covered
  * by the `untagged-word` quality fixture.
  */
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { buildPdfImportReviewV3 } from "./review.js";
+import { parsePdfSplitPolicy } from "./split.js";
+import type { PdfTableStructureProposerV1 } from "./table-proposer.js";
 import { normalizeUntaggedPdfFactsV2 } from "./untagged.js";
 import type { PdfNormalizedRect, PdfPageFactsV2, PdfPathObjectFact, PdfTextCharacterFactV2 } from "./contracts.js";
-import { detectGeometryGridsV2, geometryDecorationPathIdsV2 } from "./geometry-tables.js";
+import { detectGeometryGridsV2, geometryDecorationPathIdsV2, verifyTableProposalV2 } from "./geometry-tables.js";
 import { analyzeGeometryReadingOrderV2 } from "./reading-order.js";
 
 interface Text { text: string; x: number; y: number; bold?: boolean }
@@ -165,6 +170,197 @@ describe("decoration", () => {
       { x: 0.1, y: 0.7, width: 0.2, height: 0.1 },
     ]);
     expect([...geometryDecorationPathIdsV2(facts, [])]).toEqual(["path:0"]);
+  });
+});
+
+describe("verified table-structure proposals", () => {
+  // Two columns of single words without any rule: no deterministic table.
+  const words: Text[] = [
+    { text: "Role", x: 0.11, y: 0.205, bold: true }, { text: "Hours", x: 0.41, y: 0.205, bold: true },
+    { text: "Buyer", x: 0.11, y: 0.235 }, { text: "8-16", x: 0.41, y: 0.235 },
+    { text: "Planner", x: 0.11, y: 0.265 }, { text: "9-17", x: 0.41, y: 0.265 },
+  ];
+  const region = { x: 0.1, y: 0.2, width: 0.5, height: 0.09 };
+  const rows = [0.2, 0.23, 0.26].map((y) => ({ x: 0.1, y, width: 0.5, height: 0.028 }));
+  const columns = [{ x: 0.1, y: 0.2, width: 0.28, height: 0.09 }, { x: 0.4, y: 0.2, width: 0.2, height: 0.09 }];
+  const verify = (facts: PdfPageFactsV2, proposal: Partial<Parameters<typeof verifyTableProposalV2>[3]>) =>
+    verifyTableProposalV2(facts, analyzeGeometryReadingOrderV2(facts), region, {
+      rows, columns, columnHeaders: [], spanningCells: [], ...proposal,
+    });
+
+  it("accepts a proposal every character fits, with the proposed header", () => {
+    const grid = verify(page(words, []), { columnHeaders: [{ x: 0.1, y: 0.2, width: 0.5, height: 0.028 }] });
+    expect(grid).toMatchObject({ kind: "proposed", rowCount: 3, columnCount: 2, headerRows: 1 });
+    expect(grid!.cells.map((cell) => cell.fragments.map((fragment) => fragment.text).join(""))).toEqual([
+      "Role", "Hours", "Buyer", "8-16", "Planner", "9-17",
+    ]);
+  });
+
+  it("merges the cells a spanning cell covers", () => {
+    const grid = verify(page([{ text: "Contacts", x: 0.2, y: 0.205, bold: true }, ...words.slice(2)], []), {
+      spanningCells: [{ x: 0.1, y: 0.2, width: 0.5, height: 0.028 }],
+    });
+    expect(grid!.cells[0]).toMatchObject({ row: 0, column: 0, colspan: 2 });
+  });
+
+  it("rejects a proposal whose column edge cuts through a glyph", () => {
+    const facts = page(words, []);
+    // The second column now starts inside "Planner".
+    expect(verify(facts, { columns: [{ x: 0.1, y: 0.2, width: 0.06, height: 0.09 }, { x: 0.16, y: 0.2, width: 0.44, height: 0.09 }] })).toBeNull();
+  });
+
+  it("rejects a proposed row that holds no text", () => {
+    const facts = page(words, []);
+    const extra = [...rows, { x: 0.1, y: 0.33, width: 0.5, height: 0.028 }];
+    expect(verifyTableProposalV2(facts, analyzeGeometryReadingOrderV2(facts), { ...region, height: 0.17 }, {
+      rows: extra, columns: columns.map((column) => ({ ...column, height: 0.17 })), columnHeaders: [], spanningCells: [],
+    })).toBeNull();
+  });
+});
+
+describe("geometry V2 policy on the neutral alignment fixture", () => {
+  it("reads three aligned columns with a bold header as a table (V1 keeps linearizing)", async () => {
+    // Deliberate V2 change: unambiguous borderless tables are native.
+    const bytes = new Uint8Array(await readFile(resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures/table-negative.pdf")));
+    const { facts, factsDigest } = await (await createNodePdfiumFactsAdapterV2()).analyze(bytes);
+    const result = await normalizeUntaggedPdfFactsV2(facts, factsDigest);
+    const table = result.document.blocks.find((block) => block.type === "table");
+    expect(table?.type === "table" ? table.rows.map((row) => row.cells.map((cell) => cell.header)) : null)
+      .toEqual([[true, true, true], [false, false, false], [false, false, false]]);
+    expect(result.requiresFallbackPages).toEqual([]);
+  });
+});
+
+/** A one-page PDF with Helvetica text and filled rectangles, in PDF points (595 x 842). */
+function minimalPdf(rects: Array<[number, number, number, number]>, texts: Array<[string, number, number]>): Uint8Array {
+  const content = [
+    ...rects.map(([x, y, w, h]) => `${x} ${y} ${w} ${h} re f`),
+    ...texts.map(([text, x, y]) => `BT /F1 11 Tf ${x} ${y} Td (${text}) Tj ET`),
+  ].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = body.length;
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")}`;
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(body);
+}
+
+describe("table-structure proposer plumbing", () => {
+  // Two columns separated by vertical rules under a top rule: no closed grid,
+  // no row rules and too few aligned columns, so the deterministic pass
+  // leaves it as text and offers it as a candidate.
+  const rows = [["Role", "Hours"], ["Buyer", "8 to 16"], ["Planner", "9 to 17"], ["Auditor", "7 to 15"]];
+  const top = 700;
+  const pitch = 24;
+  const bytes = minimalPdf(
+    [[60, top, 400, 1], [60, top - pitch * 4, 1, pitch * 4], [250, top - pitch * 4, 1, pitch * 4], [460, top - pitch * 4, 1, pitch * 4]],
+    rows.flatMap(([left, right], index) => [[left!, 70, top - pitch * (index + 1) + 8], [right!, 260, top - pitch * (index + 1) + 8]] as Array<[string, number, number]>),
+  );
+  const review = (proposer: PdfTableStructureProposerV1) => buildPdfImportReviewV3(bytes, createNodePdfiumFactsAdapterV2Sync(), {
+    target: { spaceKey: "X", title: "T", deployment: "cloud", supportsPageTree: true, evidence: "profile" },
+    splitPolicy: parsePdfSplitPolicy("off"),
+    tableStructureProposer: proposer,
+  });
+  let adapterPromise: ReturnType<typeof createNodePdfiumFactsAdapterV2> | undefined;
+  const createNodePdfiumFactsAdapterV2Sync = () => ({
+    analyze: async (...args: Parameters<Awaited<ReturnType<typeof createNodePdfiumFactsAdapterV2>>["analyze"]>) => (await (adapterPromise ??= createNodePdfiumFactsAdapterV2())).analyze(...args),
+    materialize: async (...args: Parameters<Awaited<ReturnType<typeof createNodePdfiumFactsAdapterV2>>["materialize"]>) => (await (adapterPromise ??= createNodePdfiumFactsAdapterV2())).materialize(...args),
+  });
+  // The proposal in image coordinates: the region spans the rules plus a margin.
+  const proposal = (request: Parameters<PdfTableStructureProposerV1["propose"]>[0]) => {
+    const toImage = (x: number, y: number, w: number, h: number) => ({
+      x: (x / 595 - request.bbox.x) / request.bbox.width,
+      y: ((842 - y) / 842 - request.bbox.y) / request.bbox.height,
+      width: w / 595 / request.bbox.width,
+      height: h / 842 / request.bbox.height,
+    });
+    return {
+      rows: rows.map((_, index) => toImage(60, top - pitch * index, 400, pitch - 2)),
+      columns: [toImage(60, top, 188, pitch * 4), toImage(252, top, 206, pitch * 4)],
+      columnHeaders: [toImage(60, top, 400, pitch - 2)],
+      spanningCells: [],
+    };
+  };
+
+  it("publishes a verified proposal as a native table with model evidence", async () => {
+    const calls: number[] = [];
+    const result = await review({ id: "fake@1", async propose(request) {
+      calls.push(request.pageIndex);
+      expect(request.image.mediaType).toBe("image/png");
+      return proposal(request);
+    } });
+    expect(calls).toEqual([0]);
+    const table = result.document.blocks.find((block) => block.type === "table");
+    expect(table?.type === "table" ? table.rows.map((row) => row.cells.map((cell) => [cell.header, cell.blocks.map((block) => block.type === "paragraph" ? block.runs.map((run) => run.kind === "text" ? run.text : "").join("") : "").join("")])) : null)
+      .toEqual(rows.map((cells, index) => cells.map((text) => [index === 0, text])));
+    expect(result.evidence.some((item) => item.basis.includes("model-proposal") && item.outcome === "native")).toBe(true);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({ code: "pdf-import/table-model-proposal-accepted" }));
+  });
+
+  it("keeps the text and reports a proposal the characters do not fit", async () => {
+    const result = await review({ id: "fake@1", async propose(request) {
+      const right = proposal(request);
+      const scaleX = (x: number) => (x / 595 - request.bbox.x) / request.bbox.width;
+      // A column edge at x 75.5 pt runs through the first glyph of every left word.
+      return {
+        ...right,
+        columns: [
+          { ...right.columns[0]!, width: scaleX(75) - right.columns[0]!.x },
+          { ...right.columns[1]!, x: scaleX(76), width: scaleX(458) - scaleX(76) },
+        ],
+      };
+    } });
+    expect(result.document.blocks.some((block) => block.type === "table")).toBe(false);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({ code: "pdf-import/table-model-proposal-rejected" }));
+    expect(JSON.stringify(result.document.blocks)).toContain("Planner");
+  });
+
+  it("does not consult a proposer for a document solved deterministically", async () => {
+    const word = new Uint8Array(await readFile(resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures/untagged-word.pdf")));
+    const calls: number[] = [];
+    await buildPdfImportReviewV3(word, await createNodePdfiumFactsAdapterV2(), {
+      target: { spaceKey: "X", title: "T", deployment: "cloud", supportsPageTree: true, evidence: "profile" },
+      splitPolicy: parsePdfSplitPolicy("off"),
+      tableStructureProposer: { id: "fake@1", async propose(request) { calls.push(request.pageIndex); return null; } },
+    });
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("proposal edge refinement", () => {
+  const words: Text[] = [
+    { text: "Role", x: 0.11, y: 0.205 }, { text: "Hours", x: 0.41, y: 0.205 },
+    { text: "Planner", x: 0.11, y: 0.235 }, { text: "9-17", x: 0.41, y: 0.235 },
+  ];
+  const region = { x: 0.1, y: 0.2, width: 0.5, height: 0.06 };
+  const rows = [0.2, 0.23].map((y) => ({ x: 0.1, y, width: 0.5, height: 0.028 }));
+  const verify = (facts: PdfPageFactsV2, edge: number) => verifyTableProposalV2(facts, analyzeGeometryReadingOrderV2(facts), region, {
+    rows,
+    columns: [{ x: 0.1, y: 0.2, width: edge - 0.1 - 0.001, height: 0.06 }, { x: edge + 0.001, y: 0.2, width: 0.6 - edge - 0.001, height: 0.06 }],
+    columnHeaders: [],
+    spanningCells: [],
+  });
+
+  it("moves an edge that cuts a word to the nearest word boundary", () => {
+    // 0.40 cuts nothing; 0.415 cuts "Hours" and "9-17" and moves back to 0.41.
+    const grid = verify(page(words, []), 0.415);
+    expect(grid!.cells.map((cell) => cell.fragments.map((fragment) => fragment.text).join(""))).toEqual(["Role", "Hours", "Planner", "9-17"]);
+  });
+
+  it("never moves an edge between two letters of a word", () => {
+    // The only boundaries near 0.15 inside "Planner" are between letters.
+    expect(verify(page(words, []), 0.15)).toBeNull();
   });
 });
 

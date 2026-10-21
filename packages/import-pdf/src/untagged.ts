@@ -39,7 +39,7 @@ import {
   type PdfReadingOrderPageV1,
   type PdfReadingOrderPageV2,
 } from "./reading-order.js";
-import { projectUntaggedGeometryTablesV2 } from "./geometry-tables.js";
+import { projectUntaggedGeometryTablesV2, type PdfGeometryGridV2 } from "./geometry-tables.js";
 import { detectRepeatedRegions } from "./repeated-regions.js";
 import {
   analyzeUntaggedTable,
@@ -760,7 +760,11 @@ function visibleCharacterIndexesV2(page: PdfPageFactsV2): number[] {
 export async function normalizeUntaggedPdfFactsV2(
   facts: PdfFactsV2,
   factsDigest: string,
-  options: { allowTagged?: boolean } = {},
+  options: {
+    allowTagged?: boolean;
+    /** Table structures from a proposer, already verified against these facts. */
+    proposedGrids?: readonly PdfGeometryGridV2[];
+  } = {},
 ): Promise<PdfUntaggedSemanticsV2> {
   if (await digestPdfFactsV2(facts) !== factsDigest) {
     throw new PdfImportError(
@@ -775,6 +779,7 @@ export async function normalizeUntaggedPdfFactsV2(
       facts.pages,
       rawAnalyses,
       detectRepeatedRegions(rawAnalyses, 2),
+      options.proposedGrids,
       hyphenatedCompounds,
     );
     const tables = rawAnalyses.map((analysis) => {
