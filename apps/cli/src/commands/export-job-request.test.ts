@@ -126,6 +126,16 @@ describe("durable CLI export job requests", () => {
     expect("imagePpi" in original.options).toBe(false);
   });
 
+  test("persists cover/outline settings and defaults to none", () => {
+    const base = {
+      id: "job-s", idempotencyKey: "key-s", createdAt: 50,
+      request: parseExportRequest("123", {}), profile,
+      outputPath: "/tmp/report.pdf", force: false, strict: false, noCache: false,
+    } as const;
+    expect(buildCliPdfJobRequest(base).settings).toEqual({});
+    expect(buildCliPdfJobRequest({ ...base, settings: { cover: false, outline: false } }).settings).toEqual({ cover: false, outline: false });
+  });
+
   test("records a directory target without pretending its basename is a filename", () => {
     const request = buildCliPdfJobRequest({
       id: "job-dir", idempotencyKey: "key-dir", createdAt: 30,

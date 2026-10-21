@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildReportData, escapeMarkdown } from "./report-data.js";
+import { buildReportData, descriptionExcerpt, escapeMarkdown } from "./report-data.js";
 import type { JiraIssue } from "./types.js";
 
 const BASE = "https://x.atlassian.net";
@@ -74,6 +74,54 @@ describe("buildReportData", () => {
     const data = build([]);
     expect(data.metrics).toMatchObject({ total: 0, donePercent: 0 });
     expect(data.byType).toEqual([]);
+  });
+
+  test("adds an escaped description excerpt per issue", () => {
+    const description = {
+      type: "doc",
+      version: 1,
+      content: [
+        { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Why" }] },
+        { type: "paragraph", content: [{ type: "text", text: "Users need *markdown*." }] },
+      ],
+    };
+    const [withText, without] = build([issue("AB-1", "Task", "done", { description }), issue("AB-2", "Task", "done")]).issues;
+    expect(withText).toMatchObject({ excerpt: "Why Users need *markdown*.", excerptMd: "Why Users need \\*markdown\\*." });
+    expect(without!.excerpt).toBeUndefined();
+  });
+});
+
+describe("descriptionExcerpt", () => {
+  const p = (...content: unknown[]) => ({ type: "paragraph", content });
+  const t = (text: string) => ({ type: "text", text });
+
+  test("skips code and tables, keeps paragraphs apart, renders inline nodes", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        p(t("First"), { type: "hardBreak" }, t("line, ping "), { type: "mention", attrs: { text: "@Ann" } }),
+        { type: "codeBlock", content: [t("const x = 1;")] },
+        { type: "table", content: [] },
+        { type: "bulletList", content: [{ type: "listItem", content: [p(t("item"))] }] },
+        p({ type: "date", attrs: { timestamp: "1798761600000" } }, { type: "status", attrs: { text: "DONE" } }),
+      ],
+    };
+    expect(descriptionExcerpt(doc)).toBe("First line, ping @Ann item 2027-01-01DONE");
+  });
+
+  test("cuts long text at a word boundary with an ellipsis", () => {
+    const long = Array.from({ length: 80 }, (_, i) => `word${i}`).join(" ");
+    const excerpt = descriptionExcerpt(long, 50)!;
+    expect(excerpt.length).toBeLessThanOrEqual(51);
+    expect(excerpt.endsWith("…")).toBe(true);
+    expect(long.startsWith(excerpt.slice(0, -1))).toBe(true);
+    expect(excerpt.slice(0, -1).endsWith(" ")).toBe(false);
+  });
+
+  test("empty, missing and whitespace-only descriptions have no excerpt", () => {
+    expect(descriptionExcerpt(undefined)).toBeUndefined();
+    expect(descriptionExcerpt("  \n ")).toBeUndefined();
+    expect(descriptionExcerpt({ type: "doc", content: [{ type: "codeBlock", content: [t("x")] }] })).toBeUndefined();
   });
 });
 

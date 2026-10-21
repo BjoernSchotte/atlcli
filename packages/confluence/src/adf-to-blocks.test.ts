@@ -38,6 +38,30 @@ describe("adfToBlocks", () => {
     });
   });
 
+  it("drops the newline Confluence keeps after a hard break", () => {
+    const result = adfToBlocks(doc([
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Title", marks: [{ type: "strong" }] },
+          { type: "hardBreak" },
+          { type: "text", text: "\nExcerpt  text" },
+          { type: "hardBreak" },
+          { type: "text", text: "\n" },
+        ],
+      },
+    ]));
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Title", marks: ["bold"] },
+        { type: "lineBreak" },
+        { type: "text", text: "Excerpt  text" },
+        { type: "lineBreak" },
+      ],
+    });
+  });
+
   it("preserves headings, nested marks, literal shorthand, code identifiers, and final newlines", () => {
     const result = adfToBlocks(doc([
       {

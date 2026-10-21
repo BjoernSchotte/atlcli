@@ -6,6 +6,7 @@
  * the same name — or any other name passed with `--template` — replaces them
  * without code changes. `--print-template <name>` writes one out as a start.
  * Fields ending in `Md` are pre-escaped markdown: insert them with `{{{…}}}`.
+ * `excerpt` is the opening text of the issue description (about two lines).
  */
 
 export const BUNDLED_REPORT_TEMPLATES: Record<string, string> = {
@@ -28,7 +29,8 @@ labels: [release-notes]
 ## {{{nameMd}}} ({{count}})
 
 {{#each issues}}
-- {{{link}}} {{{summaryMd}}}{{#unless done}} · *{{status}}*{{/unless}}
+- {{{link}}} **{{{summaryMd}}}**{{#unless done}} · *{{status}}*{{/unless}}{{#if excerptMd}}\\
+  {{{excerptMd}}}{{/if}}
 {{/each}}
 
 {{/each}}
@@ -60,7 +62,8 @@ labels: [release-notes]
 ## {{{nameMd}}}{{#if key}} ([{{key}}]({{{url}}})){{/if}}
 
 {{#each issues}}
-- {{{link}}} {{type}}: {{{summaryMd}}}{{#unless done}} · *{{status}}*{{/unless}}
+- {{{link}}} {{type}}: **{{{summaryMd}}}**{{#unless done}} · *{{status}}*{{/unless}}{{#if excerptMd}}\\
+  {{{excerptMd}}}{{/if}}
 {{/each}}
 
 {{/each}}
@@ -86,14 +89,16 @@ labels: [sprint-review]
 ## Done ({{doneIssues.length}})
 
 {{#each doneIssues}}
-- {{{link}}} {{{summaryMd}}}{{#if assignee}} · {{assignee}}{{/if}}
+- {{{link}}} **{{{summaryMd}}}**{{#if assignee}} · {{assignee}}{{/if}}{{#if excerptMd}}\\
+  {{{excerptMd}}}{{/if}}
 {{/each}}
 
 {{#if openIssues.length}}
 ## Not done ({{openIssues.length}})
 
 {{#each openIssues}}
-- {{{link}}} {{{summaryMd}}} · *{{status}}*{{#if assignee}} · {{assignee}}{{/if}}
+- {{{link}}} **{{{summaryMd}}}** · *{{status}}*{{#if assignee}} · {{assignee}}{{/if}}{{#if excerptMd}}\\
+  {{{excerptMd}}}{{/if}}
 {{/each}}
 {{/if}}
 `,

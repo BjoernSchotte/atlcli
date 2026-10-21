@@ -204,6 +204,8 @@ Pass one or the other, never both.
 | `--code-theme <id>` | Shiki theme for fenced code blocks; defaults to `github-light` |
 | `--pdf-standard <name>` | Strict compiler output: `a-1b`, `a-1a`, `a-2b`, `a-2u`, `a-2a`, `a-3b`, `a-3u`, `a-3a`, `a-4`, `a-4f`, `a-4e`, or `ua-1`; no downgrade fallback |
 | `--pdf-images <profile>` | Image quality profile: `original` (default), `standard` (180 PPI), or `print` (300 PPI) |
+| `--no-cover` | Leave out the cover page |
+| `--no-toc` | Leave out the table of contents |
 | `--pdf-images-ppi <n>` | Exact target density in `[72, 1200]`; requires `--pdf-images standard` or `print` |
 | `--template, -t <path>` | Direct path to a verified `.wiki-pdf-template` pack; omission keeps Editorial Indigo |
 | `--report json` | Synonym for `--json` |

@@ -195,6 +195,14 @@ describe("storageToMarkdown", () => {
     );
   });
 
+  test("a hard break is written without a trailing newline and round-trips", () => {
+    const markdown = "- **Title**\\\n  Excerpt text\n";
+    const storage = markdownToStorage(markdown);
+    expect(storage).toContain("<strong>Title</strong><br />Excerpt text");
+    expect(storageToMarkdown(storage)).toContain("Excerpt text");
+    expect(markdownToStorage("a  \nb")).toContain("a<br />b");
+  });
+
   test("round-trips markdown tables without adding cell whitespace", () => {
     const original =
       "| TaskID | Task Type | Description | JIRA link |\n" +
