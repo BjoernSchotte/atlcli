@@ -131,6 +131,16 @@ export class JiraClient {
     });
   }
 
+  /** Whether this client talks to Jira Cloud (API v3, ADF bodies). */
+  get isCloudSite(): boolean {
+    return this.isCloud;
+  }
+
+  /** Site base URL without trailing slash (e.g. for `/browse/KEY` links). */
+  get siteUrl(): string {
+    return this.baseUrl;
+  }
+
   /** API version path - v3 for Cloud, v2 for Server */
   private get apiPath(): string {
     return this.isCloud ? "/rest/api/3" : "/rest/api/2";
@@ -2121,6 +2131,8 @@ export class JiraClient {
 
   /**
    * Convert plain text to ADF (Atlassian Document Format).
+   *
+   * @deprecated Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
    */
   textToAdf(text: string): AdfDocument {
     return {
@@ -2142,6 +2154,8 @@ export class JiraClient {
 
   /**
    * Convert ADF to plain text (basic extraction).
+   *
+   * @deprecated Drops all structure. Use `adfToMarkdown`.
    */
   adfToText(adf: AdfDocument | string | null | undefined): string {
     if (!adf) return "";

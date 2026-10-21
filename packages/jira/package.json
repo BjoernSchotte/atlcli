@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "@atlcli/change-set": "workspace:*",
-    "@atlcli/core": "workspace:*"
+    "@atlcli/core": "workspace:*",
+    "markdown-it": "^15.0.0"
   }
 }

@@ -29,6 +29,7 @@
  * purpose (see their own headers) so spec 009 does not freeze them.
  */
 
+export * from "./adf-markdown.js";
 export * from "./client.js";
 export * from "./change-set.js";
 export * from "./types.js";

@@ -23,6 +23,14 @@ export interface AdfNode {
     text?: string;
 }
 
+// export: adfToMarkdown
+export declare function adfToMarkdown(adf: AdfDocument | string | null | undefined, options?: AdfToMarkdownOptions): string;
+
+// export: AdfToMarkdownOptions
+export interface AdfToMarkdownOptions {
+    baseUrl?: string;
+}
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -248,6 +256,8 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
+// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
+// @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
     private authHeader;
@@ -260,6 +270,8 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    get isCloudSite(): boolean;
+    get siteUrl(): string;
     private get apiPath();
     private get agilePath();
     private sleep;
@@ -985,6 +997,15 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: markdownToAdf
+export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
+
+// export: MarkdownToAdfOptions
+export interface MarkdownToAdfOptions {
+    baseUrl?: string;
+    onWarning?: (message: string) => void;
+}
+
 // export: planJiraFieldChangesV1
 export declare function planJiraFieldChangesV1(issue: JiraIssue, updateInput: UpdateIssueInput): Promise<ChangeSetV1>;
 
@@ -1009,6 +1030,12 @@ export interface SprintMetrics {
     scopeChangePercent: number;
     sayDoRatio: number;
 }
+
+// export: toJiraRichText
+export declare function toJiraRichText(client: {
+    readonly isCloudSite: boolean;
+    readonly siteUrl: string;
+}, markdown: string, options?: Omit<MarkdownToAdfOptions, "baseUrl">): AdfDocument | string;
 
 // export: TransitionIssueInput
 export interface TransitionIssueInput {
@@ -1108,6 +1135,14 @@ export interface AdfNode {
     content?: AdfNode[];
     marks?: AdfMark[];
     text?: string;
+}
+
+// export: adfToMarkdown
+export declare function adfToMarkdown(adf: AdfDocument | string | null | undefined, options?: AdfToMarkdownOptions): string;
+
+// export: AdfToMarkdownOptions
+export interface AdfToMarkdownOptions {
+    baseUrl?: string;
 }
 
 // export: aggregateWorklogs
@@ -1493,6 +1528,8 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
+// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
+// @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
     private authHeader;
@@ -1505,6 +1542,8 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    get isCloudSite(): boolean;
+    get siteUrl(): string;
     private get apiPath();
     private get agilePath();
     private sleep;
@@ -2430,6 +2469,15 @@ export declare function loadTemplate(name: string): Promise<JiraTemplate>;
 // export: loadTimer
 export declare function loadTimer(): TimerState | null;
 
+// export: markdownToAdf
+export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
+
+// export: MarkdownToAdfOptions
+export interface MarkdownToAdfOptions {
+    baseUrl?: string;
+    onWarning?: (message: string) => void;
+}
+
 // export: migrateTemplates
 export declare function migrateTemplates(): Promise<{
     migrated: string[];
@@ -2609,6 +2657,12 @@ export interface TimerState {
 
 // export: toAttachmentJson
 export declare function toAttachmentJson(attachment: JiraAttachment): AttachmentJson;
+
+// export: toJiraRichText
+export declare function toJiraRichText(client: {
+    readonly isCloudSite: boolean;
+    readonly siteUrl: string;
+}, markdown: string, options?: Omit<MarkdownToAdfOptions, "baseUrl">): AdfDocument | string;
 
 // export: toWorklogWithIssue
 export declare function toWorklogWithIssue(worklog: JiraWorklog, issueKey: string, issueSummary: string): WorklogWithIssue;
@@ -2716,6 +2770,14 @@ export interface AdfNode {
     text?: string;
 }
 
+// export: adfToMarkdown
+export declare function adfToMarkdown(adf: AdfDocument | string | null | undefined, options?: AdfToMarkdownOptions): string;
+
+// export: AdfToMarkdownOptions
+export interface AdfToMarkdownOptions {
+    baseUrl?: string;
+}
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -2941,6 +3003,8 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
+// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
+// @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
     private authHeader;
@@ -2953,6 +3017,8 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    get isCloudSite(): boolean;
+    get siteUrl(): string;
     private get apiPath();
     private get agilePath();
     private sleep;
@@ -3678,6 +3744,15 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: markdownToAdf
+export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
+
+// export: MarkdownToAdfOptions
+export interface MarkdownToAdfOptions {
+    baseUrl?: string;
+    onWarning?: (message: string) => void;
+}
+
 // export: planJiraFieldChangesV1
 export declare function planJiraFieldChangesV1(issue: JiraIssue, updateInput: UpdateIssueInput): Promise<ChangeSetV1>;
 
@@ -3702,6 +3777,12 @@ export interface SprintMetrics {
     scopeChangePercent: number;
     sayDoRatio: number;
 }
+
+// export: toJiraRichText
+export declare function toJiraRichText(client: {
+    readonly isCloudSite: boolean;
+    readonly siteUrl: string;
+}, markdown: string, options?: Omit<MarkdownToAdfOptions, "baseUrl">): AdfDocument | string;
 
 // export: TransitionIssueInput
 export interface TransitionIssueInput {
@@ -3801,6 +3882,14 @@ export interface AdfNode {
     content?: AdfNode[];
     marks?: AdfMark[];
     text?: string;
+}
+
+// export: adfToMarkdown
+export declare function adfToMarkdown(adf: AdfDocument | string | null | undefined, options?: AdfToMarkdownOptions): string;
+
+// export: AdfToMarkdownOptions
+export interface AdfToMarkdownOptions {
+    baseUrl?: string;
 }
 
 // export: aggregateWorklogs
@@ -4186,6 +4275,8 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
+// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
+// @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
     private authHeader;
@@ -4198,6 +4289,8 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    get isCloudSite(): boolean;
+    get siteUrl(): string;
     private get apiPath();
     private get agilePath();
     private sleep;
@@ -5123,6 +5216,15 @@ export declare function loadTemplate(name: string): Promise<JiraTemplate>;
 // export: loadTimer
 export declare function loadTimer(): TimerState | null;
 
+// export: markdownToAdf
+export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
+
+// export: MarkdownToAdfOptions
+export interface MarkdownToAdfOptions {
+    baseUrl?: string;
+    onWarning?: (message: string) => void;
+}
+
 // export: migrateTemplates
 export declare function migrateTemplates(): Promise<{
     migrated: string[];
@@ -5302,6 +5404,12 @@ export interface TimerState {
 
 // export: toAttachmentJson
 export declare function toAttachmentJson(attachment: JiraAttachment): AttachmentJson;
+
+// export: toJiraRichText
+export declare function toJiraRichText(client: {
+    readonly isCloudSite: boolean;
+    readonly siteUrl: string;
+}, markdown: string, options?: Omit<MarkdownToAdfOptions, "baseUrl">): AdfDocument | string;
 
 // export: toWorklogWithIssue
 export declare function toWorklogWithIssue(worklog: JiraWorklog, issueKey: string, issueSummary: string): WorklogWithIssue;
