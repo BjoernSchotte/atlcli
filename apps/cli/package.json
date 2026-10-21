@@ -18,6 +18,7 @@
     "@atlcli/export-blocks": "workspace:*",
     "@atlcli/export-jobs": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
+    "@atlcli/export-media": "workspace:*",
     "@atlcli/export-node": "workspace:*",
     "@atlcli/export-wiring": "workspace:*",
     "@atlcli/import-confluence": "workspace:*",

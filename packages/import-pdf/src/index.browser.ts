@@ -20,6 +20,13 @@ export * from "./overrides.js";
 export * from "./split.js";
 export * from "./review.js";
 export * from "./hybrid.js";
+export * from "./table-proposer.js";
+export {
+  verifyTableProposalV2,
+  type PdfGeometryGridV2,
+  type PdfGeometryGridCellV2,
+  type PdfTableStructureProposalV1,
+} from "./geometry-tables.js";
 export {
   createBrowserPdfiumFactsAdapter,
   createBrowserPdfiumFactsAdapterV2,

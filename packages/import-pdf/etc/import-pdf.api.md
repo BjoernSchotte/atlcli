@@ -227,6 +227,7 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
 // export: normalizeUntaggedPdfFactsV2
 export declare function normalizeUntaggedPdfFactsV2(facts: PdfFactsV2, factsDigest: string, options?: {
     allowTagged?: boolean;
+    proposedGrids?: readonly PdfGeometryGridV2[];
 }): Promise<PdfUntaggedSemanticsV2>;
 
 // export: orderedDescendantMcidsV2
@@ -436,6 +437,9 @@ export declare const PDF_TABLE_POLICY_V1: Readonly<{
 export declare const PDF_TABLE_POLICY_V2: Readonly<{
     readonly maximumLogicalRows: 5000;
 }>;
+
+// export: PDF_TABLE_PROPOSAL_RENDER_DPI
+export declare const PDF_TABLE_PROPOSAL_RENDER_DPI = 150;
 
 // export: PDF_TAGGED_POLICY_REVISION
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
@@ -731,7 +735,7 @@ export interface PdfEngineCapabilitiesV2 extends PdfEngineCapabilitiesV1 {
 }
 
 // export: PdfEvidenceBasis
-export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "text-boundary" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr";
+export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "text-boundary" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr" | "model-proposal";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
@@ -884,6 +888,31 @@ export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "char
     physicalLineIndex: number;
 }
 
+// export: PdfGeometryGridCellV2
+export interface PdfGeometryGridCellV2 {
+    row: number;
+    column: number;
+    rowspan: number;
+    colspan: number;
+    bbox: PdfNormalizedRect;
+    fragments: PdfGeometryFragmentV2[];
+}
+
+// export: PdfGeometryGridV2
+export interface PdfGeometryGridV2 {
+    kind: "ruled" | "aligned" | "proposed";
+    pageIndex: number;
+    bbox: PdfNormalizedRect;
+    columnEdges: number[];
+    rowCount: number;
+    columnCount: number;
+    cells: PdfGeometryGridCellV2[];
+    headerRows: number;
+    pathIds: string[];
+    fragmentIds: string[];
+    openTop?: boolean;
+}
+
 // export: PdfHybridPageOutcomeV2
 export interface PdfHybridPageOutcomeV2 {
     pageIndex: number;
@@ -984,6 +1013,7 @@ export interface PdfImportReviewBuildOptionsV2 {
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
+    tableStructureProposer?: PdfTableStructureProposerV1;
 }
 
 // export: pdfImportReviewReport
@@ -1347,6 +1377,9 @@ export interface PdfStructureNodeFactV2 {
 // export: PdfStructureSourceV2
 export type PdfStructureSourceV2 = "document-tree" | "pdfium-page" | "none";
 
+// export: PdfTableImageProposalV1
+export type PdfTableImageProposalV1 = PdfTableStructureProposalV1;
+
 // export: PdfTableProjectionMode
 export type PdfTableProjectionMode = "native" | "linearized-render-required" | "none";
 
@@ -1380,6 +1413,34 @@ export interface PdfTableProjectionV2 {
     claimedCharacterIndexes: number[];
     boundaries: PdfTextBoundaryDecisionV2[];
     transformations: PdfTextTransformationV2[];
+}
+
+// export: PdfTableProposalOutcomeV1
+export interface PdfTableProposalOutcomeV1 {
+    grids: PdfGeometryGridV2[];
+    issues: ImportIssue[];
+    candidates: number;
+}
+
+// export: PdfTableProposalRequestV1
+export interface PdfTableProposalRequestV1 {
+    pageIndex: number;
+    bbox: PdfNormalizedRect;
+    image: PdfMaterializedAssetV1;
+}
+
+// export: PdfTableStructureProposalV1
+export interface PdfTableStructureProposalV1 {
+    rows: PdfNormalizedRect[];
+    columns: PdfNormalizedRect[];
+    columnHeaders: PdfNormalizedRect[];
+    spanningCells: PdfNormalizedRect[];
+}
+
+// export: PdfTableStructureProposerV1
+export interface PdfTableStructureProposerV1 {
+    readonly id: string;
+    propose(request: PdfTableProposalRequestV1): Promise<PdfTableImageProposalV1 | null>;
 }
 
 // export: PdfTaggedPageOutcomeV1
@@ -1605,6 +1666,9 @@ export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStruc
 // export: projectTaggedTableV2
 export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): PdfTableProjectionV2;
 
+// export: proposeUntaggedTablesV2
+export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, facts: PdfFactsV2, proposer: PdfTableStructureProposerV1): Promise<PdfTableProposalOutcomeV1>;
+
 // export: rectsTouch
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
@@ -1699,6 +1763,9 @@ export declare function unresolvedStructureKidIndexesV2(node: PdfStructureNodeFa
 
 // export: upgradePdfImportReviewV3
 export declare function upgradePdfImportReviewV3(review: PdfImportReviewV2): Promise<PdfImportReviewV3>;
+
+// export: verifyTableProposalV2
+export declare function verifyTableProposalV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2, region: PdfNormalizedRect, proposal: PdfTableStructureProposalV1): PdfGeometryGridV2 | null;
 ```
 
 ### Entry point `. (default)`
@@ -1948,6 +2015,7 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
 // export: normalizeUntaggedPdfFactsV2
 export declare function normalizeUntaggedPdfFactsV2(facts: PdfFactsV2, factsDigest: string, options?: {
     allowTagged?: boolean;
+    proposedGrids?: readonly PdfGeometryGridV2[];
 }): Promise<PdfUntaggedSemanticsV2>;
 
 // export: orderedDescendantMcidsV2
@@ -2169,6 +2237,9 @@ export declare const PDF_TABLE_POLICY_V1: Readonly<{
 export declare const PDF_TABLE_POLICY_V2: Readonly<{
     readonly maximumLogicalRows: 5000;
 }>;
+
+// export: PDF_TABLE_PROPOSAL_RENDER_DPI
+export declare const PDF_TABLE_PROPOSAL_RENDER_DPI = 150;
 
 // export: PDF_TAGGED_POLICY_REVISION
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
@@ -2473,7 +2544,7 @@ export interface PdfEngineCapabilitiesV2 extends PdfEngineCapabilitiesV1 {
 }
 
 // export: PdfEvidenceBasis
-export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "text-boundary" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr";
+export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "text-boundary" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr" | "model-proposal";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
@@ -2645,6 +2716,31 @@ export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "char
     physicalLineIndex: number;
 }
 
+// export: PdfGeometryGridCellV2
+export interface PdfGeometryGridCellV2 {
+    row: number;
+    column: number;
+    rowspan: number;
+    colspan: number;
+    bbox: PdfNormalizedRect;
+    fragments: PdfGeometryFragmentV2[];
+}
+
+// export: PdfGeometryGridV2
+export interface PdfGeometryGridV2 {
+    kind: "ruled" | "aligned" | "proposed";
+    pageIndex: number;
+    bbox: PdfNormalizedRect;
+    columnEdges: number[];
+    rowCount: number;
+    columnCount: number;
+    cells: PdfGeometryGridCellV2[];
+    headerRows: number;
+    pathIds: string[];
+    fragmentIds: string[];
+    openTop?: boolean;
+}
+
 // export: PdfHybridPageOutcomeV2
 export interface PdfHybridPageOutcomeV2 {
     pageIndex: number;
@@ -2745,6 +2841,7 @@ export interface PdfImportReviewBuildOptionsV2 {
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
+    tableStructureProposer?: PdfTableStructureProposerV1;
 }
 
 // export: pdfImportReviewReport
@@ -3118,6 +3215,9 @@ export interface PdfStructureNodeFactV2 {
 // export: PdfStructureSourceV2
 export type PdfStructureSourceV2 = "document-tree" | "pdfium-page" | "none";
 
+// export: PdfTableImageProposalV1
+export type PdfTableImageProposalV1 = PdfTableStructureProposalV1;
+
 // export: PdfTableProjectionMode
 export type PdfTableProjectionMode = "native" | "linearized-render-required" | "none";
 
@@ -3151,6 +3251,34 @@ export interface PdfTableProjectionV2 {
     claimedCharacterIndexes: number[];
     boundaries: PdfTextBoundaryDecisionV2[];
     transformations: PdfTextTransformationV2[];
+}
+
+// export: PdfTableProposalOutcomeV1
+export interface PdfTableProposalOutcomeV1 {
+    grids: PdfGeometryGridV2[];
+    issues: ImportIssue[];
+    candidates: number;
+}
+
+// export: PdfTableProposalRequestV1
+export interface PdfTableProposalRequestV1 {
+    pageIndex: number;
+    bbox: PdfNormalizedRect;
+    image: PdfMaterializedAssetV1;
+}
+
+// export: PdfTableStructureProposalV1
+export interface PdfTableStructureProposalV1 {
+    rows: PdfNormalizedRect[];
+    columns: PdfNormalizedRect[];
+    columnHeaders: PdfNormalizedRect[];
+    spanningCells: PdfNormalizedRect[];
+}
+
+// export: PdfTableStructureProposerV1
+export interface PdfTableStructureProposerV1 {
+    readonly id: string;
+    propose(request: PdfTableProposalRequestV1): Promise<PdfTableImageProposalV1 | null>;
 }
 
 // export: PdfTaggedPageOutcomeV1
@@ -3382,6 +3510,9 @@ export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStruc
 // export: projectTaggedTableV2
 export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): PdfTableProjectionV2;
 
+// export: proposeUntaggedTablesV2
+export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, facts: PdfFactsV2, proposer: PdfTableStructureProposerV1): Promise<PdfTableProposalOutcomeV1>;
+
 // export: rectsTouch
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
@@ -3476,6 +3607,9 @@ export declare function unresolvedStructureKidIndexesV2(node: PdfStructureNodeFa
 
 // export: upgradePdfImportReviewV3
 export declare function upgradePdfImportReviewV3(review: PdfImportReviewV2): Promise<PdfImportReviewV3>;
+
+// export: verifyTableProposalV2
+export declare function verifyTableProposalV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2, region: PdfNormalizedRect, proposal: PdfTableStructureProposalV1): PdfGeometryGridV2 | null;
 ```
 
 ### Entry point `./browser-worker`
@@ -3701,6 +3835,7 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
 // export: normalizeUntaggedPdfFactsV2
 export declare function normalizeUntaggedPdfFactsV2(facts: PdfFactsV2, factsDigest: string, options?: {
     allowTagged?: boolean;
+    proposedGrids?: readonly PdfGeometryGridV2[];
 }): Promise<PdfUntaggedSemanticsV2>;
 
 // export: orderedDescendantMcidsV2
@@ -3910,6 +4045,9 @@ export declare const PDF_TABLE_POLICY_V1: Readonly<{
 export declare const PDF_TABLE_POLICY_V2: Readonly<{
     readonly maximumLogicalRows: 5000;
 }>;
+
+// export: PDF_TABLE_PROPOSAL_RENDER_DPI
+export declare const PDF_TABLE_PROPOSAL_RENDER_DPI = 150;
 
 // export: PDF_TAGGED_POLICY_REVISION
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
@@ -4205,7 +4343,7 @@ export interface PdfEngineCapabilitiesV2 extends PdfEngineCapabilitiesV1 {
 }
 
 // export: PdfEvidenceBasis
-export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "text-boundary" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr";
+export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "text-boundary" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr" | "model-proposal";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
@@ -4358,6 +4496,31 @@ export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "char
     physicalLineIndex: number;
 }
 
+// export: PdfGeometryGridCellV2
+export interface PdfGeometryGridCellV2 {
+    row: number;
+    column: number;
+    rowspan: number;
+    colspan: number;
+    bbox: PdfNormalizedRect;
+    fragments: PdfGeometryFragmentV2[];
+}
+
+// export: PdfGeometryGridV2
+export interface PdfGeometryGridV2 {
+    kind: "ruled" | "aligned" | "proposed";
+    pageIndex: number;
+    bbox: PdfNormalizedRect;
+    columnEdges: number[];
+    rowCount: number;
+    columnCount: number;
+    cells: PdfGeometryGridCellV2[];
+    headerRows: number;
+    pathIds: string[];
+    fragmentIds: string[];
+    openTop?: boolean;
+}
+
 // export: PdfHybridPageOutcomeV2
 export interface PdfHybridPageOutcomeV2 {
     pageIndex: number;
@@ -4458,6 +4621,7 @@ export interface PdfImportReviewBuildOptionsV2 {
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
+    tableStructureProposer?: PdfTableStructureProposerV1;
 }
 
 // export: pdfImportReviewReport
@@ -4821,6 +4985,9 @@ export interface PdfStructureNodeFactV2 {
 // export: PdfStructureSourceV2
 export type PdfStructureSourceV2 = "document-tree" | "pdfium-page" | "none";
 
+// export: PdfTableImageProposalV1
+export type PdfTableImageProposalV1 = PdfTableStructureProposalV1;
+
 // export: PdfTableProjectionMode
 export type PdfTableProjectionMode = "native" | "linearized-render-required" | "none";
 
@@ -4854,6 +5021,34 @@ export interface PdfTableProjectionV2 {
     claimedCharacterIndexes: number[];
     boundaries: PdfTextBoundaryDecisionV2[];
     transformations: PdfTextTransformationV2[];
+}
+
+// export: PdfTableProposalOutcomeV1
+export interface PdfTableProposalOutcomeV1 {
+    grids: PdfGeometryGridV2[];
+    issues: ImportIssue[];
+    candidates: number;
+}
+
+// export: PdfTableProposalRequestV1
+export interface PdfTableProposalRequestV1 {
+    pageIndex: number;
+    bbox: PdfNormalizedRect;
+    image: PdfMaterializedAssetV1;
+}
+
+// export: PdfTableStructureProposalV1
+export interface PdfTableStructureProposalV1 {
+    rows: PdfNormalizedRect[];
+    columns: PdfNormalizedRect[];
+    columnHeaders: PdfNormalizedRect[];
+    spanningCells: PdfNormalizedRect[];
+}
+
+// export: PdfTableStructureProposerV1
+export interface PdfTableStructureProposerV1 {
+    readonly id: string;
+    propose(request: PdfTableProposalRequestV1): Promise<PdfTableImageProposalV1 | null>;
 }
 
 // export: PdfTaggedPageOutcomeV1
@@ -5079,6 +5274,9 @@ export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStruc
 // export: projectTaggedTableV2
 export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): PdfTableProjectionV2;
 
+// export: proposeUntaggedTablesV2
+export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, facts: PdfFactsV2, proposer: PdfTableStructureProposerV1): Promise<PdfTableProposalOutcomeV1>;
+
 // export: rectsTouch
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
@@ -5173,6 +5371,9 @@ export declare function unresolvedStructureKidIndexesV2(node: PdfStructureNodeFa
 
 // export: upgradePdfImportReviewV3
 export declare function upgradePdfImportReviewV3(review: PdfImportReviewV2): Promise<PdfImportReviewV3>;
+
+// export: verifyTableProposalV2
+export declare function verifyTableProposalV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2, region: PdfNormalizedRect, proposal: PdfTableStructureProposalV1): PdfGeometryGridV2 | null;
 ```
 
 ### Entry point `./node`
@@ -5431,6 +5632,7 @@ export declare function normalizeUntaggedPdfFacts(facts: PdfFactsV1, factsDigest
 // export: normalizeUntaggedPdfFactsV2
 export declare function normalizeUntaggedPdfFactsV2(facts: PdfFactsV2, factsDigest: string, options?: {
     allowTagged?: boolean;
+    proposedGrids?: readonly PdfGeometryGridV2[];
 }): Promise<PdfUntaggedSemanticsV2>;
 
 // export: orderedDescendantMcidsV2
@@ -5652,6 +5854,9 @@ export declare const PDF_TABLE_POLICY_V1: Readonly<{
 export declare const PDF_TABLE_POLICY_V2: Readonly<{
     readonly maximumLogicalRows: 5000;
 }>;
+
+// export: PDF_TABLE_PROPOSAL_RENDER_DPI
+export declare const PDF_TABLE_PROPOSAL_RENDER_DPI = 150;
 
 // export: PDF_TAGGED_POLICY_REVISION
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
@@ -5956,7 +6161,7 @@ export interface PdfEngineCapabilitiesV2 extends PdfEngineCapabilitiesV1 {
 }
 
 // export: PdfEvidenceBasis
-export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "text-boundary" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr";
+export type PdfEvidenceBasis = "structure-tree" | "marked-content" | "text-boundary" | "outline" | "text-geometry" | "font-evidence" | "annotation" | "path-object" | "image-object" | "operator-list" | "rendered-region" | "ocr" | "model-proposal";
 
 // export: PdfFactsAdapter
 export interface PdfFactsAdapter {
@@ -6128,6 +6333,31 @@ export interface PdfGeometryFragmentV2 extends Omit<PdfGeometryFragmentV1, "char
     physicalLineIndex: number;
 }
 
+// export: PdfGeometryGridCellV2
+export interface PdfGeometryGridCellV2 {
+    row: number;
+    column: number;
+    rowspan: number;
+    colspan: number;
+    bbox: PdfNormalizedRect;
+    fragments: PdfGeometryFragmentV2[];
+}
+
+// export: PdfGeometryGridV2
+export interface PdfGeometryGridV2 {
+    kind: "ruled" | "aligned" | "proposed";
+    pageIndex: number;
+    bbox: PdfNormalizedRect;
+    columnEdges: number[];
+    rowCount: number;
+    columnCount: number;
+    cells: PdfGeometryGridCellV2[];
+    headerRows: number;
+    pathIds: string[];
+    fragmentIds: string[];
+    openTop?: boolean;
+}
+
 // export: PdfHybridPageOutcomeV2
 export interface PdfHybridPageOutcomeV2 {
     pageIndex: number;
@@ -6228,6 +6458,7 @@ export interface PdfImportReviewBuildOptionsV2 {
     unsupported?: "report" | "fail";
     attachSource?: boolean;
     overrides?: ParsedPdfImportOverridesV1;
+    tableStructureProposer?: PdfTableStructureProposerV1;
 }
 
 // export: pdfImportReviewReport
@@ -6601,6 +6832,9 @@ export interface PdfStructureNodeFactV2 {
 // export: PdfStructureSourceV2
 export type PdfStructureSourceV2 = "document-tree" | "pdfium-page" | "none";
 
+// export: PdfTableImageProposalV1
+export type PdfTableImageProposalV1 = PdfTableStructureProposalV1;
+
 // export: PdfTableProjectionMode
 export type PdfTableProjectionMode = "native" | "linearized-render-required" | "none";
 
@@ -6634,6 +6868,34 @@ export interface PdfTableProjectionV2 {
     claimedCharacterIndexes: number[];
     boundaries: PdfTextBoundaryDecisionV2[];
     transformations: PdfTextTransformationV2[];
+}
+
+// export: PdfTableProposalOutcomeV1
+export interface PdfTableProposalOutcomeV1 {
+    grids: PdfGeometryGridV2[];
+    issues: ImportIssue[];
+    candidates: number;
+}
+
+// export: PdfTableProposalRequestV1
+export interface PdfTableProposalRequestV1 {
+    pageIndex: number;
+    bbox: PdfNormalizedRect;
+    image: PdfMaterializedAssetV1;
+}
+
+// export: PdfTableStructureProposalV1
+export interface PdfTableStructureProposalV1 {
+    rows: PdfNormalizedRect[];
+    columns: PdfNormalizedRect[];
+    columnHeaders: PdfNormalizedRect[];
+    spanningCells: PdfNormalizedRect[];
+}
+
+// export: PdfTableStructureProposerV1
+export interface PdfTableStructureProposerV1 {
+    readonly id: string;
+    propose(request: PdfTableProposalRequestV1): Promise<PdfTableImageProposalV1 | null>;
 }
 
 // export: PdfTaggedPageOutcomeV1
@@ -6865,6 +7127,9 @@ export declare function projectTaggedTable(page: PdfPageFactsV1, table: PdfStruc
 // export: projectTaggedTableV2
 export declare function projectTaggedTableV2(page: PdfPageFactsV2, table: PdfStructureNodeFactV2, corruptMcids: ReadonlySet<number>): PdfTableProjectionV2;
 
+// export: proposeUntaggedTablesV2
+export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, facts: PdfFactsV2, proposer: PdfTableStructureProposerV1): Promise<PdfTableProposalOutcomeV1>;
+
 // export: rectsTouch
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
@@ -6959,4 +7224,7 @@ export declare function unresolvedStructureKidIndexesV2(node: PdfStructureNodeFa
 
 // export: upgradePdfImportReviewV3
 export declare function upgradePdfImportReviewV3(review: PdfImportReviewV2): Promise<PdfImportReviewV3>;
+
+// export: verifyTableProposalV2
+export declare function verifyTableProposalV2(page: PdfPageFactsV2, analysis: PdfReadingOrderPageV2, region: PdfNormalizedRect, proposal: PdfTableStructureProposalV1): PdfGeometryGridV2 | null;
 ```

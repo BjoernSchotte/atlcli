@@ -22,6 +22,7 @@ Environment variables for configuring atlcli.
 |----------|-------------|
 | `ATLCLI_CONFIG` | Path to config file |
 | `ATLCLI_LOG_LEVEL` | Log level (debug, info, warn, error) |
+| `ATLCLI_MODELS_DIR` | Directory for optional local models (default `~/.atlcli/models`) |
 
 ## Usage
 

@@ -399,7 +399,9 @@ export type PdfEvidenceBasis =
   | "image-object"
   | "operator-list"
   | "rendered-region"
-  | "ocr";
+  | "ocr"
+  /** A learned model proposed the structure; PDF characters verified it. */
+  | "model-proposal";
 
 export interface PdfDecisionEvidenceV1 {
   sourceId: string;

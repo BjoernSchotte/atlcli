@@ -418,6 +418,12 @@ function untaggedCandidatesV2(page: PdfPageFactsV2): VisualCandidate[] {
   return candidates;
 }
 
+const UNTAGGED_NATIVE_TABLE_DECISIONS = new Set([
+  "pdf/table-untagged-grid-native",
+  "pdf/table-untagged-aligned-native",
+  "pdf/table-untagged-proposed-native",
+]);
+
 type PdfFigureEvidence = PdfDecisionEvidenceV1 | PdfDecisionEvidenceV2;
 type PdfFigureBaseSemantics = PdfFigureBaseSemanticsV1 | PdfFigureBaseSemanticsV2;
 type PdfFigureAdapter = PdfFactsAdapter | PdfFactsAdapterV2;
@@ -785,8 +791,22 @@ export async function preservePdfFiguresV2(
   if (await sha256Hex(sourceBytes) !== facts.inputSha256 || sourceBytes.byteLength !== facts.inputBytes) {
     throw new PdfImportError("pdf/provenance-drift", "Figure materialization bytes differ from the analyzed PDF.");
   }
+  // A vector drawing inside a native table (its rulings, also those of a
+  // verified model proposal) is part of the table, not a figure.
+  const nativeTables = base.evidence.filter((item) =>
+    item.outcome === "native" && item.locator.bbox && UNTAGGED_NATIVE_TABLE_DECISIONS.has(item.decisionCode)
+  );
+  const insideTable = (candidate: VisualCandidate) => nativeTables.some((table) => {
+    const box = table.locator.bbox!;
+    return table.locator.pageIndex === candidate.pageIndex
+      && candidate.bbox.x >= box.x - 0.02 && candidate.bbox.y >= box.y - 0.02
+      && candidate.bbox.x + candidate.bbox.width <= box.x + box.width + 0.02
+      && candidate.bbox.y + candidate.bbox.height <= box.y + box.height + 0.02;
+  });
   const candidates = [
-    ...facts.pages.flatMap((page) => facts.tagged ? taggedCandidatesV2(page) : untaggedCandidatesV2(page)),
+    ...facts.pages.flatMap((page) => facts.tagged
+      ? taggedCandidatesV2(page)
+      : untaggedCandidatesV2(page).filter((candidate) => candidate.mode === "native-raster" || !insideTable(candidate))),
     ...tableFallbackCandidates(base),
   ].sort((left, right) => visualOrder(left, right) || left.sourceId.localeCompare(right.sourceId));
   return {

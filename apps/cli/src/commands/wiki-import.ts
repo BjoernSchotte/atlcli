@@ -97,6 +97,8 @@ const PDF_ONLY_FLAGS = [
   "reading-order",
   "attach-source",
   "max-wiki-pages",
+  "table-model",
+  "table-model-device",
   "overrides-template",
 ] as const;
 
@@ -1888,6 +1890,9 @@ Options:
   --max-wiki-pages <n>  PDF page-tree cap, 1..200 (default 50)
   --title-conflict <m>  PDF: fail|rename for planned/existing titles (default fail)
   --scan-policy <mode>  PDF: fail|page-image|report (default fail)
+  --table-model table-transformer  PDF: opt-in local model for untagged tables the
+                        geometry cannot resolve (install: atlcli models pull table-transformer)
+  --table-model-device <d>  auto|cpu|gpu (default auto = cpu)
   --visual-fallback <m> PDF: auto|inline|collapsed|appendix; implies page-image
   --reading-order <m>   PDF: auto|tags|geometry (default auto)
   --accept-reported-pages  PDF: acknowledge explicitly omitted reported pages

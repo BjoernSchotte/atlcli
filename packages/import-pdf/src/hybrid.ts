@@ -100,6 +100,7 @@ function isAggregateOwnershipEvidence(entry: PdfDecisionEvidenceV2): boolean {
     "pdf/table-tagged-native",
     "pdf/table-untagged-grid-native",
     "pdf/table-untagged-aligned-native",
+    "pdf/table-untagged-proposed-native",
   ].includes(entry.decisionCode);
 }
 

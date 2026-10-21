@@ -49,6 +49,8 @@ export const PDF_GEOMETRY_TABLE_POLICY_V2 = Object.freeze({
   boldWeight: 600,
   /** Continuation parts must repeat every column edge within this distance. */
   continuationEdgeTolerance: 0.006,
+  /** How far a proposed column edge may move to the nearest gap between glyphs. */
+  proposalEdgeWindow: 0.02,
   borderless: {
     minimumColumns: 3,
     minimumRows: 3,
@@ -79,7 +81,8 @@ export interface PdfGeometryGridCellV2 {
 }
 
 export interface PdfGeometryGridV2 {
-  kind: "ruled" | "aligned";
+  /** `proposed`: structure from a table-structure model, verified against the characters. */
+  kind: "ruled" | "aligned" | "proposed";
   pageIndex: number;
   bbox: PdfNormalizedRect;
   columnEdges: number[];
@@ -622,6 +625,7 @@ export function projectGeometryTableV2(
   const basis = (grid: PdfGeometryGridV2, header: boolean) => [
     "text-geometry" as const,
     ...(grid.kind === "ruled" ? ["path-object" as const] : []),
+    ...(grid.kind === "proposed" ? ["model-proposal" as const] : []),
     "text-boundary" as const,
     ...(header ? ["font-evidence" as const] : []),
   ];
@@ -742,7 +746,7 @@ export function projectGeometryTableV2(
       basis: basis(grid, false),
       confidence: native ? Math.min(1, ...pageEvidence.map((item) => item.confidence)) : 0,
       decisionCode: native
-        ? grid.kind === "ruled" ? "pdf/table-untagged-grid-native" : "pdf/table-untagged-aligned-native"
+        ? { ruled: "pdf/table-untagged-grid-native", aligned: "pdf/table-untagged-aligned-native", proposed: "pdf/table-untagged-proposed-native" }[grid.kind]
         : "pdf/table-untagged-grid-boundary-unresolved",
       outcome: native ? "native" : outcome,
       analyzerRevision: PDF_TABLE_POLICY_REVISION_V2,
@@ -785,9 +789,18 @@ export function projectUntaggedGeometryTablesV2(
   pages: readonly PdfPageFactsV2[],
   analyses: readonly PdfReadingOrderPageV2[],
   ignoredFragmentIds: ReadonlySet<string>,
+  proposedGrids: readonly PdfGeometryGridV2[] = [],
   hyphenatedCompounds?: ReadonlySet<string>,
 ): PdfTableProjectionV2[][] {
-  const grids = analyses.map((analysis) => detectGeometryGridsV2(pages[analysis.pageIndex]!, analysis));
+  const overlaps = (a: PdfNormalizedRect, b: PdfNormalizedRect) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  const grids = analyses.map((analysis) => {
+    const detected = detectGeometryGridsV2(pages[analysis.pageIndex]!, analysis);
+    // Verified proposals only fill areas the deterministic pass left open.
+    const proposed = proposedGrids.filter((grid) => grid.pageIndex === analysis.pageIndex
+      && !detected.some((candidate) => overlaps(candidate.bbox, grid.bbox)));
+    return [...detected, ...proposed].sort((a, b) => a.bbox.y - b.bbox.y);
+  });
   const body = analyses.map((analysis) => analysis.fragments.filter((fragment) =>
     !fragment.furniture && !fragment.duplicateOf && !ignoredFragmentIds.has(fragment.id)
   ));
@@ -824,4 +837,186 @@ export function projectUntaggedGeometryTablesV2(
     for (const [pageIndex, projection] of projections) result[pageIndex]!.push(projection);
   }
   return result;
+}
+
+/** A table-structure proposal in page-normalized coordinates (for example from Table Transformer). */
+export interface PdfTableStructureProposalV1 {
+  rows: PdfNormalizedRect[];
+  columns: PdfNormalizedRect[];
+  columnHeaders: PdfNormalizedRect[];
+  spanningCells: PdfNormalizedRect[];
+}
+
+const bottomOf = (box: PdfNormalizedRect) => box.y + box.height;
+const rightOf = (box: PdfNormalizedRect) => box.x + box.width;
+
+/** Edges between consecutive bands: the outer edges, then midpoints of the gaps. */
+function bandEdges(bands: readonly PdfNormalizedRect[], start: (box: PdfNormalizedRect) => number, end: (box: PdfNormalizedRect) => number): number[] | null {
+  const sorted = [...bands].sort((a, b) => (start(a) + end(a)) - (start(b) + end(b)));
+  const edges = [start(sorted[0]!)];
+  for (let index = 1; index < sorted.length; index += 1) edges.push((end(sorted[index - 1]!) + start(sorted[index]!)) / 2);
+  edges.push(end(sorted.at(-1)!));
+  return edges.every((edge, index) => index === 0 || edge - edges[index - 1]! >= P.minimumBand) ? edges : null;
+}
+
+/**
+ * Accepts a proposed structure only when the PDF's own characters fit it:
+ * every text fragment of the table area lands in exactly one cell (split at
+ * column edges per character), every row holds text, and spanning cells
+ * cover whole rectangles of rows and columns. The proposal never adds or
+ * changes text.
+ */
+export function verifyTableProposalV2(
+  page: PdfPageFactsV2,
+  analysis: PdfReadingOrderPageV2,
+  region: PdfNormalizedRect,
+  proposal: PdfTableStructureProposalV1,
+): PdfGeometryGridV2 | null {
+  if (proposal.rows.length < 2 || proposal.columns.length < 2) return null;
+  if (proposal.rows.length > P.maximumRows || proposal.columns.length > P.maximumColumns) return null;
+  const ys = bandEdges(proposal.rows, (box) => box.y, bottomOf);
+  const xs = bandEdges(proposal.columns, (box) => box.x, rightOf);
+  if (!ys || !xs) return null;
+  const frame = { x: xs[0]!, y: ys[0]!, width: xs.at(-1)! - xs[0]!, height: ys.at(-1)! - ys[0]! };
+  const rows = ys.length - 1;
+  const columns = xs.length - 1;
+  const inside = analysis.fragments.filter((fragment) => {
+    if (fragment.furniture || fragment.duplicateOf) return false;
+    const point = center(fragment.bbox);
+    return within({ ...point, width: 0, height: 0 }, region, 0) && within({ ...point, width: 0, height: 0 }, frame, 0);
+  });
+  if (inside.length === 0) return null;
+  // The model's column boxes are approximate: an interior edge that cuts a
+  // word moves to the nearest word boundary within a small window. Words are
+  // runs of visible glyphs, so an edge never lands between two letters.
+  const words: Array<readonly [number, number]> = [];
+  for (const fragment of inside) {
+    let word: [number, number] | null = null;
+    for (const character of fragment.characters) {
+      if (character.bbox && character.value.trim()) {
+        const end = character.bbox.x + character.bbox.width;
+        word = word ? [word[0], Math.max(word[1], end)] : [character.bbox.x, end];
+      } else if (word) {
+        words.push(word);
+        word = null;
+      }
+    }
+    if (word) words.push(word);
+  }
+  const cuts = (x: number) => words.some(([start, end]) => start < x && x < end);
+  for (let index = 1; index < xs.length - 1; index += 1) {
+    if (!cuts(xs[index]!)) continue;
+    const options = words.flatMap(([start, end]) => [start, end])
+      .filter((x) => Math.abs(x - xs[index]!) <= P.proposalEdgeWindow && x > xs[index - 1]! && x < xs[index + 1]! && !cuts(x))
+      .sort((a, b) => Math.abs(a - xs[index]!) - Math.abs(b - xs[index]!));
+    if (options[0] !== undefined) xs[index] = options[0];
+  }
+  // Spanning cells merge the elementary cells whose centres they contain.
+  const parent = Array.from({ length: rows * columns }, (_, index) => index);
+  const find = (index: number): number => parent[index] === index ? index : (parent[index] = find(parent[index]!));
+  for (const span of proposal.spanningCells) {
+    const members: number[] = [];
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const point = { x: (xs[column]! + xs[column + 1]!) / 2, y: (ys[row]! + ys[row + 1]!) / 2, width: 0, height: 0 };
+        if (within(point, span, 0)) members.push(row * columns + column);
+      }
+    }
+    for (const member of members.slice(1)) parent[find(member)] = find(members[0]!);
+  }
+  const groups = new Map<number, number[]>();
+  for (let index = 0; index < rows * columns; index += 1) groups.set(find(index), [...(groups.get(find(index)) ?? []), index]);
+  const cells: PdfGeometryGridCellV2[] = [];
+  const cellOf = new Map<number, PdfGeometryGridCellV2>();
+  for (const members of groups.values()) {
+    const rowsOf = members.map((index) => Math.floor(index / columns));
+    const columnsOf = members.map((index) => index % columns);
+    const row = Math.min(...rowsOf);
+    const column = Math.min(...columnsOf);
+    const rowspan = Math.max(...rowsOf) - row + 1;
+    const colspan = Math.max(...columnsOf) - column + 1;
+    if (rowspan * colspan !== members.length) return null;
+    const cell: PdfGeometryGridCellV2 = {
+      row, column, rowspan, colspan,
+      bbox: { x: xs[column]!, y: ys[row]!, width: xs[column + colspan]! - xs[column]!, height: ys[row + rowspan]! - ys[row]! },
+      fragments: [],
+    };
+    cells.push(cell);
+    for (const member of members) cellOf.set(member, cell);
+  }
+  // Text is in the frame by its centre; its glyphs may overhang the outer edges.
+  const columnOf = (x: number) => x < xs[1]! ? 0 : x >= xs.at(-2)! ? columns - 1
+    : xs.findIndex((edge, index) => index < xs.length - 1 && x >= edge && x < xs[index + 1]!);
+  const rowOf = (y: number) => y < ys[1]! ? 0 : y >= ys.at(-2)! ? rows - 1
+    : ys.findIndex((edge, index) => index < ys.length - 1 && y >= edge && y < ys[index + 1]!);
+  for (const fragment of inside) {
+    const pieces = splitAtColumns(page, fragment, (x) => {
+      const column = columnOf(x);
+      return column < 0 ? -1 : column;
+    });
+    if (!pieces || pieces.has(-1)) return null;
+    for (const [column, piece] of pieces) {
+      const row = rowOf(center(piece.bbox).y);
+      if (row < 0) return null;
+      cellOf.get(row * columns + column)!.fragments.push(piece);
+    }
+  }
+  // A row or column without any text is not evidenced by the PDF.
+  for (let row = 0; row < rows; row += 1) {
+    if (!cells.some((cell) => cell.row <= row && row < cell.row + cell.rowspan && cell.fragments.length > 0)) return null;
+  }
+  for (let column = 0; column < columns; column += 1) {
+    if (!cells.some((cell) => cell.column <= column && column < cell.column + cell.colspan && cell.fragments.length > 0)) return null;
+  }
+  cells.sort((a, b) => a.row - b.row || a.column - b.column);
+  let headerRows = 0;
+  while (headerRows < rows - 1 && proposal.columnHeaders.some((box) =>
+    within({ x: frame.x + frame.width / 2, y: (ys[headerRows]! + ys[headerRows + 1]!) / 2, width: 0, height: 0 }, { ...box, x: frame.x, width: frame.width }, P.coordinateTolerance)
+  )) headerRows += 1;
+  return {
+    kind: "proposed",
+    pageIndex: page.index,
+    bbox: frame,
+    columnEdges: xs,
+    rowCount: rows,
+    columnCount: columns,
+    cells,
+    headerRows: headerRows || headerRowCount(rows, cells),
+    pathIds: [],
+    fragmentIds: inside.map((fragment) => fragment.id),
+  };
+}
+
+/**
+ * Areas the deterministic pass could not turn into a table but that hold
+ * table-like evidence: ruling components with text that did not qualify, and
+ * aligned text rows. These are the only regions offered to a proposer.
+ */
+export function untaggedTableCandidateRegionsV2(
+  page: PdfPageFactsV2,
+  analysis: PdfReadingOrderPageV2,
+  alignedCandidate: PdfNormalizedRect | null,
+): PdfNormalizedRect[] {
+  const accepted = detectGeometryGridsV2(page, analysis);
+  const overlapsAccepted = (box: PdfNormalizedRect) => accepted.some((grid) =>
+    box.x < rightOf(grid.bbox) && rightOf(box) > grid.bbox.x && box.y < bottomOf(grid.bbox) && bottomOf(box) > grid.bbox.y
+  );
+  const regions: PdfNormalizedRect[] = [];
+  for (const component of rulingComponents(rulingsOf(page))) {
+    if (new Set(component.map((ruling) => ruling.pathId)).size < 4) continue;
+    const xs = component.flatMap((ruling) => ruling.horizontal ? [ruling.from, ruling.to] : [ruling.at]);
+    const ys = component.flatMap((ruling) => ruling.horizontal ? [ruling.at] : [ruling.from, ruling.to]);
+    const box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+    if (box.y > 0.92 || bottomOf(box) < 0.08 || box.width < 0.1 || box.height < 0.02 || overlapsAccepted(box)) continue;
+    const characters = page.characters.filter((character) => character.bbox && character.value.trim() && within(character.bbox, box)).length;
+    if (characters >= 20) regions.push(box);
+  }
+  if (alignedCandidate && !overlapsAccepted(alignedCandidate) && !regions.some((box) => within(alignedCandidate, box))) regions.push(alignedCandidate);
+  // Table Transformer was trained on table crops with a white margin.
+  const margin = 0.03;
+  return regions.map((box) => {
+    const x = Math.max(0, box.x - margin);
+    const y = Math.max(0, box.y - margin);
+    return { x, y, width: Math.min(1, rightOf(box) + margin) - x, height: Math.min(1, bottomOf(box) + margin) - y };
+  });
 }
