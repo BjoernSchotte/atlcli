@@ -296,6 +296,17 @@ The ordinary test suite keeps these cases disabled unless `ATLCLI_E2E=1` is
 set locally. This avoids storing a tenant profile in remote CI and prevents
 accidental requests against a non-sandbox instance.
 
+### Live suites
+
+Each suite builds the CLI, runs against the built `dist/index.js` and is
+skipped unless its own variable is set. `ATLCLI_E2E_PROFILE` picks the profile
+(default `mayflower`).
+
+| Command | Covers | Extra variables |
+|---------|--------|-----------------|
+| `bun run test:e2e:jira-content` | Jira markdown content, comments, history, unlink, search pagination, CSV import, bulk edit, `wiki page tasks-to-issues`, `jira version notes` | `ATLCLI_E2E_SPRINT_ID`: a sprint the suite may read, adds the `jira sprint review` dry run |
+| `bun run test:e2e:import-pdf` | PDF import publication | |
+
 ## Coding Standards
 
 ### TypeScript

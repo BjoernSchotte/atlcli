@@ -244,7 +244,9 @@ async function readRichTextFlag(
   }
   if (file === undefined) return inline;
   try {
-    return file === "-" ? await Bun.stdin.text() : await readFile(file, "utf8");
+    const text = file === "-" ? await Bun.stdin.text() : await readFile(file, "utf8");
+    // `issue get --format markdown` output piped back must not put its front block into the description.
+    return name === "description" ? text.replace(ISSUE_FRONT_BLOCK, "") : text;
   } catch (err) {
     fail(opts, 1, ERROR_CODES.USAGE, `Cannot read --${name}-file ${file}: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -539,6 +541,9 @@ async function handleIssueGet(
 }
 
 /** YAML front block + description markdown, ready to edit and feed back via --description-file. */
+/** The front block {@link formatIssueMarkdown} writes: only `key: value` lines between `---` fences. */
+const ISSUE_FRONT_BLOCK = /^---\r?\n(?:[a-z]+: .*\r?\n)+---\r?\n(?:\r?\n)?/;
+
 function formatIssueMarkdown(issue: JiraIssue, baseUrl: string): string {
   const f = issue.fields;
   const yaml = (value: string | undefined) => JSON.stringify(value ?? "");

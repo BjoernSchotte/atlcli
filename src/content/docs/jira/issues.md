@@ -39,7 +39,14 @@ atlcli jira issue get --key PROJ-123 --json
 atlcli jira issue get --key PROJ-123 --json | jq -r .issue.descriptionMarkdown > desc.md
 $EDITOR desc.md
 atlcli jira issue update --key PROJ-123 --description-file desc.md
+
+# Same, keeping the key/summary/status header for context
+atlcli jira issue get --key PROJ-123 --format markdown > desc.md
+$EDITOR desc.md
+atlcli jira issue update --key PROJ-123 --description-file desc.md
 ```
+
+`--description-file` ignores the `---` header that `--format markdown` writes, so the header never ends up in the description. Edit the summary or status with their own flags.
 
 ## Markdown descriptions and comments
 

@@ -163,6 +163,28 @@ describe("rich text", () => {
     expect(stdout).toContain("## Steps\n\n**bold**");
   }, 30_000);
 
+  it("issue get --format markdown piped into update --description-file - drops the front block", async () => {
+    const got = await runCli(["jira", "issue", "get", "--key", "AB-1", "--format", "markdown"]);
+    const { exitCode } = await runCli(
+      ["jira", "issue", "update", "--key", "AB-1", "--description-file", "-", "--json"],
+      got.stdout.replace("**bold**", "**bolder**")
+    );
+    expect(exitCode).toBe(0);
+    const description = posts("/rest/api/3/issue/AB-1").find((r) => r.method === "PUT")!.body.fields.description;
+    expect(JSON.stringify(description)).not.toContain("key: AB-1");
+    expect(description.content.map((n: { type: string }) => n.type)).toEqual(["heading", "paragraph"]);
+    expect(description.content[1].content[0]).toEqual({ type: "text", text: "bolder", marks: [{ type: "strong" }] });
+  }, 30_000);
+
+  it("a description that only starts with a rule keeps it", async () => {
+    await runCli(
+      ["jira", "issue", "update", "--key", "AB-1", "--description-file", "-", "--json"],
+      "---\n\nNot front matter: a rule, then text.\n"
+    );
+    const description = posts("/rest/api/3/issue/AB-1").find((r) => r.method === "PUT")!.body.fields.description;
+    expect(description.content.map((n: { type: string }) => n.type)).toEqual(["rule", "paragraph"]);
+  }, 30_000);
+
   it("issue get --json adds descriptionMarkdown", async () => {
     const { stdout } = await runCli(["jira", "issue", "get", "--key", "AB-1", "--json"]);
     expect(JSON.parse(stdout).issue.descriptionMarkdown).toBe("## Steps\n\n**bold**");
