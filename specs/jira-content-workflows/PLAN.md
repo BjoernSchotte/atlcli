@@ -1,9 +1,26 @@
 # Bundle A: Jira content & Jira↔Confluence workflows
 
-- Status: **Planned** (2026-10-21)
+- Status: **Planned**, questions decided (2026-10-21)
 - Directory: `specs/jira-content-workflows`
 - Planning baseline: `main` @ a6d4d51b (record the commit SHA here when work starts)
 - Scope: A1 Jira Markdown↔ADF + Jira content CLI gaps; A2 meeting-note tasks → Jira issues; A3 release notes / sprint review pages. Also fixes Jira doc drift.
+
+## Decisions (2026-10-21)
+
+These answer the original open questions and override the body where they conflict.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | A2 command name | `atlcli wiki page tasks-to-issues`. No alias. |
+| 2 | `--description` as markdown | Markdown by default, immediately. CHANGELOG entry under "Changed". |
+| 3 | Data Center | **Cloud first, DC best effort.** New features are specified and E2E-tested on Cloud. DC gets the documented fallbacks (markdown string to API v2, body-marker-only idempotency for A2, no assignee). The DC `/search/jql` problem becomes a separate issue, not part of this bundle. |
+| 4 | Runtime ADF validation | Tests only, plus an opt-in strict path (`ATLCLI_STRICT_ADF=1`). A validator false positive must never block a write. |
+| 5 | Sentinel format | `<!--adf:BASE64URL(JSON)-->`. |
+| 6 | `issue unlink --confirm` | Required only when the link was resolved by key pair. |
+| 7 | Release-notes grouping | Default by type, switchable to epic. Several bundled templates; see A3 "Templates". Contributors are assignees only (no per-issue changelog calls). |
+| 8 | Two-way task sync | **In this bundle.** See A2 "Status sync". |
+| 9 | `bulk move` doc drift | **Implement** `jira bulk move`. See A1 "bulk move". |
+| 10 | DC search | Separate issue (see 3). |
 
 ## Summary decision
 
@@ -61,7 +78,7 @@ Ship three features in dependency order. **A1 lands first.** A2 and A3 both writ
 |---|---|---|
 | `jira import --map-field "Col=field"` (`import-export.md:59,80`) | not parsed anywhere | **Implement** (CSV header rename, small) |
 | `bulk edit\|delete\|move --issues K1,K2` (`bulk-operations.md:28,54,120,139`) | `--jql` only | **Implement** `--issues` for edit/transition/label/delete/link-page via `key in (...)` |
-| `bulk move` section | no `move` subcommand | **Remove** the section, point to `jira sprint add/remove` (they exist, `jira.ts:1630`) |
+| `bulk move` section | no `move` subcommand | **Implement** `bulk move --sprint <id> \| --backlog`, reusing the sprint add/remove client calls behind `jira sprint add/remove` (`jira.ts:1630`) |
 | `bulk edit --confirm` "skip confirmation prompt" | no prompt exists | **Remove** the row |
 | `export --fields` (`import-export.md`) | not implemented | **Remove** the row |
 | CSV `labels`/`components` "semicolon-separated" | code splits on `,` (`import.ts:84`) | **Fix the doc** to say comma |
@@ -80,7 +97,7 @@ Ship three features in dependency order. **A1 lands first.** A2 and A3 both writ
 - Uploading local images referenced in markdown as Jira attachments. `![x](./a.png)` stays a link; this is listed in the lossy table.
 - Resolving `@email` or `@displayName` to an accountId. Mentions need an explicit accountId, exactly like the Confluence dialect.
 - Auto-linking bare issue keys (`PROJ-1` in prose). Only `{jira:KEY}` and `/browse/KEY` URLs become smart links, to avoid false positives.
-- Two-way task-status sync (closing an issue does not tick the Confluence task). Possible follow-up.
+- Transitioning Jira issues from Confluence task state. Status sync is one-way, Jira → page (see A2 "Status sync"); a task ticked on the page while its issue is open is only reported.
 - A new bundled-template storage level in `@atlcli/core`. Defaults are fallback constants; users override with a same-named template at any existing level.
 
 ## Design
@@ -229,6 +246,24 @@ export function taskFingerprint(task: PageTask): string;                // sha25
 
 **Output:** a plan table with `taskId`, `action`, `summary`, `assignee`, `due`, `key`. With `--json`, `{schemaVersion:"1", pageId, dryRun, tasks:[…], created, skipped, failed}`.
 
+**Status sync** (`--sync`; same dry-run/`--confirm` contract):
+
+```
+atlcli wiki page tasks-to-issues --id <pageId> --sync [--confirm] [--json]
+```
+
+- With `--sync`, the command creates nothing (`--project` is not required). It only reconciles task status with the linked issues.
+- For every task with `linkedIssueKeys` (body marker, ledger or hand-made link), fetch the issue status category in one `search` (`key in (…)`, fields `status`, `resolution`).
+- Pure planner `planTaskStatusSync(tasks, issueStates)`:
+  - task `incomplete`, issue category `done` → `complete`;
+  - task `complete`, issue reopened (category not `done`) → `reopen` (set back to `incomplete`);
+  - task `complete`, issue never done → `report:ticked-but-open`, page untouched, no transition (Jira stays the source of truth);
+  - several linked keys → the task counts as done only when all are done;
+  - issue not found or not visible → `report:missing`.
+- New pure helper in `page-tasks.ts`: `setTaskStatuses(storage, Map<taskId, "complete"|"incomplete">)`. It string-splices `<ac:task-status>` after the matching `<ac:task-id>`, with the same byte-identical guarantee and missing-id throw as `annotateTasksWithIssueKeys`.
+- One `updatePage` per run, 409 retry once, unchanged pages are not written.
+- The normal (create) run also syncs status for tasks it skipped as `skip:linked` when `--sync` is given together with `--project`, so one cron line can do both.
+
 ### A3 — release notes and sprint review pages
 
 **Commands** (existing nouns, `jira.ts` `handleVersion` `:5171` / `handleSprint` `:1443`):
@@ -263,9 +298,16 @@ export function buildReportData(input: {...}): ReportData;
 - Version name resolution uses `getProjectVersions(project)`; exact-name match, otherwise a numeric id.
 - Epic comes from `fields.parent` when the parent's issuetype is Epic.
 
+**Templates** (decision 7): the template is the extension point, not a growing list of flags. `TemplateEngine` is Handlebars, so loops (`{{#each}}`), conditionals and partial-free composition already work; no new templating capability is needed.
+- The **whole** `ReportData` model is passed in, so any template can iterate `issues`, `byType`, `byEpic`, `contributors` and read `metrics` / `sprint`.
+- Bundled templates (built-in constants in `apps/cli/src/commands/jira-report-templates.ts`, parsed with `parseTemplate`): `release-notes` (by type), `release-notes-by-epic`, `sprint-review`. More can be added later as plain template files without code changes.
+- `--group-by type|epic` only picks the default bundled template (`release-notes` vs `release-notes-by-epic`). `--template <name>` overrides it.
+- `atlcli wiki template` gains nothing new; bundled templates are listed by `jira version notes --list-templates` and can be copied out with `--print-template <name>` to start a custom one.
+- Test: every bundled template renders against a fixture `ReportData` and its markdown converts with `markdownToStorage` without error.
+
 **Rendering:**
-- Template lookup: `TemplateResolver` (global, profile, space) by name. The default name is `release-notes` / `sprint-review`. Fallback is a built-in constant in a new file `apps/cli/src/commands/jira-report-templates.ts`, parsed with `parseTemplate` from `@atlcli/core`.
-- Users customise by copying the default and saving it under the same name. The `--template` value is shown in dry-run output.
+- Template lookup: `TemplateResolver` (global, profile, space) by name, then the bundled templates. A user template with the same name as a bundled one wins.
+- Users customise by printing a bundled template, editing it, and saving it under any name. The resolved template name and source (user level or bundled) are shown in dry-run output.
 - `TemplateEngine.render(template, {variables: {...reportData, ...varFlags}, builtins})`. Arrays already work with `{{#each}}`; this needs a verifying test.
 - Precompute `url` in `ReportIssue` instead of adding a `{{jiraLink}}` Handlebars helper.
 - Default templates use only the existing dialect: headings, a metrics table, `{status:green}Released{status}`, per-type sections with issue lists, a contributors list, and `:::info` for the sprint goal.
@@ -296,16 +338,18 @@ export function buildReportData(input: {...}): ReportData;
 - [ ] Generalise `fetchAllIssues(fields?)`; paginate `search` / `my`; `--all`; `hasMore`.
 - [ ] Extract `buildConfluencePageRemoteLink`; switch the 3 call sites; markdown link comments.
 - [ ] Import/export: `toJiraRichText` in `importIssues`, quoted-newline `parseCsv`, `adfToMarkdown` in export.
-- [ ] Drift: `--map-field` (CSV header rename before field mapping, repeatable, `fail` on unknown column), `--issues` for bulk edit/transition/label/delete/link-page via `resolveBulkJql(flags)`; update `issueHelp` / `bulkHelp` / `importHelp`.
+- [ ] Drift: `--map-field` (CSV header rename before field mapping, repeatable, `fail` on unknown column), `--issues` for bulk edit/transition/label/delete/link-page/move via `resolveBulkJql(flags)`; update `issueHelp` / `bulkHelp` / `importHelp`.
+- [ ] `jira bulk move (--jql|--issues) (--sprint <id> | --backlog) [--dry-run] [--limit]`: resolve keys with `fetchAllIssues`, then call the same client methods as `sprint add` / `sprint remove` in chunks of 50 (Agile API limit). Dry run lists keys and target. Help text and docs section rewritten to match.
 
 ### Phase A2 — tasks to issues (depends on A1a)
 - [ ] `packages/confluence/src/page-tasks.ts`: extract, annotate, fingerprint, plus tests.
 - [ ] `apps/cli/src/commands/page-tasks-to-issues.ts`: `planTaskIssues` (pure) plus the shell; wire into `page.ts` and its help.
 - [ ] Ledger property, retry-once on 409, DC degradation warnings.
+- [ ] Status sync: `setTaskStatuses` (pure) in `page-tasks.ts`, `planTaskStatusSync` (pure), `--sync` wiring, combined `--project --sync` run.
 
 ### Phase A3 — report pages (depends on A1b `fetchAllIssues`)
 - [ ] `packages/jira/src/report-data.ts` plus tests; extract the shared sprint fetch helper.
-- [ ] `jira-report-templates.ts` (2 defaults); `version notes`, `sprint review` handlers plus help.
+- [ ] `jira-report-templates.ts` (3 bundled: `release-notes`, `release-notes-by-epic`, `sprint-review`); `--group-by`, `--list-templates`, `--print-template`; `version notes`, `sprint review` handlers plus help.
 - [ ] Idempotent upsert with property, `--force`, `--dry-run`; `--export` chaining.
 
 ### Phase D — docs (same PRs as behaviour, per CLAUDE.md)
@@ -336,6 +380,8 @@ The repo convention is `bun run test` (never bare `bun test`). Use real code pat
   - Fingerprint stability.
   - Annotate → `storageToMarkdown` → `markdownToStorage` → `extractPageTasks` still reports `linkedIssueKeys`. Regression for task renumbering.
 - `page-tasks-to-issues.test.ts`: planner matrix (linked / ledger hit / ledger fingerprint mismatch / done / empty).
+- Status sync: `planTaskStatusSync` matrix (incomplete+done → complete, complete+reopened → reopen, ticked-but-open → report, multi-key partial, missing issue); `setTaskStatuses` byte-identical except the status elements, throws on missing id.
+- `bulk move`: `--backlog` and `--sprint` request shapes, chunking at 50 (fetch stub).
 - `packages/jira/src/report-data.test.ts`: grouping order, epic grouping, contributors, metrics, empty version. Plus a render test: default templates through the real `TemplateEngine` produce the expected markdown snapshot, and `markdownToStorage` of it does not throw.
 - Gates: `bun run typecheck`, `bun run test`, `bun scripts/check-browser-build.ts`, `bun scripts/api-report.ts` (no unreviewed diff).
 
@@ -360,6 +406,7 @@ Scenarios:
    - `--confirm`: 1 issue with assignee and due date, remote link visible via `jira issue pages`, task body has the macro, ledger property present.
    - **Rerun with `--confirm`: 0 created.**
    - `docs pull` → `docs push` → rerun: still 0 created.
+   - Transition the created issue to Done, run `--sync --confirm`: the task is ticked on the page. Reopen the issue, rerun: the task is unticked. Rerun without changes: page version unchanged.
    - Every CLI-created issue is passed to `trackIssue` **and** stamped with `setIssueProperty(E2E_RUN_ID_PROPERTY)` so the sweeper can also find it.
 3. **A3:**
    - Create version `atlcli-e2e-<runId>` in ATLCLI and assign the A1 issues to it.
@@ -384,10 +431,10 @@ All under `src/content/docs/`, using the page template from CLAUDE.md (intro →
   - New section "Markdown descriptions and comments": dialect table, lossy policy table, DC note.
   - `--description-file`, `get --format markdown`, `comments …`, `history`, `unlink`. Replace the "positional comment" text.
 - `jira/search.md`: `--limit` across pages, `--all`, `hasMore`/`total` semantics.
-- `jira/bulk-operations.md`: `--issues` for all subcommands; remove the `bulk move` section (link `boards-sprints.md` sprint add/remove), the `--confirm` row on edit, and the fake text output samples (replace with real JSON).
+- `jira/bulk-operations.md`: `--issues` for all subcommands; rewrite the `bulk move` section to the implemented `--sprint`/`--backlog` behaviour; remove the `--confirm` row on edit and the fake text output samples (replace with real JSON).
 - `jira/import-export.md`: `--map-field` semantics (CSV only, `Column=field`), comma separators, multi-line quoted cells, markdown descriptions and comments both ways; remove `--fields`.
 - `jira/boards-sprints.md`: `sprint review`. `jira/projects.md` or a new `jira/versions.md`: `version notes` (check where versions are documented; `projects.md` is the likely home).
-- `confluence/pages.md`: `tasks-to-issues`. `confluence/templates.md`: report templates, available variables (the `ReportData` reference table with type / description), and how to override the defaults.
+- `confluence/pages.md`: `tasks-to-issues` including `--sync`. `confluence/templates.md`: report templates, the bundled template list, available variables (the `ReportData` reference table with type / description), a custom-template example with `{{#each byEpic}}`, and how to override the bundled ones.
 - `confluence/export.md`: a short "export a generated report" example.
 - `recipes/sprint-reporting.md`: rewrite around `sprint review --export`. New `recipes/meeting-notes-to-jira.md`. `recipes/index.md` link.
 - `reference/cli-commands.md`: all new commands and flags.
@@ -401,19 +448,10 @@ One branch per phase (A1a, A1b, A2, A3), Conventional Commits:
 - `fix(jira): ADF descriptions on import`
 - `feat(confluence): tasks-to-issues`
 - `feat(jira): release notes and sprint review pages`
-- `docs(jira): remove undocumented bulk move`
+- `feat(jira): bulk move to sprint or backlog`
 
 Docs ship in the same PR as behaviour. No push until told.
 
 ## Open questions
 
-1. Command name for A2: `wiki page tasks-to-issues` (proposed) or `jira issue from-page`? Should there be an alias?
-2. Should `--description <text>` become markdown by default (a behaviour change for text containing `*`/`_`), or should markdown require `--description-format markdown` and become the default only next month?
-3. Data Center: is the body-marker-only idempotency (no ledger, because `upsertPageProperty` is v2) acceptable, or should A2 be Cloud-only for v1?
-4. Validate ADF at runtime (`validateAdf` before every write) or only in tests? The cost is small, but a validator false positive would block writes.
-5. Should the opaque `<!--adf:…-->` sentinel be base64 (proposed: robust, unreadable) or readable JSON with `--` escaping?
-6. `issue unlink`: should `--confirm` always be required, or only for key-pair resolution?
-7. A3 defaults: which grouping should the default release-notes template use, by type (proposed) or by epic? Should contributors include changelog authors as well as assignees (costs one `getChangelog` per issue)?
-8. Should A2 tick the Confluence task when the created issue is resolved (two-way sync), as a follow-up spec?
-9. Doc-drift decision: confirm removing `bulk move` (rather than implementing it on top of `sprint add` / backlog move).
-10. `jira search` / `issue get` on DC still use `/search/jql` / `/rest/api/2` mixtures. Fix DC search in this bundle or in a separate issue?
+None. All original questions were decided on 2026-10-21; see "Decisions" at the top.
