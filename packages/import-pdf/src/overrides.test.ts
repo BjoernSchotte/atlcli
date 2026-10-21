@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { IMPORT_DOCUMENT_SCHEMA_V2, type ImportDocumentV2 } from "@atlcli/import-core";
-import { applyPdfImportOverrides, parsePdfImportOverrides } from "./overrides.js";
+import { applyPdfImportOverrides, parsePdfImportOverrides, pdfImportOverridesTemplate } from "./overrides.js";
 import { isPdfImportError } from "./issues.js";
 
 const digest = "a".repeat(64);
@@ -55,6 +55,28 @@ operations:
     ]);
     expect(first.document.blocks[0]).toMatchObject({ type: "heading", level: 1 });
     expect(first.document.blocks[2]).toMatchObject({ type: "image", alt: "A neutral diagram" });
+  });
+
+  it("drafts alt-text entries that resolve the missing-alt issue once filled in", async () => {
+    // Regression: a supplied alt text left the issue in place, so
+    // --unsupported fail still blocked publication.
+    const missing: ImportDocumentV2 = {
+      ...document,
+      issues: [{
+        code: "pdf-import/figure-alt-missing", severity: "warning", outcome: "reported",
+        message: "The source figure has no author-provided alternative text; no alt text was invented.",
+        sourceRefs: ["pdf:p0:figure"], context: { pageIndex: 0 },
+      }],
+    };
+    const template = pdfImportOverridesTemplate(digest, missing);
+    expect(template).toContain('# Source page 1\n  - kind: set-figure-alt\n    sourceId: "pdf:p0:figure"\n    alt: ""');
+    await expectInvalid(template);
+
+    const filled = await parsePdfImportOverrides(template.replace('alt: ""', "alt: A neutral diagram"), digest);
+    const applied = await applyPdfImportOverrides(missing, filled);
+    expect(applied.document.blocks[1]).toMatchObject({ type: "image", alt: "A neutral diagram" });
+    expect(applied.document.issues).toEqual([]);
+    expect(pdfImportOverridesTemplate(digest, applied.document)).toContain("operations: []");
   });
 
   it("rejects stale digests, unknown fields, duplicate keys, aliases, unsafe text, and stale ids", async () => {

@@ -4,6 +4,7 @@ export * from "./issues.js";
 export * from "./canonical.js";
 export * from "./classify.js";
 export * from "./text.js";
+export * from "./text-assembly.js";
 export * from "./structure.js";
 export * from "./headings.js";
 export * from "./lists.js";
@@ -18,5 +19,13 @@ export * from "./figures.js";
 export * from "./overrides.js";
 export * from "./split.js";
 export * from "./review.js";
-export { createBrowserPdfiumFactsAdapter } from "./adapter/pdfium-browser.js";
-export type { PdfiumAdapterConfig, PdfiumFactsAdapter } from "./adapter/contracts.js";
+export * from "./hybrid.js";
+export {
+  createBrowserPdfiumFactsAdapter,
+  createBrowserPdfiumFactsAdapterV2,
+} from "./adapter/pdfium-browser.js";
+export type {
+  PdfiumAdapterConfig,
+  PdfiumFactsAdapter,
+  PdfiumFactsAdapterV2,
+} from "./adapter/contracts.js";

@@ -198,7 +198,7 @@ for (let run = 0; run < 5; run++) {
             } finally { await file.close(); }
           }
         } else if (workload === "glow" || workload === "glow-scan") {
-          const probe = await execute("python3", [resolve(import.meta.dir, "glow-probe.py"), glowBinary, mountpoint, "Benchmark proof",
+          const probe = await execute(process.execPath, [resolve(import.meta.dir, "glow-probe.ts"), glowBinary, mountpoint, "Benchmark proof",
             ...(workload === "glow-scan" ? [String(pageCount)] : [])], { timeout: workload === "glow-scan" ? 65000 : 20000 });
           const timing = JSON.parse(probe.stdout);
           if (workload === "glow-scan") { assert.equal(timing.documents, pageCount); extra.glowScanMs = timing.scanMs; }

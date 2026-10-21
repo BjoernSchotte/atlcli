@@ -12,7 +12,8 @@ function repeatedKey(fragment: PdfGeometryFragmentV1): string | null {
   return normalized.length >= 4 ? `${region}:${Math.round(fragment.bbox.x * 20)}:${normalized}` : null;
 }
 
-export function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[]): Set<string> {
+/** `minimumPages` is 3 for V1; V2 also recognizes headers and footers of two-page documents. */
+export function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[], minimumPages = 3): Set<string> {
   const groups = new Map<string, PdfGeometryFragmentV1[]>();
   for (const page of pages) {
     for (const fragment of page.fragments) {
@@ -21,7 +22,7 @@ export function detectRepeatedRegions(pages: readonly PdfReadingOrderPageV1[]): 
       groups.set(key, [...(groups.get(key) ?? []), fragment]);
     }
   }
-  const threshold = Math.max(3, Math.ceil(pages.length * 0.6));
+  const threshold = Math.max(minimumPages, Math.ceil(pages.length * 0.6));
   const repeated = new Set<string>();
   for (const fragments of groups.values()) {
     const pageCount = new Set(fragments.map((fragment) => fragment.pageIndex)).size;

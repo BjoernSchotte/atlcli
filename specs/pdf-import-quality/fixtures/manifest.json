@@ -1,0 +1,2393 @@
+{
+  "schema": "atlcli.import-pdf.quality-fixture/v1",
+  "license": "Apache-2.0",
+  "provenance": "Neutral AtlCLI-authored corpus only; no customer or tenant input.",
+  "privacyContract": {
+    "allowlistedUrlHosts": [
+      "example.com"
+    ],
+    "forbiddenMetadata": [
+      "/CreationDate",
+      "/ModDate",
+      "/Metadata",
+      "/EmbeddedFiles",
+      "/JavaScript"
+    ]
+  },
+  "authoringSources": [
+    {
+      "path": "producer-source.json",
+      "sha256": "81eae3eed5f8d62cf30bdb108a8a7811764f105845944064977d3abf64402058"
+    },
+    {
+      "path": "producer-source.html",
+      "sha256": "8dcc3335cf64c0adf328605241a21a5b85c71332a9433df137417ef172aa3cc9"
+    },
+    {
+      "path": "acceptance-source.html",
+      "sha256": "d07343eceb9d7b41865918be39b5697409384aa2b170009663b05570ecd84ffd"
+    },
+    {
+      "path": "untagged-source.docx",
+      "sha256": "993daaedc907eafbf7f1ee5393fb0086faf4c5c36cdd84cbab512b8d6e8f995e"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "tagged-fragmented-boundaries",
+      "path": "independent-fragmented-tagged.pdf",
+      "class": "tagged",
+      "reproduction": "generated",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "split-text-objects",
+        "ordered-mixed-structure-kids",
+        "style-and-link-boundary",
+        "generated-hyphen",
+        "actual-text",
+        "rtl",
+        "cjk",
+        "ligature",
+        "umlauts",
+        "localized-untagged-residue"
+      ],
+      "producer": {
+        "family": "independent",
+        "product": "AtlCLI deterministic Bun PDF writer",
+        "version": "1",
+        "platform": "host-neutral",
+        "options": "fixed object order, xref, metadata, and document ID"
+      },
+      "authoringSource": "generate-core.ts",
+      "sha256": "45ce6c5d5bf4554d59bf15777677e8c1856a9ba34692b47038507c3deb5986bf",
+      "bytes": 3795,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Harbor Evidence"
+          },
+          {
+            "id": "fragmented",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Harbor signals remain clear."
+          },
+          {
+            "id": "hyphenated-line",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination stays stable."
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "港の信号"
+          },
+          {
+            "id": "ligature",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "office"
+          },
+          {
+            "id": "umlauts",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "German Umlaute: Äpfel, Öl, Ufer."
+          },
+          {
+            "id": "localized-residue",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Localized unmarked repair note."
+          }
+        ],
+        "boundaries": [
+          {
+            "id": "harbor-signals",
+            "pageIndex": 0,
+            "leftCharacterIndex": 30,
+            "rightCharacterIndex": 32,
+            "action": "insert-space",
+            "basis": [
+              "generated-whitespace",
+              "text-run",
+              "structure-order",
+              "baseline",
+              "glyph-gap"
+            ]
+          },
+          {
+            "id": "signals-remain",
+            "pageIndex": 0,
+            "leftCharacterIndex": 38,
+            "rightCharacterIndex": 40,
+            "action": "insert-space",
+            "basis": [
+              "generated-whitespace",
+              "text-run",
+              "structure-order",
+              "baseline",
+              "glyph-gap"
+            ]
+          },
+          {
+            "id": "generated-line-hyphen",
+            "pageIndex": 0,
+            "leftCharacterIndex": 67,
+            "rightCharacterIndex": 69,
+            "action": "dehyphenate",
+            "basis": [
+              "hyphen",
+              "structure-order",
+              "baseline",
+              "script"
+            ]
+          }
+        ],
+        "structureOutcomes": [
+          "ordered-mixed-kids",
+          "logical-rtl-preserved",
+          "actual-text-authoritative"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 1,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [
+          "https://example.com/neutral-harbor"
+        ]
+      }
+    },
+    {
+      "id": "tagged-structures-positive",
+      "path": "independent-structures-tagged.pdf",
+      "class": "tagged",
+      "reproduction": "generated",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "table-row-groups",
+        "default-one-table-spans",
+        "multiple-tables",
+        "multi-paragraph-list-item",
+        "supported-nested-list",
+        "unmatched-form-figure"
+      ],
+      "producer": {
+        "family": "independent",
+        "product": "AtlCLI deterministic Bun PDF writer",
+        "version": "1",
+        "platform": "host-neutral",
+        "options": "fixed object order, xref, metadata, and document ID"
+      },
+      "authoringSource": "generate-core.ts",
+      "sha256": "aefd197a939482fe350a5c82250fd219fb9fc5d23895bcab42f8de88c1c60a6f",
+      "bytes": 5599,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "primary-table-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Zone | Signal"
+          },
+          {
+            "id": "primary-table-body",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "North | Clear"
+          },
+          {
+            "id": "primary-table-footer",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Summary | Stable"
+          },
+          {
+            "id": "list-first-paragraph",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-second-paragraph",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record a second paragraph."
+          },
+          {
+            "id": "list-nested",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "depth": 1,
+            "text": "Verify the nested reading."
+          },
+          {
+            "id": "secondary-table",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "East | Watch"
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "row-groups-native-after-piq-06",
+          "default-spans-one-after-piq-06",
+          "tables-remain-separate",
+          "complete-list-body-after-piq-06",
+          "unmatched-figure-reported"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/tagged-figure-deferred"
+        ],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "tagged-structures-negative",
+      "path": "independent-negative-tagged.pdf",
+      "class": "tagged",
+      "reproduction": "generated",
+      "criticalNegative": true,
+      "qualityFamilies": [
+        "nested-table-negative",
+        "multiple-nested-lists-negative",
+        "unlocalizable-untagged-residue"
+      ],
+      "producer": {
+        "family": "independent",
+        "product": "AtlCLI deterministic Bun PDF writer",
+        "version": "1",
+        "platform": "host-neutral",
+        "options": "fixed object order, xref, metadata, and document ID"
+      },
+      "authoringSource": "generate-core.ts",
+      "sha256": "1d3d4368f7347c8fe84b7c2bc101ad30fddd376e505848ec6ba9bdcde7bdad14",
+      "bytes": 3886,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Explicit negative structures"
+          },
+          {
+            "id": "outer-table",
+            "pageIndex": 0,
+            "type": "table-cell",
+            "text": "Outer"
+          },
+          {
+            "id": "nested-table",
+            "pageIndex": 0,
+            "type": "table-cell",
+            "text": "Nested"
+          },
+          {
+            "id": "list-body",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Multiple nested lists stay explicit."
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "nested-table-fallback",
+          "multiple-nested-lists-reported"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [
+            0
+          ],
+          "fallbackPages": [
+            0
+          ],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/table-tagged-linearized",
+          "pdf-import/tagged-list-item-residual",
+          "pdf-import/hybrid-page-fallback-required"
+        ],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "untagged-fragmented-boundaries",
+      "path": "independent-fragmented-untagged.pdf",
+      "class": "digital-untagged",
+      "reproduction": "generated",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "split-text-objects",
+        "generated-crlf",
+        "geometry-line-clustering",
+        "punctuation",
+        "authored-hard-hyphen",
+        "rtl",
+        "cjk",
+        "ligature",
+        "safe-link-boundary"
+      ],
+      "producer": {
+        "family": "independent",
+        "product": "AtlCLI deterministic Bun PDF writer",
+        "version": "1",
+        "platform": "host-neutral",
+        "options": "fixed object order, xref, metadata, and document ID"
+      },
+      "authoringSource": "generate-core.ts",
+      "sha256": "bb4864067ce71ec8cbed5f43f69abde854eb331ec5826ca29ac016ee1dd290f3",
+      "bytes": 2453,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Geometry Evidence"
+          },
+          {
+            "id": "fragmented",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "River markers remain stable."
+          },
+          {
+            "id": "wrapped",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Wrapped routes continue safely without explicit breaks."
+          },
+          {
+            "id": "punctuation",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Punctuation, brackets and links stay attached."
+          },
+          {
+            "id": "hard-hyphen",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Authored north-east remains hard-hyphenated."
+          },
+          {
+            "id": "script-heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Script Boundaries"
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "港の信号"
+          },
+          {
+            "id": "ligature",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "office"
+          },
+          {
+            "id": "hyphenated-line",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination stays stable."
+          }
+        ],
+        "boundaries": [
+          {
+            "id": "river-markers",
+            "pageIndex": 0,
+            "leftCharacterIndex": 31,
+            "rightCharacterIndex": 33,
+            "action": "insert-space",
+            "basis": [
+              "generated-whitespace",
+              "text-run",
+              "baseline",
+              "glyph-gap"
+            ]
+          },
+          {
+            "id": "wrapped-physical-lines",
+            "pageIndex": 0,
+            "leftCharacterIndex": 79,
+            "rightCharacterIndex": 82,
+            "action": "join-line",
+            "basis": [
+              "generated-whitespace",
+              "baseline",
+              "script"
+            ]
+          },
+          {
+            "id": "punctuation-attached",
+            "pageIndex": 0,
+            "leftCharacterIndex": 125,
+            "rightCharacterIndex": 126,
+            "action": "no-space",
+            "basis": [
+              "text-run",
+              "punctuation",
+              "baseline"
+            ]
+          },
+          {
+            "id": "authored-hard-hyphen",
+            "pageIndex": 0,
+            "leftCharacterIndex": 176,
+            "rightCharacterIndex": 178,
+            "action": "retain-hyphen",
+            "basis": [
+              "hyphen",
+              "script"
+            ]
+          }
+        ],
+        "structureOutcomes": [
+          "geometry-reading-order",
+          "logical-rtl-preserved",
+          "cjk-no-invented-space"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [
+          "https://example.com/neutral-river"
+        ]
+      }
+    },
+    {
+      "id": "producer-word",
+      "path": "producer-word.pdf",
+      "class": "digital-untagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "word",
+        "style-boundary",
+        "rtl",
+        "cjk",
+        "list",
+        "table"
+      ],
+      "producer": {
+        "family": "word",
+        "product": "Microsoft Word for Mac",
+        "version": "16.112",
+        "platform": "macOS arm64",
+        "options": "Save As PDF; optimal for printing; no online service"
+      },
+      "authoringSource": "producer-source.json",
+      "sha256": "abd78bedabfdc0e3e24745aa35515cc619041ddf10df2ff5525d470569052dec",
+      "bytes": 51801,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Harbor Field Notes"
+          },
+          {
+            "id": "styled",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Harbor signals remain clear across styled text runs."
+          },
+          {
+            "id": "wrapped",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination continues safely across a visual line wrap."
+          },
+          {
+            "id": "umlauts",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "港の信号は明確です"
+          },
+          {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
+            "id": "table-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Zone | Signal"
+          },
+          {
+            "id": "table-north",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "North | Clear"
+          },
+          {
+            "id": "table-south",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "South | Stable"
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-untagged",
+          "geometry-required"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "producer-libreoffice",
+      "path": "producer-libreoffice.pdf",
+      "class": "tagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": true,
+      "qualityFamilies": [
+        "libreoffice",
+        "style-boundary",
+        "rtl",
+        "cjk-text-layer",
+        "list",
+        "table",
+        "producer-rendering-negative"
+      ],
+      "producer": {
+        "family": "libreoffice",
+        "product": "LibreOfficeDev",
+        "version": "26.8.0.0.alpha0",
+        "platform": "macOS arm64",
+        "options": "headless writer_pdf_Export"
+      },
+      "authoringSource": "producer-source.json",
+      "sha256": "cab1614b8e6db27e30b6f76a0fb63b1c64e22aeee392c65d546ccde3e7844b6b",
+      "bytes": 35222,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Harbor Field Notes"
+          },
+          {
+            "id": "styled",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Harbor signals remain clear across styled text runs."
+          },
+          {
+            "id": "wrapped",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination continues safely across a visual line wrap."
+          },
+          {
+            "id": "umlauts",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk-text-layer",
+            "pageIndex": 0,
+            "type": "reported",
+            "text": "港の信号は明確です"
+          },
+          {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
+            "id": "table-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Zone | Signal"
+          },
+          {
+            "id": "table-north",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "North | Clear"
+          },
+          {
+            "id": "table-south",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "South | Stable"
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-tagged",
+          "cjk-text-layer-present-but-glyph-not-visible"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [
+            0
+          ],
+          "fallbackPages": [
+            0
+          ],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/tagged-text-geometry-degenerate",
+          "pdf-import/hybrid-page-fallback-required"
+        ],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "producer-browser",
+      "path": "producer-browser.pdf",
+      "class": "tagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "browser-print",
+        "style-link-boundary",
+        "rtl",
+        "cjk",
+        "list",
+        "table"
+      ],
+      "producer": {
+        "family": "browser",
+        "product": "Google Chrome",
+        "version": "151.0.7922.174",
+        "platform": "macOS arm64",
+        "options": "headless print-to-pdf; no PDF header or footer"
+      },
+      "authoringSource": "producer-source.html",
+      "sha256": "a7282415f72fc860964b75533c62dfefe1ce75ac4f11a25b9ec2fcc84d04bc7f",
+      "bytes": 74486,
+      "pages": 1,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Harbor Field Notes"
+          },
+          {
+            "id": "styled",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Harbor signals remain clear across styled text runs."
+          },
+          {
+            "id": "wrapped",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Seasonal coordination continues safely across a visual line wrap."
+          },
+          {
+            "id": "umlauts",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "Grüne Flächen, Küstenwege und präzise Übergänge bleiben neutral."
+          },
+          {
+            "id": "rtl",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "مرحبا بالميناء"
+          },
+          {
+            "id": "cjk",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "港の信号は明確です"
+          },
+          {
+            "id": "list-inspect",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Inspect the northern marker."
+          },
+          {
+            "id": "list-record",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the stable reading."
+          },
+          {
+            "id": "list-publish",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the neutral summary."
+          },
+          {
+            "id": "table-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Zone | Signal"
+          },
+          {
+            "id": "table-north",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "North | Clear"
+          },
+          {
+            "id": "table-south",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "South | Stable"
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-tagged",
+          "safe-link-retained"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [
+          "https://example.com/neutral-harbor"
+        ],
+        "requiredIssueCodes": [],
+        "tableSpans": []
+      }
+    },
+    {
+      "id": "acceptance-browser",
+      "path": "acceptance-browser.pdf",
+      "class": "tagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "acceptance",
+        "multi-page-table",
+        "repeated-header",
+        "blank-cell",
+        "list",
+        "figure",
+        "table"
+      ],
+      "producer": {
+        "family": "browser",
+        "product": "Google Chrome",
+        "version": "155.0.0.0",
+        "platform": "macOS arm64",
+        "options": "headless print-to-pdf; no PDF header or footer"
+      },
+      "authoringSource": "acceptance-source.html",
+      "sha256": "c98de0c8ed6a51c262b9dca04d89f11afa1e8b326fb627e8376f0283dc21989a",
+      "bytes": 145085,
+      "pages": 5,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "title",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Acceptance Handbook"
+          },
+          {
+            "id": "intro",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "This handbook describes a neutral inventory for import acceptance."
+          },
+          {
+            "id": "list-1",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Count every item once."
+          },
+          {
+            "id": "list-2",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the value."
+          },
+          {
+            "id": "list-3",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the summary."
+          },
+          {
+            "id": "inventory-heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Inventory"
+          },
+          {
+            "id": "inventory-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item |  | Notes"
+          },
+          {
+            "id": "inventory-1",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 1 | Value 1 | Wrapped note 1 (see item 1); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-2",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 2 | Value 2 | Wrapped note 2 (see item 2); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-3",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 3 | Value 3 | Wrapped note 3 (see item 3); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-4",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 4 | Value 4 | Wrapped note 4 (see item 4); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-5",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 5 | Value 5 | Wrapped note 5 (see item 5); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-6",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 6 | Value 6 | Wrapped note 6 (see item 6); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-7",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 7 |  | Wrapped note 7 (see item 7); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-8",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 8 | Value 8 | Wrapped note 8 (see item 8); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-9",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 9 | Value 9 | Wrapped note 9 (see item 9); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-10",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 10 | Value 10 | Wrapped note 10 (see item 10); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-11",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 11 | Value 11 | Wrapped note 11 (see item 11); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-12",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 12 | Value 12 | Wrapped note 12 (see item 12); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-13",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 13 | Value 13 | Wrapped note 13 (see item 13); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-14",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 14 | Value 14 | Wrapped note 14 (see item 14); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-15",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 15 | Value 15 | Wrapped note 15 (see item 15); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-16",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 16 | Value 16 | Wrapped note 16 (see item 16); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-17",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 17 | Value 17 | Wrapped note 17 (see item 17); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-18",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 18 | Value 18 | Wrapped note 18 (see item 18); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-19",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 19 | Value 19 | Wrapped note 19 (see item 19); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-20",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 20 | Value 20 | Wrapped note 20 (see item 20); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-21",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 21 | Value 21 | Wrapped note 21 (see item 21); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-22",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 22 | Value 22 | Wrapped note 22 (see item 22); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-23",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 23 | Value 23 | Wrapped note 23 (see item 23); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-24",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 24 | Value 24 | Wrapped note 24 (see item 24); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-25",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 25 | Value 25 | Wrapped note 25 (see item 25); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-26",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 26 | Value 26 | Wrapped note 26 (see item 26); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-27",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 27 | Value 27 | Wrapped note 27 (see item 27); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-28",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 28 | Value 28 | Wrapped note 28 (see item 28); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-29",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 29 | Value 29 | Wrapped note 29 (see item 29); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-30",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 30 | Value 30 | Wrapped note 30 (see item 30); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-31",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 31 | Value 31 | Wrapped note 31 (see item 31); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-32",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 32 | Value 32 | Wrapped note 32 (see item 32); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-33",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 33 | Value 33 | Wrapped note 33 (see item 33); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-34",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 34 | Value 34 | Wrapped note 34 (see item 34); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-35",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 35 | Value 35 | Wrapped note 35 (see item 35); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-36",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 36 | Value 36 | Wrapped note 36 (see item 36); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-37",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 37 | Value 37 | Wrapped note 37 (see item 37); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-38",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 38 | Value 38 | Wrapped note 38 (see item 38); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-39",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 39 | Value 39 | Wrapped note 39 (see item 39); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-40",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 40 | Value 40 | Wrapped note 40 (see item 40); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-41",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 41 | Value 41 | Wrapped note 41 (see item 41); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-42",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 42 | Value 42 | Wrapped note 42 (see item 42); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-43",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 43 | Value 43 | Wrapped note 43 (see item 43); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-44",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 44 | Value 44 | Wrapped note 44 (see item 44); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-45",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 45 | Value 45 | Wrapped note 45 (see item 45); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-46",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 46 | Value 46 | Wrapped note 46 (see item 46); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-47",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 47 | Value 47 | Wrapped note 47 (see item 47); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-48",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 48 | Value 48 | Wrapped note 48 (see item 48); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-49",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 49 | Value 49 | Wrapped note 49 (see item 49); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-50",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 50 | Value 50 | Wrapped note 50 (see item 50); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-51",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 51 | Value 51 | Wrapped note 51 (see item 51); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-52",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 52 | Value 52 | Wrapped note 52 (see item 52); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-53",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 53 | Value 53 | Wrapped note 53 (see item 53); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-54",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 54 | Value 54 | Wrapped note 54 (see item 54); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-55",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 55 | Value 55 | Wrapped note 55 (see item 55); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-56",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 56 | Value 56 | Wrapped note 56 (see item 56); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-57",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 57 | Value 57 | Wrapped note 57 (see item 57); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-58",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 58 | Value 58 | Wrapped note 58 (see item 58); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-59",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 59 | Value 59 | Wrapped note 59 (see item 59); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-60",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 60 | Value 60 | Wrapped note 60 (see item 60); continues, with punctuation: done."
+          },
+          {
+            "id": "after-inventory",
+            "pageIndex": 3,
+            "type": "paragraph",
+            "text": "The inventory ends here."
+          },
+          {
+            "id": "caption",
+            "pageIndex": 3,
+            "type": "paragraph",
+            "text": "Figure 1: Neutral gradient."
+          },
+          {
+            "id": "after-figure",
+            "pageIndex": 4,
+            "type": "paragraph",
+            "text": "Body text continues after the figure."
+          },
+          {
+            "id": "summary-heading",
+            "pageIndex": 4,
+            "type": "heading",
+            "text": "Summary"
+          },
+          {
+            "id": "summary-0",
+            "pageIndex": 4,
+            "type": "table-row",
+            "text": "Metric | Count"
+          },
+          {
+            "id": "summary-1",
+            "pageIndex": 4,
+            "type": "table-row",
+            "text": "Items | 60"
+          },
+          {
+            "id": "summary-2",
+            "pageIndex": 4,
+            "type": "table-row",
+            "text": "Pages | several"
+          },
+          {
+            "id": "end",
+            "pageIndex": 4,
+            "type": "paragraph",
+            "text": "End of handbook."
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-tagged"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/table-continuation-joined"
+        ],
+        "tableSpans": [],
+        "tables": [
+          {
+            "rows": 61,
+            "columns": 3,
+            "headerRows": 1,
+            "blankCells": [
+              [
+                0,
+                1
+              ],
+              [
+                7,
+                1
+              ]
+            ]
+          },
+          {
+            "rows": 3,
+            "columns": 2,
+            "headerRows": 1,
+            "blankCells": []
+          }
+        ],
+        "figures": {
+          "nativeRaster": 1,
+          "renderedRegion": 0
+        }
+      }
+    },
+    {
+      "id": "acceptance-libreoffice",
+      "path": "acceptance-libreoffice.pdf",
+      "class": "tagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "acceptance",
+        "multi-page-table",
+        "repeated-header",
+        "blank-cell",
+        "list",
+        "figure",
+        "table"
+      ],
+      "producer": {
+        "family": "libreoffice",
+        "product": "LibreOffice",
+        "version": "7.1.1.2",
+        "platform": "macOS arm64",
+        "options": "headless HTML (StarWriter) import; writer_pdf_Export with UseTaggedPDF"
+      },
+      "authoringSource": "acceptance-source.html",
+      "sha256": "fa782dd39ba795a79013820f02276d6594248cc9b523e694d7ac254ee7988bb8",
+      "bytes": 147620,
+      "pages": 2,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "title",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Acceptance Handbook"
+          },
+          {
+            "id": "intro",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "This handbook describes a neutral inventory for import acceptance."
+          },
+          {
+            "id": "list-1",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Count every item once."
+          },
+          {
+            "id": "list-2",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Record the value."
+          },
+          {
+            "id": "list-3",
+            "pageIndex": 0,
+            "type": "list-paragraph",
+            "text": "Publish the summary."
+          },
+          {
+            "id": "inventory-heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Inventory"
+          },
+          {
+            "id": "inventory-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item |  | Notes"
+          },
+          {
+            "id": "inventory-1",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 1 | Value 1 | Wrapped note 1 (see item 1); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-2",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 2 | Value 2 | Wrapped note 2 (see item 2); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-3",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 3 | Value 3 | Wrapped note 3 (see item 3); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-4",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 4 | Value 4 | Wrapped note 4 (see item 4); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-5",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 5 | Value 5 | Wrapped note 5 (see item 5); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-6",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 6 | Value 6 | Wrapped note 6 (see item 6); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-7",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 7 |  | Wrapped note 7 (see item 7); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-8",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 8 | Value 8 | Wrapped note 8 (see item 8); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-9",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 9 | Value 9 | Wrapped note 9 (see item 9); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-10",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 10 | Value 10 | Wrapped note 10 (see item 10); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-11",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 11 | Value 11 | Wrapped note 11 (see item 11); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-12",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 12 | Value 12 | Wrapped note 12 (see item 12); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-13",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 13 | Value 13 | Wrapped note 13 (see item 13); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-14",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 14 | Value 14 | Wrapped note 14 (see item 14); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-15",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 15 | Value 15 | Wrapped note 15 (see item 15); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-16",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 16 | Value 16 | Wrapped note 16 (see item 16); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-17",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 17 | Value 17 | Wrapped note 17 (see item 17); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-18",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 18 | Value 18 | Wrapped note 18 (see item 18); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-19",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 19 | Value 19 | Wrapped note 19 (see item 19); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-20",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 20 | Value 20 | Wrapped note 20 (see item 20); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-21",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 21 | Value 21 | Wrapped note 21 (see item 21); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-22",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 22 | Value 22 | Wrapped note 22 (see item 22); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-23",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 23 | Value 23 | Wrapped note 23 (see item 23); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-24",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 24 | Value 24 | Wrapped note 24 (see item 24); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-25",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 25 | Value 25 | Wrapped note 25 (see item 25); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-26",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 26 | Value 26 | Wrapped note 26 (see item 26); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-27",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 27 | Value 27 | Wrapped note 27 (see item 27); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-28",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 28 | Value 28 | Wrapped note 28 (see item 28); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-29",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 29 | Value 29 | Wrapped note 29 (see item 29); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-30",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 30 | Value 30 | Wrapped note 30 (see item 30); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-31",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 31 | Value 31 | Wrapped note 31 (see item 31); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-32",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 32 | Value 32 | Wrapped note 32 (see item 32); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-33",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 33 | Value 33 | Wrapped note 33 (see item 33); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-34",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 34 | Value 34 | Wrapped note 34 (see item 34); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-35",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 35 | Value 35 | Wrapped note 35 (see item 35); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-36",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 36 | Value 36 | Wrapped note 36 (see item 36); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-37",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 37 | Value 37 | Wrapped note 37 (see item 37); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-38",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 38 | Value 38 | Wrapped note 38 (see item 38); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-39",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 39 | Value 39 | Wrapped note 39 (see item 39); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-40",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 40 | Value 40 | Wrapped note 40 (see item 40); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-41",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 41 | Value 41 | Wrapped note 41 (see item 41); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-42",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 42 | Value 42 | Wrapped note 42 (see item 42); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-43",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 43 | Value 43 | Wrapped note 43 (see item 43); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-44",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 44 | Value 44 | Wrapped note 44 (see item 44); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-45",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 45 | Value 45 | Wrapped note 45 (see item 45); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-46",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 46 | Value 46 | Wrapped note 46 (see item 46); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-47",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 47 | Value 47 | Wrapped note 47 (see item 47); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-48",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 48 | Value 48 | Wrapped note 48 (see item 48); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-49",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 49 | Value 49 | Wrapped note 49 (see item 49); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-50",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 50 | Value 50 | Wrapped note 50 (see item 50); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-51",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 51 | Value 51 | Wrapped note 51 (see item 51); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-52",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 52 | Value 52 | Wrapped note 52 (see item 52); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-53",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 53 | Value 53 | Wrapped note 53 (see item 53); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-54",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 54 | Value 54 | Wrapped note 54 (see item 54); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-55",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 55 | Value 55 | Wrapped note 55 (see item 55); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-56",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 56 | Value 56 | Wrapped note 56 (see item 56); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-57",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 57 | Value 57 | Wrapped note 57 (see item 57); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-58",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 58 | Value 58 | Wrapped note 58 (see item 58); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-59",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 59 | Value 59 | Wrapped note 59 (see item 59); continues, with punctuation: done."
+          },
+          {
+            "id": "inventory-60",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 60 | Value 60 | Wrapped note 60 (see item 60); continues, with punctuation: done."
+          },
+          {
+            "id": "after-inventory",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "The inventory ends here."
+          },
+          {
+            "id": "caption",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "Figure 1: Neutral gradient."
+          },
+          {
+            "id": "after-figure",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "Body text continues after the figure."
+          },
+          {
+            "id": "summary-heading",
+            "pageIndex": 1,
+            "type": "heading",
+            "text": "Summary"
+          },
+          {
+            "id": "summary-0",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Metric | Count"
+          },
+          {
+            "id": "summary-1",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Items | 60"
+          },
+          {
+            "id": "summary-2",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Pages | several"
+          },
+          {
+            "id": "end",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "End of handbook."
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-tagged"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/table-continuation-joined"
+        ],
+        "tableSpans": [],
+        "tables": [
+          {
+            "rows": 61,
+            "columns": 3,
+            "headerRows": 1,
+            "blankCells": [
+              [
+                0,
+                1
+              ],
+              [
+                7,
+                1
+              ]
+            ]
+          },
+          {
+            "rows": 3,
+            "columns": 2,
+            "headerRows": 1,
+            "blankCells": []
+          }
+        ],
+        "figures": {
+          "nativeRaster": 1,
+          "renderedRegion": 0
+        }
+      }
+    },
+    {
+      "id": "untagged-word",
+      "path": "untagged-word.pdf",
+      "class": "digital-untagged",
+      "reproduction": "pinned-export",
+      "criticalNegative": false,
+      "qualityFamilies": [
+        "untagged-acceptance",
+        "ruled-table",
+        "multi-page-table",
+        "repeated-header",
+        "merged-cells",
+        "shaded-cells",
+        "borderless-table",
+        "text-box",
+        "page-footer",
+        "list"
+      ],
+      "producer": {
+        "family": "word",
+        "product": "Microsoft Word for Mac",
+        "version": "16.113.4",
+        "platform": "macOS arm64",
+        "options": "Save As PDF (AppleScript); no online service"
+      },
+      "authoringSource": "untagged-source.docx",
+      "sha256": "7024367b0f3aa0537b536d4906142e74c7ed4fcb982ad913ac6c8b98c985680e",
+      "bytes": 34875,
+      "pages": 2,
+      "expected": {
+        "orderedBlocks": [
+          {
+            "id": "title",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Neutral Supplier Handbook"
+          },
+          {
+            "id": "intro",
+            "pageIndex": 0,
+            "type": "paragraph",
+            "text": "This handbook lists neutral supplier records for import acceptance."
+          },
+          {
+            "id": "inventory-heading",
+            "pageIndex": 0,
+            "type": "heading",
+            "text": "Inventory"
+          },
+          {
+            "id": "inventory-header",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item | Quantity | Remarks"
+          },
+          {
+            "id": "inventory-1",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 1 | 3 | Remark 1, checked."
+          },
+          {
+            "id": "inventory-2",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 2 | 6 | Remark 2, checked."
+          },
+          {
+            "id": "inventory-3",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 3 | 9 | Remark 3, checked."
+          },
+          {
+            "id": "inventory-4",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 4 | 12 | Remark 4, checked."
+          },
+          {
+            "id": "inventory-5",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 5 | 15 | Remark 5, checked."
+          },
+          {
+            "id": "inventory-6",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 6 | 18 | Remark 6, checked."
+          },
+          {
+            "id": "inventory-7",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 7 | 21 | Remark 7, checked."
+          },
+          {
+            "id": "inventory-8",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 8 | 24 | Remark 8, checked."
+          },
+          {
+            "id": "inventory-9",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 9 |  | Remark 9, checked."
+          },
+          {
+            "id": "inventory-10",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 10 | 30 | Remark 10, checked."
+          },
+          {
+            "id": "inventory-11",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 11 | 33 | Remark 11, checked."
+          },
+          {
+            "id": "inventory-12",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 12 | 36 | Remark 12, checked."
+          },
+          {
+            "id": "inventory-13",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 13 | 39 | Remark 13, checked."
+          },
+          {
+            "id": "inventory-14",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 14 | 42 | Remark 14, checked."
+          },
+          {
+            "id": "inventory-15",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 15 | 45 | Remark 15, checked."
+          },
+          {
+            "id": "inventory-16",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 16 | 48 | Remark 16, checked."
+          },
+          {
+            "id": "inventory-17",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 17 | 51 | Remark 17, checked."
+          },
+          {
+            "id": "inventory-18",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 18 | 54 | Remark 18, checked."
+          },
+          {
+            "id": "inventory-19",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 19 | 57 | Remark 19, checked."
+          },
+          {
+            "id": "inventory-20",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 20 | 60 | Remark 20, checked."
+          },
+          {
+            "id": "inventory-21",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 21 | 63 | Remark 21, checked."
+          },
+          {
+            "id": "inventory-22",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 22 | 66 | Remark 22, checked."
+          },
+          {
+            "id": "inventory-23",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 23 | 69 | Remark 23, checked."
+          },
+          {
+            "id": "inventory-24",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 24 | 72 | Remark 24, checked."
+          },
+          {
+            "id": "inventory-25",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 25 | 75 | Remark 25, checked."
+          },
+          {
+            "id": "inventory-26",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 26 | 78 | Remark 26, checked."
+          },
+          {
+            "id": "inventory-27",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 27 | 81 | Remark 27, checked."
+          },
+          {
+            "id": "inventory-28",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 28 | 84 | Remark 28, checked."
+          },
+          {
+            "id": "inventory-29",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 29 | 87 | Remark 29, checked."
+          },
+          {
+            "id": "inventory-30",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 30 | 90 | Remark 30, checked."
+          },
+          {
+            "id": "inventory-31",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 31 | 93 | Remark 31, checked."
+          },
+          {
+            "id": "inventory-32",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 32 | 96 | Remark 32, checked."
+          },
+          {
+            "id": "inventory-33",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 33 | 99 | Remark 33, checked."
+          },
+          {
+            "id": "inventory-34",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 34 | 102 | Remark 34, checked."
+          },
+          {
+            "id": "inventory-35",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 35 | 105 | Remark 35, checked."
+          },
+          {
+            "id": "inventory-36",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 36 | 108 | Remark 36, checked."
+          },
+          {
+            "id": "inventory-37",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 37 | 111 | Remark 37, checked."
+          },
+          {
+            "id": "inventory-38",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 38 | 114 | Remark 38, checked."
+          },
+          {
+            "id": "inventory-39",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 39 | 117 | Remark 39, checked."
+          },
+          {
+            "id": "inventory-40",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 40 | 120 | Remark 40, checked."
+          },
+          {
+            "id": "inventory-41",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 41 | 123 | Remark 41, checked."
+          },
+          {
+            "id": "inventory-42",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 42 | 126 | Remark 42, checked."
+          },
+          {
+            "id": "inventory-43",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 43 | 129 | Remark 43, checked."
+          },
+          {
+            "id": "inventory-44",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 44 | 132 | Remark 44, checked."
+          },
+          {
+            "id": "inventory-45",
+            "pageIndex": 0,
+            "type": "table-row",
+            "text": "Item 45 | 135 | Remark 45, checked."
+          },
+          {
+            "id": "after-inventory",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "The inventory ends here."
+          },
+          {
+            "id": "note",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "Note: this shaded box holds a neutral reminder."
+          },
+          {
+            "id": "pricing-heading",
+            "pageIndex": 1,
+            "type": "heading",
+            "text": "Pricing"
+          },
+          {
+            "id": "pricing-header-1",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Product | Quarters"
+          },
+          {
+            "id": "pricing-header-2",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Q1 | Q2"
+          },
+          {
+            "id": "pricing-1",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Alpha | 10 | 12"
+          },
+          {
+            "id": "pricing-2",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Beta | 7 | 9"
+          },
+          {
+            "id": "pricing-3",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Gamma | 4 | 5"
+          },
+          {
+            "id": "contacts-heading",
+            "pageIndex": 1,
+            "type": "heading",
+            "text": "Contacts"
+          },
+          {
+            "id": "contacts-0",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Role | Team | Hours"
+          },
+          {
+            "id": "contacts-1",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Buyer | North | 8-16"
+          },
+          {
+            "id": "contacts-2",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Planner | South | 9-17"
+          },
+          {
+            "id": "contacts-3",
+            "pageIndex": 1,
+            "type": "table-row",
+            "text": "Auditor | East | 7-15"
+          },
+          {
+            "id": "list-1",
+            "pageIndex": 1,
+            "type": "list-paragraph",
+            "text": "Check every record."
+          },
+          {
+            "id": "list-2",
+            "pageIndex": 1,
+            "type": "list-paragraph",
+            "text": "Confirm the quantity."
+          },
+          {
+            "id": "list-3",
+            "pageIndex": 1,
+            "type": "list-paragraph",
+            "text": "Archive the handbook."
+          },
+          {
+            "id": "end",
+            "pageIndex": 1,
+            "type": "paragraph",
+            "text": "End of handbook."
+          }
+        ],
+        "boundaries": [],
+        "structureOutcomes": [
+          "producer-is-untagged"
+        ],
+        "ownership": {
+          "localizedRepairRegions": 0,
+          "unlocalizablePages": [],
+          "fallbackPages": [],
+          "duplicateCharacterOwners": 0
+        },
+        "safeLinks": [],
+        "requiredIssueCodes": [
+          "pdf-import/table-continuation-joined"
+        ],
+        "tableSpans": [
+          {
+            "pageIndex": 1,
+            "tableIndex": 0,
+            "rowIndex": 0,
+            "columnIndex": 0,
+            "rowspan": 2,
+            "colspan": 1
+          },
+          {
+            "pageIndex": 1,
+            "tableIndex": 0,
+            "rowIndex": 0,
+            "columnIndex": 1,
+            "rowspan": 1,
+            "colspan": 2
+          }
+        ],
+        "tables": [
+          {
+            "rows": 46,
+            "columns": 3,
+            "headerRows": 1,
+            "blankCells": [
+              [
+                9,
+                1
+              ]
+            ]
+          },
+          {
+            "rows": 5,
+            "columns": 3,
+            "headerRows": 2,
+            "blankCells": []
+          },
+          {
+            "rows": 4,
+            "columns": 3,
+            "headerRows": 1,
+            "blankCells": []
+          }
+        ],
+        "figures": {
+          "nativeRaster": 0,
+          "renderedRegion": 0
+        }
+      }
+    }
+  ]
+}

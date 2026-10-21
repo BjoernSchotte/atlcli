@@ -154,6 +154,35 @@ export async function parsePdfImportOverrides(
   return { overrides, digest: await digestPdfCanonical(overrides) };
 }
 
+const FIGURE_ALT_MISSING = "pdf-import/figure-alt-missing";
+
+/**
+ * An override file with one `set-figure-alt` entry per published figure that
+ * has no alternative text. Every `alt` is empty, so the file is rejected until
+ * each entry is filled in or deleted.
+ */
+export function pdfImportOverridesTemplate(sourceSha256: string, document: ImportDocumentV2): string {
+  const entries = document.issues.flatMap((issue) => {
+    const ref = issue.sourceRefs?.[0];
+    if (issue.code !== FIGURE_ALT_MISSING || !ref) return [];
+    if (!document.blocks.some((block) => block.type === "image" && !block.alt && blockMatches(block, ref))) return [];
+    const page = issue.context?.pageIndex;
+    return [[
+      ...(typeof page === "number" ? [`  # Source page ${page + 1}`] : []),
+      "  - kind: set-figure-alt",
+      `    sourceId: ${JSON.stringify(ref)}`,
+      '    alt: ""',
+    ].join("\n")];
+  });
+  return [
+    "# Fill in every alt text, or delete an entry to publish that figure without one.",
+    `schema: ${PDF_IMPORT_OVERRIDES_SCHEMA_V1}`,
+    `sourceSha256: ${sourceSha256}`,
+    entries.length > 0 ? `operations:\n${entries.join("\n")}` : "operations: []",
+    "",
+  ].join("\n");
+}
+
 function blockMatches(block: ImportBlock, id: string): boolean {
   return block.id === id || block.sourceRefs?.includes(id) === true;
 }
@@ -177,6 +206,7 @@ export async function applyPdfImportOverrides(
     };
   }
   const blocks = document.blocks.map((block) => ({ ...block })) as ImportBlock[];
+  const altSupplied: ImportBlock[] = [];
   let titleCandidate: string | undefined;
   const applied: AppliedPdfImportOverridesV1["applied"] = [];
   for (const item of parsed.overrides.operations) {
@@ -189,6 +219,7 @@ export async function applyPdfImportOverrides(
     } else if (item.kind === "set-figure-alt") {
       if (block.type !== "image") invalid(`Override ${item.sourceId} does not identify a materialized figure.`);
       blocks[index] = { ...block, alt: item.alt };
+      altSupplied.push(block);
     } else if (item.kind === "set-title-from") {
       const text = blockText(block);
       if (!text || text.length > 255) invalid(`Override ${item.sourceId} does not identify bounded extracted title text.`);
@@ -203,8 +234,11 @@ export async function applyPdfImportOverrides(
     }
     applied.push({ kind: item.kind, sourceId: item.sourceId });
   }
+  // A supplied alternative text answers the source's missing one.
+  const issues = document.issues.filter((issue) => issue.code !== FIGURE_ALT_MISSING
+    || !altSupplied.some((block) => issue.sourceRefs?.some((ref) => blockMatches(block, ref))));
   return {
-    document: { ...document, blocks, ...(titleCandidate ? { titleCandidate } : {}) },
+    document: { ...document, blocks, issues, ...(titleCandidate ? { titleCandidate } : {}) },
     ...(titleCandidate ? { titleCandidate } : {}),
     digest: parsed.digest,
     applied,

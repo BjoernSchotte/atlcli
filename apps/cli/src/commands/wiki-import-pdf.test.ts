@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { handleWikiImport } from "./wiki-import.js";
@@ -45,6 +45,27 @@ describe("wiki import PDF review-first planning", () => {
     }
   }
 
+  it("drafts an alt-text override file whose filled-in entries clear the missing-alt issue", async () => {
+    const file = resolve(fixtureRoot, "figure.pdf");
+    const template = join(directory, "overrides.yaml");
+    await handleWikiImport([file], { space: "DOCSY", json: true, "overrides-template": template }, { json: true });
+    const before = JSON.parse(stdout.join(""));
+    const missing = before.issues.filter((issue: { code: string }) => issue.code === "pdf-import/figure-alt-missing");
+    const text = readFileSync(template, "utf8");
+    expect(missing.length).toBeGreaterThan(0);
+    expect(text).toContain(`sourceSha256: ${before.source.sha256}`);
+    expect(text.match(/kind: set-figure-alt/gu)).toHaveLength(missing.length);
+
+    stdout.length = 0;
+    await expectFailure([file], { space: "DOCSY", json: true, "overrides-template": template }, "Cannot write override template");
+
+    writeFileSync(template, text.replaceAll('alt: ""', "alt: Neutral outlined marker"));
+    stdout.length = 0;
+    await handleWikiImport([file], { space: "DOCSY", json: true, overrides: template }, { json: true });
+    const after = JSON.parse(stdout.join(""));
+    expect(after.issues.some((issue: { code: string }) => issue.code === "pdf-import/figure-alt-missing")).toBe(false);
+  });
+
   it("previews a short PDF offline with deterministic standard JSON and no body bytes", async () => {
     const file = resolve(fixtureRoot, "simple-untagged.pdf");
     await handleWikiImport([file], { space: "DOCSY", json: true }, { json: true });
@@ -53,11 +74,39 @@ describe("wiki import PDF review-first planning", () => {
     await handleWikiImport([file], { space: "DOCSY", json: true }, { json: true });
     const second = JSON.parse(stdout.join(""));
     expect(first.mode).toBe("pdf-preview");
+    expect(first.schema).toBe("atlcli.pdf-import-review/3");
     expect(first.source).toMatchObject({ pageCount: 1, classification: "digital-untagged" });
     expect(first.target).toMatchObject({ spaceKey: "DOCSY", title: "simple-untagged", deployment: "unresolved-offline" });
     expect(first.split.resolved.kind).toBe("single-page");
     expect(first.split.totalWikiPages).toBe(1);
     expect(first.digests).toEqual(second.digests);
+    expect(first.quality).toMatchObject({
+      unresolvedBoundaryCount: 0,
+      dehyphenatedBoundaryCount: 0,
+      visibleCharacterCount: 294,
+      uniquelyOwnedCharacterCount: 294,
+      taggedOwnedCharacterCount: 0,
+      geometryOwnedCharacterCount: 274,
+      fallbackOwnedCharacterCount: 0,
+      unownedCharacterCount: 0,
+      duplicateOwnershipAttemptCount: 0,
+      residualReportedCharacterCount: 0,
+      geometryRepairRegionCount: 0,
+      normalizedFallbackArea: 0,
+    });
+    expect(first.quality.boundaryDecisionCount).toBeGreaterThan(0);
+    expect(first.pages[0].boundaryDecisionCount).toBe(first.quality.boundaryDecisionCount);
+    expect(first.pages[0]).toMatchObject({
+      visibleCharacterCount: 294,
+      uniquelyOwnedCharacterCount: 294,
+      taggedOwnedCharacterCount: 0,
+      geometryOwnedCharacterCount: 274,
+      fallbackOwnedCharacterCount: 0,
+      unownedCharacterCount: 0,
+      duplicateOwnershipAttemptCount: 0,
+      residualReportedCharacterCount: 0,
+      fidelityDecisionCodes: ["pdf/source-fidelity-accounted"],
+    });
     expect(first.document).toBeUndefined();
     expect(first.facts).toBeUndefined();
     expect(first.split.root.blocks).toBeUndefined();

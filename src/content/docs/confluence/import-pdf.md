@@ -24,6 +24,7 @@ one oversized wiki page.
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
 - [Preview and confirmation](#preview-and-confirmation)
+- [Source fidelity diagnostics](#source-fidelity-diagnostics)
 - [What is supported](#what-is-supported)
 - [Splitting long PDFs](#splitting-long-pdfs)
 - [Scans and visual fallbacks](#scans-and-visual-fallbacks)
@@ -91,6 +92,43 @@ The confirmed run analyzes the same source again and publishes the resulting
 review plan. Non-interactive use must pass `--confirm`; there is no implicit
 write. `--dry-run` and `--confirm` are mutually exclusive.
 
+## Source fidelity diagnostics
+
+The preview separates two checks that answer different questions:
+
+- **Extraction/source fidelity** checks whether every visible source character
+  has exactly one semantic or fallback owner, and whether every material text
+  boundary has explicit or sufficiently strong inferred evidence.
+- **Confluence semantic readback** runs after publication and checks whether
+  the projected headings, paragraphs, lists, tables, media, and links arrived
+  intact. It is a transport-integrity check; it cannot prove that the original
+  PDF was extracted correctly.
+
+JSON review schema V3 reports body-free counts per source page. Boundary counts
+distinguish authored whitespace (`explicitBoundaryCount`), deterministic
+inference (`inferredBoundaryCount`), its separately visible dehyphenation
+subset (`dehyphenatedBoundaryCount`), and ambiguity
+(`unresolvedBoundaryCount`). Ownership counts distinguish tagged, geometry,
+and visual-fallback owners, plus unowned characters and duplicate ownership
+attempts. Repair-region count, fallback scope, and normalized fallback area
+show how much non-native recovery was necessary.
+
+The terminal preview prints the source page label, these counts, fallback
+scope, and a body-free decision code. `pdf/source-fidelity-accounted` means the
+page has neither unresolved boundaries nor ownership failures.
+`pdf/text-boundary-unresolved` identifies a material spacing or joining
+decision that evidence could not settle. `pdf/character-ownership-failed`
+identifies an unowned visible character or a duplicate ownership attempt.
+Neither diagnostic prints the affected source text.
+
+On partially tagged pages, `auto` keeps verified tagged structures and repairs
+only residual regions with qualified geometry. If a region cannot be repaired
+safely, a localized visual fallback is preferred; a page fallback is the last
+safe option. `--unsupported fail` blocks unresolved boundaries and ownership
+failures even when the rest of the page looks plausible. Use
+`--unsupported report` only with the existing explicit fallback/report
+acknowledgments and after reviewing the affected page labels and locators.
+
 ## What is supported
 
 | PDF source feature | Import result |
@@ -100,7 +138,7 @@ write. `--dry-run` and `--confirm` are mutually exclusive.
 | Tagged or qualified lists | Native ordered/bullet lists; otherwise conservative paragraphs or a reported outcome |
 | Safe `http`, `https`, and `mailto` links | Native links after scheme filtering |
 | Tagged tables with proven cells/spans | Native tables |
-| Simple qualified untagged grids | Native tables only above the geometry threshold |
+| Untagged tables with drawn borders, row rules, or clear column alignment | Native tables, including merged cells and continuation across pages |
 | Tagged raster figures with visible placement | Native media with author alternative text when present |
 | Composite/vector/ambiguous visible figures | Bounded rendered-region image fallback |
 | Repeated page headers, footers, and page numbers | Suppressed only when repeated-region evidence qualifies |
@@ -177,6 +215,10 @@ of each generated wiki page. Region crops remain next to their source content
 in every mode. Tiny degenerate tag boxes are reported without adding an image;
 unclaimed visible text and unlocalizable loss still require a whole-page view.
 
+A native table on an untagged page that falls back stays a native table next
+to the page view, and a table continued from or onto that page stays one
+table.
+
 ## Figures, tables, and reading order
 
 `--reading-order auto` uses valid tags first and conservative geometry for an
@@ -184,15 +226,79 @@ untagged document. `--reading-order tags` requires a tagged PDF and fails if
 tags are absent. `--reading-order geometry` deliberately ignores tags and is
 useful only after reviewing the changed order and confidence.
 
+For tagged PDFs, AtlCLI reads the document's structure tree as a whole
+(not page by page), so every table, row, and cell keeps one identity across
+pages. Structure only proposes rows and cells; every character still comes
+from the PDF's own text layer, so structure can never add text.
+
+A structure element with one child that cannot be resolved still keeps its
+other children, in their original order; the unresolved child is reported as
+`pdf-import/tagged-structure-kid-unresolved`. Children shown on another page
+are skipped on this page. If text on the page belongs to no remaining element,
+the page falls back as before. A paragraph, list, figure, or table cell with
+an unresolved child is never treated as complete.
+
+A tagged table becomes one native Confluence table when its grid is complete:
+
+| Case | Result |
+|---|---|
+| Table continues on the next page | One table; rows in source order |
+| Header row repeated on every page | Kept once; the repetitions are recognized, not duplicated |
+| Repeated header drawn as untagged text (LibreOffice) | Recognized directly above the continuation rows when every column matches; not duplicated |
+| Row split by a page break | One row; each cell's text continues as one paragraph |
+| Row or column span across a page break | Kept as a span |
+| Intentionally empty cell | Native empty cell |
+| Producer omitted an empty cell's tag | Placed by the cells' `Headers` references; the gap becomes an empty cell |
+| Nested, rotated, or ambiguous table | Linearized text plus one rendered crop of the table region; the rest of the page stays editable |
+| More than 5,000 rows in total | Each page keeps its own table; reported |
+
 PDFium exposes text, geometry, tags, page objects, annotations, and rendering
-primitives; it does not provide a native semantic table importer. AtlCLI emits
-a native table only when tag/cell/span or qualified rectangular-grid evidence
-passes its threshold. Borderless, nested, rotated, ambiguous, or continued
-tables fall back or report instead of receiving invented cells.
+primitives; it does not provide a native semantic table importer. For untagged
+PDFs (for example Word for Mac's default **Save As PDF**), AtlCLI rebuilds
+tables from the drawing itself, without learned models:
+
+| Case | Result |
+|---|---|
+| Borders drawn on every cell | One native table; a missing separator merges cells into a span |
+| No outer side borders (a common Word table style), or no top rule on a continued page | The open side is implied where every row rule or column rule ends; native table |
+| Row split by a page break | One row; each cell's text continues as one paragraph |
+| Several text pieces on one line of a cell, one set slightly higher (another font size) | Read left to right in the line |
+| Only horizontal rules between rows | Rows from the rules, columns from left text edges shared by several rows; wrapped cell text stays in its cell |
+| No lines, three or more columns of single-line cells | Native table when every row has the same cells and the columns are clearly separated |
+| Table continues on the next page with the same columns | One table; a repeated bold header row is kept once |
+| Shading or a highlight behind text | Background: the text stays editable, no image |
+| Text that crosses a drawn cell edge, a frame open where its lines do not end evenly, two-column text | No table; the text stays in reading order or the page falls back |
+| Aligned text that is not a proven table | Rows linearized as `cell \| cell` paragraphs plus a rendered crop of the region; the rest of the page stays editable. The page falls back only when other text lies inside that region |
+| A page of a multi-page table falls back | The table's parts on the other pages are imported as their own table |
+
+Bold header rows are recognized from the font name when the PDF reports no
+font weight. Clause numbers, terms, and table-of-contents page numbers beside
+their text are read as part of the line, not as a second column.
+
+Reading order on untagged pages:
+
+| Case | Result |
+|---|---|
+| Full-width text above or below a two-column block (for example signature blocks) | Read in bands: the full-width text, then the left column, then the right column |
+| Text from the left column running into right-column text on the same line | Page falls back (`column-overlap`) |
+| Underscore inside a word (`neutral_field`) | Kept in its word; its flat glyph below the baseline is not a second line |
+| Line ending in a digit, an underscore, or a symbol such as `+` | Joined with the next line by one space |
+| Hyphen at a line end, next line starts with a capital (`Kunden-` / `Projekt`) | Hyphen kept: `Kunden-Projekt` |
+| Hyphen at a line end, next line starts lowercase | Removed as a syllable break, unless the same compound appears with its hyphen inside a line elsewhere in the PDF (`end-to-end`); then kept |
+| Hyphen at the end of a cell line with the next cell's text on the same line | The two are kept apart |
+
+> **Tip.** Export PDFs from Word, LibreOffice, or a browser with tagging
+> ("accessible PDF") enabled. Tagged exports keep tables, lists, and reading
+> order far better than untagged ones. In LibreOffice, enable
+> **File > Export as PDF > General > Universal Accessibility (PDF/UA)** or
+> **Tagged PDF**. Word for Mac tags PDFs only with **Best for electronic
+> distribution and accessibility**.
 
 Likewise, a PDF image object may be a mask, tile, background, or clipped layer.
 AtlCLI correlates visible placement and structure evidence before native media
-output. Composite and vector figures use a rendered crop when safe.
+output. Composite and vector figures use a rendered crop when safe. A browser
+`<figure>` becomes one image with its caption once, even though the PDF nests
+the image's own Figure inside it.
 
 ## Import from an attachment
 
@@ -245,6 +351,21 @@ operations:
     beforeSourceId: pdf:p4:b1
 ```
 
+To add missing figure alternative text, let AtlCLI draft the file:
+
+```bash
+atlcli wiki import handbook.pdf --space DOCSY --dry-run \
+  --overrides-template handbook-overrides.yaml
+```
+
+The draft has the source digest and one `set-figure-alt` entry with an empty
+`alt` per published figure without alternative text, each labeled with its
+source page. Fill in every `alt` or delete the entry, then pass the file with
+`--overrides`. An empty `alt` is rejected, and an existing file is never
+overwritten. A supplied alt text clears that figure's
+`pdf-import/figure-alt-missing` issue, so `--unsupported fail` no longer
+blocks on it.
+
 Replace the example digest and source IDs with values from the same PDF
 preview. A changed source digest, stale locator, unknown field, duplicate
 decision, unsafe YAML alias, file over 256 KiB, or more than 200 operations
@@ -295,6 +416,7 @@ content properties before mutation.
 | `--accept-reported-pages` | boolean | off | Required to publish pages omitted under scan `report`. |
 | `--attach-source` | boolean | off | Retain and byte-verify the original PDF. |
 | `--overrides` | path | none | Digest-bound PDF override YAML/JSON. |
+| `--overrides-template` | path | none | Write a draft override file with one alt-text entry per figure without one; fails if the file exists. |
 | `--restriction` | enum | `inherit` | Cloud: `inherit`, `private`, or `explicit`. |
 | `--viewer`, `--editor` | repeatable principal | none | Cloud explicit restriction principals. |
 | `--staging-parent` | title | none | Cloud private import-owned staging parent. |
@@ -373,6 +495,8 @@ by that run, children before parents.
   default.
 - Local preview reports digests and bounded evidence. Do not commit customer
   PDFs, extracted bodies, tenant identifiers, live URLs, or raw API receipts.
+- Never commit a customer PDF or any derived body, crop, screenshot, fixture,
+  digest, or diagnostic artifact that can identify or reconstruct its content.
 - Hard cancellation in browser hosts is Worker termination. The CLI checks
   cancellation and deadlines between bounded PDFium operations and releases
   page/document/bitmap/structure resources in reverse ownership order.
@@ -389,11 +513,19 @@ release claim.
 |---|---|---|
 | `Format mismatch` | Extension/flag says PDF but bytes do not start with `%PDF-` | Select the correct file or pass the correct `--format`. |
 | `--reading-order tags requires a tagged PDF` | The source has no usable structure tree | Use `auto`, review conservative geometry, or obtain a properly tagged source. |
+| Words appear merged in preview | A source boundary was absent or inferred incorrectly | Inspect V3 page metrics and `reviewRegions`; do not publish if the exact neutral/source-authorized review is wrong. Prefer a corrected source PDF over text post-processing. |
+| `pdf/text-boundary-unresolved` blocks publication | Geometry, tags, or text-run evidence cannot prove a material join or space | Keep `--unsupported fail`, obtain a better-authored PDF, or explicitly review a localized/page fallback under the report policy. |
+| `pdf/character-ownership-failed` blocks publication | A visible character is unowned or has competing semantic owners | Review the page locator and fallback scope. Do not bypass the blocker without explicit reported/fallback coverage. |
+| A tagged table becomes a page image or linearized text | The table nests another table, or a cell's text has an unresolved boundary or invalid Unicode | Check `pdf-import/table-tagged-linearized` and its `reason` in the JSON preview. Re-export with tagging enabled, or flatten the nested table in the source. |
+| Issue `pdf-import/table-continuation-unjoined`: the table repeats on every page | One page part does not qualify as a grid, or the table exceeds 5,000 rows | Check the issue `reason`. Each page part stays a native table when it qualifies on its own. |
+| An untagged table arrives as paragraphs | No drawn grid or row rules, fewer than three aligned columns, or text crossing a cell edge | Export with table borders, or as a tagged PDF. The text is complete and in reading order either way. |
+| Issue `pdf-import/document-structure-unavailable` | The structure tree could not be read as a whole (damaged cross-references or budget) | Import continues with page-scoped structure; multi-page tables may fall back. Re-save the PDF from its producer. |
 | Image-only page blocks publication | Default scan policy forbids silent empty output | Choose `page-image`, or use `report` plus both publication acknowledgements. |
 | Too many wiki pages | Heading/range plan exceeds `--max-wiki-pages` | Increase the cap up to 200 or choose a larger `pages:N` target; review the new plan. |
 | `--split off` is rejected | Source exceeds 40 pages or a hard editability budget | Use `auto`, heading, or page-range splitting. |
 | Title conflict | Planned pages duplicate one another or existing space titles | Rename source headings/root title or use `--title-conflict rename`. |
 | Override is stale | PDF digest or `sourceId` changed | Generate a new JSON preview and re-author the override. |
+| `--unsupported fail` blocks on `pdf-import/figure-alt-missing` | The source figures have no author alternative text | Draft alt texts with `--overrides-template`, fill them in, and pass the file with `--overrides`. |
 | Data Center tree rejected | Data Center PDF trees are not implemented | Import a safe one-page PDF or target Cloud; AtlCLI will not flatten it. |
 | Encrypted PDF rejected | Password-protected input is outside V1 | Export an approved unencrypted copy through your document-governance process. |
 | Browser/Forge command is missing | Only the reusable browser Worker capability exists | Use the CLI; product UI integration is a later gated feature. |

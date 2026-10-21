@@ -54,6 +54,7 @@ const reviewedPdfiumFunctions = [
   "FPDFText_GetCharAngle",
   "FPDFText_GetCharBox",
   "FPDFText_GetFontSize",
+  "FPDFText_GetFontInfo",
   "FPDFText_GetFontWeight",
   "FPDFText_GetTextObject",
   "FPDFText_GetUnicode",

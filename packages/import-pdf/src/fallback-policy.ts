@@ -1,10 +1,15 @@
 import type {
   PdfDecisionEvidenceV1,
+  PdfDecisionEvidenceV2,
   PdfFactsV1,
+  PdfFactsV2,
+  PdfHybridPageOutcomeV2,
   PdfNormalizedRect,
   PdfSourceLocatorV1,
   PdfTaggedPageOutcomeV1,
+  PdfTaggedPageOutcomeV2,
   PdfUntaggedPageOutcomeV1,
+  PdfUntaggedPageOutcomeV2,
 } from "./contracts.js";
 export { PDF_VISUAL_FALLBACK_POLICY_REVISION } from "./contracts.js";
 
@@ -31,6 +36,13 @@ export type PdfFallbackSemanticBaseV1 = {
   requiresFallbackPages?: number[];
 };
 
+export type PdfFallbackSemanticBaseV2 = {
+  evidence: PdfDecisionEvidenceV2[];
+  pageOutcomes: Array<PdfTaggedPageOutcomeV2 | PdfUntaggedPageOutcomeV2 | PdfHybridPageOutcomeV2>;
+  requiresGeometryPages?: number[];
+  requiresFallbackPages?: number[];
+};
+
 export function isDegenerateTagRegion(rect: PdfNormalizedRect): boolean {
   const area = rect.width * rect.height;
   return area <= PDF_DEGENERATE_TAG_MAX_AREA
@@ -41,6 +53,12 @@ function taggedOutcome(
   outcome: PdfTaggedPageOutcomeV1 | PdfUntaggedPageOutcomeV1 | undefined,
 ): outcome is PdfTaggedPageOutcomeV1 {
   return outcome !== undefined && "corruptTagCount" in outcome;
+}
+
+function hybridOutcome(
+  outcome: PdfTaggedPageOutcomeV1 | PdfUntaggedPageOutcomeV1 | PdfHybridPageOutcomeV2 | undefined,
+): outcome is PdfHybridPageOutcomeV2 {
+  return outcome !== undefined && "fallbackScope" in outcome;
 }
 
 function uniqueLocators(locators: readonly PdfSourceLocatorV1[]): PdfSourceLocatorV1[] {
@@ -54,13 +72,62 @@ function uniqueLocators(locators: readonly PdfSourceLocatorV1[]): PdfSourceLocat
 }
 
 export function assessPdfVisualFallbacks(
-  facts: Pick<PdfFactsV1, "pages">,
-  base: PdfFallbackSemanticBaseV1,
+  facts: Pick<PdfFactsV1 | PdfFactsV2, "pages">,
+  base: PdfFallbackSemanticBaseV1 | PdfFallbackSemanticBaseV2,
 ): PdfPageFallbackAssessmentV1[] {
   const geometryRequired = new Set(base.requiresGeometryPages ?? []);
   const fallbackRequired = new Set(base.requiresFallbackPages ?? []);
   return facts.pages.map((page) => {
     const outcome = base.pageOutcomes.find((item) => item.pageIndex === page.index);
+    const deferredFigures = base.evidence.filter((item) =>
+      item.locator.pageIndex === page.index
+      && item.decisionCode === "pdf/tagged-figure-deferred"
+      && item.outcome === "reported"
+    );
+    const figureAssessment = (claimedCharacterCount: number, unclaimedCharacterCount: number) => {
+      const localized = deferredFigures.filter((item) => item.locator.bbox);
+      if (localized.length === deferredFigures.length) {
+        return {
+          pageIndex: page.index,
+          scope: "region" as const,
+          reasonCodes: ["localized-unmatched-figure"],
+          regionLocators: uniqueLocators(localized.map((item) => item.locator)),
+          claimedCharacterCount,
+          unclaimedCharacterCount,
+        };
+      }
+      if (localized.length > 0) {
+        return {
+          pageIndex: page.index,
+          scope: "page" as const,
+          reasonCodes: ["partially-unlocalized-unmatched-figure"],
+          regionLocators: [],
+          claimedCharacterCount,
+          unclaimedCharacterCount,
+        };
+      }
+      return {
+        pageIndex: page.index,
+        scope: "report-only" as const,
+        reasonCodes: ["unlocalized-unmatched-figure"],
+        regionLocators: [],
+        claimedCharacterCount,
+        unclaimedCharacterCount,
+      };
+    };
+    if (hybridOutcome(outcome)) {
+      const hybrid = {
+        pageIndex: page.index,
+        scope: outcome.fallbackScope,
+        reasonCodes: outcome.fallbackReasonCodes,
+        regionLocators: outcome.fallbackRegionLocators,
+        claimedCharacterCount: outcome.uniquelyOwnedCharacterCount - outcome.residualReportedCharacterCount,
+        unclaimedCharacterCount: outcome.residualReportedCharacterCount,
+      };
+      return hybrid.scope !== "none" || deferredFigures.length === 0
+        ? hybrid
+        : figureAssessment(hybrid.claimedCharacterCount, hybrid.unclaimedCharacterCount);
+    }
     const claimedCharacterCount = outcome && taggedOutcome(outcome)
       ? outcome.claimedCharacterCount
       : outcome && "accountedCharacterCount" in outcome
@@ -104,6 +171,9 @@ export function assessPdfVisualFallbacks(
         reasonCodes: ["unclaimed-visible-text"],
         regionLocators: [],
       };
+    }
+    if (deferredFigures.length > 0) {
+      return figureAssessment(claimedCharacterCount, unclaimedCharacterCount);
     }
     if (outcome.corruptTagCount === 0) {
       return { ...common, scope: "none" as const, reasonCodes: [], regionLocators: [] };
