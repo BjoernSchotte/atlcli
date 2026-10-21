@@ -46,18 +46,24 @@ export interface PaginatedPage<T> {
  *
  * @param fetchPage - Fetches one page. Receives `undefined` for the first
  *   request, then the previous page's `next` token for each subsequent request.
+ * @param options.maxItems - Caller-requested result cap: stop fetching once
+ *   this many items are collected and return exactly that many. This is the
+ *   caller's own bound, not an end-of-pagination signal.
  * @returns Every item across all pages, in page order.
  * @throws {PaginationLoopError} when a `next` token repeats.
  */
 export async function drainPaginated<T>(
-  fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>
+  fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>,
+  options: { maxItems?: number } = {}
 ): Promise<T[]> {
+  const { maxItems } = options;
   const all: T[] = [];
   const seen = new Set<string>();
   let token: string | undefined;
   for (;;) {
     const page = await fetchPage(token);
     all.push(...page.items);
+    if (maxItems !== undefined && all.length >= maxItems) return all.slice(0, maxItems);
     const next = page.next;
     // Absence of a next token is the ONLY legitimate end of pagination.
     if (next === undefined || next === "") break;

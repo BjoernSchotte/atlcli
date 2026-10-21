@@ -59,7 +59,7 @@ async function rpc(server: Pick<RunningNfsServer, "port">, program: number, proc
     socket.on("end", () => reject(new Error("RPC closed before reply")));
   });
 }
-async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now(), writable = false, journalBytes = 512, allowDelete = false) {
+async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE === "1", now = () => Date.now(), writable = false, journalBytes = 512, allowDelete = false, deadlinesMs?: { read: number; dispatch: number; write: number }) {
   if (live && writable) throw new Error("RW wire fixtures must be synthetic");
   const cacheDir = mkdtempSync(join(tmpdir(), "nfs-wire-"));
   const client = new FakeConfluenceClient()
@@ -77,7 +77,7 @@ async function fixture(spaces = ["DOCSY"], live = process.env.ATLCLI_NFS_LIVE ==
     client: profile ? new ConfluenceClient(profile) : client, spaces, mode: writable ? "rw" : "ro", allowDelete, offline: false, cacheDir, now, coalesceMs: writable ? 0 : undefined });
   const journal = writable ? new NfsJournal(join(cacheDir, "journal.sqlite"), "fixture:DOCSY", journalBytes, 2048) : undefined;
   cleanups.push(async () => { await vfs.close(); journal?.close(); rmSync(cacheDir, { recursive: true, force: true }); });
-  const server = await startNfsServer({ vfs, spaces, journal, helperPath: resolve(helperPath!) });
+  const server = await startNfsServer({ vfs, spaces, journal, helperPath: resolve(helperPath!), deadlinesMs });
   cleanups.push(() => server.stop());
   return { server, vfs, client, journal };
 }
@@ -696,10 +696,12 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
   }, 20000);
 
   it("disconnects a stalled partial record without blocking other clients", async () => {
-    const { server } = await fixture(["DOCSY"], false);
+    // Shortened read deadline (production: 60s, pinned by the helper's Rust tests).
+    const { server } = await fixture(["DOCSY"], false, undefined, false, 512, false,
+      { read: 1_000, dispatch: 120_000, write: 30_000 });
     const socket = connect(server.port, "127.0.0.1");
     const closed = new Promise<void>((done, reject) => {
-      socket.setTimeout(65000, () => socket.destroy(new Error("Server read deadline was not enforced")));
+      socket.setTimeout(10_000, () => socket.destroy(new Error("Server read deadline was not enforced")));
       socket.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
       socket.on("close", done);
       socket.on("connect", () => socket.write(Buffer.from([0x80])));
@@ -709,10 +711,12 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       await closed;
       expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
     } finally { socket.destroy(); }
-  }, 70000);
+  }, 15_000);
 
   it("disconnects a blocked response reader without stalling other clients", async () => {
-    const { server, vfs } = await fixture(["DOCSY"], false);
+    // Shortened write deadline (production: 30s, pinned by the helper's Rust tests).
+    const { server, vfs } = await fixture(["DOCSY"], false, undefined, false, 512, false,
+      { read: 60_000, dispatch: 120_000, write: 1_000 });
     const mounted = await rpc(server, 100005, 1, opaque(Buffer.from("/")));
     let file = mounted.subarray(8, 8 + mounted.readUInt32BE(4));
     for (const name of ["_attachments", "large.bin"]) {
@@ -724,13 +728,13 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     const read = vfs.readFileBytes.bind(vfs);
     vfs.readFileBytes = async path => { reads++; return read(path); };
     // A reader that never drains: 32 one-megabyte READ requests, then no
-    // reads until the server's 30s write deadline has elapsed. Without reading,
+    // reads until the shortened 1s write deadline has elapsed. Without reading,
     // the kernel buffers fill and the server's responses block.
     const client = connect(server.port, "127.0.0.1");
     client.pause();
     const result = new Promise<number>((done, reject) => {
       let received = 0;
-      client.setTimeout(45_000, () => client.destroy(new Error("Server write deadline was not enforced")));
+      client.setTimeout(10_000, () => client.destroy(new Error("Server write deadline was not enforced")));
       client.on("connect", () => {
         for (let xid = 0; xid < 32; xid++) {
           const request = Buffer.concat([ints(xid + 100, 0, 2, 100003, 3, 6, 0, 0, 0, 0), ints(file.length), file, ints(0, 0, 1024 * 1024)]);
@@ -739,7 +743,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
         setTimeout(() => {
           client.on("data", (chunk: Buffer) => { received += chunk.length; });
           client.resume();
-        }, 35_000);
+        }, 3_000);
       });
       client.on("error", (error: NodeJS.ErrnoException) => error.code === "ECONNRESET" ? done(received) : reject(error));
       client.on("close", () => done(received));
@@ -756,10 +760,12 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
     } finally {
       client.destroy();
     }
-  }, 50_000);
+  }, 20_000);
 
   it("enforces the dispatch deadline across individually responsive bridge calls", async () => {
-    const child = spawn(resolve(helperPath!), ["0", "--staged-rw"], { env: {}, stdio: ["pipe", "pipe", "pipe"] });
+    // Shortened dispatch deadline (production: 120s, pinned by the helper's Rust tests).
+    const child = spawn(resolve(helperPath!), ["0", "--staged-rw", "--deadlines-ms=60000,3000,30000"],
+      { env: {}, stdio: ["pipe", "pipe", "pipe"] });
     child.stderr.resume();
     child.stdin.on("error", () => {});
     const exited = new Promise<void>((done, reject) => {
@@ -779,14 +785,15 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
           const request = raw as { id: number; op: string; args: { file: number } };
           calls++;
           // Exclusive CREATE performs pre-attributes, creation, then post-attributes.
-          // Each responds before the bridge's 60s limit; together they exceed 120s.
+          // Each responds well before the bridge's 60s limit; together they exceed
+          // the shortened 3s dispatch deadline during the third call.
           const timer = setTimeout(() => {
             timers.delete(timer);
             const result = request.op === "create-exclusive" ? 2 : {
               id: request.args.file, directory: request.args.file === 1, size: 0, mtime: 0,
             };
             child.stdin.write(encodeNfsFrame({ id: request.id, result }));
-          }, 45_000);
+          }, 1_200);
           timers.add(timer);
         }
       })();
@@ -797,7 +804,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       const started = performance.now();
       socket = connect(server.port, "127.0.0.1");
       const closed = new Promise<void>((done, reject) => {
-        socket!.setTimeout(130_000, () => socket!.destroy(new Error("Dispatch deadline not enforced")));
+        socket!.setTimeout(15_000, () => socket!.destroy(new Error("Dispatch deadline not enforced")));
         socket!.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "ECONNRESET") reject(error); });
         socket!.on("data", () => reject(new Error("Slow RPC replied instead of hitting dispatch deadline")));
         socket!.on("close", done);
@@ -805,7 +812,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       });
       expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
       await closed;
-      expect(performance.now() - started).toBeGreaterThanOrEqual(118_000);
+      expect(performance.now() - started).toBeGreaterThanOrEqual(2_900);
       expect(calls).toBe(3);
       expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
     } finally {
@@ -816,7 +823,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       try { await exited; await pump; }
       finally { clearTimeout(kill); }
     }
-  }, 140_000);
+  }, 20_000);
 
   for (const procedure of [16, 17]) {
     it(`paginates NFS procedure ${procedure} without repeating or omitting entries`, async () => {

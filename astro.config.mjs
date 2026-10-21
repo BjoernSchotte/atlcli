@@ -5,6 +5,8 @@ import starlight from '@astrojs/starlight';
 // https://astro.build/config
 export default defineConfig({
   site: 'https://atlcli.sh',
+  // Root dist/ is the CLI bundle; Astro empties its outDir on build.
+  outDir: './dist-docs',
   integrations: [
     starlight({
       title: 'atlcli',

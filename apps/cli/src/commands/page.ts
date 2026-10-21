@@ -219,9 +219,16 @@ async function handleList(flags: Record<string, string | boolean | string[]>, op
   }
 
   // Otherwise use CQL search
-  const cql = getFlag(flags, "cql") ?? "type=page";
-  const pages = await client.searchPages(cql, Number.isNaN(limit) ? 25 : limit);
+  const max = Number.isNaN(limit) ? 25 : limit;
+  const cql = pageListCql(getFlag(flags, "cql"), space);
+  const pages = await client.searchPages(cql, max, { maxResults: max });
   output({ schemaVersion: "1", pages }, opts);
+}
+
+/** CQL for `page list`: explicit `--cql` wins; otherwise scope to the space. */
+export function pageListCql(cql: string | undefined, space: string | undefined): string {
+  if (cql) return cql;
+  return space ? `space = "${space}" AND type = page` : "type = page";
 }
 
 async function handleCreate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {

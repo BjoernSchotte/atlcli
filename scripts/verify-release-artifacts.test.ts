@@ -43,6 +43,7 @@ async function writeFixture(input: {
   channel?: "stable" | "dev";
   companion?: "valid" | "wrong-source";
   binary?: Uint8Array;
+  eligibility?: Record<string, unknown>;
 } = {}): Promise<string> {
   const channel = input.channel ?? "dev";
   const buildId = channel === "stable" ? "v0.17.2" : BUILD_ID;
@@ -152,6 +153,7 @@ async function writeFixture(input: {
       url: "https://github.com/BjoernSchotte/atlcli/actions/runs/1/job/1",
     },
     advisory: [],
+    ...input.eligibility,
   });
   if (channel === "dev") {
     writeFileSync(join(root, "source-eligibility.json"), eligibility);
@@ -264,6 +266,47 @@ describe("release artifact verifier", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(`${join(root, "extracted")}.atlcli-release-extraction-v1`, { force: true });
+    }
+  });
+
+  // Regression: release-eligibility.ts admits a failed canonical CI run whose
+  // only failures are allowlisted advisory jobs, but this verifier demanded a
+  // green run and blocked every nightly from 2026-10-15 to 2026-10-20.
+  const failedRun = {
+    path: ".github/workflows/ci.yml", event: "push", branch: "main", runId: 1, runAttempt: 2,
+    status: "completed", conclusion: "failure", url: "https://github.com/BjoernSchotte/atlcli/actions/runs/1",
+  };
+  test("accepts a dev bundle whose canonical run failed only on advisory jobs", async () => {
+    const root = await writeFixture({ eligibility: {
+      reason: "eligible-with-advisory-failures", degraded: true, workflow: failedRun,
+      advisory: [{ name: "Non-required CI timing telemetry", conclusion: "failure" }],
+    } });
+    try {
+      const receipt = await verifyReleaseArtifacts({
+        directory: root,
+        extractExtensionDirectory: join(root, "extracted"),
+        verifyExtensionRuntime: false,
+      });
+      expect(receipt.sourceSha).toBe(SOURCE_SHA);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(`${join(root, "extracted")}.atlcli-release-extraction-v1`, { force: true });
+    }
+  });
+
+  test("rejects a failed canonical run that is not explained by allowlisted advisory jobs", async () => {
+    for (const eligibility of [
+      { degraded: true, workflow: failedRun, advisory: [] },
+      { degraded: true, workflow: failedRun, advisory: [{ name: "Linux Bun tests (general-1)", conclusion: "failure" }] },
+      { degraded: false, workflow: failedRun, advisory: [{ name: "Non-required CI timing telemetry", conclusion: "failure" }] },
+    ]) {
+      const root = await writeFixture({ eligibility });
+      try {
+        await expect(verifyReleaseArtifacts({ directory: root, verifyExtensionRuntime: false }))
+          .rejects.toThrow("source eligibility is not a successful proof");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     }
   });
 

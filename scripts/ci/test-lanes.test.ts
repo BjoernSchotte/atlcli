@@ -243,16 +243,31 @@ describe("duration-aware test lanes", () => {
       sourceFor: (path) => readFileSync(resolve(import.meta.dir, "../..", path), "utf8"),
     });
     const result = planTestLanes(inventory, realMetadata, "general-3x1");
-    expect(realMetadata.baselineSha).toBe("d3a5d82b5587670db666b82f4d19f9716bc42c71");
+    expect(realMetadata.baselineSha).toBe("5f5008bed6258041b3c2b27f6d23d3de631b6723");
     expect(
       realMetadata.files.filter(({ durationSeconds }) => durationSeconds !== undefined),
-    ).toHaveLength(620);
+    ).toHaveLength(757);
     expect(
       result.groups
         .filter(({ lane }) => lane === "general")
         .flatMap(({ requirements }) => requirements)
         .filter((requirement) => requirement === "fonts" || requirement === "poppler"),
     ).toEqual([]);
+  });
+
+  test("derives the general job count from the topology name", () => {
+    const inventory = discoverTestFiles();
+    const metadata = loadTestLaneMetadata();
+    for (const [topology, jobs] of [["general-2x1", 2], ["general-3x1", 3], ["general-6x1", 6]] as const) {
+      const generalJobs = new Set(
+        planTestLanes(inventory, metadata, topology).groups
+          .filter(({ lane }) => lane === "general")
+          .map(({ job }) => job),
+      );
+      expect([...generalJobs].sort()).toEqual(
+        Array.from({ length: jobs }, (_, index) => `general-${index + 1}`),
+      );
+    }
   });
 
   test("runs wall-clock performance gates in isolated fresh processes", () => {

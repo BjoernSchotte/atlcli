@@ -40,7 +40,10 @@ This is not yet a bound on total connections, pending tasks or queued responses.
 Connection-budget follow-up: tcp.rs admits at most 32 connections and processes
 one RPC at a time on each connection. The unbounded task/reply-channel design is
 removed from rpcwire.rs. Read/idle, dispatch and reply-write deadlines are 60,
-120 and 30 seconds. The transaction tracker retains at most 4,096 entries and
+120 and 30 seconds (`Deadlines::PRODUCTION`). `NFSTcpListener::with_deadlines`
+accepts only `Deadlines::shortened` values within 100 ms..=production, so the
+helper's test-only `--deadlines-ms` argument can make a deadline fire sooner
+but never weaken the connection budget. The transaction tracker retains at most 4,096 entries and
 removes a TCP session's entries on disconnect. Capacity rejects new work rather
 than evicting another live session's replay history. This does not provide replay
 reconciliation across reconnects; write publication still requires its journal.

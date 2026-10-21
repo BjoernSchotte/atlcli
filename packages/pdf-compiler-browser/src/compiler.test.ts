@@ -438,8 +438,10 @@ describe("BrowserPdfCompiler package", () => {
     // normalized bundle must be materially smaller than the original.
     // Scale 0.75 keeps sources ABOVE the 180-PPI envelope target (photos
     // 1800px wide vs the 1176px cap) so normalization genuinely engages;
-    // smaller scales are correctly all-kept ("no-downscale").
-    const corpus = generateImageHeavyCorpus({ scale: 0.75 });
+    // smaller scales are correctly all-kept ("no-downscale"). One asset per
+    // role covers every encoder path; the benchmark's 56 MB top-up only cost
+    // ~90 s of pure-JS encode/re-encode on CI.
+    const corpus = generateImageHeavyCorpus({ scale: 0.75, perRole: 1 });
     const resolver = {
       resolve: async (ref: { filename?: string }) =>
         resolveImageHeavyAsset(corpus, ref.filename ?? ""),

@@ -3,7 +3,7 @@ use atlcli_confluence_nfs::{read_frame, write_frame, BRIDGE_VERSION};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use nfsserve::{
     nfs::*,
-    tcp::{NFSTcp, NFSTcpListener},
+    tcp::{Deadlines, NFSTcp, NFSTcpListener},
     vfs::*,
 };
 use serde_json::{json, Value};
@@ -492,6 +492,48 @@ impl NFSFileSystem for Bridge {
         Err(nfsstat3::NFS3ERR_INVAL)
     }
 }
+#[derive(Debug, PartialEq)]
+struct HelperArgs {
+    port: u16,
+    writable: bool,
+    deadlines: Deadlines,
+}
+
+/// `<port> [--staged-rw] [--deadlines-ms=<read>,<dispatch>,<write>]`. Deadline
+/// overrides exist so tests need not wait out production timeouts; they may
+/// only shorten them. Unknown arguments are rejected.
+fn parse_args(args: &[String]) -> Result<HelperArgs, String> {
+    let port = match args.first() {
+        Some(port) => port.parse().map_err(|_| format!("invalid port: {port}"))?,
+        None => 0,
+    };
+    let mut parsed = HelperArgs {
+        port,
+        writable: false,
+        deadlines: Deadlines::PRODUCTION,
+    };
+    for arg in args.iter().skip(1) {
+        if arg == "--staged-rw" {
+            parsed.writable = true;
+        } else if let Some(values) = arg.strip_prefix("--deadlines-ms=") {
+            let ms: Vec<u64> = values
+                .split(',')
+                .map(str::parse)
+                .collect::<Result<_, _>>()
+                .map_err(|_| format!("invalid deadlines: {values}"))?;
+            let [read, dispatch, write] = ms[..] else {
+                return Err(format!("expected 3 deadlines: {values}"));
+            };
+            let d = std::time::Duration::from_millis;
+            parsed.deadlines = Deadlines::shortened(d(read), d(dispatch), d(write))
+                .ok_or_else(|| format!("deadlines must be 100 ms..=production: {values}"))?;
+        } else {
+            return Err(format!("unknown argument: {arg}"));
+        }
+    }
+    Ok(parsed)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().nth(1).as_deref() == Some("--version") {
@@ -507,11 +549,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
-    let port: u16 = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "0".into())
-        .parse()?;
-    let writable = std::env::args().nth(2).as_deref() == Some("--staged-rw");
+    let HelperArgs {
+        port,
+        writable,
+        deadlines,
+    } = parse_args(&std::env::args().skip(1).collect::<Vec<_>>())?;
     let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
     let mut session = [0; 16];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut session)?;
@@ -522,7 +564,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sequence: AtomicU64::new(1),
         capacity: Arc::new(Semaphore::new(32)),
     };
-    let server = Arc::new(NFSTcpListener::bind(&format!("127.0.0.1:{port}"), bridge).await?);
+    let mut listener = NFSTcpListener::bind(&format!("127.0.0.1:{port}"), bridge).await?;
+    listener.with_deadlines(deadlines);
+    let server = Arc::new(listener);
     write_frame(
         &mut std::io::stdout().lock(),
         &json!({"hello":BRIDGE_VERSION,"port":server.get_listen_port(),"mode":if writable { "staged-rw" } else { "ro" }}),
@@ -569,6 +613,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    fn args(list: &[&str]) -> Result<HelperArgs, String> {
+        parse_args(&list.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn production_deadlines_are_60_120_30_seconds() {
+        assert_eq!(
+            Deadlines::PRODUCTION,
+            Deadlines {
+                read: Duration::from_secs(60),
+                dispatch: Duration::from_secs(120),
+                write: Duration::from_secs(30),
+            }
+        );
+        assert_eq!(
+            args(&["0", "--staged-rw"]).unwrap().deadlines,
+            Deadlines::PRODUCTION
+        );
+        assert_eq!(
+            args(&[]).unwrap(),
+            HelperArgs {
+                port: 0,
+                writable: false,
+                deadlines: Deadlines::PRODUCTION
+            }
+        );
+    }
+
+    #[test]
+    fn deadline_overrides_may_only_shorten() {
+        let parsed = args(&["4000", "--staged-rw", "--deadlines-ms=1000,2000,500"]).unwrap();
+        assert_eq!(parsed.port, 4000);
+        assert!(parsed.writable);
+        assert_eq!(parsed.deadlines.read, Duration::from_millis(1000));
+        assert_eq!(parsed.deadlines.dispatch, Duration::from_millis(2000));
+        assert_eq!(parsed.deadlines.write, Duration::from_millis(500));
+        for rejected in [
+            "--deadlines-ms=60001,1000,1000", // longer than production
+            "--deadlines-ms=99,1000,1000",    // below the 100 ms floor
+            "--deadlines-ms=1000,1000",       // wrong arity
+            "--deadlines-ms=a,b,c",
+        ] {
+            assert!(args(&["0", rejected]).is_err(), "{rejected}");
+        }
+        assert!(args(&["0", "--unknown"]).is_err());
+        assert!(args(&["port"]).is_err());
+    }
 
     #[test]
     fn native_mode_type_bits_do_not_change_permissions() {

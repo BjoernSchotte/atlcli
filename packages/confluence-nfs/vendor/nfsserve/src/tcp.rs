@@ -24,27 +24,55 @@ pub struct NFSTcpListener<T: NFSFileSystem + Send + Sync + 'static> {
     export_name: Arc<String>,
     transaction_tracker: Arc<TransactionTracker>,
     requests: Arc<AtomicU64>,
+    deadlines: Deadlines,
 }
 
 pub fn generate_host_ip(hostnum: u16) -> String {
     format!("127.88.{}.{}", ((hostnum >> 8) & 0xFF) as u8, (hostnum & 0xFF) as u8)
 }
 
+/// Per-connection deadlines: read/idle, dispatch and reply write.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Deadlines {
+    pub read: Duration,
+    pub dispatch: Duration,
+    pub write: Duration,
+}
+
+impl Deadlines {
+    /// Production deadlines. Overrides may only shorten them (see `shortened`).
+    pub const PRODUCTION: Deadlines = Deadlines {
+        read: Duration::from_secs(60),
+        dispatch: Duration::from_secs(120),
+        write: Duration::from_secs(30),
+    };
+    const MIN: Duration = Duration::from_millis(100);
+
+    /// Accepts overrides only within [100 ms, production], so a caller can make
+    /// a deadline fire sooner (tests) but never weaken the connection budget.
+    pub fn shortened(read: Duration, dispatch: Duration, write: Duration) -> Option<Deadlines> {
+        let within = |value: Duration, max: Duration| value >= Self::MIN && value <= max;
+        let p = Self::PRODUCTION;
+        (within(read, p.read) && within(dispatch, p.dispatch) && within(write, p.write))
+            .then_some(Deadlines { read, dispatch, write })
+    }
+}
+
 /// processes an established socket
-async fn process_socket(mut socket: tokio::net::TcpStream, context: RPCContext, requests: Arc<AtomicU64>) -> Result<(), anyhow::Error> {
+async fn process_socket(mut socket: tokio::net::TcpStream, context: RPCContext, requests: Arc<AtomicU64>, deadlines: Deadlines) -> Result<(), anyhow::Error> {
     let _ = socket.set_nodelay(true);
     // ponytail: sequential per connection bounds request/reply memory without queues.
     // Add bounded multiplexing only if native benchmarks demonstrate a bottleneck.
     loop {
-        let record = tokio::time::timeout(Duration::from_secs(60), read_record(&mut socket)).await??;
+        let record = tokio::time::timeout(deadlines.read, read_record(&mut socket)).await??;
         requests.fetch_add(1, Ordering::Relaxed);
         let mut reply = Vec::new();
         let should_reply = tokio::time::timeout(
-            Duration::from_secs(120),
+            deadlines.dispatch,
             handle_rpc(&mut std::io::Cursor::new(record), &mut reply, context.clone()),
         ).await??;
         if should_reply {
-            tokio::time::timeout(Duration::from_secs(30), write_fragment(&mut socket, &reply)).await??;
+            tokio::time::timeout(deadlines.write, write_fragment(&mut socket, &reply)).await??;
         }
     }
 }
@@ -125,7 +153,13 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(TransactionTracker::new(Duration::from_secs(60))),
             requests: Arc::new(AtomicU64::new(0)),
+            deadlines: Deadlines::PRODUCTION,
         })
+    }
+
+    /// Replaces the per-connection deadlines; build them with `Deadlines::shortened`.
+    pub fn with_deadlines(&mut self, deadlines: Deadlines) {
+        self.deadlines = deadlines;
     }
 
     /// Sets an optional NFS export name.
@@ -184,11 +218,12 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);
             let requests = self.requests.clone();
+            let deadlines = self.deadlines;
             tokio::spawn(async move {
                 let _permit = permit;
                 let tracker = context.transaction_tracker.clone();
                 let client = context.client_addr.clone();
-                let _ = process_socket(socket, context, requests).await;
+                let _ = process_socket(socket, context, requests, deadlines).await;
                 tracker.remove_client(&client);
             });
         }

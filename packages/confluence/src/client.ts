@@ -1798,20 +1798,24 @@ export class ConfluenceClient {
   async searchPages(
     cql: string,
     limit = 25,
-    options: { signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal; maxResults?: number } = {}
   ): Promise<ConfluenceSearchResult[]> {
     // Cursor pagination ends only on the ABSENCE of a next link — a short (or
     // even empty) page carrying a live `_links.next` is not the last page (see
     // drainPaginated). A silent early break here dropped later results, which
     // for label-filter lookups means an exclude match on a dropped page could
-    // ship in the export uncaught (privacy/completeness bug).
-    return drainPaginated<ConfluenceSearchResult>(async (token) => {
-      const result =
-        token === undefined
-          ? await this.search(cql, { limit, signal: options.signal })
-          : await this.searchByUrl(token, options.signal);
-      return { items: result.results, next: result.nextLink };
-    });
+    // ship in the export uncaught (privacy/completeness bug). `limit` is the
+    // page size; only an explicit `maxResults` caps the total.
+    return drainPaginated<ConfluenceSearchResult>(
+      async (token) => {
+        const result =
+          token === undefined
+            ? await this.search(cql, { limit, signal: options.signal })
+            : await this.searchByUrl(token, options.signal);
+        return { items: result.results, next: result.nextLink };
+      },
+      { maxItems: options.maxResults }
+    );
   }
 
   /**

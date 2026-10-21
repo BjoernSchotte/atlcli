@@ -58,6 +58,10 @@ export class SqliteAdapter implements SyncDbAdapter {
     // Open database
     this.db = new Database(this.config.dbPath, { create: true });
 
+    // Commands open several connections to one sync.db; wait for a competing
+    // writer instead of failing at once with "database is locked".
+    this.db.exec("PRAGMA busy_timeout = 5000;");
+
     // Enable WAL mode for better concurrent access
     if (this.config.walMode !== false) {
       this.db.exec("PRAGMA journal_mode = WAL;");

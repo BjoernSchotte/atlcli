@@ -319,16 +319,6 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
 
 // export: PDF_GEOMETRY_POLICY_V2
 export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
-    readonly lineClusterCenterGlyphFactor: 0.7;
-    readonly minimumLineClusterTolerance: 0.0025;
-    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
-    readonly paragraphMaximumIndentDelta: 0.02;
-    readonly paragraphMaximumFontDeltaPoints: 0.5;
-    readonly pageNumberFooterMinimumX: 0.75;
-    readonly pageNumberFooterMinimumY: 0.9;
-    readonly columnStartPrecision: 100;
-    readonly columnAlignmentGlyphFactor: 0.7;
-    readonly flatMarkMaximumAspect: 0.25;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -341,6 +331,16 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
     readonly minimumColumnEvidenceWidth: 0.15;
+    readonly lineClusterCenterGlyphFactor: 0.7;
+    readonly minimumLineClusterTolerance: 0.0025;
+    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
+    readonly paragraphMaximumIndentDelta: 0.02;
+    readonly paragraphMaximumFontDeltaPoints: 0.5;
+    readonly pageNumberFooterMinimumX: 0.75;
+    readonly pageNumberFooterMinimumY: 0.9;
+    readonly columnStartPrecision: 100;
+    readonly columnAlignmentGlyphFactor: 0.7;
+    readonly flatMarkMaximumAspect: 0.25;
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
@@ -2052,16 +2052,6 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
 
 // export: PDF_GEOMETRY_POLICY_V2
 export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
-    readonly lineClusterCenterGlyphFactor: 0.7;
-    readonly minimumLineClusterTolerance: 0.0025;
-    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
-    readonly paragraphMaximumIndentDelta: 0.02;
-    readonly paragraphMaximumFontDeltaPoints: 0.5;
-    readonly pageNumberFooterMinimumX: 0.75;
-    readonly pageNumberFooterMinimumY: 0.9;
-    readonly columnStartPrecision: 100;
-    readonly columnAlignmentGlyphFactor: 0.7;
-    readonly flatMarkMaximumAspect: 0.25;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -2074,6 +2064,16 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
     readonly minimumColumnEvidenceWidth: 0.15;
+    readonly lineClusterCenterGlyphFactor: 0.7;
+    readonly minimumLineClusterTolerance: 0.0025;
+    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
+    readonly paragraphMaximumIndentDelta: 0.02;
+    readonly paragraphMaximumFontDeltaPoints: 0.5;
+    readonly pageNumberFooterMinimumX: 0.75;
+    readonly pageNumberFooterMinimumY: 0.9;
+    readonly columnStartPrecision: 100;
+    readonly columnAlignmentGlyphFactor: 0.7;
+    readonly flatMarkMaximumAspect: 0.25;
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
@@ -3793,16 +3793,6 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
 
 // export: PDF_GEOMETRY_POLICY_V2
 export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
-    readonly lineClusterCenterGlyphFactor: 0.7;
-    readonly minimumLineClusterTolerance: 0.0025;
-    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
-    readonly paragraphMaximumIndentDelta: 0.02;
-    readonly paragraphMaximumFontDeltaPoints: 0.5;
-    readonly pageNumberFooterMinimumX: 0.75;
-    readonly pageNumberFooterMinimumY: 0.9;
-    readonly columnStartPrecision: 100;
-    readonly columnAlignmentGlyphFactor: 0.7;
-    readonly flatMarkMaximumAspect: 0.25;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -3815,6 +3805,16 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
     readonly minimumColumnEvidenceWidth: 0.15;
+    readonly lineClusterCenterGlyphFactor: 0.7;
+    readonly minimumLineClusterTolerance: 0.0025;
+    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
+    readonly paragraphMaximumIndentDelta: 0.02;
+    readonly paragraphMaximumFontDeltaPoints: 0.5;
+    readonly pageNumberFooterMinimumX: 0.75;
+    readonly pageNumberFooterMinimumY: 0.9;
+    readonly columnStartPrecision: 100;
+    readonly columnAlignmentGlyphFactor: 0.7;
+    readonly flatMarkMaximumAspect: 0.25;
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2
@@ -5535,16 +5535,6 @@ export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
 
 // export: PDF_GEOMETRY_POLICY_V2
 export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
-    readonly lineClusterCenterGlyphFactor: 0.7;
-    readonly minimumLineClusterTolerance: 0.0025;
-    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
-    readonly paragraphMaximumIndentDelta: 0.02;
-    readonly paragraphMaximumFontDeltaPoints: 0.5;
-    readonly pageNumberFooterMinimumX: 0.75;
-    readonly pageNumberFooterMinimumY: 0.9;
-    readonly columnStartPrecision: 100;
-    readonly columnAlignmentGlyphFactor: 0.7;
-    readonly flatMarkMaximumAspect: 0.25;
     readonly maxColumns: 2;
     readonly columnGap: 0.18;
     readonly minimumLinesPerColumn: 2;
@@ -5557,6 +5547,16 @@ export declare const PDF_GEOMETRY_POLICY_V2: Readonly<{
     readonly maximumHeadingLength: 120;
     readonly maximumHorizontalAngleRadians: 0.12;
     readonly minimumColumnEvidenceWidth: 0.15;
+    readonly lineClusterCenterGlyphFactor: 0.7;
+    readonly minimumLineClusterTolerance: 0.0025;
+    readonly paragraphMaximumLineGapGlyphFactor: 2.4;
+    readonly paragraphMaximumIndentDelta: 0.02;
+    readonly paragraphMaximumFontDeltaPoints: 0.5;
+    readonly pageNumberFooterMinimumX: 0.75;
+    readonly pageNumberFooterMinimumY: 0.9;
+    readonly columnStartPrecision: 100;
+    readonly columnAlignmentGlyphFactor: 0.7;
+    readonly flatMarkMaximumAspect: 0.25;
 }>;
 
 // export: PDF_HYBRID_POLICY_REVISION_V2

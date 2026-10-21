@@ -906,6 +906,7 @@ export declare class ConfluenceClient {
     private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
+        maxResults?: number;
     }): Promise<ConfluenceSearchResult[]>;
     searchNextPage(providerCursor: string, options?: {
         signal?: AbortSignal;
@@ -1508,7 +1509,9 @@ export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChan
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
 // export: drainPaginated
-export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>, options?: {
+    maxItems?: number;
+}): Promise<T[]>;
 
 // export: EmojiProjectionResult
 export type EmojiProjectionResult = {
@@ -4294,6 +4297,7 @@ export declare class ConfluenceClient {
     private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
+        maxResults?: number;
     }): Promise<ConfluenceSearchResult[]>;
     searchNextPage(providerCursor: string, options?: {
         signal?: AbortSignal;
@@ -4896,7 +4900,9 @@ export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChan
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
 // export: drainPaginated
-export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>, options?: {
+    maxItems?: number;
+}): Promise<T[]>;
 
 // export: EmojiProjectionResult
 export type EmojiProjectionResult = {
@@ -7682,6 +7688,7 @@ export declare class ConfluenceClient {
     private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
+        maxResults?: number;
     }): Promise<ConfluenceSearchResult[]>;
     searchNextPage(providerCursor: string, options?: {
         signal?: AbortSignal;
@@ -8284,7 +8291,9 @@ export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChan
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
 // export: drainPaginated
-export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>, options?: {
+    maxItems?: number;
+}): Promise<T[]>;
 
 // export: EmojiProjectionResult
 export type EmojiProjectionResult = {
@@ -10767,6 +10776,7 @@ export declare class ConfluenceClient {
     private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
+        maxResults?: number;
     }): Promise<ConfluenceSearchResult[]>;
     searchNextPage(providerCursor: string, options?: {
         signal?: AbortSignal;
@@ -14554,6 +14564,7 @@ export declare class ConfluenceClient {
     private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
+        maxResults?: number;
     }): Promise<ConfluenceSearchResult[]>;
     searchNextPage(providerCursor: string, options?: {
         signal?: AbortSignal;
@@ -15156,7 +15167,9 @@ export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChan
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
 // export: drainPaginated
-export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>, options?: {
+    maxItems?: number;
+}): Promise<T[]>;
 
 // export: EmojiProjectionResult
 export type EmojiProjectionResult = {
@@ -17137,6 +17150,7 @@ export declare class ConfluenceClient {
     private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
+        maxResults?: number;
     }): Promise<ConfluenceSearchResult[]>;
     searchNextPage(providerCursor: string, options?: {
         signal?: AbortSignal;

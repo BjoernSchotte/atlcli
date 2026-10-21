@@ -43,6 +43,12 @@ export interface ImageHeavyCorpusOptions {
    * code paths.
    */
   scale?: number;
+  /**
+   * Cap unique assets per role (screenshot, diagram, photo) and drop the
+   * aggregate-size floor. For codec/decode proofs that need every encoder
+   * path at full dimensions but not the benchmark's byte volume.
+   */
+  perRole?: number;
 }
 
 export type ImageHeavyAssetRole = "photo" | "screenshot" | "diagram" | "logo";
@@ -397,7 +403,13 @@ export function generateImageHeavyCorpus(
   if (!(scale > 0 && scale <= 1)) {
     throw new Error("The image-heavy corpus scale must be in (0, 1].");
   }
-  const minAggregateBytes = Math.ceil(IMAGE_HEAVY_MIN_AGGREGATE_BYTES * scale * scale);
+  const perRole = options.perRole;
+  if (perRole !== undefined && !(Number.isInteger(perRole) && perRole >= 1)) {
+    throw new Error("The image-heavy corpus perRole cap must be a positive integer.");
+  }
+  const capped = (count: number): number => Math.min(count, perRole ?? count);
+  const minAggregateBytes =
+    perRole === undefined ? Math.ceil(IMAGE_HEAVY_MIN_AGGREGATE_BYTES * scale * scale) : 0;
 
   const photoWidth = roundToBlocks(FULL_SCALE.photo.width * scale);
   const photoHeight = roundToBlocks(FULL_SCALE.photo.height * scale);
@@ -416,7 +428,7 @@ export function generateImageHeavyCorpus(
     aggregateBytes += asset.bytes.byteLength;
   };
 
-  for (let index = 0; index < FULL_SCALE.screenshot.count; index += 1) {
+  for (let index = 0; index < capped(FULL_SCALE.screenshot.count); index += 1) {
     const bytes = encodePng(
       screenshotPixels(screenshotWidth, screenshotHeight, seed ^ (0x51ee + index)),
       screenshotWidth, screenshotHeight, false
@@ -431,7 +443,7 @@ export function generateImageHeavyCorpus(
       bytes,
     });
   }
-  for (let index = 0; index < FULL_SCALE.diagram.count; index += 1) {
+  for (let index = 0; index < capped(FULL_SCALE.diagram.count); index += 1) {
     const bytes = encodePng(
       diagramPixels(diagramWidth, diagramHeight, seed ^ (0xd1a6 + index)),
       diagramWidth, diagramHeight, true
@@ -461,7 +473,7 @@ export function generateImageHeavyCorpus(
   // construction rather than by hoping the fixed counts land above it.
   let photoIndex = 0;
   while (
-    photoIndex < FULL_SCALE.photo.count ||
+    photoIndex < capped(FULL_SCALE.photo.count) ||
     (aggregateBytes < minAggregateBytes && photoIndex < FULL_SCALE.photo.count + FULL_SCALE.maxTopUpPhotos)
   ) {
     const bytes = encodeJpeg(
@@ -576,6 +588,7 @@ export function generateImageHeavyCorpus(
 
   const manifestDescriptor =
     `${IMAGE_HEAVY_CORPUS_SCHEMA}|seed=${seed}|scale=${scale}|` +
+    (perRole === undefined ? "" : `perRole=${perRole}|`) +
     manifest
       .map(
         (entry) =>

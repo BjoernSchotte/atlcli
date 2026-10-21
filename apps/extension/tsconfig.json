@@ -2,6 +2,7 @@
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx",
+    "types": ["chrome"],
     "customConditions": ["development", "browser"],
     "verbatimModuleSyntax": false,
     "noUncheckedIndexedAccess": false,
