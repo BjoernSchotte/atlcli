@@ -99,9 +99,20 @@ describe("decideReportTarget", () => {
 describe("reportExportFlags", () => {
   const long = Array.from({ length: REPORT_TOC_MIN_HEADINGS }, (_, i) => `## S${i}`).join("\n");
 
-  test("PDF: overwrite, no cover, contents only for long reports", () => {
-    expect(reportExportFlags("notes.PDF", "## One")).toEqual({ output: "notes.PDF", format: "pdf", force: true, "no-cover": true, "no-toc": true });
-    expect(reportExportFlags("notes.pdf", long)).toEqual({ output: "notes.pdf", format: "pdf", force: true, "no-cover": true });
+  test("PDF: overwrite, no cover or closing page, contents only for long reports", () => {
+    const bare = { "no-cover": true, "no-closing-page": true };
+    expect(reportExportFlags("notes.PDF", "## One")).toEqual({ output: "notes.PDF", format: "pdf", force: true, ...bare, "no-toc": true });
+    expect(reportExportFlags("notes.pdf", long)).toEqual({ output: "notes.pdf", format: "pdf", force: true, ...bare });
+  });
+
+  test("PDF with a chosen template: the template keeps its page defaults", () => {
+    expect(reportExportFlags("notes.pdf", "## One", "brand.wiki-pdf-template")).toEqual({
+      output: "notes.pdf",
+      format: "pdf",
+      force: true,
+      template: "brand.wiki-pdf-template",
+      "no-toc": true,
+    });
   });
 
   test("DOCX: overwrite only", () => {

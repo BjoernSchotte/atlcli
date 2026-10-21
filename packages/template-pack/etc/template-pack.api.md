@@ -662,6 +662,8 @@ export interface DesignPageCompositionsV1 {
 
 // export: DesignPageCompositionsV3
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    cover: DesignCoverCompositionV1 & DesignPageToggleV3;
+    closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
     running: {
         header: DesignRunningRegionV3;
         footer: DesignRunningRegionV3;
@@ -706,6 +708,11 @@ export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
 export interface DesignPageNumberPhaseV3 {
     preset: DesignPageNumberingPresetV3;
     start: number;
+}
+
+// export: DesignPageToggleV3
+export interface DesignPageToggleV3 {
+    enabled?: boolean;
 }
 
 // export: DesignPageV3
@@ -2165,6 +2172,8 @@ export interface DesignPageCompositionsV1 {
 
 // export: DesignPageCompositionsV3
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    cover: DesignCoverCompositionV1 & DesignPageToggleV3;
+    closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
     running: {
         header: DesignRunningRegionV3;
         footer: DesignRunningRegionV3;
@@ -2209,6 +2218,11 @@ export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
 export interface DesignPageNumberPhaseV3 {
     preset: DesignPageNumberingPresetV3;
     start: number;
+}
+
+// export: DesignPageToggleV3
+export interface DesignPageToggleV3 {
+    enabled?: boolean;
 }
 
 // export: DesignPageV3
@@ -3668,6 +3682,8 @@ export interface DesignPageCompositionsV1 {
 
 // export: DesignPageCompositionsV3
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    cover: DesignCoverCompositionV1 & DesignPageToggleV3;
+    closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
     running: {
         header: DesignRunningRegionV3;
         footer: DesignRunningRegionV3;
@@ -3712,6 +3728,11 @@ export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
 export interface DesignPageNumberPhaseV3 {
     preset: DesignPageNumberingPresetV3;
     start: number;
+}
+
+// export: DesignPageToggleV3
+export interface DesignPageToggleV3 {
+    enabled?: boolean;
 }
 
 // export: DesignPageV3
@@ -5171,6 +5192,8 @@ export interface DesignPageCompositionsV1 {
 
 // export: DesignPageCompositionsV3
 export interface DesignPageCompositionsV3 extends DesignPageCompositionsV1 {
+    cover: DesignCoverCompositionV1 & DesignPageToggleV3;
+    closingPage: DesignClosingPageCompositionV1 & DesignPageToggleV3;
     running: {
         header: DesignRunningRegionV3;
         footer: DesignRunningRegionV3;
@@ -5215,6 +5238,11 @@ export interface DesignPageNumberNavigationV3 extends DesignPageNumberPhaseV3 {
 export interface DesignPageNumberPhaseV3 {
     preset: DesignPageNumberingPresetV3;
     start: number;
+}
+
+// export: DesignPageToggleV3
+export interface DesignPageToggleV3 {
+    enabled?: boolean;
 }
 
 // export: DesignPageV3

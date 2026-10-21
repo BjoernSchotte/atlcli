@@ -88,6 +88,11 @@ export interface AtlcliTypstDecorationModelV5 {
 
 export interface AtlcliTypstTemplateOptions {
   positionedLogo?: boolean;
+  /**
+   * Revisions 1-4 only: gate the closing page on the per-export `closingPage`
+   * setting. Pack sources are byte-pinned and never set it.
+   */
+  closingPageSetting?: boolean;
   /** Data-only revision-5 page model; historical callers leave this absent. */
   pageModelV5?: AtlcliTypstPageModelV5;
   /** Data-only revision-5 navigation/component policy. */
@@ -262,14 +267,14 @@ export function createAtlcliTypstTemplate(
     options.imageGeometryV5 === true ||
     options.typographyModelV5 !== undefined;
   if (!revision5) {
-    return createAtlcliTypstTemplateLegacy(
-      design,
-      labels,
-      visuals,
-      options.positionedLogo === undefined
+    return createAtlcliTypstTemplateLegacy(design, labels, visuals, {
+      ...(options.positionedLogo === undefined
         ? {}
-        : { positionedLogo: options.positionedLogo },
-    );
+        : { positionedLogo: options.positionedLogo }),
+      ...(options.closingPageSetting === undefined
+        ? {}
+        : { closingPageSetting: options.closingPageSetting }),
+    });
   }
   // Revision 5 has already crossed the complete Catalog-V3 validator in
   // `createAtlcliTypstTemplateV5`. Its V1-shaped renderer projection can carry

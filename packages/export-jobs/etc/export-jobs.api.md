@@ -1326,6 +1326,7 @@ export interface PdfExportSettingsV1 {
     orientation?: "portrait" | "landscape";
     cover?: boolean;
     outline?: boolean;
+    closingPage?: boolean;
     headerText?: string;
     footerText?: string;
     accentColor?: string;

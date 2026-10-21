@@ -8,12 +8,15 @@ import {
 import {
   PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
 } from "./design-catalog.js";
 import {
   BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V1,
+  BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2,
   BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1,
   BUILTIN_PDF_TEMPLATE_BASELINE_REGISTRY_V1,
   BUILTIN_PDF_TEMPLATE_BASELINE_V1,
+  BUILTIN_PDF_TEMPLATE_BASELINE_V2,
   computePdfTemplateBaselineDigestV1,
   PdfTemplateRecipeV2ResolutionError,
   resolvePdfTemplateRecipeV2Design,
@@ -88,6 +91,68 @@ describe("Recipe V2 installed baseline resolution", () => {
         bookmarks: { enabled: true },
       },
     });
+  });
+
+  it("pins the catalog-V4 baseline: the same design, executed as revision 6", async () => {
+    expect(
+      await computePdfTemplateBaselineDigestV1(BUILTIN_PDF_TEMPLATE_BASELINE_V2),
+    ).toBe(BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2);
+    expect(BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2).toBe(
+      "17c057d2261650da2e1af474ff12a75354eb58cd4571093b030242dc8b2ba3d4",
+    );
+    expect(BUILTIN_PDF_TEMPLATE_BASELINE_V2.catalog).toEqual({
+      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
+      version: 4,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
+    });
+    expect(BUILTIN_PDF_TEMPLATE_BASELINE_V2.design).toEqual(
+      BUILTIN_PDF_TEMPLATE_BASELINE_V1.design,
+    );
+  });
+
+  it("resolves catalog-V4 page toggles through baseline version 2", async () => {
+    const resolved = await resolvePdfTemplateRecipeV2Design({
+      ...recipe({
+        compositions: {
+          cover: { enabled: false },
+          closingPage: { enabled: false },
+        },
+      } as PdfTemplateRecipeDesignOverlayV2),
+      baseline: {
+        id: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1,
+        version: 2,
+        catalogVersion: 4,
+        digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2,
+      },
+    });
+    expect(resolved.canonicalSource.revision).toBe("6");
+    expect(resolved.catalog.version).toBe(4);
+    expect(resolved.design.compositions.cover).toMatchObject({
+      enabled: false,
+      kind: "standard",
+    });
+    expect(resolved.design.compositions.closingPage.enabled).toBe(false);
+
+    // The same toggle on the catalog-V3 baseline is an unknown capability.
+    await expect(
+      resolvePdfTemplateRecipeV2Design(
+        recipe({
+          compositions: { cover: { enabled: false } },
+        } as PdfTemplateRecipeDesignOverlayV2),
+      ),
+    ).rejects.toThrow(/compositions\.cover\.enabled/);
+    // A version-2 baseline cannot be requested as catalog V3.
+    await expect(
+      resolvePdfTemplateRecipeV2Design({
+        ...recipe(),
+        baseline: {
+          id: BUILTIN_PDF_TEMPLATE_BASELINE_ID_V1,
+          version: 2,
+          catalogVersion: 3,
+          digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2,
+        },
+      }),
+    ).rejects.toMatchObject({ reason: "catalog-mismatch" });
   });
 
   it("resolves no overrides into immutable complete authoring data", async () => {

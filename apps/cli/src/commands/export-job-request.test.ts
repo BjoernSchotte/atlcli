@@ -133,7 +133,7 @@ describe("durable CLI export job requests", () => {
       outputPath: "/tmp/report.pdf", force: false, strict: false, noCache: false,
     } as const;
     expect(buildCliPdfJobRequest(base).settings).toEqual({});
-    expect(buildCliPdfJobRequest({ ...base, settings: { cover: false, outline: false } }).settings).toEqual({ cover: false, outline: false });
+    expect(buildCliPdfJobRequest({ ...base, settings: { cover: false, outline: false, closingPage: false } }).settings).toEqual({ cover: false, outline: false, closingPage: false });
   });
 
   test("records a directory target without pretending its basename is a filename", () => {

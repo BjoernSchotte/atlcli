@@ -20,15 +20,12 @@ import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
-  PDF_TEMPLATE_CAPABILITIES_V3,
-  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
   projectPdfDesignThroughCatalogV2,
 } from "./design-catalog.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import {
   PDF_CANONICAL_SOURCE_API_V1,
   PDF_CANONICAL_SOURCE_REVISION_4,
-  PDF_CANONICAL_SOURCE_REVISION_5,
   PDF_TEMPLATE_ASSET_SLOTS_V1,
   generateCanonicalPdfTemplateSourceV1,
   loadPdfTemplatePack,
@@ -348,15 +345,8 @@ export async function materializePdfTemplateRecipeV2(
       },
       design: resolved.design,
       localization: resolved.localization,
-      capabilityCatalog: {
-        id: PDF_TEMPLATE_CAPABILITIES_V3.id,
-        version: PDF_TEMPLATE_CAPABILITIES_V3.version,
-        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
-      },
-      canonicalSource: {
-        api: PDF_CANONICAL_SOURCE_API_V1,
-        revision: PDF_CANONICAL_SOURCE_REVISION_5,
-      },
+      capabilityCatalog: { ...resolved.catalog },
+      canonicalSource: { ...resolved.canonicalSource },
       assetDescriptors: visual.descriptors,
       assets: visual.references,
       decorations: visual.decorations,

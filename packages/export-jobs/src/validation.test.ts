@@ -43,6 +43,7 @@ function pdfRequest(): PdfExportJobRequestV1 {
     template: { kind: "builtin", id: "default", manifestVersion: "1" },
     settings: {
       page: "a4",
+      closingPage: false,
       watermark: { text: "DRAFT", opacity: 0.08 },
       logo: {
         assetRef: "asset:logo:v1",
@@ -194,6 +195,7 @@ describe("parseExportJobRequestV1", () => {
     ["overwrite authorization", (request: any) => (request.output.overwriteExisting = "yes")],
     ["output target kind", (request: any) => (request.output.targetKind = "pipe")],
     ["filename", (request: any) => (request.requestedFilename = "")],
+    ["closing page flag", (request: any) => (request.settings.closingPage = "no")],
     ["settings NaN", (request: any) => (request.settings.custom.copies = Number.NaN)],
     ["settings object", (request: any) => (request.settings.custom.nested = { unsafe: true })],
     ["watermark range", (request: any) => (request.settings.watermark.opacity = 0)],

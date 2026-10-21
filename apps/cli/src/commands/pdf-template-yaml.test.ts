@@ -23,6 +23,7 @@ import {
 import type { TemplateGeneratedPackCompilerV1 } from "@atlcli/pdf-template-authoring";
 import type {
   WikiPdfTemplateRecipeV1,
+  WikiPdfTemplateDesignV3,
   WikiPdfTemplateRecipeV2,
 } from "@atlcli/template-pack";
 import { stringify } from "yaml";
@@ -241,6 +242,27 @@ describe("strict PDF template recipe YAML", () => {
     });
     expect(materialized.manifest.canonicalSource?.revision).toBe("4");
     expect(materialized.manifest.capabilityCatalog?.version).toBe(2);
+  });
+
+  it("keeps the curated Report recipe machine-valid: no cover or closing page", async () => {
+    const documented = fileURLToPath(
+      new URL(
+        "../../../../public/examples/pdf-template-recipe-v2-report/recipe.yaml",
+        import.meta.url
+      )
+    );
+    const materialized = await materializePdfTemplateYamlRecipe({
+      recipePath: documented,
+      compiler,
+    });
+    expect(materialized.manifest.canonicalSource?.revision).toBe("6");
+    expect(materialized.manifest.capabilityCatalog?.version).toBe(4);
+    const design = materialized.manifest.design as WikiPdfTemplateDesignV3;
+    expect(design.compositions.cover.enabled).toBe(false);
+    expect(design.compositions.closingPage.enabled).toBe(false);
+    if (!("canonicalTypst" in materialized)) throw new Error("expected a Recipe V2 result");
+    expect(materialized.canonicalTypst).toContain('cover-config.at("enabled", default: false)');
+    expect(materialized.canonicalTypst).toContain('closing-config.at("enabled", default: false)');
   });
 
   it("rejects malformed YAML, duplicate keys, custom tags, aliases, and multiple documents", () => {

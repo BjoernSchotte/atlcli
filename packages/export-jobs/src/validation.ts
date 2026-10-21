@@ -254,14 +254,14 @@ function validateSettings(value: unknown, path: string): void {
   const settings = record(value, path);
   onlyKeys(
     settings,
-    ["page", "orientation", "cover", "outline", "headerText", "footerText", "accentColor", "organizationName", "watermark", "logo", "custom"],
+    ["page", "orientation", "cover", "outline", "closingPage", "headerText", "footerText", "accentColor", "organizationName", "watermark", "logo", "custom"],
     path,
   );
   if (settings.page !== undefined) choice(settings.page, ["a4", "letter"] as const, `${path}.page`);
   if (settings.orientation !== undefined) {
     choice(settings.orientation, ["portrait", "landscape"] as const, `${path}.orientation`);
   }
-  for (const key of ["cover", "outline"] as const) {
+  for (const key of ["cover", "outline", "closingPage"] as const) {
     if (settings[key] !== undefined) boolean(settings[key], `${path}.${key}`);
   }
   for (const key of ["headerText", "footerText", "organizationName"] as const) {

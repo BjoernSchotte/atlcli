@@ -39,6 +39,7 @@ import {
   writePdfDesignCapability,
 } from "./design-catalog.js";
 import {
+  isCompleteDesignPdfRevision,
   pdfCatalogRuntimeReference,
   resolvePdfCatalogRuntime,
   resolvePdfCatalogRuntimeV3,
@@ -121,6 +122,8 @@ export interface ResolvedPdfSettings {
   orientation: "portrait" | "landscape";
   cover: boolean;
   outline: boolean;
+  /** Present only when the export overrides the template's closing page. */
+  closingPage?: boolean;
   headerText?: string;
   footerText?: string;
   accentColor: string;
@@ -359,6 +362,9 @@ export function resolvePdfSettings(
     labels: {},
   };
 
+  if (options.closingPage !== undefined) {
+    resolved.closingPage = resolveBoolean(options.closingPage, true, "closingPage");
+  }
   const headerText = resolveText(options.headerText, "headerText");
   if (headerText !== undefined) resolved.headerText = headerText;
   const footerText = resolveText(options.footerText, "footerText");
@@ -455,7 +461,7 @@ export function resolveTemplateDesignWithTrace(
     });
   }
 
-  if (manifest.canonicalSource?.revision === "5") {
+  if (isCompleteDesignPdfRevision(manifest.canonicalSource?.revision)) {
     const manifestV5 = manifest as PdfTemplateManifestV5;
     let runtime;
     try {
@@ -873,7 +879,8 @@ export function typstSettingsDict(
   resolved: ResolvedPdfSettings,
   options: { logoPath?: string } = {}
 ): string {
-  const runtimeReference = resolved.capabilityCatalog.version === 3
+  const completeDesign = resolved.capabilityCatalog.version >= 3;
+  const runtimeReference = completeDesign
     ? resolvePdfCatalogRuntimeV3(resolved.capabilityCatalog).reference
     : resolvePdfCatalogRuntime(resolved.capabilityCatalog).reference;
   if (resolved.capabilityCatalogDigest !== runtimeReference.digest) {
@@ -887,7 +894,7 @@ export function typstSettingsDict(
   // deliberately narrow V1-shaped runtime-settings projection. Re-projecting
   // that adapter through the V3 complete-design validator would be a category
   // error; its exact V3 identity was checked above and at manifest import.
-  const catalogDesign = resolved.capabilityCatalog.version === 3
+  const catalogDesign = completeDesign
     ? resolved.design
     : resolvePdfCatalogRuntime(resolved.capabilityCatalog).project(resolved.design);
   const designLines: string[] = [
@@ -907,14 +914,19 @@ export function typstSettingsDict(
     `      orientation: ${typstString(catalogDesign.page.orientation)},`,
     "    ),",
     "    features: (",
-    `      cover: (enabled: ${catalogDesign.features.cover.enabled ? "true" : "false"}),`,
-    `      outline: (enabled: ${catalogDesign.features.outline.enabled ? "true" : "false"}, depth: ${numberLiteral(
+    // An explicit per-export switch wins over the template default for every
+    // revision (revision 5/6 packs carry no runtime bindings); the Typst
+    // source reads cover, contents and closing page from these settings.
+    `      cover: (enabled: ${(resolved.settingPresence.cover ? resolved.cover : catalogDesign.features.cover.enabled) ? "true" : "false"}),`,
+    `      outline: (enabled: ${(resolved.settingPresence.outline ? resolved.outline : catalogDesign.features.outline.enabled) ? "true" : "false"}, depth: ${numberLiteral(
       catalogDesign.features.outline.depth
     )}),`,
-    ...(resolved.capabilityCatalog.version !== 3 &&
-      resolvePdfCatalogRuntime(resolved.capabilityCatalog).supportsClosingPage
-      ? [`      closingPage: (enabled: ${catalogDesign.features.closingPage.enabled ? "true" : "false"}),`]
-      : []),
+    ...(resolved.closingPage !== undefined
+      ? [`      closingPage: (enabled: ${resolved.closingPage ? "true" : "false"}),`]
+      : !completeDesign &&
+          resolvePdfCatalogRuntime(resolved.capabilityCatalog).supportsClosingPage
+        ? [`      closingPage: (enabled: ${catalogDesign.features.closingPage.enabled ? "true" : "false"}),`]
+        : []),
     "    ),",
     "  ),"
   );

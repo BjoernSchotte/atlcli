@@ -17,10 +17,12 @@ import {
   PDF_TEMPLATE_CAPABILITIES_V1,
   PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CAPABILITIES_V4,
   PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
   projectPdfDesignThroughCatalog,
   projectPdfDesignThroughCatalogSchemaV2,
   projectPdfDesignThroughCatalogV2,
@@ -34,7 +36,7 @@ export interface PdfCatalogAuthoringTargetV1 {
   catalog: TemplateCapabilityCatalogV2;
   canonicalSource: {
     api: "wiki.pdf-canonical-typst";
-    revision: "5";
+    revision: "5" | "6";
   };
   compilerVersion: "0.15.1";
   compilerRange: string;
@@ -71,6 +73,11 @@ export interface PdfCatalogRuntimeV3 {
 }
 
 export type AnyPdfCatalogRuntime = PdfCatalogRuntime | PdfCatalogRuntimeV3;
+
+/** Canonical revisions whose manifest carries a complete Catalog-V3-shaped design. */
+export function isCompleteDesignPdfRevision(revision: string | undefined): boolean {
+  return revision === "5" || revision === "6";
+}
 
 export class PdfCatalogRuntimeError extends Error {
   constructor(
@@ -110,58 +117,71 @@ const PDF_CATALOG_RUNTIME_V2: PdfCatalogRuntime = Object.freeze({
 
 function projectCatalogV3Design(
   design: WikiPdfTemplateDesignV3,
+  catalog: TemplateCapabilityCatalogV2,
 ): WikiPdfTemplateDesignV3 {
   return validatePdfTemplateDesignV3(
-    projectPdfDesignThroughCatalogSchemaV2(
-      design,
-      PDF_TEMPLATE_CAPABILITIES_V3,
-    ),
+    projectPdfDesignThroughCatalogSchemaV2(design, catalog),
     "design",
     { availableFonts: PDF_RUNTIME_ASSETS.fonts },
   );
 }
 
-const PDF_CATALOG_RUNTIME_V3: PdfCatalogRuntimeV3 = Object.freeze({
-  reference: Object.freeze({
-    id: PDF_TEMPLATE_CAPABILITIES_V3.id,
-    version: PDF_TEMPLATE_CAPABILITIES_V3.version,
-    digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
-  }),
-  catalog: PDF_TEMPLATE_CAPABILITIES_V3,
-  allowsSparseLegacy: false,
-  supportsClosingPage: true,
-  project: projectCatalogV3Design,
-  write(
-    design: WikiPdfTemplateDesignV3,
-    path: string,
-    value: unknown,
-    writerId: string,
-  ) {
-    const descriptor = PDF_TEMPLATE_CAPABILITIES_V3.descriptors.find(
-      (candidate) => candidate.path === path,
-    );
-    if (!descriptor) {
-      throw new Error(`Unknown PDF design capability "${path}"`);
-    }
-    if (!descriptor.runtimeWriters?.some((writer) => writer.id === writerId)) {
-      throw new Error(
-        `PDF design capability "${path}" is not writable by "${writerId}"`,
+/** Catalog V3 (revision 5) and V4 (revision 6) share one complete-design runtime. */
+function completeDesignRuntime(
+  catalog: TemplateCapabilityCatalogV2,
+  digest: string,
+): PdfCatalogRuntimeV3 {
+  return Object.freeze({
+    reference: Object.freeze({ id: catalog.id, version: catalog.version, digest }),
+    catalog,
+    allowsSparseLegacy: false,
+    supportsClosingPage: true,
+    project: (design: WikiPdfTemplateDesignV3) => projectCatalogV3Design(design, catalog),
+    write(
+      design: WikiPdfTemplateDesignV3,
+      path: string,
+      value: unknown,
+      writerId: string,
+    ) {
+      const descriptor = catalog.descriptors.find(
+        (candidate) => candidate.path === path,
       );
-    }
-    const copy = structuredClone(design) as unknown as Record<string, unknown>;
-    const segments = path.split(".");
-    let cursor = copy;
-    for (const segment of segments.slice(0, -1)) {
-      const child = cursor[segment];
-      if (typeof child !== "object" || child === null || Array.isArray(child)) {
-        throw new Error(`PDF design capability parent "${segment}" is missing`);
+      if (!descriptor) {
+        throw new Error(`Unknown PDF design capability "${path}"`);
       }
-      cursor = child as Record<string, unknown>;
-    }
-    cursor[segments.at(-1)!] = value;
-    return projectCatalogV3Design(copy as unknown as WikiPdfTemplateDesignV3);
-  },
-});
+      if (!descriptor.runtimeWriters?.some((writer) => writer.id === writerId)) {
+        throw new Error(
+          `PDF design capability "${path}" is not writable by "${writerId}"`,
+        );
+      }
+      const copy = structuredClone(design) as unknown as Record<string, unknown>;
+      const segments = path.split(".");
+      let cursor = copy;
+      for (const segment of segments.slice(0, -1)) {
+        const child = cursor[segment];
+        if (typeof child !== "object" || child === null || Array.isArray(child)) {
+          throw new Error(`PDF design capability parent "${segment}" is missing`);
+        }
+        cursor = child as Record<string, unknown>;
+      }
+      cursor[segments.at(-1)!] = value;
+      return projectCatalogV3Design(
+        copy as unknown as WikiPdfTemplateDesignV3,
+        catalog,
+      );
+    },
+  });
+}
+
+const PDF_CATALOG_RUNTIME_V3 = completeDesignRuntime(
+  PDF_TEMPLATE_CAPABILITIES_V3,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
+);
+
+const PDF_CATALOG_RUNTIME_V4 = completeDesignRuntime(
+  PDF_TEMPLATE_CAPABILITIES_V4,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
+);
 
 const RUNTIMES_BY_IDENTITY = new Map<string, PdfCatalogRuntime>(
   [PDF_CATALOG_RUNTIME_V1, PDF_CATALOG_RUNTIME_V2].map((runtime) => [
@@ -170,39 +190,44 @@ const RUNTIMES_BY_IDENTITY = new Map<string, PdfCatalogRuntime>(
   ]),
 );
 
-const V3_RUNTIMES_BY_IDENTITY = new Map<string, PdfCatalogRuntimeV3>([
-  [
-    `${PDF_CATALOG_RUNTIME_V3.reference.id}\u0000${PDF_CATALOG_RUNTIME_V3.reference.version}\u0000${PDF_CATALOG_RUNTIME_V3.reference.digest}`,
-    PDF_CATALOG_RUNTIME_V3,
-  ],
-]);
+const V3_RUNTIMES_BY_IDENTITY = new Map<string, PdfCatalogRuntimeV3>(
+  [PDF_CATALOG_RUNTIME_V3, PDF_CATALOG_RUNTIME_V4].map((runtime) => [
+    `${runtime.reference.id}\u0000${runtime.reference.version}\u0000${runtime.reference.digest}`,
+    runtime,
+  ]),
+);
 
-const PDF_CATALOG_AUTHORING_TARGET_V3: PdfCatalogAuthoringTargetV1 =
-  Object.freeze({
-    reference: Object.freeze({
-      id: PDF_TEMPLATE_CAPABILITIES_V3.id,
-      version: PDF_TEMPLATE_CAPABILITIES_V3.version,
-      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
-    }),
-    catalog: PDF_TEMPLATE_CAPABILITIES_V3,
+function authoringTarget(
+  runtime: PdfCatalogRuntimeV3,
+  revision: "5" | "6",
+): PdfCatalogAuthoringTargetV1 {
+  return Object.freeze({
+    reference: runtime.reference,
+    catalog: runtime.catalog,
     canonicalSource: Object.freeze({
       api: "wiki.pdf-canonical-typst",
-      revision: "5",
+      revision,
     }),
     compilerVersion: "0.15.1",
     compilerRange: PDF_TEMPLATE_CATALOG_V3_COMPILER_RANGE,
     executable: true,
   });
+}
+
+const PDF_CATALOG_AUTHORING_TARGETS = [
+  authoringTarget(PDF_CATALOG_RUNTIME_V3, "5"),
+  authoringTarget(PDF_CATALOG_RUNTIME_V4, "6"),
+] as const;
 
 const AUTHORING_TARGETS_BY_IDENTITY = new Map<
   string,
   PdfCatalogAuthoringTargetV1
->([
-  [
-    `${PDF_CATALOG_AUTHORING_TARGET_V3.reference.id}\u0000${PDF_CATALOG_AUTHORING_TARGET_V3.reference.version}\u0000${PDF_CATALOG_AUTHORING_TARGET_V3.reference.digest}`,
-    PDF_CATALOG_AUTHORING_TARGET_V3,
-  ],
-]);
+>(
+  PDF_CATALOG_AUTHORING_TARGETS.map((target) => [
+    `${target.reference.id}\u0000${target.reference.version}\u0000${target.reference.digest}`,
+    target,
+  ]),
+);
 
 function identityKey(reference: TemplateCapabilityCatalogReferenceV1): string {
   return `${reference.id}\u0000${reference.version}\u0000${reference.digest}`;
@@ -223,7 +248,7 @@ export function resolvePdfCatalogRuntime(
   return runtime;
 }
 
-/** Exact Catalog-V3 lookup used only by canonical revision 5. */
+/** Exact complete-design catalog lookup (V3 for revision 5, V4 for revision 6). */
 export function resolvePdfCatalogRuntimeV3(
   reference: TemplateCapabilityCatalogReferenceV1,
 ): PdfCatalogRuntimeV3 {
@@ -255,7 +280,7 @@ export function resolvePdfCatalogAuthoringTarget(
 }
 
 export function listPdfCatalogAuthoringTargets(): readonly PdfCatalogAuthoringTargetV1[] {
-  return [PDF_CATALOG_AUTHORING_TARGET_V3];
+  return PDF_CATALOG_AUTHORING_TARGETS;
 }
 
 export function pdfCatalogRuntimeReference(
@@ -265,5 +290,10 @@ export function pdfCatalogRuntimeReference(
 }
 
 export function listExecutablePdfCatalogRuntimes(): readonly AnyPdfCatalogRuntime[] {
-  return [PDF_CATALOG_RUNTIME_V1, PDF_CATALOG_RUNTIME_V2, PDF_CATALOG_RUNTIME_V3];
+  return [
+    PDF_CATALOG_RUNTIME_V1,
+    PDF_CATALOG_RUNTIME_V2,
+    PDF_CATALOG_RUNTIME_V3,
+    PDF_CATALOG_RUNTIME_V4,
+  ];
 }

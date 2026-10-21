@@ -206,11 +206,24 @@ Pass one or the other, never both.
 | `--pdf-images <profile>` | Image quality profile: `original` (default), `standard` (180 PPI), or `print` (300 PPI) |
 | `--no-cover` | Leave out the cover page |
 | `--no-toc` | Leave out the table of contents |
+| `--no-closing-page` | Leave out the closing "End of document" page |
 | `--pdf-images-ppi <n>` | Exact target density in `[72, 1200]`; requires `--pdf-images standard` or `print` |
 | `--template, -t <path>` | Direct path to a verified `.wiki-pdf-template` pack; omission keeps Editorial Indigo |
 | `--report json` | Synonym for `--json` |
 
 All [scope and label options](#scope-options) work with `--format pdf` too.
+
+**Cover, contents, and closing page.** A template decides whether these pages
+appear; Editorial Indigo shows all three. `--no-cover`, `--no-toc`, and
+`--no-closing-page` remove a page for one export and win over the template's
+setting. To change the default for every export, set it in the template: see
+[Cover and closing page](./pdf-template-from-yaml.md#cover-and-closing-page).
+
+:::note
+Packs built with an older atlcli (canonical revisions 1–3, which includes
+templates imported from DOCX) keep their closing page; `--no-closing-page`
+has no effect on them. `--no-cover` and `--no-toc` work with every template.
+:::
 
 The standard request is persisted in the durable export job and appears in the
 JSON report as `outputPolicy`. A successful report also contains

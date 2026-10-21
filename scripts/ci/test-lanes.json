@@ -142,6 +142,11 @@
       "requirements": ["fonts", "typst-runtime"]
     },
     {
+      "path": "packages/pdf-compiler-browser/src/page-toggles.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
       "path": "packages/pdf-compiler-browser/src/pdf-accessibility-claims.test.ts",
       "lane": "pdf-typst",
       "requirements": ["fonts", "typst-runtime"]

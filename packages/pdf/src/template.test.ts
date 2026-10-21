@@ -126,6 +126,17 @@ function closingSource(source: string): string {
 }
 
 describe("atlcli Typst template settings rendering", () => {
+  it("gates the revision 1-3 closing page only for freshly generated sources", () => {
+    // Pack sources are byte-pinned: without the option nothing changes.
+    expect(createAtlcliTypstTemplate()).not.toContain("closingPage");
+    const gated = createAtlcliTypstTemplate(undefined, undefined, undefined, {
+      closingPageSetting: true,
+    });
+    expect(gated).toContain(
+      'if features.at("closingPage", default: (:)).at("enabled", default: true) {\n    pagebreak()'
+    );
+  });
+
   it("renders revision-5 preset geometry and running regions without changing the legacy source", () => {
     const source = createAtlcliTypstTemplateV5(revision5Design());
     expect(source).toContain('paper: "a4"');

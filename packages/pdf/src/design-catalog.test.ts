@@ -28,6 +28,11 @@ import {
   PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITIES_V3,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  PDF_TEMPLATE_CAPABILITIES_V4,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
+  PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4,
+  PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4,
+  PDF_TEMPLATE_PRESENTATION_REVISION_V4,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V3,
   PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1,
@@ -611,6 +616,27 @@ describe("PDF template capability catalog V3 declaration", () => {
         PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V3
       )
     ).toBe(PDF_TEMPLATE_PRESENTATION_REVISION_V3);
+    expect(await computeCapabilityCatalogDigestV2(PDF_TEMPLATE_CAPABILITIES_V4)).toBe(
+      "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814"
+    );
+    expect(PDF_TEMPLATE_CAPABILITY_DIGEST_V4).toBe(
+      "0b24654d023723dea3d5c2b48684b458f6ebc6db67faea11a8bedc9e5aa2a814"
+    );
+    expect(
+      await computeCapabilityPresentationRevisionV2(
+        PDF_TEMPLATE_CAPABILITIES_V4,
+        PDF_TEMPLATE_CAPABILITY_PRESENTATION_V4,
+        PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V4
+      )
+    ).toBe(PDF_TEMPLATE_PRESENTATION_REVISION_V4);
+    // V4 is exactly V3 plus the two optional page toggles.
+    const v3Paths = PDF_TEMPLATE_CAPABILITIES_V3.descriptors.map(({ path }) => path);
+    expect(
+      PDF_TEMPLATE_CAPABILITIES_V4.descriptors
+        .map(({ path }) => path)
+        .filter((path) => !v3Paths.includes(path))
+    ).toEqual(["compositions.cover.enabled", "compositions.closingPage.enabled"]);
+    expect(PDF_TEMPLATE_CAPABILITIES_V4.constraints).toEqual(PDF_TEMPLATE_CAPABILITIES_V3.constraints);
   });
 
   it("declares every V3 capability with ownership, compiler, and proof metadata", () => {
@@ -699,7 +725,7 @@ describe("PDF template capability catalog V3 declaration", () => {
         "page.format.kind"
       )
     ).toBe("preset");
-    expect(listExecutablePdfCatalogRuntimes().map(({ reference }) => reference.version)).toEqual([1, 2, 3]);
+    expect(listExecutablePdfCatalogRuntimes().map(({ reference }) => reference.version)).toEqual([1, 2, 3, 4]);
     expect(() =>
       resolvePdfCatalogRuntime({
         id: PDF_TEMPLATE_CAPABILITIES_V3.id,

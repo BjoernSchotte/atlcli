@@ -2188,7 +2188,7 @@ async function runRecipe(
       packDigest: built.packDigest,
       compileDigest: built.compile.digest,
       pageCount: built.compile.pageCount,
-      ...(built.manifest.canonicalSource?.revision === "5" && "baseline" in built
+      ...("baseline" in built
         ? { baseline: built.baseline }
         : {}),
     },

@@ -32,7 +32,10 @@ import {
   resolveCodeTheme,
 } from "@atlcli/code-highlight/registry";
 import { readPdfDesignCapability } from "./design-catalog.js";
-import { resolvePdfCatalogRuntime } from "./catalog-runtime.js";
+import {
+  isCompleteDesignPdfRevision,
+  resolvePdfCatalogRuntime,
+} from "./catalog-runtime.js";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -1080,7 +1083,7 @@ function resolveComponentsV5(
   options: PdfSerializeOptions,
 ): DesignComponentsV3 | undefined {
   const manifest = options.templatePack?.manifest ?? options.templateManifest;
-  if (manifest?.canonicalSource?.revision !== "5" || !manifest.design) {
+  if (!isCompleteDesignPdfRevision(manifest?.canonicalSource?.revision) || !manifest?.design) {
     return undefined;
   }
   return validatePdfTemplateDesignV3(
@@ -2241,10 +2244,10 @@ ${body}${commentAppendix}
     // again per document locale.
     template:
       options.templatePack?.canonicalSource.source ??
-      (options.templateManifest?.canonicalSource?.revision === "5"
+      (isCompleteDesignPdfRevision(options.templateManifest?.canonicalSource?.revision)
         ? createAtlcliTypstTemplateV5(
             validatePdfTemplateDesignV3(
-              options.templateManifest.design as WikiPdfTemplateDesignV3,
+              options.templateManifest!.design as WikiPdfTemplateDesignV3,
               "design",
               { availableFonts: PDF_RUNTIME_ASSETS.fonts },
             ),
@@ -2255,6 +2258,7 @@ ${body}${commentAppendix}
             settings.design,
             settings.labels,
             settings.templateVisuals,
+            { closingPageSetting: true },
           )),
     assets: [
       ...document.assets,
