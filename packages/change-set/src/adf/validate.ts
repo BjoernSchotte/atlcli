@@ -67,7 +67,8 @@ const nodeAttributeKeys: Readonly<Record<string, ReadonlySet<string>>> = Object.
   rule: new Set(["localId"]),
   status: new Set(["color", "localId", "style", "text"]),
   syncBlock: new Set(["localId", "resourceId"]),
-  table: new Set(["displayMode", "isNumberColumnEnabled", "layout", "localId", "width"]),
+  // `__autoSize` is the editor's column auto-sizing hint; exports size columns themselves.
+  table: new Set(["__autoSize", "displayMode", "isNumberColumnEnabled", "layout", "localId", "width"]),
   tableCell: new Set(["background", "colspan", "colwidth", "localId", "rowspan", "valign"]),
   tableHeader: new Set(["background", "colspan", "colwidth", "localId", "rowspan", "valign"]),
   tableRow: new Set(["localId"]),

@@ -757,6 +757,17 @@ describe("validateAdf", () => {
     expect(result.stats.maxDepth).toBe(5_001);
   });
 
+  test("accepts the editor's table auto-size hint without a diagnostic", () => {
+    // Confluence adds `__autoSize` when a page is saved; it used to surface as
+    // an `adf-attribute-dropped` warning on every exported report table.
+    const cell = { type: "tableCell", content: [{ type: "paragraph", content: [{ type: "text", text: "x" }] }] };
+    const table = { type: "table", attrs: { __autoSize: false, layout: "default" }, content: [{ type: "tableRow", content: [cell] }] };
+    const result = validateAdf(doc([table]));
+    expect(result.diagnostics).toEqual([]);
+    expect(validateAdf(doc([{ ...table, attrs: { __autoSize: false, futureAttr: 1 } }])).diagnostics)
+      .toMatchObject([{ kind: "unknown-attribute", attribute: "futureAttr" }]);
+  });
+
   test("preserves unknown node, mark, and attribute names as bounded drift", () => {
     const result = validateAdf(doc([{
       type: "futureNode",
