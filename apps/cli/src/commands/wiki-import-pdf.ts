@@ -1,6 +1,6 @@
 import pdfiumWasm from "@atlcli/import-pdf/wasm" with { type: "file" };
 import { basename, isAbsolute, resolve } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import {
   ERROR_CODES,
   fail,
@@ -21,6 +21,7 @@ import {
   derivePdfSplitTitleRenames,
   isPdfImportError,
   parsePdfImportOverrides,
+  pdfImportOverridesTemplate,
   parsePdfSplitPolicy,
   pdfImportReviewReport,
   renderPdfImportReview,
@@ -73,6 +74,7 @@ const VALUE_FLAGS = [
   "reading-order",
   "unsupported",
   "overrides",
+  "overrides-template",
   "title-conflict",
   "profile",
   "restriction",
@@ -289,6 +291,16 @@ export async function handlePdfWikiImport(
       attachSource: hasFlag(flags, "attach-source"),
       overrides,
     });
+    const templatePath = getFlag(flags, "overrides-template");
+    if (templatePath) {
+      try {
+        // Never overwrite: the file may already hold filled-in decisions.
+        await writeFile(templatePath, pdfImportOverridesTemplate(review.source.sha256, review.document), { flag: "wx" });
+      } catch (error) {
+        fail(opts, 1, ERROR_CODES.VALIDATION, `Cannot write override template: ${(error as Error).message}`, { file: templatePath });
+      }
+      if (!opts.json) output(`Override template written to ${templatePath}.`, opts);
+    }
     if (!confirm || hasFlag(flags, "dry-run")) {
       if (opts.json) {
         output({ ...pdfImportReviewReport(review), governance }, opts);

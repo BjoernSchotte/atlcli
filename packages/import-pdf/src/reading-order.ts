@@ -687,6 +687,7 @@ export function assembleGeometryFragmentsV2(
   page: PdfPageFactsV2,
   sourceId: string,
   fragments: readonly PdfGeometryFragmentV2[],
+  hyphenatedCompounds?: ReadonlySet<string>,
 ): PdfTextAssemblyV2 {
   const characters: PdfTextCharacterFactV2[] = [];
   const seen = new Set<number>();
@@ -703,7 +704,7 @@ export function assembleGeometryFragmentsV2(
       characters.push(character);
     }
   }
-  return assemblePdfTextV2({ sourceId, characters, orderBasis: "geometry" });
+  return assemblePdfTextV2({ sourceId, characters, orderBasis: "geometry", hyphenatedCompounds });
 }
 
 export function geometryBodyFontSizeV2(pages: readonly PdfReadingOrderPageV2[]): number {

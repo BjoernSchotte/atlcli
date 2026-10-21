@@ -8,6 +8,7 @@ import {
   canonicalizePdfTextSourceFragmentV2,
   digestPdfTextAssemblyV2,
   type PdfTextAssemblyInputV2,
+  pdfHyphenatedCompoundsV2,
 } from "./text-assembly.js";
 import { createNodePdfiumFactsAdapterV2 } from "./node.js";
 
@@ -270,6 +271,26 @@ describe("PDF V2 text assembly", () => {
       leftCharacterIndex: 5,
       rightCharacterIndex: 7,
       action: "retain-hyphen",
+    })]);
+  });
+
+  it("keeps a line-end hyphen before a lowercase word only for a compound the document shows unbroken", () => {
+    const wrapped = (compounds?: ReadonlySet<string>) => assemblePdfTextV2({
+      ...input("lowercase-wrap", [
+        ...word("end", 0, 0.1),
+        character("\u0002", 3, 0.13, { hyphen: true }),
+        ...word("to", 4, 0.1, { run: "pdf:p0:text-run:1", y: 0.15 }),
+      ]),
+      ...(compounds ? { hyphenatedCompounds: compounds } : {}),
+    });
+    const compounds = pdfHyphenatedCompoundsV2([{ text: "An End-to-end test, a hand-\u0002\r\nwritten note." }]);
+
+    expect([...compounds].sort()).toEqual(["end-to", "to-end"]);
+    expect(wrapped().text).toBe("endto");
+    expect(wrapped(compounds).text).toBe("end-to");
+    expect(wrapped(compounds).boundaries).toEqual([expect.objectContaining({
+      action: "retain-hyphen",
+      basis: expect.arrayContaining(["document-compound"]),
     })]);
   });
 

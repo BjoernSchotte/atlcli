@@ -7,10 +7,8 @@ live URLs, page IDs, raw receipts, and private input digests are prohibited.
 
 ## Status
 
-Acceptance correction: **OPEN**. PIQ-00 through PIQ-10 remain valid for their
-neutral corpus, but they do not prove the multi-page native-table outcome now
-specified by PIQ-11 through PIQ-18. No release recommendation may be inferred
-from the earlier PASS rows until those tasks pass.
+Acceptance correction: **CLOSED** (2026-10-21). PIQ-11 is superseded by the
+full-document structure tree; PIQ-12 through PIQ-18 pass on the neutral corpus.
 
 | Task | Result | Date |
 |---|---|---|
@@ -25,8 +23,8 @@ from the earlier PASS rows until those tasks pass.
 | PIQ-08 | PASS | 2026-08-27 |
 | PIQ-09 | PASS | 2026-08-27 |
 | PIQ-10 | PASS | 2026-08-27 |
-| PIQ-11 | OPEN | 2026-08-27 |
-| PIQ-12 | OPEN | 2026-08-27 |
+| PIQ-11 | SUPERSEDED (full-document tree) | 2026-10-20 |
+| PIQ-12 | PASS | 2026-10-21 |
 | PIQ-13 | PASS | 2026-10-20 |
 | PIQ-14 | PASS | 2026-10-20 |
 | PIQ-15 | PASS | 2026-10-20 |
@@ -153,6 +151,54 @@ line, then left to right.
 Revisions after these steps: geometry policy V2 `/7`, table policy V2 `/7`,
 text assembly V2 `/8`. The motivating
 private documents were re-measured locally; nothing about them is recorded here.
+
+## PIQ-12
+
+Result: **PASS** (2026-10-21).
+
+A structure container with one unresolved child returned before visiting any
+child, so a single unresolved kid of the document root dropped every sibling
+and sent both pages of the neutral probe to geometry. A container now reports
+the unresolved child (`pdf-import/tagged-structure-kid-unresolved`, no
+corruption count) and projects its resolved children in original kid order;
+whatever the unresolved child showed stays unclaimed, and the ownership audit
+decides. Leaves (paragraph, list, figure, table, cell) with an unresolved child
+still fail closed. Page-external children were already distinct kids
+(`page-external`, PIQ-11 superseded) and are skipped on pages that do not show
+them; `collectTaggedTableRowsV2()` already skipped them in row groups.
+
+Neutral fixture: `generateMixedContainerProbe()` in
+`fixtures/generate-core.ts`. Page 1 root kids: paragraph, unresolved, table
+(TBody with one row on page 1 and one on page 2), list, figure, paragraph,
+paragraph shown on page 2.
+
+| Case | Block order | Page outcomes | Ownership | Fallback |
+|---|---|---|---|---|
+| Positive | paragraph, table (2 rows, joined across pages), list, paragraph, paragraph | both `tagged-native`, corrupt 0 | unowned 0, duplicates 0, every visible character uniquely owned | none (the vector figure is reported, not a page fallback) |
+| Negative (`orphanText`: page 1 shows text only the unresolved child could own) | same blocks | page 1 `geometry-required` | 11 characters unclaimed (`pdf-import/tagged-text-unclaimed`) | page 1 |
+| Unresolved leaf (`generateUnresolvedStructureKidProbe`) | none | `geometry-required`, corrupt 1 | 16 unclaimed | page 1 |
+
+Tagged policy V2 `/5`.
+
+## Follow-ups after PIQ-18 (2026-10-21)
+
+- **Fallback pages keep native tables.** A native geometry table on an
+  untagged page that falls back is emitted next to the page view; its evidence
+  already claimed its characters. A table continued from or onto a fallback
+  page therefore stays whole, and the re-projection that isolated such pages is
+  removed. Geometry policy V2 `/8`, table policy V2 `/8`.
+- **Lowercase after a line-end hyphen.** A flagged line-end hyphen before a
+  lowercase word is kept when the same `left-right` compound appears inside a
+  line elsewhere in the document (basis `document-compound`); otherwise it is
+  still removed as a syllable break. Applies to geometry paragraphs, geometry
+  table cells, and hybrid residual regions. Text assembly V2 `/9`.
+- **Figure alternative text.** `--overrides-template <file>` drafts a
+  digest-bound override file with one empty `set-figure-alt` per published
+  figure without alt text. A supplied alt text now clears that figure's
+  `pdf-import/figure-alt-missing` issue, so `--unsupported fail` no longer
+  blocks on it. Rendered-region figures list their own source id in the image
+  block's `sourceRefs` so issues and overrides can name them. Figure policy
+  `/2`.
 
 ## PIQ-18
 

@@ -629,7 +629,8 @@ async function preservePdfFigureCandidates<E extends PdfFigureEvidence>(
       presentation: candidate.mode === "native-raster" ? "figure" : "region-fallback",
       ...(candidate.alt ? { alt: candidate.alt } : {}),
       ...(candidate.captionBlockId ? { captionBlockId: candidate.captionBlockId } : {}),
-      sourceRefs: candidate.sourceRefs,
+      // The figure's own id first: its issues and overrides name it.
+      sourceRefs: [...new Set([candidate.sourceId, ...candidate.sourceRefs])],
     };
     additions.push({
       block,

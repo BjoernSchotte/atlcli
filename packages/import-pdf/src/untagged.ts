@@ -59,6 +59,7 @@ import {
   type PdfTextAssemblyV2,
   type PdfTextBoundaryDecisionV2,
   type PdfTextTransformationV2,
+  pdfHyphenatedCompoundsV2,
 } from "./text-assembly.js";
 
 interface ListMarker {
@@ -657,6 +658,7 @@ function projectQualifiedPageV2(
   suppressed: ReadonlySet<string>,
   headingLevelByFont: ReadonlyMap<number, 1 | 2 | 3 | 4 | 5 | 6>,
   tables: readonly PdfTableProjectionV2[],
+  hyphenatedCompounds: ReadonlySet<string>,
 ): GeometryProjectionV2 {
   const projection: GeometryProjectionV2 = {
     blocks: [],
@@ -704,7 +706,7 @@ function projectQualifiedPageV2(
       : `${fragment.id}:through:${group.at(-1)!.id}`;
     const assembly = group.length === 1
       ? fragment.assembly
-      : assembleGeometryFragmentsV2(page, sourceId, group);
+      : assembleGeometryFragmentsV2(page, sourceId, group, hyphenatedCompounds);
     addAssemblyV2(projection, assembly, page.index, sourceId);
     const outcome = pdfTextAssemblyOutcomeV2(assembly);
     if (outcome !== "native") projection.unresolved = true;
@@ -767,15 +769,13 @@ export async function normalizeUntaggedPdfFactsV2(
     );
   }
   const rawAnalyses = facts.pages.map((page) => analyzeGeometryReadingOrderV2(page));
-  // A table continued across pages loses the parts on its other pages when
-  // one page falls back; such pages end continuation and the pages are
-  // projected again until no fallback page holds part of a longer table.
-  const project = (isolatedPages: ReadonlySet<number>) => {
+  const hyphenatedCompounds = pdfHyphenatedCompoundsV2(facts.pages);
+  const project = () => {
     const geometryTables = projectUntaggedGeometryTablesV2(
       facts.pages,
       rawAnalyses,
       detectRepeatedRegions(rawAnalyses, 2),
-      isolatedPages,
+      hyphenatedCompounds,
     );
     const tables = rawAnalyses.map((analysis) => {
       if (geometryTables[analysis.pageIndex]!.length > 0) return geometryTables[analysis.pageIndex]!;
@@ -854,6 +854,7 @@ export async function normalizeUntaggedPdfFactsV2(
             automaticallySuppressed,
             headingLevelByFont,
             pageTables,
+            hyphenatedCompounds,
           )
         : null;
       if (projection?.unresolved) reasons.add("unresolved-text-boundary");
@@ -871,7 +872,10 @@ export async function normalizeUntaggedPdfFactsV2(
           transformations.push(...projection.transformations);
         }
         requiresFallbackPages.push(page.index);
-        for (const table of pageTables) if (table.mode === "linearized-render-required") blocks.push(...table.blocks);
+        // Tables keep their blocks on a fallback page (native rows, or the
+        // linearized text beside its rendered crop); the rest of the page is
+        // the fallback. A table continued from or onto this page stays whole.
+        for (const table of pageTables) blocks.push(...table.blocks);
         const tableFragmentIds = new Set(pageTables.flatMap((table) => table.fragmentIds));
         const fallbackFragments = analysis.fragments.filter((fragment) =>
           !automaticallySuppressed.has(fragment.id) && !tableFragmentIds.has(fragment.id)
@@ -929,22 +933,9 @@ export async function normalizeUntaggedPdfFactsV2(
         ).length,
       });
     }
-    return { blocks, evidence, issues, boundaries, transformations, pageOutcomes, requiresFallbackPages, tables };
+    return { blocks, evidence, issues, boundaries, transformations, pageOutcomes, requiresFallbackPages };
   };
-  const isolatedPages = new Set<number>();
-  let projected = project(isolatedPages);
-  for (;;) {
-    const tablePages = new Map<string, number[]>();
-    for (const table of projected.tables.flat()) {
-      if (table.mode === "native") tablePages.set(table.sourceId, [...(tablePages.get(table.sourceId) ?? []), table.pageIndex]);
-    }
-    const spanned = new Set([...tablePages.values()].filter((pages) => pages.length > 1).flat());
-    const isolate = projected.requiresFallbackPages.filter((page) => spanned.has(page) && !isolatedPages.has(page));
-    if (isolate.length === 0) break;
-    for (const page of isolate) isolatedPages.add(page);
-    projected = project(isolatedPages);
-  }
-  const { blocks, evidence, issues, boundaries, transformations, pageOutcomes, requiresFallbackPages } = projected;
+  const { blocks, evidence, issues, boundaries, transformations, pageOutcomes, requiresFallbackPages } = project();
   const firstHeading = blocks.find((block) => block.type === "heading");
   const titleCandidate = firstHeading?.type === "heading"
     ? firstHeading.runs.map((run) => run.kind === "text" ? run.text : "\n").join("").trim()

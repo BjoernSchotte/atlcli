@@ -3,7 +3,7 @@ import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
-  "atlcli.pdf-text-assembly-policy/8" as const;
+  "atlcli.pdf-text-assembly-policy/9" as const;
 
 const PRESENTATION_LIGATURES = Object.freeze({
   "\ufb00": "ff",
@@ -74,7 +74,9 @@ export type PdfTextBoundaryBasisV2 =
   | "hyphen"
   | "actual-text"
   /** The block encodes word spaces as literal glyphs and none were generated. */
-  | "whitespace-convention";
+  | "whitespace-convention"
+  /** The same hyphenated compound appears inside a line elsewhere in the document. */
+  | "document-compound";
 
 export interface PdfTextBoundaryDecisionV2 {
   id: string;
@@ -106,6 +108,23 @@ export interface PdfTextAssemblyInputV2 {
   actualText?: string;
   /** Source characters carrying a mark such as a link. */
   markedCharacterIndexes?: readonly number[];
+  /** Lowercase `left-right` compounds hyphenated inside a line elsewhere in the document. */
+  hyphenatedCompounds?: ReadonlySet<string>;
+}
+
+/**
+ * Every `left-right` word pair joined by a hyphen inside a line, lowercased.
+ * A line-end hyphen before a lowercase word is a hard hyphen only when the
+ * document shows the same compound unbroken.
+ */
+export function pdfHyphenatedCompoundsV2(pages: readonly { text: string }[]): Set<string> {
+  const compounds = new Set<string>();
+  for (const page of pages) {
+    for (const match of page.text.matchAll(/([\p{L}\p{M}]+)[-\u2010](?=([\p{L}\p{M}]+))/gu)) {
+      compounds.add(`${match[1]}-${match[2]}`.toLowerCase());
+    }
+  }
+  return compounds;
 }
 
 export interface PdfTextAssemblyV2 {
@@ -442,6 +461,18 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
     });
   };
 
+  // The word of letters around a boundary, without crossing whitespace.
+  const wordFrom = (start: number, step: -1 | 1): string => {
+    const letters: string[] = [];
+    for (let index = start; anchors[index] && /^[\p{L}\p{M}]+$/u.test(anchors[index]!.value); index += step) {
+      const next = anchors[index + step];
+      letters.push(anchors[index]!.value);
+      if (next && input.characters.slice(Math.min(next.position, anchors[index]!.position) + 1, Math.max(next.position, anchors[index]!.position))
+        .some((character) => isWhitespace(sourceValue(character).text))) break;
+    }
+    return (step < 0 ? letters.reverse() : letters).join("");
+  };
+
   for (const [anchorIndex, anchor] of anchors.entries()) {
     const previous = anchors[anchorIndex - 1];
     if (previous) {
@@ -505,10 +536,15 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
           );
         }
       } else if (generatedHyphens.length > 0) {
-        if (wordPair && scriptMatch && relation.sameLine === false && /^\p{Lu}/u.test(anchor.value)) {
+        const capital = /^\p{Lu}/u.test(anchor.value);
+        const knownCompound = !capital && input.hyphenatedCompounds?.has(
+          `${wordFrom(anchorIndex - 1, -1)}-${wordFrom(anchorIndex, 1)}`.toLowerCase(),
+        ) === true;
+        if (wordPair && scriptMatch && relation.sameLine === false && (capital || knownCompound)) {
           // PDFium flags any hyphen at a line end (some producers give it no
           // Unicode, U+0002). A capital after the wrap continues a compound
-          // ("Kunden-Projekt"), not a split syllable: keep the hyphen.
+          // ("Kunden-Projekt"), not a split syllable: keep the hyphen. So does
+          // a lowercase word when the document shows the compound unbroken.
           addBoundary(
             previous,
             anchor,
@@ -518,6 +554,7 @@ function assembleSourceCharacters(input: PdfTextAssemblyInputV2): PdfTextAssembl
               ...(orderedBasis ? ["structure-order" as const] : []),
               "baseline",
               "script",
+              ...(knownCompound ? ["document-compound" as const] : []),
             ],
             PDF_TEXT_ASSEMBLY_POLICY_V2.confidence.dehyphenated,
           );

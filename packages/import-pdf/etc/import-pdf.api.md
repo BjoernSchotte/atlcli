@@ -34,7 +34,7 @@ export interface AppliedPdfImportOverridesV1 {
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
 // export: assembleGeometryFragmentsV2
-export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[]): PdfTextAssemblyV2;
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], hyphenatedCompounds?: ReadonlySet<string>): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -278,7 +278,7 @@ export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
 export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 
 // export: PDF_FIGURE_POLICY_REVISION
-export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/2";
 
 // export: PDF_FIGURE_POLICY_V1
 export declare const PDF_FIGURE_POLICY_V1: Readonly<{
@@ -300,7 +300,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/7";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/8";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -414,7 +414,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/7";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/8";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -441,7 +441,7 @@ export declare const PDF_TABLE_POLICY_V2: Readonly<{
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/4";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/5";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -450,11 +450,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/8";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/9";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/8";
+    readonly revision: "atlcli.pdf-text-assembly-policy/9";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -920,6 +920,11 @@ export interface PdfHybridSemanticsV2 {
     semanticDigest: string;
 }
 
+// export: pdfHyphenatedCompoundsV2
+export declare function pdfHyphenatedCompoundsV2(pages: readonly {
+    text: string;
+}[]): Set<string>;
+
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
     id: string;
@@ -957,6 +962,9 @@ export type PdfImportOverrideOperationV1 = {
     sourceId: string;
     beforeSourceId: string;
 };
+
+// export: pdfImportOverridesTemplate
+export declare function pdfImportOverridesTemplate(sourceSha256: string, document: ImportDocumentV2): string;
 
 // export: PdfImportOverridesV1
 export interface PdfImportOverridesV1 {
@@ -1438,6 +1446,7 @@ export interface PdfTextAssemblyInputV2 {
     orderBasis: "structure-order" | "geometry";
     actualText?: string;
     markedCharacterIndexes?: readonly number[];
+    hyphenatedCompounds?: ReadonlySet<string>;
 }
 
 // export: PdfTextAssemblyIssueV2
@@ -1470,7 +1479,7 @@ export interface PdfTextAssemblyV2 {
 export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
 
 // export: PdfTextBoundaryBasisV2
-export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention";
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound";
 
 // export: PdfTextBoundaryDecisionV2
 export interface PdfTextBoundaryDecisionV2 {
@@ -1725,7 +1734,7 @@ export declare function applyPdfFallbackPresentation(document: ImportDocumentV2,
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
 // export: assembleGeometryFragmentsV2
-export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[]): PdfTextAssemblyV2;
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], hyphenatedCompounds?: ReadonlySet<string>): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -2002,7 +2011,7 @@ export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 export declare const PDF_FALLBACK_PRESENTATION_REVISION: "atlcli.pdf-fallback-presentation/1";
 
 // export: PDF_FIGURE_POLICY_REVISION
-export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/2";
 
 // export: PDF_FIGURE_POLICY_V1
 export declare const PDF_FIGURE_POLICY_V1: Readonly<{
@@ -2024,7 +2033,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/7";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/8";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -2138,7 +2147,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/7";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/8";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -2165,7 +2174,7 @@ export declare const PDF_TABLE_POLICY_V2: Readonly<{
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/4";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/5";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -2174,11 +2183,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/8";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/9";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/8";
+    readonly revision: "atlcli.pdf-text-assembly-policy/9";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -2672,6 +2681,11 @@ export interface PdfHybridSemanticsV2 {
     semanticDigest: string;
 }
 
+// export: pdfHyphenatedCompoundsV2
+export declare function pdfHyphenatedCompoundsV2(pages: readonly {
+    text: string;
+}[]): Set<string>;
+
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
     id: string;
@@ -2709,6 +2723,9 @@ export type PdfImportOverrideOperationV1 = {
     sourceId: string;
     beforeSourceId: string;
 };
+
+// export: pdfImportOverridesTemplate
+export declare function pdfImportOverridesTemplate(sourceSha256: string, document: ImportDocumentV2): string;
 
 // export: PdfImportOverridesV1
 export interface PdfImportOverridesV1 {
@@ -3200,6 +3217,7 @@ export interface PdfTextAssemblyInputV2 {
     orderBasis: "structure-order" | "geometry";
     actualText?: string;
     markedCharacterIndexes?: readonly number[];
+    hyphenatedCompounds?: ReadonlySet<string>;
 }
 
 // export: PdfTextAssemblyIssueV2
@@ -3232,7 +3250,7 @@ export interface PdfTextAssemblyV2 {
 export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
 
 // export: PdfTextBoundaryBasisV2
-export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention";
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound";
 
 // export: PdfTextBoundaryDecisionV2
 export interface PdfTextBoundaryDecisionV2 {
@@ -3490,7 +3508,7 @@ export interface AppliedPdfImportOverridesV1 {
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
 // export: assembleGeometryFragmentsV2
-export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[]): PdfTextAssemblyV2;
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], hyphenatedCompounds?: ReadonlySet<string>): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -3734,7 +3752,7 @@ export declare const PDF_FACTS_SCHEMA_V1: "atlcli.pdf-facts/1";
 export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 
 // export: PDF_FIGURE_POLICY_REVISION
-export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/2";
 
 // export: PDF_FIGURE_POLICY_V1
 export declare const PDF_FIGURE_POLICY_V1: Readonly<{
@@ -3756,7 +3774,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/7";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/8";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -3870,7 +3888,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/7";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/8";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -3897,7 +3915,7 @@ export declare const PDF_TABLE_POLICY_V2: Readonly<{
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/4";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/5";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -3906,11 +3924,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/8";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/9";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/8";
+    readonly revision: "atlcli.pdf-text-assembly-policy/9";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -4376,6 +4394,11 @@ export interface PdfHybridSemanticsV2 {
     semanticDigest: string;
 }
 
+// export: pdfHyphenatedCompoundsV2
+export declare function pdfHyphenatedCompoundsV2(pages: readonly {
+    text: string;
+}[]): Set<string>;
+
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
     id: string;
@@ -4413,6 +4436,9 @@ export type PdfImportOverrideOperationV1 = {
     sourceId: string;
     beforeSourceId: string;
 };
+
+// export: pdfImportOverridesTemplate
+export declare function pdfImportOverridesTemplate(sourceSha256: string, document: ImportDocumentV2): string;
 
 // export: PdfImportOverridesV1
 export interface PdfImportOverridesV1 {
@@ -4894,6 +4920,7 @@ export interface PdfTextAssemblyInputV2 {
     orderBasis: "structure-order" | "geometry";
     actualText?: string;
     markedCharacterIndexes?: readonly number[];
+    hyphenatedCompounds?: ReadonlySet<string>;
 }
 
 // export: PdfTextAssemblyIssueV2
@@ -4926,7 +4953,7 @@ export interface PdfTextAssemblyV2 {
 export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
 
 // export: PdfTextBoundaryBasisV2
-export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention";
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound";
 
 // export: PdfTextBoundaryDecisionV2
 export interface PdfTextBoundaryDecisionV2 {
@@ -5181,7 +5208,7 @@ export declare function applyPdfFallbackPresentation(document: ImportDocumentV2,
 export declare function applyPdfImportOverrides(document: ImportDocumentV2, parsed?: ParsedPdfImportOverridesV1): Promise<AppliedPdfImportOverridesV1>;
 
 // export: assembleGeometryFragmentsV2
-export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[]): PdfTextAssemblyV2;
+export declare function assembleGeometryFragmentsV2(page: PdfPageFactsV2, sourceId: string, fragments: readonly PdfGeometryFragmentV2[], hyphenatedCompounds?: ReadonlySet<string>): PdfTextAssemblyV2;
 
 // export: assemblePdfTextV2
 export declare function assemblePdfTextV2(input: PdfTextAssemblyInputV2): PdfTextAssemblyV2;
@@ -5467,7 +5494,7 @@ export declare const PDF_FACTS_SCHEMA_V2: "atlcli.pdf-facts/2";
 export declare const PDF_FALLBACK_PRESENTATION_REVISION: "atlcli.pdf-fallback-presentation/1";
 
 // export: PDF_FIGURE_POLICY_REVISION
-export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/1";
+export declare const PDF_FIGURE_POLICY_REVISION: "atlcli.pdf-figure-policy/2";
 
 // export: PDF_FIGURE_POLICY_V1
 export declare const PDF_FIGURE_POLICY_V1: Readonly<{
@@ -5489,7 +5516,7 @@ export declare const PDF_FIGURE_SEMANTICS_SCHEMA_V2: "atlcli.pdf-figure-semantic
 export declare const PDF_GEOMETRY_POLICY_REVISION: "atlcli.pdf-geometry-policy/1";
 
 // export: PDF_GEOMETRY_POLICY_REVISION_V2
-export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/7";
+export declare const PDF_GEOMETRY_POLICY_REVISION_V2: "atlcli.pdf-geometry-policy/8";
 
 // export: PDF_GEOMETRY_POLICY_V1
 export declare const PDF_GEOMETRY_POLICY_V1: Readonly<{
@@ -5603,7 +5630,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/7";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/8";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -5630,7 +5657,7 @@ export declare const PDF_TABLE_POLICY_V2: Readonly<{
 export declare const PDF_TAGGED_POLICY_REVISION: "atlcli.pdf-tagged-policy/1";
 
 // export: PDF_TAGGED_POLICY_REVISION_V2
-export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/4";
+export declare const PDF_TAGGED_POLICY_REVISION_V2: "atlcli.pdf-tagged-policy/5";
 
 // export: PDF_TAGGED_SEMANTICS_SCHEMA_V1
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantics/1";
@@ -5639,11 +5666,11 @@ export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V1: "atlcli.pdf-tagged-semantic
 export declare const PDF_TAGGED_SEMANTICS_SCHEMA_V2: "atlcli.pdf-tagged-semantics/2";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2
-export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/8";
+export declare const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2: "atlcli.pdf-text-assembly-policy/9";
 
 // export: PDF_TEXT_ASSEMBLY_POLICY_V2
 export declare const PDF_TEXT_ASSEMBLY_POLICY_V2: Readonly<{
-    readonly revision: "atlcli.pdf-text-assembly-policy/8";
+    readonly revision: "atlcli.pdf-text-assembly-policy/9";
     readonly maximumAngleDeltaRadians: 0.12;
     readonly minimumSameLineVerticalOverlap: 0.25;
     readonly sameLineCenterDeltaGlyphFactor: 0.55;
@@ -6137,6 +6164,11 @@ export interface PdfHybridSemanticsV2 {
     semanticDigest: string;
 }
 
+// export: pdfHyphenatedCompoundsV2
+export declare function pdfHyphenatedCompoundsV2(pages: readonly {
+    text: string;
+}[]): Set<string>;
+
 // export: PdfImageObjectFact
 export interface PdfImageObjectFact {
     id: string;
@@ -6174,6 +6206,9 @@ export type PdfImportOverrideOperationV1 = {
     sourceId: string;
     beforeSourceId: string;
 };
+
+// export: pdfImportOverridesTemplate
+export declare function pdfImportOverridesTemplate(sourceSha256: string, document: ImportDocumentV2): string;
 
 // export: PdfImportOverridesV1
 export interface PdfImportOverridesV1 {
@@ -6665,6 +6700,7 @@ export interface PdfTextAssemblyInputV2 {
     orderBasis: "structure-order" | "geometry";
     actualText?: string;
     markedCharacterIndexes?: readonly number[];
+    hyphenatedCompounds?: ReadonlySet<string>;
 }
 
 // export: PdfTextAssemblyIssueV2
@@ -6697,7 +6733,7 @@ export interface PdfTextAssemblyV2 {
 export type PdfTextBoundaryActionV2 = "preserve-explicit-space" | "insert-space" | "join-line" | "dehyphenate" | "retain-hyphen" | "no-space" | "unresolved";
 
 // export: PdfTextBoundaryBasisV2
-export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention";
+export type PdfTextBoundaryBasisV2 = "literal-whitespace" | "generated-whitespace" | "text-run" | "structure-order" | "baseline" | "glyph-gap" | "script" | "punctuation" | "hyphen" | "actual-text" | "whitespace-convention" | "document-compound";
 
 // export: PdfTextBoundaryDecisionV2
 export interface PdfTextBoundaryDecisionV2 {

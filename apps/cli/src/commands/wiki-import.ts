@@ -97,6 +97,7 @@ const PDF_ONLY_FLAGS = [
   "reading-order",
   "attach-source",
   "max-wiki-pages",
+  "overrides-template",
 ] as const;
 
 function rejectPdfOnlyFlagsForDocx(
@@ -1906,6 +1907,8 @@ Options:
   --revisions <mode>      accept|reject tracked changes (default accept)
   --unsupported <mode>    report|fail on lossy constructs (default report)
   --overrides <file>      Format-specific digest-bound override file (YAML/JSON)
+  --overrides-template <file>  PDF: write an override file with one entry per
+                          figure without alt text (never overwrites)
   --recipe <file>         Apply a recipe file (atlcli.docx-import-recipe/1)
   --recipe-id <id>        Apply a catalog recipe (.atlcli/import-recipes/, ~/.atlcli/…)
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { handleWikiImport } from "./wiki-import.js";
@@ -44,6 +44,27 @@ describe("wiki import PDF review-first planning", () => {
       exitSpy.mockRestore();
     }
   }
+
+  it("drafts an alt-text override file whose filled-in entries clear the missing-alt issue", async () => {
+    const file = resolve(fixtureRoot, "figure.pdf");
+    const template = join(directory, "overrides.yaml");
+    await handleWikiImport([file], { space: "DOCSY", json: true, "overrides-template": template }, { json: true });
+    const before = JSON.parse(stdout.join(""));
+    const missing = before.issues.filter((issue: { code: string }) => issue.code === "pdf-import/figure-alt-missing");
+    const text = readFileSync(template, "utf8");
+    expect(missing.length).toBeGreaterThan(0);
+    expect(text).toContain(`sourceSha256: ${before.source.sha256}`);
+    expect(text.match(/kind: set-figure-alt/gu)).toHaveLength(missing.length);
+
+    stdout.length = 0;
+    await expectFailure([file], { space: "DOCSY", json: true, "overrides-template": template }, "Cannot write override template");
+
+    writeFileSync(template, text.replaceAll('alt: ""', "alt: Neutral outlined marker"));
+    stdout.length = 0;
+    await handleWikiImport([file], { space: "DOCSY", json: true, overrides: template }, { json: true });
+    const after = JSON.parse(stdout.join(""));
+    expect(after.issues.some((issue: { code: string }) => issue.code === "pdf-import/figure-alt-missing")).toBe(false);
+  });
 
   it("previews a short PDF offline with deterministic standard JSON and no body bytes", async () => {
     const file = resolve(fixtureRoot, "simple-untagged.pdf");

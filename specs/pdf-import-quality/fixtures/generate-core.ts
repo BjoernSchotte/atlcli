@@ -500,6 +500,54 @@ export function generateUnresolvedStructureKidProbe(): Uint8Array {
   });
 }
 
+/**
+ * A document root whose children are a paragraph, an unresolved child, a
+ * table whose row group continues with a row on page 2, a list, a figure, a
+ * paragraph, and a paragraph shown on page 2 (page-external on page 1). With `orphanText`, page 1 also
+ * shows text that only the unresolved child could own.
+ */
+export function generateMixedContainerProbe(options: { orphanText?: boolean } = {}): Uint8Array {
+  return buildDocument({
+    title: "Neutral Mixed Container Probe",
+    tagged: true,
+    pages: [{
+      form: true,
+      content: [
+        contentText("P", 0, "Opening paragraph.", 72, 775),
+        contentText("TD", 1, "Zone", 72, 740),
+        contentText("TD", 2, "Clear", 220, 740),
+        contentText("Lbl", 3, "1.", 72, 700),
+        contentText("P", 4, "Listed step.", 92, 700),
+        "/Figure <</MCID 5>> BDC q 1 0 0 1 72 560 cm /Fm1 Do Q EMC",
+        contentText("P", 6, "Closing paragraph.", 72, 520),
+        ...(options.orphanText ? [contentText("P", 7, "Orphan line.", 72, 760)] : []),
+      ],
+      structures: [{
+        role: "Document",
+        page: 0,
+        kids: [
+          { role: "P", page: 0, kids: [0] },
+          { unresolved: true },
+          { role: "Table", page: 0, kids: [{ role: "TBody", page: 0, kids: [
+            { role: "TR", page: 0, kids: [{ role: "TD", page: 0, kids: [1] }, { role: "TD", page: 0, kids: [2] }] },
+            { role: "TR", page: 1, kids: [{ role: "TD", page: 1, kids: [1] }, { role: "TD", page: 1, kids: [2] }] },
+          ] }] },
+          { role: "L", page: 0, kids: [{ role: "LI", page: 0, kids: [{ role: "Lbl", page: 0, kids: [3] }, { role: "LBody", page: 0, kids: [{ role: "P", page: 0, kids: [4] }] }] }] },
+          { role: "Figure", page: 0, kids: [5], alt: "Neutral outlined marker" },
+          { role: "P", page: 0, kids: [6] },
+          { role: "P", page: 1, kids: [0] },
+        ],
+      }],
+    }, {
+      content: [
+        contentText("TD", 1, "Dock", 72, 775),
+        contentText("TD", 2, "Busy", 220, 775),
+        contentText("P", 0, "Next page paragraph.", 72, 740),
+      ],
+    }],
+  });
+}
+
 async function main(): Promise<void> {
   const outputFlag = process.argv.indexOf("--output");
   const outputDirectory = resolve(outputFlag >= 0 ? process.argv[outputFlag + 1] ?? "" : import.meta.dir);

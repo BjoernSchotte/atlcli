@@ -215,6 +215,10 @@ of each generated wiki page. Region crops remain next to their source content
 in every mode. Tiny degenerate tag boxes are reported without adding an image;
 unclaimed visible text and unlocalizable loss still require a whole-page view.
 
+A native table on an untagged page that falls back stays a native table next
+to the page view, and a table continued from or onto that page stays one
+table.
+
 ## Figures, tables, and reading order
 
 `--reading-order auto` uses valid tags first and conservative geometry for an
@@ -226,6 +230,13 @@ For tagged PDFs, AtlCLI reads the document's structure tree as a whole
 (not page by page), so every table, row, and cell keeps one identity across
 pages. Structure only proposes rows and cells; every character still comes
 from the PDF's own text layer, so structure can never add text.
+
+A structure element with one child that cannot be resolved still keeps its
+other children, in their original order; the unresolved child is reported as
+`pdf-import/tagged-structure-kid-unresolved`. Children shown on another page
+are skipped on this page. If text on the page belongs to no remaining element,
+the page falls back as before. A paragraph, list, figure, or table cell with
+an unresolved child is never treated as complete.
 
 A tagged table becomes one native Confluence table when its grid is complete:
 
@@ -273,7 +284,7 @@ Reading order on untagged pages:
 | Underscore inside a word (`neutral_field`) | Kept in its word; its flat glyph below the baseline is not a second line |
 | Line ending in a digit, an underscore, or a symbol such as `+` | Joined with the next line by one space |
 | Hyphen at a line end, next line starts with a capital (`Kunden-` / `Projekt`) | Hyphen kept: `Kunden-Projekt` |
-| Hyphen at a line end, next line starts lowercase | Treated as a syllable break and removed; a hard hyphen there cannot be told apart |
+| Hyphen at a line end, next line starts lowercase | Removed as a syllable break, unless the same compound appears with its hyphen inside a line elsewhere in the PDF (`end-to-end`); then kept |
 | Hyphen at the end of a cell line with the next cell's text on the same line | The two are kept apart |
 
 > **Tip.** Export PDFs from Word, LibreOffice, or a browser with tagging
@@ -340,6 +351,21 @@ operations:
     beforeSourceId: pdf:p4:b1
 ```
 
+To add missing figure alternative text, let AtlCLI draft the file:
+
+```bash
+atlcli wiki import handbook.pdf --space DOCSY --dry-run \
+  --overrides-template handbook-overrides.yaml
+```
+
+The draft has the source digest and one `set-figure-alt` entry with an empty
+`alt` per published figure without alternative text, each labeled with its
+source page. Fill in every `alt` or delete the entry, then pass the file with
+`--overrides`. An empty `alt` is rejected, and an existing file is never
+overwritten. A supplied alt text clears that figure's
+`pdf-import/figure-alt-missing` issue, so `--unsupported fail` no longer
+blocks on it.
+
 Replace the example digest and source IDs with values from the same PDF
 preview. A changed source digest, stale locator, unknown field, duplicate
 decision, unsafe YAML alias, file over 256 KiB, or more than 200 operations
@@ -390,6 +416,7 @@ content properties before mutation.
 | `--accept-reported-pages` | boolean | off | Required to publish pages omitted under scan `report`. |
 | `--attach-source` | boolean | off | Retain and byte-verify the original PDF. |
 | `--overrides` | path | none | Digest-bound PDF override YAML/JSON. |
+| `--overrides-template` | path | none | Write a draft override file with one alt-text entry per figure without one; fails if the file exists. |
 | `--restriction` | enum | `inherit` | Cloud: `inherit`, `private`, or `explicit`. |
 | `--viewer`, `--editor` | repeatable principal | none | Cloud explicit restriction principals. |
 | `--staging-parent` | title | none | Cloud private import-owned staging parent. |
@@ -498,6 +525,7 @@ release claim.
 | `--split off` is rejected | Source exceeds 40 pages or a hard editability budget | Use `auto`, heading, or page-range splitting. |
 | Title conflict | Planned pages duplicate one another or existing space titles | Rename source headings/root title or use `--title-conflict rename`. |
 | Override is stale | PDF digest or `sourceId` changed | Generate a new JSON preview and re-author the override. |
+| `--unsupported fail` blocks on `pdf-import/figure-alt-missing` | The source figures have no author alternative text | Draft alt texts with `--overrides-template`, fill them in, and pass the file with `--overrides`. |
 | Data Center tree rejected | Data Center PDF trees are not implemented | Import a safe one-page PDF or target Cloud; AtlCLI will not flatten it. |
 | Encrypted PDF rejected | Password-protected input is outside V1 | Export an approved unencrypted copy through your document-governance process. |
 | Browser/Forge command is missing | Only the reusable browser Worker capability exists | Use the CLI; product UI integration is a later gated feature. |

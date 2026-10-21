@@ -1,8 +1,7 @@
 # PDF import quality: evidence-based text and structure reconstruction
 
-Status: **Reopened after acceptance review** (PIQ-00 through PIQ-10 implemented;
-PIQ-11 through PIQ-18 required before the native-table goal is complete,
-2026-08-27)
+Status: **Implemented** (PIQ-00 through PIQ-18 done or superseded, 2026-10-21;
+reopened after acceptance review on 2026-08-27)
 
 Planned at: `cb981dea1f83d4dd5e17932239e42f99a1a607c7`
 (`feat(drawio): add Draw.io previews and Confluence sync integration (#197)`)
@@ -33,7 +32,7 @@ and cross-host PDFium parity all change together.
 | PIQ-09 | DONE | `EVIDENCE.md#piq-09` |
 | PIQ-10 | DONE | `EVIDENCE.md#piq-10` |
 | PIQ-11 | SUPERSEDED | full-document tag tree (Section 14a); spike GO |
-| PIQ-12 | OPEN | preserve usable siblings of page-external or unresolved children |
+| PIQ-12 | DONE | `EVIDENCE.md#piq-12` |
 | PIQ-13 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
 | PIQ-14 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
 | PIQ-15 | DONE | `EVIDENCE.md#piq-13-to-piq-15-on-the-document-tree` |
@@ -1599,17 +1598,17 @@ projected, and owned exactly once.
 
 **Repository proof.**
 
-- [ ] A semantic root containing page-external, paragraph, table, figure, and
+- [x] A semantic root containing page-external, paragraph, table, figure, and
   list siblings projects the usable siblings in exact original order.
-- [ ] A row group with an off-page row plus valid current-page rows produces a
+- [x] A row group with an off-page row plus valid current-page rows produces a
   native page-local table segment.
-- [ ] A genuine unresolved leaf is still reported and cannot claim visible
+- [x] A genuine unresolved leaf is still reported and cannot claim visible
   characters as native.
-- [ ] The ownership audit reports zero duplicate claims and accounts for every
+- [x] The ownership audit reports zero duplicate claims and accounts for every
   visible character in the mixed-container positive fixture.
-- [ ] The positive fixture has no page fallback and no spurious corruption
+- [x] The positive fixture has no page fallback and no spurious corruption
   count.
-- [ ] `bun run test packages/import-pdf/src/tagged.test.ts
+- [x] `bun run test packages/import-pdf/src/tagged.test.ts
   packages/import-pdf/src/hybrid.test.ts
   packages/import-pdf/src/tables.test.ts` passes.
 
@@ -2012,16 +2011,17 @@ sanitized failure reason. Do not paste raw live receipts into GitHub.
 
 ### 15.2 Final acceptance checklist
 
-- [ ] PIQ-11 distinguishes page-external children from true unresolved facts.
-- [ ] PIQ-12 preserves every usable current-page sibling in source order.
-- [ ] PIQ-13 preserves intentional empty cells as native editable cells.
-- [ ] PIQ-14 reconstructs only structurally and geometrically safe punctuation
+- [x] PIQ-11 distinguishes page-external children from true unresolved facts
+  (superseded by the full-document tree, which reports them as `page-external`).
+- [x] PIQ-12 preserves every usable current-page sibling in source order.
+- [x] PIQ-13 preserves intentional empty cells as native editable cells.
+- [x] PIQ-14 reconstructs only structurally and geometrically safe punctuation
   boundaries.
-- [ ] PIQ-15 produces one native continued table when identity is proven and
+- [x] PIQ-15 produces one native continued table when identity is proven and
   two native tables when it is not.
 - [x] PIQ-16 detects local geometric grids independently of page decorations
   and global reading order.
 - [x] PIQ-17 limits unresolved table loss to the smallest safe region.
-- [ ] PIQ-18 proves exact neutral source fidelity, DOCSY publication/readback,
+- [x] PIQ-18 proves exact neutral source fidelity, DOCSY publication/readback,
   cleanup, current-Bun execution, and private local acceptance without
   committing private material.

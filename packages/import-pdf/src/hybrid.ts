@@ -38,6 +38,7 @@ import {
   PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2,
   type PdfTextBoundaryDecisionV2,
   type PdfTextTransformationV2,
+  pdfHyphenatedCompoundsV2,
 } from "./text-assembly.js";
 import { unionRects } from "./text.js";
 
@@ -269,6 +270,7 @@ export async function normalizeHybridPdfFactsV2(
     throw new PdfImportError("pdf/incomplete", "Hybrid normalization requires a tagged PDF.");
   }
   const tagged = await normalizeTaggedPdfFactsV2(facts, factsDigest);
+  const hyphenatedCompounds = pdfHyphenatedCompoundsV2(facts.pages);
   const evidence = tagged.evidence.map((entry) => ({ ...entry }));
   const boundaries: PdfTextBoundaryDecisionV2[] = tagged.boundaries.map((entry) => ({ ...entry }));
   const transformations: PdfTextTransformationV2[] = tagged.transformations.map((entry) => ({ ...entry }));
@@ -362,7 +364,7 @@ export async function normalizeHybridPdfFactsV2(
       const sourceId = `pdf:p${page.index}:hybrid-page-fallback`;
       const regionAssemblies = regions.map((region) => region.fragments.length === 1
         ? region.fragments[0]!.assembly
-        : assembleGeometryFragmentsV2(residual, region.sourceId, region.fragments));
+        : assembleGeometryFragmentsV2(residual, region.sourceId, region.fragments, hyphenatedCompounds));
       for (const assembly of regionAssemblies) {
         appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
         issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, sourceId));
@@ -407,7 +409,7 @@ export async function normalizeHybridPdfFactsV2(
     for (const region of regions) {
       const assembly = region.fragments.length === 1
         ? region.fragments[0]!.assembly
-        : assembleGeometryFragmentsV2(residual, region.sourceId, region.fragments);
+        : assembleGeometryFragmentsV2(residual, region.sourceId, region.fragments, hyphenatedCompounds);
       appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
       issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, region.sourceId));
       const regionIndexes = assembly.characterIndexes.filter((index) => residualIndexes.has(index));

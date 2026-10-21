@@ -452,8 +452,11 @@ function projectNodeV2(
   state: MutableProjectionV2,
 ): void {
   const role = structureRoleV2(node);
+  const container = isSemanticContainer(role) && role !== "Span";
   if (unresolvedNodeIds.has(node.id)) {
-    state.corruptTagCount += 1;
+    // A container still projects its resolved children in order; whatever the
+    // unresolved child showed stays unclaimed and the ownership audit decides.
+    if (!container) state.corruptTagCount += 1;
     state.issues.push({
       code: "pdf-import/tagged-structure-kid-unresolved",
       severity: "warning",
@@ -472,9 +475,9 @@ function projectNodeV2(
       analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
       boundaryDecisionIds: [],
     });
-    return;
+    if (!container) return;
   }
-  if (isSemanticContainer(role) && role !== "Span") {
+  if (container) {
     for (const child of structureChildrenV2(node)) {
       projectNodeV2(page, child, corruptMcids, unresolvedNodeIds, state);
     }

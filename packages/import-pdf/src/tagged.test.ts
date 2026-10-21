@@ -23,11 +23,13 @@ import {
 import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
 import { normalizeHybridPdfFactsV2 } from "./hybrid.js";
 import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
+import { buildPdfImportReviewV3 } from "./review.js";
+import { parsePdfSplitPolicy } from "./split.js";
 import { flattenStructureV2, structureRoleV2 } from "./structure.js";
 import { textDirection } from "./text.js";
 import { digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
 import { PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 } from "./text-assembly.js";
-import { generateUnresolvedStructureKidProbe } from "../../../specs/pdf-import-quality/fixtures/generate-core.js";
+import { generateMixedContainerProbe, generateUnresolvedStructureKidProbe } from "../../../specs/pdf-import-quality/fixtures/generate-core.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
 const qualityFixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
@@ -423,6 +425,60 @@ describe("tagged PDF semantic extraction", () => {
       boundaryDecisionIds: [],
     }));
     expect(JSON.stringify(result.document.issues)).not.toContain("Unresolved Harbor");
+  });
+
+  it("keeps the usable siblings of an unresolved or page-external child in source order", async () => {
+    // Regression: one unresolved child of the document root dropped every
+    // sibling, and both pages fell back to geometry.
+    const raw = await (await createNodePdfiumFactsAdapterV2()).analyze(generateMixedContainerProbe());
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+    const text = (block: (typeof result.document.blocks)[number]): unknown => block.type === "table"
+      ? block.rows.map((row) => row.cells.map((cell) => cell.blocks.map(text).join("")))
+      : block.type === "list"
+        ? block.items.map((item) => item.blocks.map(text).join(""))
+        : "runs" in block ? block.runs.map((run) => run.kind === "text" ? run.text : "").join("") : block.type;
+
+    expect(result.document.blocks.map(text)).toEqual([
+      "Opening paragraph.",
+      [["Zone", "Clear"], ["Dock", "Busy"]],
+      ["Listed step."],
+      "Closing paragraph.",
+      "Next page paragraph.",
+    ]);
+    expect(result.requiresGeometryPages).toEqual([]);
+    expect(result.pageOutcomes.map(({ mode, unclaimedCharacterCount, corruptTagCount }) =>
+      ({ mode, unclaimedCharacterCount, corruptTagCount })
+    )).toEqual([
+      { mode: "tagged-native", unclaimedCharacterCount: 0, corruptTagCount: 0 },
+      { mode: "tagged-native", unclaimedCharacterCount: 0, corruptTagCount: 0 },
+    ]);
+    expect(result.document.issues.filter((issue) => issue.code === "pdf-import/tagged-structure-kid-unresolved"))
+      .toHaveLength(2);
+
+    const review = await buildPdfImportReviewV3(generateMixedContainerProbe(), await createNodePdfiumFactsAdapterV2(), {
+      target: { spaceKey: "DOCSY", title: "Probe", deployment: "cloud", supportsPageTree: true, evidence: "offline-unresolved" },
+      splitPolicy: parsePdfSplitPolicy("off"),
+    });
+    expect(review.pages.map((page) => ({
+      fallback: page.fallback,
+      unowned: page.unownedCharacterCount,
+      duplicates: page.duplicateOwnershipAttemptCount,
+      owned: page.uniquelyOwnedCharacterCount === page.visibleCharacterCount,
+    }))).toEqual([
+      { fallback: "none", unowned: 0, duplicates: 0, owned: true },
+      { fallback: "none", unowned: 0, duplicates: 0, owned: true },
+    ]);
+  });
+
+  it("does not claim text that only an unresolved child could own", async () => {
+    const raw = await (await createNodePdfiumFactsAdapterV2()).analyze(generateMixedContainerProbe({ orphanText: true }));
+    const result = await normalizeTaggedPdfFactsV2(raw.facts, raw.factsDigest);
+
+    expect(result.requiresGeometryPages).toEqual([0]);
+    expect(result.pageOutcomes[0]).toMatchObject({ mode: "geometry-required", unclaimedCharacterCount: 11 });
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/tagged-text-unclaimed", context: { pageIndex: 0, characters: 11 },
+    }));
   });
 
   it("correlates a real tagged golden without page loss or outline dependence", async () => {

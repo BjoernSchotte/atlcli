@@ -274,11 +274,12 @@ describe("open-sided and continued ruled tables", () => {
     expect(tables(result).map(tableTexts)[0]?.[1]?.[0]).toBe("Alpha one two");
   });
 
-  it("keeps the later parts of a table whose first page falls back", async () => {
+  it("keeps a whole native table whose first page falls back", async () => {
     // Regression: the table's blocks belonged to its first page; when that
-    // page fell back, the rows on the following pages disappeared.
+    // page fell back, the rows on the following pages disappeared. Later the
+    // fallback page's own rows were left to the page image only.
     const first = openSidedTable([["Item", "Owner", "Due", "State"], ["Alpha", "North", "May", "Open"]], 120, { topRule: true });
-    const next = openSidedTable([["Beta", "South", "June", "Done"], ["Gamma", "East", "July", "Open"], ["Delta", "West", "May", "Done"]], 790, { topRule: false, verticalTop: 814 });
+    const next = openSidedTable([["Beta", "South", "June", "Done"], ["Gamma", "East", "July", "Open"], ["Delta", "West", "May", "Done"]], 790, { topRule: true });
     const result = await normalizePdf(pagesPdf([
       // Rotated text sends the first page to a fallback.
       { ...first, raw: ["BT /F1 11 Tf 0 1 -1 0 520 400 Tm (Rotated margin note) Tj ET"] },
@@ -287,6 +288,8 @@ describe("open-sided and continued ruled tables", () => {
 
     expect(result.requiresFallbackPages).toEqual([0]);
     expect(tables(result).map(tableTexts)).toEqual([[
+      ["Item", "Owner", "Due", "State"],
+      ["Alpha", "North", "May", "Open"],
       ["Beta", "South", "June", "Done"],
       ["Gamma", "East", "July", "Open"],
       ["Delta", "West", "May", "Done"],

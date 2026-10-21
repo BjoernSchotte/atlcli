@@ -605,7 +605,10 @@ function repeatedHeaderRows(first: PdfGeometryGridV2, next: PdfGeometryGridV2): 
  * Projects one table from its page parts. Continuation parts contribute their
  * rows; a repeated header contributes its characters to the header cells.
  */
-export function projectGeometryTableV2(parts: readonly PdfGeometryTablePartV2[]): Map<number, PdfTableProjectionV2> {
+export function projectGeometryTableV2(
+  parts: readonly PdfGeometryTablePartV2[],
+  hyphenatedCompounds?: ReadonlySet<string>,
+): Map<number, PdfTableProjectionV2> {
   const first = parts[0]!;
   const tableId = `pdf:p${first.page.index}:${first.grid.kind}-table-v2:${first.grid.bbox.x.toFixed(6)}:${first.grid.bbox.y.toFixed(6)}`;
   const evidence = new Map<number, PdfDecisionEvidenceV2[]>(parts.map((part) => [part.page.index, []]));
@@ -662,7 +665,7 @@ export function projectGeometryTableV2(parts: readonly PdfGeometryTablePartV2[])
             boundaryDecisionIds: [],
           });
         } else {
-          const assembly = assembleGeometryFragmentsV2(page, `${id}:p${page.index}`, fragments);
+          const assembly = assembleGeometryFragmentsV2(page, `${id}:p${page.index}`, fragments, hyphenatedCompounds);
           appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
           issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, id));
           const cellOutcome = pdfTextAssemblyOutcomeV2(assembly);
@@ -782,8 +785,7 @@ export function projectUntaggedGeometryTablesV2(
   pages: readonly PdfPageFactsV2[],
   analyses: readonly PdfReadingOrderPageV2[],
   ignoredFragmentIds: ReadonlySet<string>,
-  /** Pages a table does not continue onto or from (pages that fall back). */
-  isolatedPages: ReadonlySet<number> = new Set(),
+  hyphenatedCompounds?: ReadonlySet<string>,
 ): PdfTableProjectionV2[][] {
   const grids = analyses.map((analysis) => detectGeometryGridsV2(pages[analysis.pageIndex]!, analysis));
   const body = analyses.map((analysis) => analysis.fragments.filter((fragment) =>
@@ -805,9 +807,9 @@ export function projectUntaggedGeometryTablesV2(
     for (const grid of pageGrids) {
       if (continued.has(grid)) continue;
       const parts: PdfGeometryTablePartV2[] = [{ page: pages[grid.pageIndex]!, grid }];
-      for (let last = grid; endsPage(last) && !isolatedPages.has(last.pageIndex);) {
+      for (let last = grid; endsPage(last);) {
         const next = grids[last.pageIndex + 1]?.[0];
-        if (!next || isolatedPages.has(next.pageIndex) || !startsPage(next) || !geometryGridContinues(last, next)) break;
+        if (!next || !startsPage(next) || !geometryGridContinues(last, next)) break;
         parts.push({ page: pages[next.pageIndex]!, grid: next });
         continued.add(next);
         last = next;
@@ -817,7 +819,7 @@ export function projectUntaggedGeometryTablesV2(
   }
   const result: PdfTableProjectionV2[][] = pages.map(() => []);
   for (const parts of tables) {
-    const projections = projectGeometryTableV2(parts);
+    const projections = projectGeometryTableV2(parts, hyphenatedCompounds);
     if ([...projections.values()].some((projection) => projection.mode !== "native")) continue;
     for (const [pageIndex, projection] of projections) result[pageIndex]!.push(projection);
   }
