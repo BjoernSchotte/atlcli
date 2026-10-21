@@ -275,6 +275,16 @@ Carol:            4 issues completed
 atlcli jira sprint report --id 456 --json > sprint-report.json
 ```
 
+### Sprint Review Page
+
+Create or update a Confluence sprint review page (goal, metrics, done and not-done work), optionally exported to PDF:
+
+```bash
+atlcli jira sprint review 456 --space TEAM --export sprint-review.pdf
+```
+
+See [Release Notes and Sprint Review Pages](report-pages.md) for options and templates.
+
 ## JSON Output
 
 All commands support `--json`:

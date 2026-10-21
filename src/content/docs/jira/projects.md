@@ -224,6 +224,17 @@ Options:
 | `--move-affects` | Move affects version issues to another version |
 | `--confirm` | Skip confirmation |
 
+### Release Notes Page
+
+Create or update a Confluence release notes page for a version, optionally exported to PDF or DOCX:
+
+```bash
+atlcli jira version notes "v2.0.0" --project PROJ --space DOCS --dry-run
+atlcli jira version notes 10202 --space DOCS --group-by epic --export release-notes.pdf
+```
+
+See [Release Notes and Sprint Review Pages](report-pages.md) for options and templates.
+
 ## JSON Output
 
 ```bash

@@ -85,6 +85,7 @@ export default defineConfig({
             { label: 'Search', link: '/jira/search/' },
             { label: 'Projects', link: '/jira/projects/' },
             { label: 'Boards & Sprints', link: '/jira/boards-sprints/' },
+            { label: 'Release Notes & Sprint Review', link: '/jira/report-pages/' },
             { label: 'Time Tracking', link: '/jira/time-tracking/' },
             { label: 'Epics', link: '/jira/epics/' },
             { label: 'Subtasks', link: '/jira/subtasks/' },

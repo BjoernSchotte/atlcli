@@ -1211,6 +1211,30 @@ export type AttachRequestResult = {
     error: string;
 };
 
+// export: buildReportData
+export declare function buildReportData(input: BuildReportInput): ReportData;
+
+// export: BuildReportInput
+export interface BuildReportInput {
+    kind: "release" | "sprint";
+    source: {
+        id: string;
+        name: string;
+        description?: string;
+        goal?: string;
+        state?: string;
+        released?: boolean;
+        startDate?: string;
+        endDate?: string;
+        releaseDate?: string;
+    };
+    issues: JiraIssue[];
+    baseUrl: string;
+    pointsField?: string;
+    sprintMetrics?: SprintMetrics;
+    now: Date;
+}
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -1358,6 +1382,9 @@ export declare function ensureMigrated(): Promise<{
     skipped: string[];
     errors: string[];
 } | null>;
+
+// export: escapeMarkdown
+export declare function escapeMarkdown(text: string): string;
 
 // export: ExportData
 export interface ExportData {
@@ -2593,6 +2620,86 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getLevel(): "project";
     protected getProject(): string;
 }
+
+// export: ReportData
+export interface ReportData {
+    kind: "release" | "sprint";
+    source: ReportSource;
+    issues: ReportIssue[];
+    doneIssues: ReportIssue[];
+    openIssues: ReportIssue[];
+    byType: ReportGroup[];
+    byEpic: ReportGroup[];
+    contributors: Array<{
+        name: string;
+        nameMd: string;
+        count: number;
+    }>;
+    metrics: {
+        total: number;
+        done: number;
+        inProgress: number;
+        todo: number;
+        donePercent: number;
+        points?: {
+            committed: number;
+            completed: number;
+        };
+        sayDoRatio?: number;
+    };
+    generatedAt: string;
+}
+
+// export: ReportGroup
+export interface ReportGroup {
+    name: string;
+    nameMd: string;
+    key?: string;
+    url?: string;
+    count: number;
+    issues: ReportIssue[];
+}
+
+// export: ReportIssue
+export interface ReportIssue {
+    key: string;
+    url: string;
+    link: string;
+    summary: string;
+    summaryMd: string;
+    type: string;
+    status: string;
+    statusCategory: ReportStatusCategory;
+    done: boolean;
+    assignee?: string;
+    epic?: {
+        key: string;
+        url: string;
+        summary: string;
+        summaryMd: string;
+    };
+    points?: number;
+}
+
+// export: ReportSource
+export interface ReportSource {
+    id: string;
+    name: string;
+    nameMd: string;
+    description?: string;
+    descriptionMd?: string;
+    goal?: string;
+    goalMd?: string;
+    state?: string;
+    released?: boolean;
+    startDay?: string;
+    endDay?: string;
+    releaseDay?: string;
+    releaseDateMd?: string;
+}
+
+// export: ReportStatusCategory
+export type ReportStatusCategory = "todo" | "inprogress" | "done";
 
 // export: resolveDownloadPath
 export declare function resolveDownloadPath(output: string | undefined, filename: string, opts: {
@@ -3987,6 +4094,30 @@ export type AttachRequestResult = {
     error: string;
 };
 
+// export: buildReportData
+export declare function buildReportData(input: BuildReportInput): ReportData;
+
+// export: BuildReportInput
+export interface BuildReportInput {
+    kind: "release" | "sprint";
+    source: {
+        id: string;
+        name: string;
+        description?: string;
+        goal?: string;
+        state?: string;
+        released?: boolean;
+        startDate?: string;
+        endDate?: string;
+        releaseDate?: string;
+    };
+    issues: JiraIssue[];
+    baseUrl: string;
+    pointsField?: string;
+    sprintMetrics?: SprintMetrics;
+    now: Date;
+}
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -4134,6 +4265,9 @@ export declare function ensureMigrated(): Promise<{
     skipped: string[];
     errors: string[];
 } | null>;
+
+// export: escapeMarkdown
+export declare function escapeMarkdown(text: string): string;
 
 // export: ExportData
 export interface ExportData {
@@ -5369,6 +5503,86 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getLevel(): "project";
     protected getProject(): string;
 }
+
+// export: ReportData
+export interface ReportData {
+    kind: "release" | "sprint";
+    source: ReportSource;
+    issues: ReportIssue[];
+    doneIssues: ReportIssue[];
+    openIssues: ReportIssue[];
+    byType: ReportGroup[];
+    byEpic: ReportGroup[];
+    contributors: Array<{
+        name: string;
+        nameMd: string;
+        count: number;
+    }>;
+    metrics: {
+        total: number;
+        done: number;
+        inProgress: number;
+        todo: number;
+        donePercent: number;
+        points?: {
+            committed: number;
+            completed: number;
+        };
+        sayDoRatio?: number;
+    };
+    generatedAt: string;
+}
+
+// export: ReportGroup
+export interface ReportGroup {
+    name: string;
+    nameMd: string;
+    key?: string;
+    url?: string;
+    count: number;
+    issues: ReportIssue[];
+}
+
+// export: ReportIssue
+export interface ReportIssue {
+    key: string;
+    url: string;
+    link: string;
+    summary: string;
+    summaryMd: string;
+    type: string;
+    status: string;
+    statusCategory: ReportStatusCategory;
+    done: boolean;
+    assignee?: string;
+    epic?: {
+        key: string;
+        url: string;
+        summary: string;
+        summaryMd: string;
+    };
+    points?: number;
+}
+
+// export: ReportSource
+export interface ReportSource {
+    id: string;
+    name: string;
+    nameMd: string;
+    description?: string;
+    descriptionMd?: string;
+    goal?: string;
+    goalMd?: string;
+    state?: string;
+    released?: boolean;
+    startDay?: string;
+    endDay?: string;
+    releaseDay?: string;
+    releaseDateMd?: string;
+}
+
+// export: ReportStatusCategory
+export type ReportStatusCategory = "todo" | "inprogress" | "done";
 
 // export: resolveDownloadPath
 export declare function resolveDownloadPath(output: string | undefined, filename: string, opts: {

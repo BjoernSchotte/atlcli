@@ -467,6 +467,10 @@ atlcli wiki page create --template meeting-notes \
   --dry-run
 ```
 
+## Templates for Jira Report Pages
+
+`atlcli jira version notes` and `atlcli jira sprint review` render Jira data through templates too. They look for a template by name at the space, profile and global level first, then fall back to the bundled `release-notes`, `release-notes-by-epic` and `sprint-review`. See [Release Notes and Sprint Review Pages](../jira/report-pages.md#templates) for the available variables.
+
 ## Handlebars Syntax
 
 Templates support full Handlebars syntax:

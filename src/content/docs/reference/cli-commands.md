@@ -665,6 +665,7 @@ atlcli jira sprint delete --id <id> --confirm
 atlcli jira sprint add <issues...> --sprint <id>
 atlcli jira sprint remove <issues...>   # Move to backlog
 atlcli jira sprint report <id>          # Sprint metrics report
+atlcli jira sprint review <id> --space <key> [--export <file>]  # Sprint review page
 ```
 
 ### Epics
@@ -710,6 +711,7 @@ atlcli jira version create --project <key> --name <name> \
   --start-date <date> --release-date <date>
 atlcli jira version release --id <id>
 atlcli jira version delete --id <id> --confirm
+atlcli jira version notes <id|name> --space <key> [--project <key>] [--group-by type|epic] [--export <file>]  # Release notes page
 ```
 
 ### Templates

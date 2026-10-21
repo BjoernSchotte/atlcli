@@ -31,6 +31,10 @@ These answer the original open questions and override the body where they confli
 - A1b: fixed `bulk edit --set` reading only the first `--set` and splitting `labels=a,b` at the comma.
 - A2: tasks are addressed by document position and text fingerprint, not `<ac:task-id>`: atlcli's markdown push numbers ids per list, so ids repeat on one page. The ledger is keyed by issue key (`{v:1, issues:{KEY:{fingerprint, createdAt, tickedBySync}}}`); `tickedBySync` is what lets `--sync` untick only the tasks it ticked.
 - A2: the page marker is an inline smart link to `/browse/KEY` instead of a Jira macro (a macro without `serverId` may not render on Cloud). `docs pull` turns it into a plain link; both forms count as linked.
+- A3: the identity property stores a hash of the generated **storage**, not the markdown, so converter fixes also count as changes.
+- A3: `sprint review` shows no scope change (it needs one changelog request per issue); add it after digest-flow-metrics T1 (bulk changelogs).
+- A3: found and fixed a Confluence converter bug: a line starting with a smart link (`[KEY](url) text`) became a raw HTML block, so the rest of the line skipped inline markdown and escapes leaked onto the page.
+- A3: `sprint review` was not E2E-tested live: the ATLCLI board is a simple board without sprints. Covered by template/planner tests.
 
 ## Summary decision
 

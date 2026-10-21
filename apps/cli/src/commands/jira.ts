@@ -1703,6 +1703,11 @@ async function handleSprint(
     case "report":
       await handleSprintReport(args.slice(1), flags, opts);
       return;
+    case "review": {
+      const { handleSprintReview } = await import("./jira-report.js");
+      await handleSprintReview(args.slice(1), flags, opts);
+      return;
+    }
     default:
       unknownSubcommand(sub, sprintHelp(), opts);
       return;
@@ -1993,6 +1998,9 @@ Commands:
   add <issue>... --sprint <id>           Add issues to sprint
   remove <issue>...                      Move issues to backlog
   report <sprintId> [--points-field <id>]   Sprint metrics report
+  review <sprintId> --space <key> [--parent <id>] [--title <t>] [--template <name>]
+         [--var k=v ...] [--dry-run] [--force] [--export <file.pdf|.docx>]
+                                         Create or update a sprint review page
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -2001,6 +2009,8 @@ Options:
 Examples:
   jira sprint list --board 123
   jira sprint report 456 --json
+  jira sprint review 456 --space TEAM --dry-run
+  jira sprint review 456 --space TEAM --export review.pdf
 `;
 }
 
@@ -5531,6 +5541,11 @@ async function handleVersion(
     case "delete":
       await handleVersionDelete(rest, flags, opts);
       return;
+    case "notes": {
+      const { handleVersionNotes } = await import("./jira-report.js");
+      await handleVersionNotes(rest, flags, opts);
+      return;
+    }
     default:
       unknownSubcommand(sub, versionHelp(), opts);
       return;
@@ -5731,6 +5746,11 @@ Commands:
   delete <id> --confirm
       Delete a version
 
+  notes <id|name> --space <key> [--project <key>] [--group-by type|epic] [--template <name>]
+        [--parent <id>] [--title <t>] [--var k=v ...] [--dry-run] [--force] [--export <file>]
+      Create or update a release notes page in Confluence
+      (--list-templates, --print-template <name> show the bundled templates)
+
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
@@ -5739,6 +5759,8 @@ Examples:
   jira version list --project PROJ
   jira version create --project PROJ --name "1.0.0" --release-date 2026-02-01
   jira version release 10001
+  jira version notes "1.0.0" --project PROJ --space DOCS --dry-run
+  jira version notes 10001 --space DOCS --group-by epic --export notes.pdf
   jira version delete 10001 --confirm
 `;
 }
