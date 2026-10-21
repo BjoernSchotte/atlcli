@@ -81,12 +81,33 @@ Convenience flags that expand to JQL:
 ## Output Options
 
 ```bash
-# Limit results
-atlcli jira search --jql "..." --limit 50
+# Limit results (pages through Jira as needed)
+atlcli jira search --jql "..." --limit 250
+
+# Everything that matches, up to 5000 issues
+atlcli jira search --jql "..." --all-results
 
 # JSON output
 atlcli jira search --jql "..." --json
 ```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--limit` | positive integer | `25` | Maximum issues returned. Values above 100 are fetched page by page. |
+| `--all-results` | flag | off | Return all matches, stopping at 5000 with a warning. Overrides `--limit`. |
+
+`search` and `my` accept the same two flags. JSON output contains:
+
+| Field | Meaning |
+|-------|---------|
+| `issues` | The returned issues |
+| `total` | Number of issues **returned**. Jira's search endpoint does not report a total match count. |
+| `hasMore` | `true` if more issues matched than were returned |
+| `nextPageToken` | Jira's token for the next page, when `hasMore` is `true` |
+
+:::note
+`jira my --all` keeps its meaning (include resolved issues). Use `--all-results` to lift the result limit.
+:::
 
 ## Examples
 

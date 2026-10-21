@@ -431,6 +431,17 @@ export declare class JiraClient {
         total: number;
     }>;
     addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
+    deleteComment(keyOrId: string, commentId: string): Promise<void>;
+    getChangelog(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        values: JiraChangelogEntry[];
+        startAt: number;
+        total: number;
+        isLast: boolean;
+    }>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -441,7 +452,7 @@ export declare class JiraClient {
     getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
     addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
         newEstimate?: string;
         reduceBy?: string;
@@ -449,7 +460,7 @@ export declare class JiraClient {
     updateWorklog(keyOrId: string, worklogId: string, updates: {
         timeSpentSeconds?: number;
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
     }): Promise<JiraWorklog>;
     deleteWorklog(keyOrId: string, worklogId: string, options?: {
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
@@ -630,6 +641,7 @@ export declare class JiraClient {
     refreshWebhooks(webhookIds: number[]): Promise<{
         expirationDate: string;
     }>;
+    private plainBody;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
@@ -1331,6 +1343,11 @@ export interface CreateRemoteLinkInput {
     };
 }
 
+// export: CsvImportOptions
+export interface CsvImportOptions {
+    fieldMap?: Record<string, string>;
+}
+
 // export: deleteTemplate
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
 export declare function deleteTemplate(name: string): Promise<void>;
@@ -1703,6 +1720,17 @@ export declare class JiraClient {
         total: number;
     }>;
     addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
+    deleteComment(keyOrId: string, commentId: string): Promise<void>;
+    getChangelog(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        values: JiraChangelogEntry[];
+        startAt: number;
+        total: number;
+        isLast: boolean;
+    }>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -1713,7 +1741,7 @@ export declare class JiraClient {
     getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
     addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
         newEstimate?: string;
         reduceBy?: string;
@@ -1721,7 +1749,7 @@ export declare class JiraClient {
     updateWorklog(keyOrId: string, worklogId: string, updates: {
         timeSpentSeconds?: number;
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
     }): Promise<JiraWorklog>;
     deleteWorklog(keyOrId: string, worklogId: string, options?: {
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
@@ -1902,6 +1930,7 @@ export declare class JiraClient {
     refreshWebhooks(webhookIds: number[]): Promise<{
         expirationDate: string;
     }>;
+    private plainBody;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
@@ -2498,13 +2527,13 @@ export declare function parseAttachmentTarget(args: string[]): AttachmentTargetR
 export declare function parseAttachRequest(args: string[], keyFlag?: string): AttachRequestResult;
 
 // export: parseCsv
-export declare function parseCsv(content: string): ImportIssue[];
+export declare function parseCsv(content: string, options?: CsvImportOptions): ImportIssue[];
 
 // export: parseDateInput
 export declare function parseDateInput(input: string): Date;
 
 // export: parseImportFile
-export declare function parseImportFile(filePath: string): Promise<ImportIssue[]>;
+export declare function parseImportFile(filePath: string, options?: CsvImportOptions): Promise<ImportIssue[]>;
 
 // export: parseJson
 export declare function parseJson(content: string): ImportIssue[];
@@ -3178,6 +3207,17 @@ export declare class JiraClient {
         total: number;
     }>;
     addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
+    deleteComment(keyOrId: string, commentId: string): Promise<void>;
+    getChangelog(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        values: JiraChangelogEntry[];
+        startAt: number;
+        total: number;
+        isLast: boolean;
+    }>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -3188,7 +3228,7 @@ export declare class JiraClient {
     getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
     addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
         newEstimate?: string;
         reduceBy?: string;
@@ -3196,7 +3236,7 @@ export declare class JiraClient {
     updateWorklog(keyOrId: string, worklogId: string, updates: {
         timeSpentSeconds?: number;
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
     }): Promise<JiraWorklog>;
     deleteWorklog(keyOrId: string, worklogId: string, options?: {
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
@@ -3377,6 +3417,7 @@ export declare class JiraClient {
     refreshWebhooks(webhookIds: number[]): Promise<{
         expirationDate: string;
     }>;
+    private plainBody;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
@@ -4078,6 +4119,11 @@ export interface CreateRemoteLinkInput {
     };
 }
 
+// export: CsvImportOptions
+export interface CsvImportOptions {
+    fieldMap?: Record<string, string>;
+}
+
 // export: deleteTemplate
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
 export declare function deleteTemplate(name: string): Promise<void>;
@@ -4450,6 +4496,17 @@ export declare class JiraClient {
         total: number;
     }>;
     addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
+    deleteComment(keyOrId: string, commentId: string): Promise<void>;
+    getChangelog(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        values: JiraChangelogEntry[];
+        startAt: number;
+        total: number;
+        isLast: boolean;
+    }>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -4460,7 +4517,7 @@ export declare class JiraClient {
     getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
     addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
         newEstimate?: string;
         reduceBy?: string;
@@ -4468,7 +4525,7 @@ export declare class JiraClient {
     updateWorklog(keyOrId: string, worklogId: string, updates: {
         timeSpentSeconds?: number;
         started?: string;
-        comment?: string;
+        comment?: string | AdfDocument;
     }): Promise<JiraWorklog>;
     deleteWorklog(keyOrId: string, worklogId: string, options?: {
         adjustEstimate?: "auto" | "leave" | "manual" | "new";
@@ -4649,6 +4706,7 @@ export declare class JiraClient {
     refreshWebhooks(webhookIds: number[]): Promise<{
         expirationDate: string;
     }>;
+    private plainBody;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
@@ -5245,13 +5303,13 @@ export declare function parseAttachmentTarget(args: string[]): AttachmentTargetR
 export declare function parseAttachRequest(args: string[], keyFlag?: string): AttachRequestResult;
 
 // export: parseCsv
-export declare function parseCsv(content: string): ImportIssue[];
+export declare function parseCsv(content: string, options?: CsvImportOptions): ImportIssue[];
 
 // export: parseDateInput
 export declare function parseDateInput(input: string): Date;
 
 // export: parseImportFile
-export declare function parseImportFile(filePath: string): Promise<ImportIssue[]>;
+export declare function parseImportFile(filePath: string, options?: CsvImportOptions): Promise<ImportIssue[]>;
 
 // export: parseJson
 export declare function parseJson(content: string): ImportIssue[];

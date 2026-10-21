@@ -6,6 +6,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, basename } from "node:path";
 import type { JiraClient } from "./client.js";
+import { adfToMarkdown } from "./adf-markdown.js";
 import type {
   JiraIssue,
   ExportedIssue,
@@ -146,7 +147,7 @@ export async function collectExportData(
         const commentsResult = await client.getComments(issue.key, { maxResults: 1000 });
         exportedIssue.comments = commentsResult.comments.map((c): ExportedComment => ({
           author: c.author?.displayName ?? c.author?.emailAddress ?? "Unknown",
-          body: client.adfToText(c.body),
+          body: adfToMarkdown(c.body, { baseUrl: client.siteUrl }),
           created: c.created,
         }));
       } catch {

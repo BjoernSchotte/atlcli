@@ -6,60 +6,76 @@
 import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import type { JiraClient } from "./client.js";
+import { toJiraRichText } from "./adf-markdown.js";
 import type { ImportIssue, ImportResult, ExportData } from "./types.js";
 
 /**
- * Parse a CSV line respecting quoted fields.
+ * Split CSV content into records (RFC 4180): quoted fields may contain commas,
+ * doubled quotes and line breaks, so multi-line markdown descriptions survive.
  */
-function parseCsvLine(line: string): string[] {
-  const values: string[] = [];
+function parseCsvRecords(content: string): string[][] {
+  const records: string[][] = [];
+  let record: string[] = [];
   let current = "";
   let inQuotes = false;
-  let i = 0;
 
-  while (i < line.length) {
-    const char = line[i];
-
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
     if (inQuotes) {
       if (char === '"') {
-        // Check for escaped quote
-        if (i + 1 < line.length && line[i + 1] === '"') {
+        if (content[i + 1] === '"') {
           current += '"';
-          i += 2;
-          continue;
+          i++;
+        } else {
+          inQuotes = false;
         }
-        inQuotes = false;
       } else {
         current += char;
       }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      record.push(current);
+      current = "";
+    } else if (char === "\n" || char === "\r") {
+      if (char === "\r" && content[i + 1] === "\n") i++;
+      record.push(current);
+      records.push(record);
+      record = [];
+      current = "";
     } else {
-      if (char === '"') {
-        inQuotes = true;
-      } else if (char === ",") {
-        values.push(current);
-        current = "";
-      } else {
-        current += char;
-      }
+      current += char;
     }
-    i++;
   }
-  values.push(current);
-  return values;
+  record.push(current);
+  records.push(record);
+  // Drop blank lines (a lone empty field).
+  return records.filter((r) => r.length > 1 || r[0]!.trim() !== "");
+}
+
+export interface CsvImportOptions {
+  /** Rename CSV columns before field mapping: `{ "Title": "summary" }`. */
+  fieldMap?: Record<string, string>;
 }
 
 /**
  * Parse CSV content to import issues.
  */
-export function parseCsv(content: string): ImportIssue[] {
-  const lines = content.split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) return [];
+export function parseCsv(content: string, options: CsvImportOptions = {}): ImportIssue[] {
+  const records = parseCsvRecords(content);
+  if (records.length < 2) return [];
 
-  const headers = parseCsvLine(lines[0]);
+  const rawHeaders = records[0]!;
+  for (const column of Object.keys(options.fieldMap ?? {})) {
+    if (!rawHeaders.includes(column)) {
+      throw new Error(`--map-field column "${column}" is not in the CSV header (${rawHeaders.join(", ")}).`);
+    }
+  }
+  const headers = rawHeaders.map((h) => options.fieldMap?.[h] ?? h);
   const issues: ImportIssue[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCsvLine(lines[i]);
+  for (let i = 1; i < records.length; i++) {
+    const values = records[i]!;
     const row: Record<string, string> = {};
     for (let j = 0; j < headers.length && j < values.length; j++) {
       row[headers[j]] = values[j];
@@ -214,9 +230,13 @@ export async function importIssues(
     const summary = issue.fields.summary;
     onProgress?.(i + 1, issues.length, summary, "processing");
 
-    // Add project to fields
+    // Add project to fields. A string description is markdown (CSV, or JSON
+    // written by hand); ADF from an atlcli JSON export passes through.
     const createFields = {
       ...issue.fields,
+      ...(typeof issue.fields.description === "string" && issue.fields.description
+        ? { description: toJiraRichText(client, issue.fields.description) }
+        : {}),
       project: { key: options.project },
     };
 
@@ -243,7 +263,10 @@ export async function importIssues(
       if (issue.comments && issue.comments.length > 0) {
         for (const comment of issue.comments) {
           try {
-            await client.addComment(created.key, comment.body);
+            await client.addComment(
+              created.key,
+              typeof comment.body === "string" ? toJiraRichText(client, comment.body) : comment.body
+            );
           } catch {
             // Continue on comment failure
           }
@@ -278,14 +301,17 @@ export async function importIssues(
 /**
  * Parse import file based on extension.
  */
-export async function parseImportFile(filePath: string): Promise<ImportIssue[]> {
+export async function parseImportFile(filePath: string, options: CsvImportOptions = {}): Promise<ImportIssue[]> {
   const content = await readFile(filePath, "utf-8");
   const lowerPath = filePath.toLowerCase();
 
   if (lowerPath.endsWith(".json")) {
+    if (options.fieldMap && Object.keys(options.fieldMap).length > 0) {
+      throw new Error("--map-field applies to CSV files only.");
+    }
     return parseJson(content);
   } else if (lowerPath.endsWith(".csv")) {
-    return parseCsv(content);
+    return parseCsv(content, options);
   } else {
     throw new Error(`Unsupported file format. Use .json or .csv`);
   }

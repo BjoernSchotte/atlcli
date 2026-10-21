@@ -22,6 +22,14 @@ These answer the original open questions and override the body where they confli
 | 9 | `bulk move` doc drift | **Implement** `jira bulk move`. See A1 "bulk move". |
 | 10 | DC search | Separate issue (see 3). |
 
+### Implementation notes (deviations found while building)
+
+- A1a: no `markdown-it-task-lists` dependency. Task lists are detected from `[ ]`/`[x]` list items in the token walker; only `markdown-it` was added.
+- A1b: `jira my --all` already means "include resolved", so the uncapped search flag is `--all-results` (both `search` and `my`).
+- A1b: `JiraClient` honours an explicit `profile.deploymentType` (custom-domain Cloud); without it the `*.atlassian.net` heuristic stays.
+- A1b: core `parseArgs` now treats a lone `-` after a long flag as its value, so `--description-file -` reads stdin.
+- A1b: fixed `bulk edit --set` reading only the first `--set` and splitting `labels=a,b` at the comma.
+
 ## Summary decision
 
 Ship three features in dependency order. **A1 lands first.** A2 and A3 both write rich Jira and Confluence content and need A1's converter.

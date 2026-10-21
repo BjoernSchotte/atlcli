@@ -1952,36 +1952,20 @@ async function handleLinkIssue(
   }
 
   const pageUrl = page.url ?? buildConfluenceUrl(profile, `/pages/${page.id}`);
-  const globalId = `atlcli-confluence-${page.id}`;
+  const linkedPage = { id: page.id, title: page.title, url: pageUrl };
 
-  // Get Jira client and create remote link
+  // Get Jira client and create remote link (lazy: wiki commands stay Jira-free)
   const { JiraClient } = await import("@atlcli/jira");
+  const { buildConfluencePageRemoteLink, linkedPageComment } = await import("./jira-confluence-link.js");
   assertCliAuthSupported(profile, opts);
   const jiraClient = new JiraClient(profile);
 
-  const input = {
-    globalId,
-    application: {
-      type: "com.atlassian.confluence",
-      name: "Confluence",
-    },
-    relationship: "mentioned in",
-    object: {
-      url: pageUrl,
-      title: page.title,
-      icon: {
-        url16x16: buildConfluenceUrl(profile, "/favicon.ico"),
-        title: "Confluence",
-      },
-    },
-  };
-
   try {
-    const result = await jiraClient.createRemoteLink(issueKey, input);
+    const result = await jiraClient.createRemoteLink(issueKey, buildConfluencePageRemoteLink(profile, linkedPage));
 
     // Add comment to issue if requested
     if (comment) {
-      await jiraClient.addComment(issueKey, `Linked to Confluence page: [${page.title}|${pageUrl}]`);
+      await jiraClient.addComment(issueKey, linkedPageComment(jiraClient, linkedPage));
     }
 
     output(
