@@ -1,9 +1,26 @@
-# Bundle B: Daily digest & flow metrics
+# Bundle B: Daily digest, flow metrics & Jira audit
 
-- Status: **Proposed**. Not implemented yet (2026-10-21)
+- Status: **Planned**, questions decided (2026-10-21)
 - Directory: `specs/digest-flow-metrics`
 - Planning baseline: `main` @ a6d4d51b. Record `git rev-parse HEAD` when implementation starts. All line numbers below come from that baseline on 2026-10-21.
 - Related: `apps/cli/src/commands/jira.ts` (`handleMy`, `handleAnalyze*`), `apps/cli/src/commands/search.ts` (`handleMy`, `handleRecent`), `packages/jira/src/analysis.ts`, `apps/cli/src/commands/audit.ts`
+
+## Decisions (2026-10-21)
+
+These answer the original open questions and override the body where they conflict.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Command name | `atlcli digest`. No alias. |
+| 2 | Marker on partial failure | **One marker per product.** `digest-state.json` holds `{ schemaVersion: 2, jira?: { lastRunAt }, confluence?: { lastRunAt } }`. Each product's marker advances only when all of that product's sections succeeded. With `--only`, only that product's marker can move. A schemaVersion 1 file is read as both markers. |
+| 3 | Default `--since` without a marker | `24h`. |
+| 4 | Single E2E account | Accepted. Foreign-author filtering is proven by fixtures; E2E uses `--include-own`. |
+| 5 | `audit jira` | **In this bundle**, with four check groups: stuck WIP, unassigned in progress, stale/orphaned, hygiene gaps. See "Design: B3 `audit jira`". |
+| 6 | `flow.statusMap` scope | **Per profile.** Global `flow.statusMap` plus `profiles.<name>.flow.statusMap`; the profile entry wins per key, `--status-map` wins over both. |
+| 7 | `--board` for flow metrics | Yes, via the board's saved filter (`GET /rest/agile/1.0/board/{id}/configuration` → `filter.id` → `GET /filter/{id}` → JQL). One or two extra requests, exact. Also defaults from `resolveDefaults().board`. |
+| 8 | Data Center | **Cloud first, DC best effort.** Cloud is specified and E2E-tested. DC keeps the documented fallbacks (bounded `getIssue` changelogs, no change details in the digest). The `/search/jql` DC question is a separate issue. |
+| 9 | `--summarize` model | Fixed to `ANTHROPIC_CHAT_MODEL_ID`, overridable only through the existing environment mechanism of `packages/research`. No new flag. |
+| 10 | Open inline comments windowed by `--since` | No. Always all open inline comments on the top `--max-pages` pages. |
 
 ## Decision summary
 
@@ -18,7 +35,7 @@ Ship two features that share one pattern. A thin IO shell fetches data in a smal
    - Status mapping uses Jira status categories, with an optional per-status override (config `flow.statusMap` or `--status-map`).
    - Percentiles are P50/P85/P95, nearest-rank.
 3. **Fix the changelog N+1** in all three existing call sites, using a new `JiraClient.getChangelogs()`. Cloud uses `POST /rest/api/3/changelog/bulkfetch` (up to 1000 issues per request). Data Center falls back to bounded-concurrency `getIssue(expand=changelog)`.
-4. **`audit jira` is not built.** The audit command is wiki-centric: it is gated by the `audit` feature flag and works on sync-db data (`audit-wiki.ts`). Flow metrics and aging are live analytics, not hygiene checks, so they belong in `jira analyze`. The `// Future: case "jira":` stub in `apps/cli/src/commands/audit.ts:31` stays as it is (see Open questions).
+4. **B3 `audit jira`** fills the `// Future: case "jira":` stub in `apps/cli/src/commands/audit.ts:31`. Flow metrics stay in `jira analyze` (analytics); `audit jira` is the hygiene view (findings to act on) and reuses the B2 flow timeline for stuck-WIP detection. It runs live queries, unlike `audit wiki`, which reads the sync db.
 
 ## Why this is needed
 
@@ -58,20 +75,20 @@ Ship two features that share one pattern. A thin IO shell fetches data in a smal
 
 ## Non-goals
 
-- `audit jira`, stale-issue hygiene, and auto-labelling.
+- Auto-fixing audit findings (labelling, assigning, transitioning). `audit jira` is report-only in v1.
 - Flow efficiency (active versus wait states), Monte Carlo forecasting, and SLE configuration.
 - A cycle-time histogram. The sparkline covers the visual need for now; add the histogram when someone asks.
 - Showing comment bodies or page excerpts in the digest. These are privacy-sensitive and need extra requests.
 - "Unresolved footer comments". Confluence Cloud footer comments have no resolution state. New footer comments appear under "Comments on your pages" instead.
 - Notifications, scheduling or a daemon. Users can run `atlcli digest` from cron or a shell profile.
 - A new package. The digest core lives in `apps/cli` because the CLI is its only consumer.
-- A Data Center fix for `/search/jql`, which is a pre-existing question (see Open questions).
+- A Data Center fix for `/search/jql`, which is a pre-existing question tracked separately (decision 8).
 
 ## Required invariants
 
 - **Functional core.** Every filter, dedupe, ordering, percentile, interval and rendering function is pure: no IO, and `now` is injected. Shells only fetch data and write files.
 - **Bounded IO.** Every query has an explicit limit. The digest makes at most about 20 HTTP requests by default. Flow metrics cap issues with `--limit` (default 1000) and report truncation.
-- **Partial failure.** Each section fails on its own. Failures go to `warnings[]` and are shown in the output. Exit code 0 if at least one section succeeded, otherwise 1. The marker is written only if no section failed.
+- **Partial failure.** Each section fails on its own. Failures go to `warnings[]` and are shown in the output. Exit code 0 if at least one section succeeded, otherwise 1. A product's marker is written only if none of that product's sections failed.
 - **No secrets in argv.** `--summarize` reads `ANTHROPIC_API_KEY` from the environment only. Like `research`, it rejects `--api-key`-style flags.
 - **Determinism.** Same inputs plus `now` give byte-identical text, Markdown and JSON. Sort keys are explicit. Days are bucketed in UTC, matching `calculateBurndown`.
 - **Backwards compatibility.** Existing `analyze` / `sprint report` JSON shapes stay unchanged. New `ConfluenceSearchResult` fields are optional.
@@ -88,7 +105,7 @@ atlcli digest [--since 24h|7d|yesterday|today|<ISO>|lastrun]
 ```
 
 - Default `--since`: `lastrun`. If no marker exists, fall back to `24h` and say so in the header.
-- The marker advances only when the effective since source was `lastrun` (the default), the run had no failed section, and `--no-mark` was not passed. An explicit `--since 7d` never moves it, so peeking is safe.
+- There is one marker per product (decision 2). A product's marker advances only when the effective since source was `lastrun` (the default), none of **that product's** sections failed, and `--no-mark` was not passed. An explicit `--since 7d` never moves it, so peeking is safe. Each product resolves its own `since`, so after a Confluence outage the next run catches up on Confluence while Jira stays current.
 - The marker value is the run **start** time, so changes made during the run are not lost.
 - `--space` and `--board` default to `resolveDefaults(config, profile)` (`packages/core/src/config.ts:262`).
 - `--limit` applies per section (default 10). `--max-pages` (default 10) caps the per-page inline-comment reads.
@@ -128,7 +145,7 @@ export function resolveDigestSince(input: string | undefined, now: Date, lastRun
 - Shell (`apps/cli/src/commands/digest.ts`):
   - `digestStatePath(profile)` returns `join(homedir(), ".atlcli", "profiles", safe(profile), "digest-state.json")`.
   - `safe()` rejects names outside `[A-Za-z0-9._-]` by falling back to `encodeURIComponent`, which prevents path traversal through a crafted profile name.
-  - File contents: `{ "schemaVersion": 1, "lastRunAt": "<ISO>" }`.
+  - File contents: `{ "schemaVersion": 2, "jira": { "lastRunAt": "<ISO>" }, "confluence": { "lastRunAt": "<ISO>" } }`. Pure `nextDigestState(prev, results, runStartedAt, opts)` decides which marker moves.
   - Writes are atomic (temporary file in the same directory, then `rename`, following `writeResearchMarkdownAtomic`, `research.ts:2499`). A corrupt file counts as "no marker", with a warning.
 
 ### Result model and rendering
@@ -242,14 +259,14 @@ Definitions (documented in the docs and tested):
 ### CLI (`jira analyze flow|aging|cfd`)
 
 ```text
-atlcli jira analyze flow  [--project KEY | --jql JQL] [--since 90d] [--limit 1000] [--status-map "A=wip,..."] [--json|--csv]
+atlcli jira analyze flow  [--project KEY | --board ID | --jql JQL] [--since 90d] [--limit 1000] [--status-map "A=wip,..."] [--json|--csv]
 atlcli jira analyze aging [same selection flags] [--json|--csv]
 atlcli jira analyze cfd   [same] [--group-by status|category] [--json|--csv]
 ```
 
 All three run the same shell: `fetchFlowData()` in `jira.ts`.
 
-1. Resolve the base filter: `--jql`, else `project = <--project | defaults.project>`. If neither exists, fail with `ERROR_CODES.USAGE`.
+1. Resolve the base filter: `--jql`, else the board filter JQL (`--board` or `defaults.board`), else `project = <--project | defaults.project>`. If none exists, fail with `ERROR_CODES.USAGE`.
 2. Run `search(\`(${base}) AND (statusCategory != Done OR updated >= -${days}d) ORDER BY created ASC\`, { fields: [summary,status,issuetype,created,resolutiondate,assignee], maxResults: 100, nextPageToken })` until `--limit` is reached. If the limit is hit, add a `truncated` warning.
 3. Call `getStatuses()` and `getChangelogs(issues, { fieldIds: ["status"] })`, then `attachChangelogs`.
 4. Build the resolver from `getStatuses()` plus `config.flow?.statusMap` plus `--status-map`. The flag wins.
@@ -261,9 +278,59 @@ Output:
 - **`--json`:** `{ schemaVersion: "1", query, window, metrics, diagnostics }`.
 - **`--csv`:** one row per issue (flow: `key,type,created,startedAt,doneAt,leadDays,cycleDays`; aging: `key,status,startedAt,ageDays,overP85`; cfd: `date,<columns…>`), escaped with the exported `escapeCsvValue`.
 
-Config: add `flow?: { statusMap?: Record<string, "todo" | "wip" | "done"> }` to `Config` (`packages/core/src/config.ts`), global only. Add a per-profile override later if someone asks.
+Config: add `flow?: { statusMap?: Record<string, "todo" | "wip" | "done"> }` to `Config` **and** to the profile type (`packages/core/src/config.ts`). Pure merge `resolveStatusMap(global, profile, flag)`: profile overrides global per key, the flag overrides both.
 
-`--board` for flow is skipped for now. `getBoard().location.projectKey` would be a lossy mapping, because board filters can be arbitrary. Use `--jql` instead.
+`--board <id>` (and `resolveDefaults().board`) is a third selection source next to `--jql` and `--project`: client `getBoardFilterJql(boardId)` reads `/rest/agile/1.0/board/{id}/configuration` → `filter.id` → `GET {apiPath}/filter/{id}` → `jql`. The board JQL often ends in `ORDER BY`; strip it before wrapping (`stripOrderBy`, pure, tested). Precedence: `--jql` > `--board` > `--project` > defaults.
+
+## Design: B3 `audit jira`
+
+### CLI surface
+
+```text
+atlcli audit jira [--project KEY | --board ID | --jql JQL]
+                  [--checks stuck-wip,unassigned-wip,stale,hygiene] [--all]
+                  [--stale 30,60,90] [--limit 1000] [--status-map "A=wip,..."]
+                  [--json | --markdown] [--profile NAME]
+```
+
+- Wired as `case "jira"` in `apps/cli/src/commands/audit.ts:31`, in a new `apps/cli/src/commands/audit-jira.ts`. Same `audit` feature-flag gate as `audit wiki`.
+- Selection is the same resolver as flow metrics (`--jql` > `--board` > `--project` > defaults), so `audit jira` and `analyze flow` always see the same issue set.
+- Without `--checks`, all four groups run. `--all` additionally includes issues in `todo` for the stale check (default: only `wip`).
+- Report-only. Exit code 0 with findings, 1 on fetch failure. A `--fail-on <severity>` for CI is a natural follow-up, not in v1.
+
+### Data fetch (shell)
+
+1. Open issues: `(${base}) AND statusCategory != Done`, fields `summary,status,issuetype,assignee,updated,created,parent,fixVersions,sprint,<points field>`, paginated to `--limit`.
+2. Recently done issues for the version check: `(${base}) AND statusCategory = Done AND resolved >= -90d`, same fields.
+3. Changelogs for open `wip` issues plus the done issues (one `getChangelogs` call, from T1), statuses via `getStatuses()`; story-points field via the existing `detectStoryPointsField`.
+4. Project versions (`getProjectVersions`) once per project key seen, to know whether a project uses versions at all.
+
+### Checks (pure, `packages/jira/src/audit.ts`)
+
+```ts
+export type JiraAuditCheck = "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
+export interface JiraAuditFinding {
+  check: JiraAuditCheck; rule: string; severity: "info" | "warning" | "error";
+  key: string; summary: string; status: string; assignee?: string; detail: string; ageDays?: number;
+}
+export function auditJiraIssues(input: {
+  open: JiraIssue[]; done: JiraIssue[]; resolve: StatusCategoryResolver; now: Date;
+  staleThresholds: [number, number, number]; pointsField?: string; projectsUsingVersions: Set<string>;
+  checks: Set<JiraAuditCheck>; includeTodo: boolean;
+}): JiraAuditReportV1;
+```
+
+| Check | Rule | Severity |
+|---|---|---|
+| stuck-wip | `wip` age (from `buildIssueFlowTimeline`) > P85 cycle time of the done set | warning; > P95 → error. No P85 (fewer than 5 done) → rule skipped with a diagnostic. |
+| unassigned-wip | category `wip` and no assignee | warning |
+| stale | no `updated` change for ≥ threshold 1/2/3 (default 30/60/90 days), `wip` only unless `--all` | info / warning / error, mirroring `audit wiki` stale levels |
+| hygiene: no-parent | non-epic, non-subtask issue without `parent` | info |
+| hygiene: unestimated-in-sprint | issue in an open or active sprint without a story-points value (only if a points field was detected) | warning |
+| hygiene: done-without-version | done in the last 90 days, project uses versions, `fixVersions` empty | info |
+
+- Output: summary counts per check and severity, then findings grouped by check, sorted by severity then age. `--json`: `{ schemaVersion: "1", query, generatedAt, summary, findings, diagnostics }`. `--markdown` for pasting into a Confluence page or a retro.
+- Thresholds and the status map come from the same config as flow metrics (`flow.statusMap`), plus `audit.jira.staleDays` (global and per profile, same merge rule).
 
 ## Implementation tasks
 
@@ -311,7 +378,8 @@ Config: add `flow?: { statusMap?: Record<string, "todo" | "wip" | "done"> }` to 
 ### T3: Flow CLI
 
 - [ ] `handleAnalyzeFlow`, `handleAnalyzeAging`, `handleAnalyzeCfd` and a shared `fetchFlowData` in `jira.ts`.
-- [ ] Add `flow.statusMap` to `Config`.
+- [ ] Add `flow.statusMap` to `Config` and the profile type; pure `resolveStatusMap` with tests (profile beats global per key, flag beats both).
+- [ ] `--board`: client `getBoardFilterJql`, pure `stripOrderBy`, shared selection resolver `resolveIssueSelection(flags, defaults)` used by flow and audit; tests for precedence and `ORDER BY` stripping.
 - [ ] Text renderers (pure; put them in `analysis.ts` next to `formatSprintMetrics`, or keep them small in `jira.ts`).
 - [ ] Update `analyzeHelp()`.
 - [ ] Update `apps/cli/src/completions.ts`: `analyze: [aging, burndown, cfd, flow, predictability, scope-change, velocity]` plus their flags.
@@ -350,10 +418,12 @@ Config: add `flow?: { statusMap?: Record<string, "todo" | "wip" | "done"> }` to 
   - The first run without a marker uses 24h and writes the marker with the start time.
   - A second run uses `lastrun`.
   - `--since 7d` and `--no-mark` leave the marker alone.
-  - A Confluence 500 still prints the Jira sections, exits 0 and does **not** move the marker.
+  - A Confluence 500 still prints the Jira sections, exits 0, moves the Jira marker and does **not** move the Confluence marker.
   - Both products failing exits 1.
   - A profile name containing `../` cannot escape `~/.atlcli/profiles`.
   - The total request count stays within budget (count the requests on the server).
+
+- [ ] Per-product marker: `nextDigestState` (pure) tests: Confluence fails → only the Jira marker moves; `--only jira` → only Jira; schemaVersion 1 file migrates to both markers; each product resolves its own `since`.
 
 ### T7: `--summarize`
 
@@ -366,12 +436,21 @@ Config: add `flow?: { statusMap?: Record<string, "todo" | "wip" | "done"> }` to 
   - with `--json`, the result goes in the `summary` field.
 - [ ] CLI test: no `ANTHROPIC_API_KEY` in the environment gives a warning and the digest is still printed.
 
+### T9: `audit jira` (depends on T1–T3)
+
+- [ ] `packages/jira/src/audit.ts`: `auditJiraIssues` (pure) plus `JiraAuditReportV1` types; export from the Node barrel; regenerate the API report.
+- [ ] `apps/cli/src/commands/audit-jira.ts`: fetch shell, renderers (text, Markdown, JSON); wire `case "jira"` in `audit.ts`; help text; completions.
+- [ ] Config: `audit.jira.staleDays` (global and per profile).
+- [ ] `packages/jira/src/audit.test.ts` with the flow fixtures plus new ones: stuck WIP at P85/P95 boundaries, no P85 below 5 done, unassigned WIP, stale levels at exact threshold days, `--all` including todo, epic/subtask exemption from no-parent, unestimated only when a points field exists, done-without-version only for projects with versions, deterministic ordering.
+- [ ] CLI test (`Bun.serve`): `audit jira --project ATLCLI --json` returns findings for each group; `--checks stale` limits output; missing selection fails with `ATLCLI_ERR_USAGE`; feature flag off → same message as `audit wiki`.
+
 ### T8: Docs (same PR as the behaviour change)
 
 - [ ] New `src/content/docs/digest.md`, linked in the `astro.config.*` sidebar directly after **Getting Started** as **Daily Digest**. Follow the page template in `CLAUDE.md`: intro → prerequisites → steps → options table (type, default, constraints) → minimal and advanced examples (cron, a standup Markdown file, `--summarize`) → privacy callout → troubleshooting (empty mentions caused by search index lag, Data Center has no change details, the marker did not advance because a section failed) → related topics.
 - [ ] New `src/content/docs/jira/flow-metrics.md` and a sidebar entry under Jira after **Analytics**. Cover the definitions, the status-mapping config (`flow.statusMap`), interpreting P85 and aging, the CFD "window start" caveat, CSV into spreadsheets, and troubleshooting (unknown statuses, truncation).
 - [ ] Update `src/content/docs/jira/analytics.md`: fix `--field` → `--points-field`, document `scope-change`, make the output examples match the real output, and link to flow metrics.
-- [ ] Update `src/content/docs/reference/cli-commands.md` (digest and the new analyze subcommands), `src/content/docs/configuration.md` (`flow.statusMap` and the digest state file location), and `src/content/docs/recipes/sprint-reporting.md` (a flow-metrics section).
+- [ ] New `src/content/docs/jira/audit.md` (or a Jira section in the existing audit page, whichever the sidebar uses): every rule with severity, thresholds, config, example output, and how audit relates to flow metrics.
+- [ ] Update `src/content/docs/reference/cli-commands.md` (digest, `audit jira`, the new analyze subcommands, `--board`), `src/content/docs/configuration.md` (`flow.statusMap` global and per profile, `audit.jira.staleDays`, the digest state file with per-product markers), and `src/content/docs/recipes/sprint-reporting.md` (a flow-metrics and audit section).
 - [ ] Optional: `src/content/docs/recipes/daily-standup.md` (digest `--markdown` in a cron job). Add it only if the digest page gets too long.
 
 ## E2E plan (gated by `ATLCLI_E2E=1`; profile `mayflower`, Jira `ATLCLI`, Confluence **only** `DOCSY`)
@@ -392,9 +471,10 @@ New file: `apps/cli/src/commands/digest-flow.e2e.test.ts`. It follows `export-pd
    - `jira analyze flow --jql "key in (A,B,C)" --since 1d --json`: `metrics.cycleTime.count === 1` (B), `skippedWip === 0`, WIP count 1 (A).
    - `jira analyze aging --jql ... --csv` has a row for A.
    - `jira analyze cfd --jql ... --since 1d --json` has today's column counts summing to 3.
-4. **N+1 regression (live).** `jira analyze burndown --sprint <active ATLCLI sprint, if any>` with `--verbose` logging. Assert that one bulkfetch call was logged. Skip if there is no sprint.
-5. **Summarize (optional).** Only if `ANTHROPIC_API_KEY` is set: `digest --since 30m --summarize --no-mark` returns non-empty `summary`.
-6. **Cleanup** (always, in `afterAll`): `jira issue delete --key A|B|C --confirm` and `wiki page delete --id <page> --confirm` (this removes the comments too). Delete the temporary HOME. Assert that no `ATLCLI` issue or `DOCSY` page with the test's run-id prefix remains.
+4. **Audit.** `audit jira --jql "key in (A,B,C)" --json`: A is reported as unassigned-wip after `jira issue assign --key A --assignee none`; B (done, project uses versions, no fixVersion) as done-without-version if ATLCLI has versions, otherwise not at all. Stale and stuck-WIP thresholds are covered by fixtures, not live.
+5. **N+1 regression (live).** `jira analyze burndown --sprint <active ATLCLI sprint, if any>` with `--verbose` logging. Assert that one bulkfetch call was logged. Skip if there is no sprint.
+6. **Summarize (optional).** Only if `ANTHROPIC_API_KEY` is set: `digest --since 30m --summarize --no-mark` returns non-empty `summary`.
+7. **Cleanup** (always, in `afterAll`): `jira issue delete --key A|B|C --confirm` and `wiki page delete --id <page> --confirm` (this removes the comments too). Delete the temporary HOME. Assert that no `ATLCLI` issue or `DOCSY` page with the test's run-id prefix remains.
 
 Before committing, also run `bun run test`, `bun run typecheck` and `bun scripts/api-report.ts` (with `--update` once the diff has been reviewed).
 
@@ -403,7 +483,8 @@ Before committing, also run `bun run test`, `bun run typecheck` and `bun scripts
 1. T0 first. Its results can change the comment-scoping design and the pagination tasks.
 2. T1 → T2 → T3. B2 is independent of B1 and can merge on its own. T1 alone is a valuable fix and goes in its own PR: `fix(jira): bulk-fetch changelogs instead of one request per issue`.
 3. T4 → T5 → T6 → T7 (`feat(cli): add atlcli digest`). T5 needs only T4's types.
-4. T8 is written alongside each PR.
+4. T9 after T3 (`feat(cli): add audit jira`). It needs the flow timeline, the changelog fix and the shared selection resolver.
+5. T8 is written alongside each PR.
 
 ## Risks
 
@@ -414,13 +495,4 @@ Before committing, also run `bun run test`, `bun run typecheck` and `bun scripts
 
 ## Open questions
 
-1. Command name: `atlcli digest` (proposed), `atlcli today`, or both, with an alias?
-2. Should the marker advance on partial failure? The proposal says no, which means a permanently broken Confluence section blocks the marker. An alternative is a separate marker per product.
-3. Default `--since` without a marker: is `24h` right, or `yesterday` (local midnight)?
-4. Is a single test account acceptable for E2E? Foreign-author filtering is then proven only by fixtures and `--include-own`. Or can we get a second `mayflower` account to post comments and mentions?
-5. Should `audit jira` exist at all, for example for stale or unassigned in-progress issues? It would reuse `buildIssueFlowTimeline`. Or remove the `// Future` stub in `audit.ts:31`?
-6. Should `flow.statusMap` be per profile (projects across tenants use different workflows), or is global plus `--status-map` enough?
-7. Should flow metrics accept `--board` through the board's saved filter (`GET /rest/agile/1.0/board/{id}/configuration` → filter JQL)? That is one extra request but exact.
-8. Data Center: `JiraClient.search()` always calls `/search/jql`, and it is unclear whether Data Center serves that endpoint. Is Data Center support for flow metrics and the digest's Jira sections in scope, or "Cloud first, Data Center best effort"?
-9. Should the `--summarize` model be configurable, or is `ANTHROPIC_CHAT_MODEL_ID` the fixed choice?
-10. Should "Open inline comments" be windowed by `--since` too, or always show all open comments on the top N pages (proposed)?
+None. All original questions were decided on 2026-10-21; see "Decisions" at the top.
