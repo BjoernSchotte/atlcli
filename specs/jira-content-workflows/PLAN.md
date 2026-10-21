@@ -34,7 +34,10 @@ These answer the original open questions and override the body where they confli
 - A3: the identity property stores a hash of the generated **storage**, not the markdown, so converter fixes also count as changes.
 - A3: `sprint review` shows no scope change (it needs one changelog request per issue); add it after digest-flow-metrics T1 (bulk changelogs).
 - A3: found and fixed a Confluence converter bug: a line starting with a smart link (`[KEY](url) text`) became a raw HTML block, so the rest of the line skipped inline markdown and escapes leaked onto the page.
-- A3: `sprint review` was not E2E-tested live: the ATLCLI board is a simple board without sprints. Covered by template/planner tests.
+- A3: `sprint review` was not E2E-tested live: the ATLCLI board is a simple board without sprints. Covered by template/planner tests; the live suite runs its dry run when `ATLCLI_E2E_SPRINT_ID` is set.
+- Live suite `apps/cli/src/e2e/jira-content-live.e2e.test.ts` (`bun run test:e2e:jira-content`) covers A1–A3 plus CSV import with `--map-field`, `bulk edit --issues --set labels=…`, notes by epic, a user template with `--var`, and DOCX export. Media nodes: a 1×1 PNG is attached and referenced through API v2 wiki markup, so Jira itself builds a real `media` node; a markdown edit keeps it byte-identical.
+- Found while testing live: `issue get --format markdown` piped into `issue update --description-file` wrote the `---` header into the description. `--description-file` now drops that header (only `key: value` lines between fences, so a leading rule stays).
+- Jira's `/search/jql` hands out a next-page token whenever a page is full, even if nothing follows, so `hasMore` means "may have more". Search is also eventually consistent; the live suite waits for the index before asserting counts.
 
 ## Summary decision
 

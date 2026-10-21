@@ -102,7 +102,7 @@ atlcli jira search --jql "..." --json
 |-------|---------|
 | `issues` | The returned issues |
 | `total` | Number of issues **returned**. Jira's search endpoint does not report a total match count. |
-| `hasMore` | `true` if more issues matched than were returned |
+| `hasMore` | `true` if Jira offered another page. Jira also does this when a page is exactly full, so a next page can be empty |
 | `nextPageToken` | Jira's token for the next page, when `hasMore` is `true` |
 
 :::note
