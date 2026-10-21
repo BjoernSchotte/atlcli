@@ -144,7 +144,13 @@ retained; before a lowercase letter it is still removed. A flagged hyphen
 also ends its fragment when text of another column follows on the same
 visual line, even under the fragment gap.
 
-Revisions after these steps: geometry policy V2 `/7`, table policy V2 `/6`,
+Cell line order: the text pieces of a ruled table cell were ordered by raw
+top edge, so a piece of one visual line set a hair higher (another font
+size) came before the start of its line; the pair was left unresolved and
+the table, then the page, fell back. Cell pieces are now ordered by physical
+line, then left to right.
+
+Revisions after these steps: geometry policy V2 `/7`, table policy V2 `/7`,
 text assembly V2 `/8`. The motivating
 private documents were re-measured locally; nothing about them is recorded here.
 

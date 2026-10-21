@@ -263,6 +263,17 @@ describe("open-sided and continued ruled tables", () => {
     ]]);
   });
 
+  it("reads a cell line whose second fragment sits a hair higher in line order", async () => {
+    // Regression: cell fragments were sorted by raw y, so the higher right
+    // fragment came before the start of its own line.
+    const table = openSidedTable([["Item", "Owner", "Due", "State"], ["", "", "", ""], ["Beta", "South", "June", "Done"]], 700, { topRule: true });
+    table.texts.push(["Alpha", 66, 668], ["one", 66, 656], ["two", 110, 656.4]);
+    const result = await normalizePdf(pagesPdf([table]));
+
+    expect(result.requiresFallbackPages).toEqual([]);
+    expect(tables(result).map(tableTexts)[0]?.[1]?.[0]).toBe("Alpha one two");
+  });
+
   it("keeps the later parts of a table whose first page falls back", async () => {
     // Regression: the table's blocks belonged to its first page; when that
     // page fell back, the rows on the following pages disappeared.

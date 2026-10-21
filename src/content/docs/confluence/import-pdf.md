@@ -251,6 +251,7 @@ tables from the drawing itself, without learned models:
 | Borders drawn on every cell | One native table; a missing separator merges cells into a span |
 | No outer side borders (a common Word table style), or no top rule on a continued page | The open side is implied where every row rule or column rule ends; native table |
 | Row split by a page break | One row; each cell's text continues as one paragraph |
+| Several text pieces on one line of a cell, one set slightly higher (another font size) | Read left to right in the line |
 | Only horizontal rules between rows | Rows from the rules, columns from left text edges shared by several rows; wrapped cell text stays in its cell |
 | No lines, three or more columns of single-line cells | Native table when every row has the same cells and the columns are clearly separated |
 | Table continues on the next page with the same columns | One table; a repeated bold header row is kept once |

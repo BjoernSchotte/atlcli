@@ -647,7 +647,8 @@ export function projectGeometryTableV2(parts: readonly PdfGeometryTablePartV2[])
           : repeat ? cellIds.get(key)! : `${tableId}:cell:${row + rowOffset}:${cell.column}`;
         if (partIndex === 0) cellIds.set(key, id);
         const header = partIndex === 0 ? row < grid.headerRows : repeat;
-        const fragments = [...cell.fragments].sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x || a.sourceOrder - b.sourceOrder);
+        // Physical lines, not raw y: text of one line can sit a hair higher.
+        const fragments = [...cell.fragments].sort((a, b) => a.physicalLineIndex - b.physicalLineIndex || a.bbox.x - b.bbox.x || a.sourceOrder - b.sourceOrder);
         if (fragments.length === 0) {
           evidence.get(page.index)!.push({
             sourceId: `${id}:p${page.index}`,
