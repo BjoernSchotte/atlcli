@@ -8,8 +8,9 @@ description: >-
   pages, Confluence page CRUD, labels, comments, page history, Markdown
   workspace sync (wiki docs pull/push), Confluence as a shell or filesystem
   (wiki sh/mount), page templates, DOCX and PDF export, DOCX and PDF import
-  as Confluence pages, static-site publishing, wiki content audits, and a
-  daily digest of what changed across Jira and Confluence. Use whenever
+  as Confluence pages, static-site publishing, wiki content audits, Jira
+  hygiene audits with a rules file and baseline, and a daily digest of what
+  changed across Jira and Confluence. Use whenever
   "atlcli" is mentioned, and whenever a task touches Jira or Confluence at
   all, such as reading or filing a ticket, commenting, updating a status,
   assigning work, checking a board or sprint, preparing a standup, logging
@@ -54,6 +55,8 @@ path as linked, for example `atlcli skill references/safety.md`.
    mostly does not: stdout stays empty, stderr gets one line such as
    `Jira API error (403): …`, and the exit code is 1. A few commands wrap it
    as `ATLCLI_ERR_API` instead. Check the exit code, not only stdout.
+   `atlcli audit jira` exits 2 when it lists findings at `--fail-on`, which
+   is a result, not a failure.
 3. **Mind the flag parser.** `--flag=value` keeps only the text before a
    second `=`, so `--jql='project = PROJ'` silently becomes `project `. Use the
    space form, `--jql 'project = PROJ'`. In the space form a value starting
@@ -70,7 +73,8 @@ path as linked, for example `atlcli skill references/safety.md`.
    `atlcli jira issue attach PROJ-101 ./f.txt --help` uploads the file. The
    `wiki` commands, `digest`, `doctor`, `update`, `models` and `completion`
    print help for `--help`, except `wiki my` and `wiki recent`, which run
-   their search.
+   their search. `atlcli audit jira --help` prints the root help; use
+   `atlcli audit jira help`.
 5. **Resolve names before using them.** Transition names are workflow actions
    (`Start Progress`), not statuses (`In Progress`). Issue types, account
    IDs, custom field IDs, board and page IDs all get looked up, never guessed.
@@ -117,6 +121,7 @@ path as linked, for example `atlcli skill references/safety.md`.
 | **Creating pages from a Word or PDF file**: `wiki import` preview and confirm, page trees, in-place update, batch | [references/confluence-import.md](references/confluence-import.md) |
 | A static Astro or Starlight site from Confluence pages: `wiki publish` | [references/confluence-publish.md](references/confluence-publish.md) |
 | Content health of a synced docs directory: stale pages, orphans, broken links (`audit wiki`) | [references/confluence-audit.md](references/confluence-audit.md) |
+| Jira hygiene: stuck or unassigned work, stale and overdue issues, rules file, baseline (`audit jira`) | [references/jira-audit.md](references/jira-audit.md) |
 | What changed since the last look, what waits on the user, a standup note: `atlcli digest` | [references/digest.md](references/digest.md) |
 | Plugins (`git`, `drawio`), `models`, `log`, `update`, `completion` | [references/plugins-and-local-tools.md](references/plugins-and-local-tools.md) |
 

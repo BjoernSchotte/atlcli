@@ -21,6 +21,7 @@ import confluenceVfs from "../../../skills/atlcli/references/confluence-vfs.md" 
 import digest from "../../../skills/atlcli/references/digest.md" with { type: "text" };
 import invocation from "../../../skills/atlcli/references/invocation.md" with { type: "text" };
 import jiraAgile from "../../../skills/atlcli/references/jira-agile.md" with { type: "text" };
+import jiraAudit from "../../../skills/atlcli/references/jira-audit.md" with { type: "text" };
 import jiraBulkAndAdmin from "../../../skills/atlcli/references/jira-bulk-and-admin.md" with { type: "text" };
 import jiraIssues from "../../../skills/atlcli/references/jira-issues.md" with { type: "text" };
 import jiraSearch from "../../../skills/atlcli/references/jira-search.md" with { type: "text" };
@@ -49,6 +50,7 @@ export const SKILL_FILES: readonly SkillFile[] = [
   { path: "references/digest.md", content: digest },
   { path: "references/invocation.md", content: invocation },
   { path: "references/jira-agile.md", content: jiraAgile },
+  { path: "references/jira-audit.md", content: jiraAudit },
   { path: "references/jira-bulk-and-admin.md", content: jiraBulkAndAdmin },
   { path: "references/jira-issues.md", content: jiraIssues },
   { path: "references/jira-search.md", content: jiraSearch },

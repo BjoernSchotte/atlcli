@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Profile } from "@atlcli/core";
+import { loadAuditRules } from "./commands/audit-jira.js";
 import { findSkillFile, SKILL_FILES } from "./skill-files.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -77,5 +80,31 @@ describe("findSkillFile", () => {
 
   it("does not normalise other path forms", () => {
     expect(findSkillFile("./SKILL.md")).toBeUndefined();
+  });
+});
+
+/** The first ```yaml fence of a Markdown text, or undefined. */
+function firstYamlBlock(markdown: string): string | undefined {
+  return /^```yaml\n([\s\S]*?)^```$/m.exec(markdown)?.[1];
+}
+
+describe("jira-audit.md", () => {
+  // The example goes through the same read, YAML parse and validation as
+  // `audit jira --rules <file>`, so a key the parser rejects or ignores fails here.
+  it("has a rules-file example that audit jira accepts as written", async () => {
+    const path = join(SKILL_DIR, "references", "jira-audit.md");
+    const block = existsSync(path) ? firstYamlBlock(readFileSync(path, "utf8")) : undefined;
+    expect(block).toBeDefined();
+    const dir = mkdtempSync(join(tmpdir(), "atlcli-skill-rules-"));
+    try {
+      const file = join(dir, "audit-rules.yaml");
+      writeFileSync(file, block!);
+      const rules = await loadAuditRules({ name: "skill-test" } as Profile, undefined, file);
+      expect(rules.rules["hygiene/stale"]?.thresholds?.warning).toEqual({ days: 45 });
+      expect(rules.custom.map((rule) => rule.id)).toEqual(["team/bug-without-component"]);
+      expect(rules.overrides[0]?.match.issueType).toEqual(["Epic"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

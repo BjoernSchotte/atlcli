@@ -74,7 +74,7 @@ itself:
 | `wiki page`, `wiki docs`, `wiki space`, `wiki search`, `wiki export`, `wiki template`, `wiki import`, `wiki publish`, `wiki sh`, `wiki mount`, `wiki vfs` | the handler checks `help` first and prints help |
 | `wiki my`, `wiki recent` | **no help check**: the search runs |
 | `doctor`, `update`, `models`, `completion`, `research`, `chat`, `digest`, `pdf-template` | prints help |
-| `audit`, `release-info` | prints the root help (`version --help` prints the version) |
+| `audit`, `release-info` | prints the root help (`version --help` prints the version); read the audit help with `atlcli audit jira help` |
 | `jira` (every subtree) | **no help check**: the verb runs with its flags stripped |
 | `auth`, `config`, `flag`, `log`, `plugin` | **no help check**: the verb runs with its positionals |
 
@@ -197,7 +197,9 @@ stdout when it holds `error.code`, and otherwise read stderr.
 
 Without `--json`, the message goes to stderr as a single bare line with no
 stack trace. Exit status is `0` on success and non-zero on failure; classify
-failures by `error.code` where it exists, not by the numeric status.
+failures by `error.code` where it exists, not by the numeric status. One
+exception: `atlcli audit jira` exits 2 when a finding reaches `--fail-on`,
+which is a result, not a failure (see [jira-audit.md](jira-audit.md)).
 `atlcli doctor` exits 1 when any check fails.
 
 Error messages are worth reading rather than discarding: they name the missing

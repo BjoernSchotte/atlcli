@@ -39,7 +39,7 @@ wiki vfs cache stats · wiki vfs conflicts list|show
 auth status|list · config list|get · flag list|get · log list|show
 plugin list · models list · doctor · version · release-info
 research · chat   (no Atlassian writes; research keeps local session files)
-digest --no-mark
+digest --no-mark · audit jira (without --update-baseline or --prune-baseline)
 ```
 
 Any other `list`, `get`, or `status` verb follows the same pattern. Group help
@@ -57,6 +57,11 @@ user's last-run marker, so the user's next digest starts after your run. Pass
 `--no-mark` unless the user asks for their own digest, and treat
 `--summarize` like `research` and `chat`: it sends data to Anthropic. See
 [digest.md](digest.md).
+
+`atlcli audit jira --update-baseline` and `--prune-baseline` rewrite the
+profile's audit baseline, which decides what later audits and the digest
+report. Ask first, and run them only with the selection and rules the
+baseline was built with. See [jira-audit.md](jira-audit.md#baseline).
 
 These read from Atlassian but write a local file. Treat them as local writes:
 confirm the output path, and never overwrite an existing file the user did not

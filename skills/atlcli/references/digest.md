@@ -58,7 +58,8 @@ The help names its defaults `defaults.space`, `defaults.board` and
   counts. At most 200 changed issues are read for the overview.
 - Audit, when the `audit` feature flag is on (from `FLAG_AUDIT`, the project
   `.atlcli/config.json` or the global config) and projects are given: the
-  error-level findings of the audit rules for those projects.
+  error-level findings of the audit rules for those projects (see
+  [jira-audit.md](jira-audit.md)).
 - Confluence: mentions, comments on the user's pages, open inline comments on
   them (the first `--max-pages`, default 10), the user's pages edited by
   others, watched pages changed, and pages recently changed in `--space`.
@@ -117,5 +118,5 @@ summary. Use it only when the user asks for it, as with `research` and `chat`.
 - Taking exit code 0 as "every section succeeded".
 - Adding `--summarize` without the user asking for it.
 
-Related: [jira-agile.md](jira-agile.md),
+Related: [jira-agile.md](jira-agile.md), [jira-audit.md](jira-audit.md),
 [auth-and-config.md](auth-and-config.md), [safety.md](safety.md).
