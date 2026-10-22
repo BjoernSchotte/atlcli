@@ -27,7 +27,7 @@ Safe to run without asking, at any time:
 jira me · jira my · jira search · jira issue get|transitions|history|pages|attachments
 jira issue comments list · jira project list|get|types · jira board list|get|backlog|issues
 jira sprint list|get|issues|report · jira epic list|get|issues|progress
-jira analyze velocity|burndown|scope-change|predictability
+jira analyze velocity|burndown|scope-change|predictability|flow|aging|cfd
 jira filter list|get · jira field list|get|options|search · jira subtask list
 jira component list|get · jira version list|get · jira watchers · jira template list|get
 jira worklog list|report · jira worklog timer status · jira webhook list

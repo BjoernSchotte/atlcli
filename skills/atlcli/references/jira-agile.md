@@ -14,6 +14,8 @@ metadata:
 - [Sprint review page](#sprint-review-page)
 - [Epics](#epics)
 - [Analytics](#analytics)
+  - [Flow metrics](#flow-metrics)
+  - [Status map](#status-map)
 - [Time tracking](#time-tracking)
 - [Anti-patterns](#anti-patterns)
 
@@ -97,6 +99,8 @@ nothing, and returns the rendered `markdown`, the `action` it would take
   unless `--export-template <name>` is given; any other extension exports DOCX.
   It is skipped with `--dry-run`.
 - `--points-field <id>` overrides story-points detection.
+- `--status-map <map>` sets which statuses count as done (see
+  [Status map](#status-map)).
 
 ## Epics
 
@@ -133,16 +137,79 @@ atlcli jira analyze burndown --sprint 456 --json
 atlcli jira analyze scope-change --sprint 456 --json
 ```
 
-`velocity` and `predictability` take `--board` (or `global.board`) and look at
-the most recent closed sprints; `burndown` and `scope-change` take `--sprint`.
-`--sprints` defaults to 5. The story-points field is
-auto-detected; override it with `--points-field customfield_10028` when the
-site uses a non-standard field (find the ID with `jira field search`).
+`velocity` and `predictability` take `--board` (or the default board) and look
+at the most recent closed sprints, oldest first (v2026.10.3 reads the oldest
+closed sprints instead); `burndown` and `scope-change` take `--sprint`.
+`--sprints` defaults to 5. The story-points field is auto-detected; override it
+with `--points-field customfield_10028` when the site uses a non-standard field
+(find the ID with `jira field search`).
 
 Metrics as defined by the tool: velocity is completed points per sprint;
 say-do ratio is completed ÷ committed × 100; scope change is
 (added + removed) ÷ committed × 100; burndown is daily remaining against the
-ideal curve.
+ideal curve. "Completed" follows the [status map](#status-map) in all four and
+in `sprint report`.
+
+### Flow metrics
+
+```bash
+atlcli jira analyze flow --project PROJ --since 30d --json
+atlcli jira analyze aging --board 123 --json
+atlcli jira analyze cfd --jql 'project = PROJ AND type = Bug' --group-by category --json
+```
+
+- `flow`: cycle time (first entry into in-progress to done) and lead time
+  (created to done) as P50, P85 and P95, plus weekly throughput.
+- `aging`: the issues in progress by age; text output marks those older than
+  the cycle-time P85 with `!`.
+- `cfd`: cumulative flow, issues per status (`--group-by status`, the default)
+  or per category (`--group-by category`) at the end of each UTC day.
+
+The issues come from `--jql`, else `--board` (a board id; the board's saved
+filter), else `--project`, else the default board, else the default project.
+A trailing `ORDER BY` in `--jql` is dropped. Every open issue of the selection
+is read, whatever its age; `--since` (`90d` by default, also `12w` or a bare
+number of days) bounds only the others, by their last update, and sets the
+metrics window. `--limit` (default 1000) caps the read: the issues are read
+oldest first, so a cut drops the newest. A cut prints `Warning: truncated: …`
+on stderr in text and CSV mode, and is listed in `diagnostics.warnings` in
+JSON; raise `--limit` or narrow the selection.
+
+`--json` prints `schemaVersion: "1"`: `flow` with `query`, `window`,
+`metrics` and `diagnostics`; `aging` with `query`, `cycleTimeP85`, `wip` and
+`diagnostics`; `cfd` with `query`, `window`, `columns`, `days` and
+`diagnostics`. `--csv` prints the completed issues (`flow`), the issues in
+progress (`aging`) or one row per day (`cfd`); `--json` wins over `--csv`.
+
+Status changes come from the changelogs: on Cloud in a bulk read, on Data
+Center one request per issue, five at a time. On Data Center, narrow the
+selection or lower `--limit` on large projects.
+
+Discover these with the bare `atlcli jira analyze`. `--help` on a verb runs it
+(see [invocation.md](invocation.md#why---help-on-a-verb-is-unsafe)).
+
+### Status map
+
+Jira's status category decides whether a status counts as to do, in progress
+or done, unless a status map overrides it:
+
+```bash
+atlcli jira analyze flow --project PROJ --status-map 'Code Review=wip,Fertig=done' --json
+```
+
+- `--status-map` takes comma-separated `<status>=todo|wip|done` entries; an
+  invalid entry is a usage error.
+- `flow.statusMap` in `~/.atlcli/config.json` sets a map globally or per
+  profile, for example `"flow": { "statusMap": { "Fertig": "done" } }`. A
+  profile's entries win over the global ones, and the flag wins over both.
+  `atlcli config set` does not accept the key (see
+  [auth-and-config.md](auth-and-config.md)). Write the values in lower case:
+  atlcli does not check them in the config file.
+- A key is a status name in any case, or a status id. An entry can move a
+  status into done or out of it, and the searches follow the map.
+- The map applies to `jira analyze` (all seven), `sprint report`,
+  `sprint review`, `version notes`, `audit jira` and `atlcli digest`. In
+  v2026.10.3 there is no status map, and "done" is Jira's Done category.
 
 ## Time tracking
 

@@ -4,8 +4,9 @@ description: >-
   Drives the atlcli CLI for Jira and Confluence: JQL/CQL search, issue
   create/update/transition/comment/link with Markdown descriptions and
   comments, attachments, subtasks, boards, sprints, epics, worklogs and
-  timers, bulk JQL edits, saved filters, release notes and sprint review
-  pages, Confluence page CRUD, labels, comments, page history, Markdown
+  timers, flow metrics (cycle time, aging, cumulative flow), bulk JQL edits,
+  saved filters, release notes and sprint review pages, Confluence page CRUD,
+  labels, comments, page history, Markdown
   workspace sync (wiki docs pull/push), Confluence as a shell or filesystem
   (wiki sh/mount), page templates, DOCX and PDF export, DOCX and PDF import
   as Confluence pages, static-site publishing, wiki content audits, Jira
@@ -110,7 +111,7 @@ path as linked, for example `atlcli skill references/safety.md`.
 | Profiles, credentials, config defaults, feature flags, logs, `doctor` | [references/auth-and-config.md](references/auth-and-config.md) |
 | Read, create, update, transition, comment, link, attach an issue; Markdown descriptions and comments; history; subtasks | [references/jira-issues.md](references/jira-issues.md) |
 | Find issues: JQL, convenience filters, saved filters, CSV/JSON export and import | [references/jira-search.md](references/jira-search.md) |
-| Boards, sprints, sprint review pages, epics, velocity/burndown, worklogs and timers | [references/jira-agile.md](references/jira-agile.md) |
+| Boards, sprints, sprint review pages, epics, velocity/burndown, flow metrics (cycle time, aging, cumulative flow), the status map, worklogs and timers | [references/jira-agile.md](references/jira-agile.md) |
 | Bulk JQL changes and moves, projects, components, versions, release notes pages, custom fields, issue templates, watchers, webhooks | [references/jira-bulk-and-admin.md](references/jira-bulk-and-admin.md) |
 | Confluence: find pages, create/delete/copy/move them, replace a whole body, page tasks to Jira issues, and page metadata: labels, comments, history, Jira links, spaces | [references/confluence-pages.md](references/confluence-pages.md) |
 | **Editing text that already exists on a page**, one page or many: `wiki docs` init/pull/status/push/sync, conflicts, file format, macros, the git plugin | [references/confluence-docs-sync.md](references/confluence-docs-sync.md) |

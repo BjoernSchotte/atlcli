@@ -150,6 +150,9 @@ atlcli jira version notes 10001 --space DOCS --export notes.pdf --json
   create for this version fails unless `--force` is given.
 - `--dry-run` reads Confluence and Jira, writes nothing, and returns the
   rendered markdown and the planned `action`. Always run it first.
+- Each issue's status category follows the status map, including
+  `--status-map <map>`, which the command's help does not list (see
+  [jira-agile.md](jira-agile.md#status-map)).
 - `--export <file>` also exports the page after the write: `.pdf` gives a PDF,
   any other extension a DOCX. `--export-template <name>` picks the export
   template.

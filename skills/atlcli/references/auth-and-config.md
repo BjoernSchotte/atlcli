@@ -111,7 +111,25 @@ user's stored credentials and profiles. Leave them to the user.
 | `logging.global`, `logging.project` | whether logs are written |
 
 These are the only keys `config set` accepts. Resolution: CLI flag > profile
-config > global config.
+config > global config. Help texts of newer commands call these
+`defaults.project`, `defaults.space` and `defaults.board`; they mean the same
+values.
+
+`config set` with any other key prints `Invalid key` and the valid keys, and
+still exits 0, also with `--json`: read the output. Three settings exist only
+as JSON in `~/.atlcli/config.json`, globally or under `profiles.<name>`:
+
+| Key | Used by |
+| --- | --- |
+| `flow.statusMap` | the status map: `jira analyze`, sprint reports and pages, `audit jira`, `digest` (see [jira-agile.md](jira-agile.md#status-map)) |
+| `digest.projects` | the project overview of `atlcli digest` (a profile's list replaces the global one) |
+| `audit.jira.staleDays` | the stale thresholds of `audit jira` without a rules file (the profile's wins) |
+
+Editing that file changes the user's config; ask first. atlcli also keeps
+per-profile state in `~/.atlcli/profiles/<profile>/`: `digest-state.json`
+(the digest's last-run marker), `audit-baseline.json` and optionally
+`audit-rules.yaml` (see [digest.md](digest.md) and
+[jira-audit.md](jira-audit.md)).
 
 This is why `atlcli jira search` with no `--project` may still be scoped, and
 why a command can succeed on one machine and fail with "required" on another.

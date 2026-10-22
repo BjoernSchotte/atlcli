@@ -53,9 +53,9 @@ The help names its defaults `defaults.space`, `defaults.board` and
   the active sprint of `--board`. A kanban board has no sprint and is skipped.
 - Projects, with `--project PROJ,OPS` or `digest.projects` in
   `~/.atlcli/config.json`: per project, the issues completed, created and
-  changed by anyone in the window. "Completed" follows the status map
-  (`--status-map`, `flow.statusMap`); so do the waiting list and the sprint
-  counts. At most 200 changed issues are read for the overview.
+  changed by anyone in the window. "Completed" follows the status map (see
+  [jira-agile.md](jira-agile.md#status-map)); so do the waiting list and the
+  sprint counts. At most 200 changed issues are read for the overview.
 - Audit, when the `audit` feature flag is on (from `FLAG_AUDIT`, the project
   `.atlcli/config.json` or the global config) and projects are given: the
   error-level findings of the audit rules for those projects (see
