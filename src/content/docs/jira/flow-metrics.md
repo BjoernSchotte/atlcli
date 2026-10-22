@@ -89,6 +89,10 @@ Or once in `~/.atlcli/config.json`, globally and per profile:
 
 Keys are status names (case-insensitive) or status ids. The profile wins per key over the global map, and `--status-map` wins over both.
 
+The map also decides which issues are searched as open or done: a status moved into or out of done is listed by id in the JQL (`status not in (…)`), so `jira analyze`, `audit jira` and `atlcli digest` all see the same issue set. A name key applies to the status's id, so a changelog that names the status differently (an older or untranslated name) still resolves.
+
+Prefer status ids or fixing the category in the workflow: Jira allows the same name in several workflows, and a name key maps all of them.
+
 ## Examples
 
 ### Flow

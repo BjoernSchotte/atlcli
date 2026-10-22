@@ -50,29 +50,56 @@ export function createStatusCategoryResolver(
   statuses: JiraStatus[],
   overrides: Record<string, FlowCategory> = {}
 ): StatusCategoryResolver {
+  const override = new Map(
+    Object.entries(overrides).map(([key, value]) => [key.toLowerCase(), value])
+  );
+  // A known id resolves through the site's name for it: changelogs can carry
+  // another name (an older or untranslated one) next to the same id.
   const byId = new Map<string, FlowCategory>();
   const byName = new Map<string, FlowCategory>();
   for (const status of statuses) {
     const category = CATEGORY_BY_JIRA_KEY[status.statusCategory?.key ?? ""];
     if (!category) continue;
-    byId.set(status.id, category);
     const name = status.name.toLowerCase();
+    byId.set(status.id, override.get(status.id.toLowerCase()) ?? override.get(name) ?? category);
     if (!byName.has(name)) byName.set(name, category);
   }
-  const override = new Map(
-    Object.entries(overrides).map(([key, value]) => [key.toLowerCase(), value])
-  );
   return (status) => {
     const id = status.id ?? undefined;
     const name = status.name?.toLowerCase();
     return (
-      (id !== undefined ? override.get(id.toLowerCase()) : undefined) ??
-      (name !== undefined ? override.get(name) : undefined) ??
-      (id !== undefined ? byId.get(id) : undefined) ??
-      (name !== undefined ? byName.get(name) : undefined) ??
+      (id !== undefined ? (byId.get(id) ?? override.get(id.toLowerCase())) : undefined) ??
+      (name !== undefined ? (override.get(name) ?? byName.get(name)) : undefined) ??
       CATEGORY_BY_JIRA_KEY[status.statusCategory?.key ?? ""]
     );
   };
+}
+
+/**
+ * JQL for "not done" and "done" under the resolver, so searches agree with a
+ * status map. Without overrides that move a status into or out of done, these
+ * are plain `statusCategory != Done` / `statusCategory = Done`; otherwise the
+ * moved statuses are listed by id as exceptions.
+ */
+export function statusScopeJql(
+  statuses: JiraStatus[],
+  resolve: StatusCategoryResolver
+): { open: string; done: string } {
+  const toDone: string[] = [];
+  const fromDone: string[] = [];
+  for (const status of statuses) {
+    const jiraDone = status.statusCategory?.key === "done";
+    const flowDone = resolve(status) === "done";
+    if (flowDone && !jiraDone) toDone.push(status.id);
+    if (jiraDone && !flowDone) fromDone.push(status.id);
+  }
+  const list = (ids: string[]) => ids.join(", ");
+  const scope = (category: string, exclude: string[], include: string[]) => {
+    let jql = `statusCategory ${category} Done`;
+    if (exclude.length) jql = `(${jql} AND status not in (${list(exclude)}))`;
+    return include.length ? `(${jql} OR status in (${list(include)}))` : jql;
+  };
+  return { open: scope("!=", toDone, fromDone), done: scope("=", fromDone, toDone) };
 }
 
 /** Parse `"Code Review=wip,Blocked=wip"` into an override map. */

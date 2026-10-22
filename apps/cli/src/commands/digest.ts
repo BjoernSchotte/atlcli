@@ -20,8 +20,17 @@ import {
   resolveDefaults,
 } from "@atlcli/core";
 import { ConfluenceClient, type ConfluenceSearchResult } from "@atlcli/confluence";
-import { JiraClient, type JiraIssue } from "@atlcli/jira";
+import {
+  JiraClient,
+  type JiraIssue,
+  type StatusCategoryResolver,
+  createStatusCategoryResolver,
+  parseStatusMap,
+  resolveStatusMap,
+  statusScopeJql,
+} from "@atlcli/jira";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { searchAll } from "./jira-flow.js";
 import {
   DIGEST_COMMENT_PAGES,
   type DigestProduct,
@@ -47,6 +56,8 @@ type Flags = Record<string, string | boolean | string[]>;
 
 const SECRET_FLAGS = ["api-key", "apikey", "anthropic-key", "key"];
 const COMMENT_READ_CONCURRENCY = 5;
+/** Changed issues read per run for the project overview (all projects together). */
+export const DIGEST_PROJECT_FETCH = 200;
 
 /** `~/.atlcli/profiles/<profile>/digest-state.json`; `homedir()` is read at call time. */
 export function digestStatePath(profile: string): string {
@@ -101,13 +112,29 @@ function sectionRunner(product: DigestProduct, errors: DigestRawInput["errors"])
 async function fetchJira(
   client: JiraClient,
   minutes: number,
-  opts: { board?: number; fetchLimit: number },
+  opts: { board?: number; fetchLimit: number; projects: string[]; statusMap: Record<string, "todo" | "wip" | "done"> },
   raw: DigestRawInput
-): Promise<void> {
+): Promise<{ projectsTruncated: boolean }> {
   const run = sectionRunner("jira", raw.errors);
-  const q = buildDigestQueries({ minutes });
-  if (raw.queries) Object.assign(raw.queries, { "jira.waiting": q.waiting, "jira.changed": q.changed });
-  const [me, waiting, changed, sprints] = await Promise.all([
+  // Statuses are read only when a status map or the project overview needs them.
+  const needStatuses = opts.projects.length > 0 || Object.keys(opts.statusMap).length > 0;
+  const scope = needStatuses
+    ? await run("statuses", async () => {
+        const statuses = await client.getStatuses();
+        const resolve: StatusCategoryResolver = createStatusCategoryResolver(statuses, opts.statusMap);
+        return { resolve, open: statusScopeJql(statuses, resolve).open };
+      })
+    : undefined;
+  const q = buildDigestQueries({ minutes, projects: opts.projects, open: scope?.open });
+  if (raw.queries) {
+    Object.assign(raw.queries, {
+      "jira.waiting": q.waiting,
+      "jira.changed": q.changed,
+      ...(q.projects ? { "jira.projects": q.projects } : {}),
+    });
+  }
+  let projectsTruncated = false;
+  const [me, waiting, changed, sprints, project] = await Promise.all([
     run("me", () => client.getCurrentUser()),
     run("waiting", async () => (await client.search(q.waiting, { fields: ["summary", "status", "priority"], maxResults: opts.fetchLimit })).issues),
     run("changed", async () => {
@@ -122,6 +149,8 @@ async function fetchJira(
     opts.board === undefined
       ? Promise.resolve(undefined)
       : run("sprints", async () => {
+          // Kanban and simple boards have no sprints; asking would be a 400.
+          if ((await client.getBoard(opts.board!)).type !== "scrum") return [];
           const active = await client.listSprints(opts.board!, { state: "active" });
           return Promise.all(
             active.values.map(async (sprint): Promise<DigestRawSprint> => {
@@ -130,6 +159,19 @@ async function fetchJira(
             })
           );
         }),
+    q.projects
+      ? run("projects", async () => {
+          const result = await searchAll(
+            client,
+            q.projects!,
+            ["summary", "status", "priority", "assignee", "created", "updated", "project"],
+            DIGEST_PROJECT_FETCH
+          );
+          projectsTruncated = result.truncated;
+          const changelogs = client.isCloudSite && result.issues.length ? await client.getChangelogs(result.issues) : undefined;
+          return { issues: result.issues, changelogs };
+        })
+      : Promise.resolve(undefined),
   ]);
   raw.me.jiraAccountId = me?.accountId;
   raw.me.displayName ??= me?.displayName;
@@ -138,7 +180,12 @@ async function fetchJira(
     changed: changed?.issues,
     changelogs: changed?.changelogs,
     sprints,
+    ...(opts.projects.length
+      ? { projectKeys: opts.projects, projectIssues: project?.issues, projectChangelogs: project?.changelogs }
+      : {}),
+    ...(scope ? { resolve: scope.resolve } : {}),
   };
+  return { projectsTruncated };
 }
 
 async function fetchConfluence(
@@ -230,6 +277,20 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
   const boardRaw = getFlag(flags, "board") ?? (defaults.board !== undefined ? String(defaults.board) : undefined);
   const board = boardRaw === undefined ? undefined : Number(boardRaw);
   if (board !== undefined && !Number.isInteger(board)) fail(opts, 1, ERROR_CODES.USAGE, "--board must be a board id.");
+  const projectFlag = getFlag(flags, "project");
+  const projects = projectFlag !== undefined
+    ? projectFlag.split(",").map((p) => p.trim()).filter(Boolean)
+    : (profile.digest?.projects ?? config.digest?.projects ?? []);
+  let flagMap: ReturnType<typeof parseStatusMap> | undefined;
+  const mapSpec = getFlag(flags, "status-map");
+  if (mapSpec !== undefined) {
+    try {
+      flagMap = parseStatusMap(mapSpec);
+    } catch (err) {
+      fail(opts, 1, ERROR_CODES.USAGE, message(err));
+    }
+  }
+  const statusMap = resolveStatusMap(config.flow?.statusMap, profile.flow?.statusMap, flagMap);
 
   const statePath = digestStatePath(profile.name);
   const { state, warning: stateWarning } = await readState(statePath);
@@ -263,11 +324,16 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
     ...(verbose || opts.json ? { queries: {} } : {}),
   };
   const fetchLimit = 2 * limit + 1;
-  const tasks: Promise<void>[] = [];
+  const tasks: Promise<unknown>[] = [];
+  let projectsTruncated = false;
   if (products.includes("jira")) {
     const jira = new JiraClient(profile, { observeTransport: count });
     raw.jiraBaseUrl = jira.siteUrl;
-    tasks.push(fetchJira(jira, sinceMinutes(since.jira!, runStartedAt), { board, fetchLimit }, raw));
+    tasks.push(
+      fetchJira(jira, sinceMinutes(since.jira!, runStartedAt), { board, fetchLimit, projects, statusMap }, raw).then((r) => {
+        projectsTruncated = r.projectsTruncated;
+      })
+    );
   }
   if (products.includes("confluence")) {
     const confluence = new ConfluenceClient(profile, { observeTransport: count });
@@ -277,6 +343,7 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
 
   const now = new Date();
   const digest = buildDigest(raw, { now, includeOwn: hasFlag(flags, "include-own"), limit });
+  if (projectsTruncated) digest.truncated.push(`jira.projects (more than ${DIGEST_PROJECT_FETCH} changed issues read)`);
 
   if (hasFlag(flags, "summarize")) {
     const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -328,6 +395,7 @@ What changed since your last look, and what waits on you, across Jira and Conflu
 
 Sections:
   Jira         Waiting on you · Changed (your issues and watched ones) · Active sprint
+  Projects     Per project: completed · created · changed, by anyone (--project, digest.projects)
   Confluence   Mentions · Comments on your pages · Open inline comments ·
                Your pages edited · Watched pages changed · Recently changed in space
 
@@ -336,7 +404,10 @@ Options:
                        m means minutes. Without a previous run: 24h. At most 30 days.
   --only <product>     jira or confluence
   --space <keys>       Space(s) for "Recently changed in space" (default: defaults.space)
-  --board <id>         Board for the active sprint (default: defaults.board)
+  --board <id>         Board for the active sprint (default: defaults.board; kanban boards
+                       have no sprint and are skipped)
+  --project <keys>     Projects for the overview, comma-separated (default: digest.projects)
+  --status-map <map>   Override status categories, e.g. "Fertig=done" (config flow.statusMap)
   --limit <n>          Items per section (default: 10)
   --max-pages <n>      Your pages checked for open inline comments (default: 10)
   --include-own        Keep your own edits and comments
@@ -354,6 +425,7 @@ product's sections failed.
 Examples:
   atlcli digest
   atlcli digest --since 7d --only jira
+  atlcli digest --project GROW,ATLCLI --since 7d
   atlcli digest --markdown > standup.md
   atlcli digest --summarize`;
 }

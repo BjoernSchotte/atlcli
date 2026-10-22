@@ -45,6 +45,7 @@ The audit reads the open issues of the selection and the issues done in the last
 
 | Check | Rule | Severity | Condition |
 |---|---|---|---|
+| `workflow` | `resolved-not-done` | warning | A status holds issues with a resolution but sits outside the Done category. One finding per status, with a count (`200+` when more than 200 such issues exist) and example keys. Statuses the status map already maps to done are not reported. |
 | `stuck-wip` | `stuck-wip` | warning / error | In progress longer than the cycle-time P85 (warning) or P95 (error) of the issues done in the last 90 days. Needs 5 completed issues; otherwise skipped with a note. |
 | `unassigned-wip` | `unassigned-wip` | warning | In progress without an assignee |
 | `stale` | `stale` | info / warning / error | Not updated for 30 / 60 / 90 days. Only in-progress issues, unless `--all` adds to-do issues. |
@@ -54,6 +55,15 @@ The audit reads the open issues of the selection and the issues done in the last
 
 Findings are grouped by check and sorted by severity, then age.
 
+### Misconfigured workflows
+
+The `workflow` check looks at categories, not names: a status that holds resolved issues usually means done. If it sits in the To Do or In Progress category instead, every category-based number counts that finished work as open: flow metrics, `stuck-wip`, and the digest's "Waiting on you". Fix it in one of two ways:
+
+- **In Jira (preferred):** move the status to the Done category in the workflow.
+- **In atlcli:** map it, e.g. `--status-map "Fertig=done"` or `flow.statusMap` (see [Status mapping](flow-metrics.md#status-mapping)).
+
+A handful of issues in an in-progress status can also mean the opposite: the issues were reopened and kept their resolution. Then clear the resolution on those issues instead.
+
 ## Options
 
 | Option | Type | Default | Description |
@@ -61,7 +71,7 @@ Findings are grouped by check and sorted by severity, then age.
 | `--project` | project key | `defaults.project` | Select the project's issues |
 | `--board` | board id | `defaults.board` | Select the issues of the board's saved filter |
 | `--jql` | JQL | — | Any JQL; wins over `--board` and `--project` |
-| `--checks` | comma-separated | all four | `stuck-wip`, `unassigned-wip`, `stale`, `hygiene` |
+| `--checks` | comma-separated | all five | `workflow`, `stuck-wip`, `unassigned-wip`, `stale`, `hygiene` |
 | `--all` | flag | off | Include to-do issues in the stale check |
 | `--stale` | `a,b,c` days, ascending | `30,60,90` | Stale thresholds for info / warning / error |
 | `--status-map` | `"<status>=todo\|wip\|done,…"` | — | Override status categories (see [Flow Metrics](flow-metrics.md#status-mapping)) |
@@ -126,7 +136,7 @@ atlcli audit jira --jql "project = ATLCLI AND component = API" --stale 7,14,30 -
   "summary": {
     "total": 2,
     "bySeverity": { "error": 0, "warning": 1, "info": 1 },
-    "byCheck": { "stuck-wip": 0, "unassigned-wip": 1, "stale": 1, "hygiene": 0 }
+    "byCheck": { "workflow": 0, "stuck-wip": 0, "unassigned-wip": 1, "stale": 1, "hygiene": 0 }
   },
   "findings": [
     { "check": "unassigned-wip", "rule": "unassigned-wip", "severity": "warning", "key": "ATLCLI-12", "summary": "Retry uploads", "status": "In Progress", "detail": "In progress without an assignee." }
@@ -152,7 +162,7 @@ Fewer than 5 issues were done in the last 90 days with a known start. The other 
 No story points field was found, or the site has no Jira Software sprints. Pass `--points-field`.
 
 **Everything shows up as stale or stuck.**
-Check the status mapping: a done-like status in the In Progress category keeps finished work "in progress". Map it with `--status-map "Released=done"`.
+Check the status mapping: a done-like status in the In Progress category keeps finished work "in progress", and `stuck-wip` is skipped for lack of completed issues. Map it with `--status-map "Released=done"`; the done reference set then includes that status (issues updated in the last 90 days).
 
 ## Related topics
 

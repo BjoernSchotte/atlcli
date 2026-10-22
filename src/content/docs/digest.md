@@ -12,7 +12,8 @@ description: "atlcli digest: what changed since your last look and what waits on
 - An authenticated profile with Jira and Confluence access (`atlcli auth login`)
 - **Jira permission**: Browse Projects for the issues you work on
 - **Confluence permission**: View for the spaces you work in
-- For the sprint section: a board, set with `--board` or `defaults.board`
+- For the sprint section: a scrum board, set with `--board` or `defaults.board` (kanban boards have no sprints and are skipped)
+- For the project overview: Jira project keys, set with `--project` or `digest.projects`
 - For `--summarize`: `ANTHROPIC_API_KEY` in the environment
 
 ## Steps
@@ -31,7 +32,15 @@ description: "atlcli digest: what changed since your last look and what waits on
    atlcli digest --since 7d
    ```
 
-3. Paste the Markdown version into a standup note:
+3. Add an overview of whole projects, whoever worked on them:
+
+   ```bash
+   atlcli digest --project GROW,VDS --since 2d
+   ```
+
+   To get the overview on every run, set `digest.projects` once (see [Project overview](#project-overview)).
+
+4. Paste the Markdown version into a standup note:
 
    ```bash
    atlcli digest --markdown > standup.md
@@ -44,6 +53,7 @@ description: "atlcli digest: what changed since your last look and what waits on
 | Jira | Waiting on you | Unresolved issues assigned to you that are not in a done status, by priority |
 | Jira | Changed | Issues you are assigned to, reported or watch that changed in the window, each with its changes (`status: To Do → In Progress by Ann · 3h ago`) |
 | Jira | Sprint | Each active sprint of the board: progress bar, to do / in progress / done counts, your open issues, days left |
+| Jira project | Completed · Created · Changed | Per project from `--project` or `digest.projects`: issues moved into a done status, issues created, and issues changed in the window, by anyone, with assignee and change lines |
 | Confluence | Mentions | Pages and comments that mention you |
 | Confluence | Comments on your pages | New comments on your 50 most recently modified pages |
 | Confluence | Open inline comments | Unresolved inline comments on your 10 most recently modified pages (`--max-pages`), oldest first. These are not limited to the window: they wait on you. |
@@ -64,7 +74,9 @@ Empty sections are not printed. If nothing changed, the digest says `Nothing new
 | `--since` | `lastrun`, `<n>m`, `<n>h`, `<n>d`, `<n>w`, `today`, `yesterday`, ISO date or datetime | `lastrun` | Start of the window. `m` means **minutes** here (in `jira worklog` it means months). `today` and `yesterday` start at local midnight. At most 30 days back. |
 | `--only` | `jira` or `confluence` | both | Run one product only |
 | `--space` | space key(s), comma-separated | `defaults.space` | Enables "Recently changed in space" |
-| `--board` | board id | `defaults.board` | Enables the sprint section |
+| `--board` | board id | `defaults.board` | Enables the sprint section (scrum boards only) |
+| `--project` | project key(s), comma-separated | `digest.projects` | Enables the project overview |
+| `--status-map` | `"<status>=todo\|wip\|done,…"` | `flow.statusMap` | Override status categories, see [Status mapping](jira/flow-metrics.md#status-mapping) |
 | `--limit` | integer ≥ 1 | `10` | Items per section; a cut section is listed under warnings |
 | `--max-pages` | integer ≥ 1 | `10` | Your pages checked for open inline comments |
 | `--include-own` | flag | off | Keep your own edits and comments |
@@ -73,6 +85,29 @@ Empty sections are not printed. If nothing changed, the digest says `Nothing new
 | `--json` | flag | off | JSON output (`schemaVersion: "1"`); every section key is present, `[]` when empty, and the queries are included |
 | `--summarize` | flag | off | Add a short summary from Anthropic, see [Summaries](#summaries) |
 | `--verbose` | flag | off | Print every JQL/CQL query, the request count and the duration to stderr |
+
+## Project overview
+
+The personal sections only show what concerns you. The project overview shows everything that happened in whole projects: per project, the issues **completed** (moved into a done status in the window), **created** and **changed**, by anyone, including you.
+
+Set the projects once in `~/.atlcli/config.json`, globally or per profile. A profile's list replaces the global one, and `--project` replaces both:
+
+```json
+{
+  "digest": { "projects": ["GROW"] },
+  "profiles": {
+    "work": { "digest": { "projects": ["GROW", "VDS", "ADMIN"] } }
+  }
+}
+```
+
+| Option | Type | Default | Constraints |
+|---|---|---|---|
+| `digest.projects` | string[] | `[]` | Jira project keys |
+
+The overview reads up to 200 changed issues across all projects in one search, plus one bulk changelog request. Each list is cut at `--limit`.
+
+"Done" follows the Jira status category (To Do, In Progress, Done), not status names. If a workflow puts a done status in another category, map it with `flow.statusMap` or `--status-map`, e.g. `"Fertig=done"`. The map also applies to "Waiting on you" and the sprint counts.
 
 ## The last-run marker
 
@@ -153,6 +188,12 @@ A section of that product failed (see the warnings), or the run used `--since` o
 
 **`truncated: jira.waiting` under warnings.**
 More items matched than `--limit`. Raise `--limit`, or use `atlcli jira my` for the full list.
+
+**Finished issues show up in "Waiting on you", or "Completed" stays empty.**
+The workflow puts a done status into the To Do or In Progress category. Map it: `--status-map "Fertig=done"` or `flow.statusMap`. Better still, move the status to the Done category in the Jira workflow.
+
+**`truncated: jira.projects` under warnings.**
+More than 200 issues changed in the projects during the window. Narrow `--since` or the project list.
 
 **The digest reaches back only 30 days.**
 That is the upper bound, to keep queries cheap after a long break. A warning says so.

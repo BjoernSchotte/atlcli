@@ -116,6 +116,12 @@ export type FlowConfig = {
   statusMap?: Record<string, "todo" | "wip" | "done">;
 };
 
+/** `atlcli digest` settings; a profile's `projects` replace the global list. */
+export type DigestConfig = {
+  /** Jira project keys for the project overview, whoever changed the issues. */
+  projects?: string[];
+};
+
 /**
  * Registered project configuration for --global audit flag.
  */
@@ -171,6 +177,8 @@ export type Config = {
   vfs?: VfsConfig;
   /** Flow metrics configuration */
   flow?: FlowConfig;
+  /** Digest configuration */
+  digest?: DigestConfig;
   /** Registered projects for --global audit flag */
   projects?: ProjectConfig[];
   /** @deprecated Use 'global' instead. Kept for migration. */

@@ -290,6 +290,9 @@ export type Profile = {
     flow?: {
         statusMap?: Record<string, "todo" | "wip" | "done">;
     };
+    digest?: {
+        projects?: string[];
+    };
     audit?: {
         jira?: {
             staleDays?: [
@@ -580,6 +583,7 @@ export type Config = {
     audit?: AuditConfig;
     vfs?: VfsConfig;
     flow?: FlowConfig;
+    digest?: DigestConfig;
     projects?: ProjectConfig[];
     defaults?: DefaultsConfig;
 };
@@ -621,6 +625,11 @@ export declare function detectInstallMethod(binPath?: string): InstallMethod;
 
 // export: detectPlatform
 export declare function detectPlatform(): string;
+
+// export: DigestConfig
+export type DigestConfig = {
+    projects?: string[];
+};
 
 // export: encodeBase64
 export declare function encodeBase64(input: string): string;
@@ -1007,6 +1016,9 @@ export type Profile = {
     };
     flow?: {
         statusMap?: Record<string, "todo" | "wip" | "done">;
+    };
+    digest?: {
+        projects?: string[];
     };
     audit?: {
         jira?: {
@@ -1736,6 +1748,9 @@ export type Profile = {
     flow?: {
         statusMap?: Record<string, "todo" | "wip" | "done">;
     };
+    digest?: {
+        projects?: string[];
+    };
     audit?: {
         jira?: {
             staleDays?: [
@@ -2098,6 +2113,7 @@ export type Config = {
     audit?: AuditConfig;
     vfs?: VfsConfig;
     flow?: FlowConfig;
+    digest?: DigestConfig;
     projects?: ProjectConfig[];
     defaults?: DefaultsConfig;
 };
@@ -2139,6 +2155,11 @@ export declare function detectInstallMethod(binPath?: string): InstallMethod;
 
 // export: detectPlatform
 export declare function detectPlatform(): string;
+
+// export: DigestConfig
+export type DigestConfig = {
+    projects?: string[];
+};
 
 // export: encodeBase64
 export declare function encodeBase64(input: string): string;
@@ -2525,6 +2546,9 @@ export type Profile = {
     };
     flow?: {
         statusMap?: Record<string, "todo" | "wip" | "done">;
+    };
+    digest?: {
+        projects?: string[];
     };
     audit?: {
         jira?: {
