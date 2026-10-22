@@ -6,6 +6,7 @@
  * an issue summary like `Fix *all* the [things]` turning into formatting.
  */
 import { getStoryPoints } from "./analysis.js";
+import type { StatusCategoryResolver } from "./flow.js";
 import type { AdfNode, JiraIssue, SprintMetrics } from "./types.js";
 
 export type ReportStatusCategory = "todo" | "inprogress" | "done";
@@ -96,6 +97,8 @@ export interface BuildReportInput {
   baseUrl: string;
   pointsField?: string;
   sprintMetrics?: SprintMetrics;
+  /** Status resolver (status map); without it, categories come from Jira. */
+  resolve?: StatusCategoryResolver;
   now: Date;
 }
 
@@ -108,7 +111,7 @@ export function buildReportData(input: BuildReportInput): ReportData {
   const issues = input.issues
     .map((issue): ReportIssue => {
       const f = issue.fields;
-      const category = statusCategory(f.status?.statusCategory?.key);
+      const category = statusCategory(f.status, input.resolve);
       const parent = f.parent;
       const isEpicParent = parent?.fields?.issuetype?.name === "Epic" || parent?.fields?.issuetype?.hierarchyLevel === 1;
       const parentSummary = parent?.fields?.summary ?? parent?.key ?? "";
@@ -244,9 +247,11 @@ function proseOf(nodes: AdfNode[]): string {
     .join("");
 }
 
-function statusCategory(key: string | undefined): ReportStatusCategory {
-  if (key === "done") return "done";
-  if (key === "indeterminate") return "inprogress";
+function statusCategory(status: JiraIssue["fields"]["status"], resolve?: StatusCategoryResolver): ReportStatusCategory {
+  const category = status && resolve ? resolve(status) : undefined;
+  const key = status?.statusCategory?.key;
+  if (category === "done" || (!category && key === "done")) return "done";
+  if (category === "wip" || (!category && key === "indeterminate")) return "inprogress";
   return "todo";
 }
 

@@ -14,7 +14,7 @@ import {
   resolveStatusMap,
   statusScopeJql,
 } from "./flow.js";
-import { calculateBurndown } from "./analysis.js";
+import { calculateBurndown, calculateSprintMetrics } from "./analysis.js";
 import type { JiraChangelogEntry, JiraIssue, JiraStatus } from "./types.js";
 
 const STATUSES: JiraStatus[] = [
@@ -298,6 +298,39 @@ describe("calculateBurndown on ascending changelogs", () => {
       ["2026-10-02", 3],
       ["2026-10-03", 0],
       ["2026-10-04", 0],
+    ]);
+  });
+});
+
+describe("sprint metrics under a status map", () => {
+  // Regression: live sites keep "Fertig" in the In Progress category; sprint
+  // report, burndown and review counted every such issue as not done.
+  const sprint = {
+    id: 1,
+    name: "S1",
+    state: "closed",
+    startDate: "2026-10-01T00:00:00.000Z",
+    endDate: "2026-10-03T00:00:00.000Z",
+  } as Parameters<typeof calculateBurndown>[0];
+  const points = { customfield_10016: 5 } as Partial<JiraIssue["fields"]>;
+  const reviewed = issue("P-1", "2026-10-01T00:00:00.000Z", [["3", "2026-10-02T09:00:00.000Z"]], points);
+  const mapped = createStatusCategoryResolver(STATUSES, { "Code Review": "done" });
+
+  test("without a map, done is the Done category", () => {
+    const m = calculateSprintMetrics(sprint, [reviewed], "customfield_10016");
+    expect([m.completedIssues, m.completedPoints]).toEqual([0, 0]);
+    expect(calculateBurndown(sprint, [reviewed], "customfield_10016").at(-1)?.remaining).toBe(5);
+  });
+
+  test("a status mapped to done counts as done in metrics and burndown", () => {
+    const m = calculateSprintMetrics(sprint, [reviewed], "customfield_10016", undefined, mapped);
+    expect([m.completedIssues, m.completedPoints, m.sayDoRatio]).toEqual([1, 5, 100]);
+    expect(
+      calculateBurndown(sprint, [reviewed], "customfield_10016", mapped).map((d) => [d.date, d.remaining])
+    ).toEqual([
+      ["2026-10-01", 5],
+      ["2026-10-02", 0],
+      ["2026-10-03", 0],
     ]);
   });
 });

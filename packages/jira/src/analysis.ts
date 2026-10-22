@@ -14,6 +14,7 @@ import type {
   VelocityTrend,
   JiraChangelogEntry,
 } from "./types.js";
+import type { StatusCategoryResolver } from "./flow.js";
 
 /**
  * Get story points from an issue using the specified custom field.
@@ -30,10 +31,13 @@ export function getStoryPoints(issue: JiraIssue, pointsField: string): number {
 }
 
 /**
- * Check if an issue is complete (done status category).
+ * Check if an issue is complete: its status is in the Done category, or maps
+ * to done under `resolve` (a status map, see `createStatusCategoryResolver`).
  */
-export function isIssueComplete(issue: JiraIssue): boolean {
-  return issue.fields.status?.statusCategory?.key === "done";
+export function isIssueComplete(issue: JiraIssue, resolve?: StatusCategoryResolver): boolean {
+  const status = issue.fields.status;
+  if (!status) return false;
+  return resolve ? resolve(status) === "done" : status.statusCategory?.key === "done";
 }
 
 /**
@@ -43,12 +47,14 @@ export function isIssueComplete(issue: JiraIssue): boolean {
  * @param issues - All issues that are/were in the sprint
  * @param pointsField - Custom field ID for story points (e.g., "customfield_10016")
  * @param issuesWithChangelog - Optional issues with changelog for scope change calculation
+ * @param resolve - Optional status resolver; without it, done means the Done category
  */
 export function calculateSprintMetrics(
   sprint: JiraSprint,
   issues: JiraIssue[],
   pointsField: string,
-  issuesWithChangelog?: JiraIssue[]
+  issuesWithChangelog?: JiraIssue[],
+  resolve?: StatusCategoryResolver
 ): SprintMetrics {
   // Calculate points and issue counts
   let committedPoints = 0;
@@ -60,7 +66,7 @@ export function calculateSprintMetrics(
     const points = getStoryPoints(issue, pointsField);
     committedPoints += points;
 
-    if (isIssueComplete(issue)) {
+    if (isIssueComplete(issue, resolve)) {
       completedPoints += points;
       completedIssues++;
     } else {
@@ -244,11 +250,13 @@ export function calculateVelocityTrend(
  * @param sprint - The sprint to analyze
  * @param issuesWithChangelog - Issues with changelog.histories populated
  * @param pointsField - Custom field ID for story points
+ * @param resolve - Optional status resolver; without it, done means the Done category
  */
 export function calculateBurndown(
   sprint: JiraSprint,
   issuesWithChangelog: JiraIssue[],
-  pointsField: string
+  pointsField: string,
+  resolve?: StatusCategoryResolver
 ): BurndownDataPoint[] {
   if (!sprint.startDate || !sprint.endDate) {
     return [];
@@ -268,7 +276,8 @@ export function calculateBurndown(
   // Build a map of completion dates
   const completionEvents = buildCompletionTimeline(
     issuesWithChangelog,
-    pointsField
+    pointsField,
+    resolve
   );
 
   // Generate daily burndown data
@@ -306,7 +315,8 @@ export function calculateBurndown(
  */
 function buildCompletionTimeline(
   issues: JiraIssue[],
-  pointsField: string
+  pointsField: string,
+  resolve?: StatusCategoryResolver
 ): Map<string, number> {
   const timeline = new Map<string, number>();
 
@@ -314,7 +324,7 @@ function buildCompletionTimeline(
     const points = getStoryPoints(issue, pointsField);
     if (points === 0) continue;
 
-    const completionDate = findCompletionDate(issue);
+    const completionDate = findCompletionDate(issue, resolve);
     if (completionDate) {
       const dateStr = completionDate.toISOString().split("T")[0];
       timeline.set(dateStr, (timeline.get(dateStr) || 0) + points);
@@ -327,9 +337,9 @@ function buildCompletionTimeline(
 /**
  * Find when an issue was moved to Done status (from changelog).
  */
-function findCompletionDate(issue: JiraIssue): Date | null {
+function findCompletionDate(issue: JiraIssue, resolve?: StatusCategoryResolver): Date | null {
   // If currently complete, look for when it transitioned to Done
-  if (!isIssueComplete(issue)) return null;
+  if (!isIssueComplete(issue, resolve)) return null;
 
   const changelog = issue.changelog?.histories;
   if (!changelog) {
@@ -345,13 +355,8 @@ function findCompletionDate(issue: JiraIssue): Date | null {
     const entry = changelog[i];
     for (const item of entry.items) {
       if (item.field === "status") {
-        // Check if this was a transition to Done
-        // We look for Done status category in the "to" value
-        // Note: The changelog toString is just the status name, not category
-        // We need to trust that the current status is Done and this was the transition
-        if (isIssueComplete(issue)) {
-          return new Date(entry.created);
-        }
+        // The last status change is the move into the current (done) status.
+        return new Date(entry.created);
       }
     }
   }

@@ -34,6 +34,7 @@ import {
 } from "@atlcli/jira";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { BUNDLED_REPORT_TEMPLATES } from "./jira-report-templates.js";
+import { loadStatusResolver } from "./jira-flow.js";
 
 export const REPORT_PROPERTY_KEY = "atlcli.jira-report";
 
@@ -85,6 +86,7 @@ export async function handleVersionNotes(args: string[], flags: Flags, opts: Out
     issues,
     baseUrl: jira.siteUrl,
     pointsField,
+    resolve: await reportStatusResolver(jira, flags, opts),
     now: new Date(),
   });
   const groupBy = getFlag(flags, "group-by") ?? "type";
@@ -119,7 +121,8 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
   }
   // ponytail: no scope change on the page; it needs one changelog request per
   // issue until spec digest-flow-metrics T1 adds bulk changelogs.
-  const metrics = pointsField ? calculateSprintMetrics(sprint, issues, pointsField) : undefined;
+  const resolve = await reportStatusResolver(jira, flags, opts);
+  const metrics = pointsField ? calculateSprintMetrics(sprint, issues, pointsField, undefined, resolve) : undefined;
   const data = buildReportData({
     kind: "sprint",
     source: {
@@ -134,6 +137,7 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
     baseUrl: jira.siteUrl,
     pointsField,
     sprintMetrics: metrics,
+    resolve,
     now: new Date(),
   });
 
@@ -141,6 +145,13 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
     defaultTemplate: "sprint-review",
     defaultTitle: `Sprint review – ${sprint.name}`,
   });
+}
+
+/** Done follows `flow.statusMap` and `--status-map`, as in flow metrics and sprint reports. */
+async function reportStatusResolver(jira: JiraClient, flags: Flags, opts: OutputOptions) {
+  const config = await loadConfig();
+  const profile = getActiveProfile(config, getFlag(flags, "profile"))!;
+  return (await loadStatusResolver({ client: jira, config, profile }, flags, opts)).resolve;
 }
 
 async function clients(flags: Flags, opts: OutputOptions) {

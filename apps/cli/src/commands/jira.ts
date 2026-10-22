@@ -99,6 +99,7 @@ import {
   AdfDocument,
   adfToMarkdown,
   toJiraRichText,
+  type StatusCategoryResolver,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -194,6 +195,21 @@ type ClientWithDefaults = {
   client: JiraClient;
   defaults: { project?: string; space?: string; board?: number };
 };
+
+/**
+ * Status resolver for sprint metrics: Jira's categories plus `flow.statusMap`
+ * and `--status-map`, so "done" agrees with flow metrics and the audit.
+ */
+async function sprintStatusResolver(
+  client: JiraClient,
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<StatusCategoryResolver> {
+  const config = await loadConfig();
+  const profile = getActiveProfile(config, getFlag(flags, "profile"))!;
+  const { loadStatusResolver } = await import("./jira-flow.js");
+  return (await loadStatusResolver({ client, config, profile }, flags, opts)).resolve;
+}
 
 async function getClient(
   flags: Record<string, string | boolean | string[]>,
@@ -1947,7 +1963,8 @@ async function handleSprintReport(
     sprint,
     issuesResult.issues,
     pointsField,
-    issuesWithChangelog
+    issuesWithChangelog,
+    await sprintStatusResolver(client, flags, opts)
   );
 
   // Format dates
@@ -2002,9 +2019,9 @@ Commands:
   issues --id <sprintId> [--limit <n>] [--jql <query>]
   add <issue>... --sprint <id>           Add issues to sprint
   remove <issue>...                      Move issues to backlog
-  report <sprintId> [--points-field <id>]   Sprint metrics report
+  report <sprintId> [--points-field <id>] [--status-map <map>]   Sprint metrics report
   review <sprintId> --space <key> [--parent <id>] [--title <t>] [--template <name>]
-         [--var k=v ...] [--dry-run] [--force] [--export <file.pdf|.docx>]
+         [--var k=v ...] [--status-map <map>] [--dry-run] [--force] [--export <file.pdf|.docx>]
                                          Create or update a sprint review page
 
 Options:
@@ -3147,6 +3164,7 @@ async function handleAnalyzeVelocity(
 
   // Calculate metrics for each sprint
   const sprintMetrics: SprintMetrics[] = [];
+  const resolve = await sprintStatusResolver(client, flags, opts);
 
   for (const sprint of sprintsResult.values) {
     const issuesResult = await client.getSprintIssues(sprint.id, {
@@ -3157,7 +3175,9 @@ async function handleAnalyzeVelocity(
     const metrics = calculateSprintMetrics(
       sprint as JiraSprint,
       issuesResult.issues,
-      pointsField
+      pointsField,
+      undefined,
+      resolve
     );
     sprintMetrics.push(metrics);
   }
@@ -3244,7 +3264,12 @@ async function handleAnalyzeBurndown(
   );
 
   // Calculate burndown
-  const burndown = calculateBurndown(sprint, issuesWithChangelog, pointsField);
+  const burndown = calculateBurndown(
+    sprint,
+    issuesWithChangelog,
+    pointsField,
+    await sprintStatusResolver(client, flags, opts)
+  );
 
   // Calculate totals
   const totalPoints = issuesWithChangelog.reduce(
@@ -3316,7 +3341,8 @@ async function handleAnalyzeScopeChange(
     sprint,
     issuesResult.issues,
     pointsField,
-    issuesWithChangelog
+    issuesWithChangelog,
+    await sprintStatusResolver(client, flags, opts)
   );
 
   output(
@@ -3399,6 +3425,7 @@ async function handleAnalyzePredictability(
 
   // Calculate metrics for each sprint
   const sprintMetrics: SprintMetrics[] = [];
+  const resolve = await sprintStatusResolver(client, flags, opts);
 
   for (const sprint of sprintsResult.values) {
     const issuesResult = await client.getSprintIssues(sprint.id, {
@@ -3409,7 +3436,9 @@ async function handleAnalyzePredictability(
     const metrics = calculateSprintMetrics(
       sprint as JiraSprint,
       issuesResult.issues,
-      pointsField
+      pointsField,
+      undefined,
+      resolve
     );
     sprintMetrics.push(metrics);
   }
@@ -3480,7 +3509,8 @@ Options:
   --jql <jql>          Any JQL for flow/aging/cfd; wins over --board and --project
   --since <n>d|<n>w    Window for flow/aging/cfd (default: 90d)
   --limit <n>          Max issues for flow/aging/cfd (default: 1000)
-  --status-map <map>   Override status categories, e.g. "Code Review=wip,Blocked=wip"
+  --status-map <map>   Override status categories, e.g. "Code Review=wip,Fertig=done";
+                       also decides "completed" for the sprint metrics
 
 Metrics:
   Velocity       Sum of completed story points per sprint

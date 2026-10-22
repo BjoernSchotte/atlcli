@@ -807,6 +807,7 @@ atlcli jira analyze velocity --board <id> --sprints <n>
 atlcli jira analyze burndown --sprint <id>
 atlcli jira analyze scope-change --sprint <id>
 atlcli jira analyze predictability --board <id>
+atlcli jira analyze burndown --sprint <id> --status-map "Fertig=done"   # Count a done status outside the Done category
 ```
 
 See [Analytics](../jira/analytics.md).
