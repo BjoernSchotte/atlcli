@@ -4,6 +4,166 @@
   "conservativeDefaultSeconds": 5,
   "files": [
     {
+      "path": "apps/extension/tests/action-palette-export.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/chrome-ports.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/docx/env.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/docx/template-load.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/docx/template-store-keys.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/docx/template-store-migration.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/docx/template-store.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/activity-operations.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/activity.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/catalog.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/chunk-store.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/docx-executor.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/docx-resolver.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/docx-submit.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/executor-store.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/pdf-compiler.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/pdf-executor.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/pdf-resolver.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/pdf-submit.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/queue-runner.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/retention.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/runtime.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/jobs/shared-budget.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/pdf/compile-port.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/pdf/job-durability.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/pdf/job-store.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/pdf/jobs-section.test.tsx",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/pdf/preview-cache.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/research-indexeddb-session-store.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/settings-form.test.tsx",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/template-library.test.tsx",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
+      "path": "apps/extension/tests/templates/library.test.ts",
+      "atomicGroup": "fake-indexeddb",
+      "requirements": ["stateful"]
+    },
+    {
       "path": "scripts/api-report.test.ts",
       "lane": "package-contract"
     },

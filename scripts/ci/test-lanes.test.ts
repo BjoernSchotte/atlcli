@@ -452,6 +452,24 @@ describe("duration-aware test lanes", () => {
     ).toThrow("unknown test topology");
   });
 
+  test("runs every fake-indexeddb test file in its own atomic group", () => {
+    // Bun 1.4.3+ (oven-sh/bun, regression since 1.4.2) can leave microtasks
+    // queued inside a setImmediate callback undrained until a timer fires,
+    // once enough other work ran in the same process. fake-indexeddb chains
+    // every open through such a microtask, so these files time out behind
+    // unrelated files of a shard (e.g. nfs-publisher.test.ts). Together and
+    // alone they pass; keep them in one fresh process until Bun fixes it.
+    const metadata = loadTestLaneMetadata();
+    const grouped = new Set(
+      metadata.files.filter((entry) => entry.atomicGroup === "fake-indexeddb").map((entry) => entry.path),
+    );
+    const users = discoverTestFiles().filter((file) =>
+      /(?:from|import)\s+["']fake-indexeddb/u.test(readFileSync(resolve(import.meta.dir, "../..", file), "utf8")),
+    );
+    expect(users.length).toBeGreaterThan(0);
+    expect(users.filter((file) => !grouped.has(file))).toEqual([]);
+  });
+
   test("exposes stable group identifiers for a workflow matrix", () => {
     const result = plan(
       ["pkg/a.test.ts", "pkg/contract.test.ts", "pkg/pdf.test.ts"],
