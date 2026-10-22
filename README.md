@@ -356,10 +356,6 @@ See the [contributing guide](https://atlcli.sh/contributing/) for repository
 structure, testing conventions, documentation development, and release
 procedures.
 
-## Contributors
-
-- [Antonio Murgia (@tmnd1991)](https://github.com/tmnd1991) — fixed growing trailing newlines in Confluence code-block round trips ([#231](https://github.com/BjoernSchotte/atlcli/pull/231)).
-
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for
