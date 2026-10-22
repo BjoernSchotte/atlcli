@@ -248,6 +248,7 @@ export interface JiraChangelogEntry {
     items: Array<{
         field: string;
         fieldtype: string;
+        fieldId?: string;
         from: string | null;
         fromString: string | null;
         to: string | null;
@@ -1360,6 +1361,7 @@ export interface BuildReportInput {
     baseUrl: string;
     pointsField?: string;
     sprintMetrics?: SprintMetrics;
+    asOf?: Map<string, SprintIssueSnapshot>;
     resolve?: StatusCategoryResolver;
     now: Date;
 }
@@ -1812,6 +1814,9 @@ export declare function isRuleActive(rules: AuditRules, ruleId: string): boolean
 // export: isRuleOff
 export declare function isRuleOff(config: AuditRuleConfig | undefined, ruleId: string): boolean;
 
+// export: issueAt
+export declare function issueAt(issue: JiraIssue, sprintId: number, at: Date, pointsField: string, resolve?: StatusCategoryResolver): SprintIssueSnapshot;
+
 // export: IssueFlowTimeline
 export interface IssueFlowTimeline {
     key: string;
@@ -1943,6 +1948,7 @@ export interface JiraChangelogEntry {
     items: Array<{
         field: string;
         fieldtype: string;
+        fieldId?: string;
         from: string | null;
         fromString: string | null;
         to: string | null;
@@ -3189,6 +3195,22 @@ export declare function severityForValue(config: AuditRuleConfig, kind: AuditRul
     limit: number;
 } | undefined;
 
+// export: sprintEnd
+export declare function sprintEnd(sprint: Pick<JiraSprint, "completeDate">, now?: Date): Date;
+
+// export: sprintIssueAt
+export declare function sprintIssueAt(issue: JiraIssue, sprint: Pick<JiraSprint, "id" | "startDate" | "completeDate">, pointsField: string, resolve?: StatusCategoryResolver, end?: Date): {
+    start: SprintIssueSnapshot;
+    end: SprintIssueSnapshot;
+};
+
+// export: SprintIssueSnapshot
+export interface SprintIssueSnapshot {
+    inSprint: boolean;
+    points: number;
+    done: boolean;
+}
+
 // export: SprintMetrics
 export interface SprintMetrics {
     sprintId: number;
@@ -3612,6 +3634,7 @@ export interface JiraChangelogEntry {
     items: Array<{
         field: string;
         fieldtype: string;
+        fieldId?: string;
         from: string | null;
         fromString: string | null;
         to: string | null;
@@ -4724,6 +4747,7 @@ export interface BuildReportInput {
     baseUrl: string;
     pointsField?: string;
     sprintMetrics?: SprintMetrics;
+    asOf?: Map<string, SprintIssueSnapshot>;
     resolve?: StatusCategoryResolver;
     now: Date;
 }
@@ -5176,6 +5200,9 @@ export declare function isRuleActive(rules: AuditRules, ruleId: string): boolean
 // export: isRuleOff
 export declare function isRuleOff(config: AuditRuleConfig | undefined, ruleId: string): boolean;
 
+// export: issueAt
+export declare function issueAt(issue: JiraIssue, sprintId: number, at: Date, pointsField: string, resolve?: StatusCategoryResolver): SprintIssueSnapshot;
+
 // export: IssueFlowTimeline
 export interface IssueFlowTimeline {
     key: string;
@@ -5307,6 +5334,7 @@ export interface JiraChangelogEntry {
     items: Array<{
         field: string;
         fieldtype: string;
+        fieldId?: string;
         from: string | null;
         fromString: string | null;
         to: string | null;
@@ -6552,6 +6580,22 @@ export declare function severityForValue(config: AuditRuleConfig, kind: AuditRul
     threshold: AuditThreshold;
     limit: number;
 } | undefined;
+
+// export: sprintEnd
+export declare function sprintEnd(sprint: Pick<JiraSprint, "completeDate">, now?: Date): Date;
+
+// export: sprintIssueAt
+export declare function sprintIssueAt(issue: JiraIssue, sprint: Pick<JiraSprint, "id" | "startDate" | "completeDate">, pointsField: string, resolve?: StatusCategoryResolver, end?: Date): {
+    start: SprintIssueSnapshot;
+    end: SprintIssueSnapshot;
+};
+
+// export: SprintIssueSnapshot
+export interface SprintIssueSnapshot {
+    inSprint: boolean;
+    points: number;
+    done: boolean;
+}
 
 // export: SprintMetrics
 export interface SprintMetrics {

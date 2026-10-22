@@ -27,8 +27,10 @@ import {
 import { ConfluenceClient, hashContent, markdownToStorage } from "@atlcli/confluence";
 import {
   JiraClient,
+  attachChangelogs,
   buildReportData,
   calculateSprintMetrics,
+  sprintIssueAt,
   type JiraIssue,
   type ReportData,
 } from "@atlcli/jira";
@@ -109,12 +111,13 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
   const pointsField = getFlag(flags, "points-field") ?? (await jira.detectStoryPointsField().catch(() => null)) ?? undefined;
   const sprint = await jira.getSprint(sprintId);
   const issues = await jira.getAllSprintIssues(sprintId, {
-    fields: [...REPORT_FIELDS, ...(pointsField ? [pointsField] : [])],
+    fields: [...REPORT_FIELDS, "created", ...(pointsField ? [pointsField] : [])],
   });
-  // ponytail: no scope change on the page; it needs one changelog request per
-  // issue until spec digest-flow-metrics T1 adds bulk changelogs.
   const resolve = await reportStatusResolver(jira, flags, opts);
-  const metrics = pointsField ? calculateSprintMetrics(sprint, issues, pointsField, undefined, resolve) : undefined;
+  // The page shows the sprint as of its end: one bulk changelog read.
+  const history = attachChangelogs(issues, await jira.getChangelogs(issues));
+  const asOf = new Map(history.map((issue) => [issue.key, sprintIssueAt(issue, sprint, pointsField ?? "", resolve).end]));
+  const metrics = pointsField ? calculateSprintMetrics(sprint, history, pointsField, history, resolve) : undefined;
   const data = buildReportData({
     kind: "sprint",
     source: {
@@ -129,6 +132,7 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
     baseUrl: jira.siteUrl,
     pointsField,
     sprintMetrics: metrics,
+    asOf,
     resolve,
     now: new Date(),
   });

@@ -153,7 +153,7 @@ Fields ending in `Md` and `link` are already escaped markdown. Insert them with 
 | `source.released` | boolean | Version released |
 | `source.startDay`, `source.endDay`, `source.releaseDay` | `YYYY-MM-DD` | Dates |
 | `source.releaseDateMd` | string | `{date:…}` lozenge for the release date |
-| `issues`, `doneIssues`, `openIssues` | issue list | All, done, not done; sorted by key |
+| `issues`, `doneIssues`, `openIssues` | issue list | All, done, not done; sorted by key. On a sprint review, as of the sprint's end (see [As of the sprint](analytics.md#as-of-the-sprint)) |
 | `byType`, `byEpic` | group list | Groups with `name`, `nameMd`, `count`, `issues`; epic groups also `key`, `url`; "No epic" last |
 | `contributors` | list | `name`, `nameMd`, `count` (assignees) |
 | `metrics.total`, `.done`, `.inProgress`, `.todo`, `.donePercent` | number | Counts |
@@ -171,6 +171,7 @@ Each issue has `key`, `url`, `link` (`[KEY](url)`), `summary`, `summaryMd`, `exc
 | `A page "…" already exists … not created by atlcli` | Title clash with a hand-written page | `--title "…"` or `--force` |
 | Text like `&#x27;` on the page | A custom template used `{{field}}` for an `…Md` field | Use `{{{field}}}` |
 | Finished issues listed under "Not done" | The done status sits in Jira's In Progress category | `--status-map "Fertig=done"` or `flow.statusMap`; see [Completed work](analytics.md#completed-work) |
+| An issue that is done today is listed under "Not done" on a sprint review | It was finished after the sprint ended | Expected: the review shows the sprint as of its end |
 | `--json` with `--export` prints two JSON documents | The page result, then the export report | Parse them one by one, for example with `jq -s` |
 
 ## Related Topics
