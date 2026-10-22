@@ -442,6 +442,16 @@ export declare class JiraClient {
         total: number;
         isLast: boolean;
     }>;
+    getChangelogs(issues: Array<{
+        id: string;
+        key: string;
+    }>, options?: {
+        fieldIds?: string[];
+        concurrency?: number;
+        signal?: AbortSignal;
+    }): Promise<Map<string, JiraChangelogEntry[]>>;
+    getStatuses(): Promise<JiraStatus[]>;
+    getBoardFilterJql(boardId: number): Promise<string>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -1163,6 +1173,9 @@ export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: st
     to: string;
 }, groupBy?: "issue" | "date"): WorklogReport;
 
+// export: attachChangelogs
+export declare function attachChangelogs(issues: JiraIssue[], logs: Map<string, JiraChangelogEntry[]>): JiraIssue[];
+
 // export: AttachmentJson
 export type AttachmentJson = {
     id: string;
@@ -1210,6 +1223,27 @@ export type AttachRequestResult = {
     ok: false;
     error: string;
 };
+
+// export: auditJiraIssues
+export declare function auditJiraIssues(input: {
+    open: JiraIssue[];
+    done: JiraIssue[];
+    resolve: StatusCategoryResolver;
+    now: Date;
+    staleThresholds: [
+        number,
+        number,
+        number
+    ];
+    checks: Set<JiraAuditCheck>;
+    includeTodo: boolean;
+    pointsField?: string;
+    inOpenSprint?: Set<string>;
+    projectsUsingVersions: Set<string>;
+}): JiraAuditReportV1;
+
+// export: buildIssueFlowTimeline
+export declare function buildIssueFlowTimeline(issue: JiraIssue, resolve: StatusCategoryResolver): IssueFlowTimeline;
 
 // export: buildReportData
 export declare function buildReportData(input: BuildReportInput): ReportData;
@@ -1294,6 +1328,24 @@ export declare function clearTimer(): void;
 // export: collectExportData
 export declare function collectExportData(client: JiraClient, issues: JiraIssue[], options: ExportOptions, onProgress?: (current: number, total: number, key: string) => void): Promise<ExportedIssue[]>;
 
+// export: computeCumulativeFlow
+export declare function computeCumulativeFlow(input: {
+    issues: JiraIssue[];
+    resolve: StatusCategoryResolver;
+    from: Date;
+    to: Date;
+    groupBy: "status" | "category";
+}): CumulativeFlowV1;
+
+// export: computeFlowMetrics
+export declare function computeFlowMetrics(input: {
+    issues: JiraIssue[];
+    resolve: StatusCategoryResolver;
+    from: Date;
+    to: Date;
+    now: Date;
+}): FlowMetricsV1;
+
 // export: CreateFilterInput
 export interface CreateFilterInput {
     name: string;
@@ -1367,10 +1419,33 @@ export interface CreateRemoteLinkInput {
     };
 }
 
+// export: createStatusCategoryResolver
+export declare function createStatusCategoryResolver(statuses: JiraStatus[], overrides?: Record<string, FlowCategory>): StatusCategoryResolver;
+
 // export: CsvImportOptions
 export interface CsvImportOptions {
     fieldMap?: Record<string, string>;
 }
+
+// export: CumulativeFlowV1
+export interface CumulativeFlowV1 {
+    groupBy: "status" | "category";
+    columns: Array<{
+        name: string;
+        category?: FlowCategory;
+    }>;
+    days: Array<{
+        date: string;
+        counts: Record<string, number>;
+    }>;
+}
+
+// export: DEFAULT_JIRA_STALE_DAYS
+export declare const DEFAULT_JIRA_STALE_DAYS: [
+    number,
+    number,
+    number
+];
 
 // export: deleteTemplate
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
@@ -1385,6 +1460,9 @@ export declare function ensureMigrated(): Promise<{
     skipped: string[];
     errors: string[];
 } | null>;
+
+// export: escapeCsvValue
+export declare function escapeCsvValue(value: unknown): string;
 
 // export: escapeMarkdown
 export declare function escapeMarkdown(text: string): string;
@@ -1425,6 +1503,91 @@ export interface ExportOptions {
     includeComments?: boolean;
     includeAttachments?: boolean;
     outputPath: string;
+}
+
+// export: extractStatusTransitions
+export declare function extractStatusTransitions(issue: JiraIssue): StatusTransition[];
+
+// export: FLOW_MIN_PERCENTILE_SAMPLES
+export declare const FLOW_MIN_PERCENTILE_SAMPLES = 5;
+
+// export: FlowAgingIssue
+export interface FlowAgingIssue {
+    key: string;
+    summary: string;
+    status: string;
+    startedAt: string;
+    ageDays: number;
+    overP85: boolean | null;
+}
+
+// export: FlowCategory
+export type FlowCategory = "todo" | "wip" | "done";
+
+// export: FlowCompletedIssue
+export interface FlowCompletedIssue {
+    key: string;
+    type: string;
+    summary: string;
+    created: string;
+    startedAt: string | null;
+    doneAt: string;
+    leadDays: number;
+    cycleDays: number | null;
+}
+
+// export: FlowInterval
+export interface FlowInterval {
+    statusId: string | null;
+    statusName: string | null;
+    category?: FlowCategory;
+    from: string;
+    to?: string;
+}
+
+// export: FlowMetricsV1
+export interface FlowMetricsV1 {
+    window: {
+        from: string;
+        to: string;
+    };
+    leadTime: FlowStats;
+    cycleTime: FlowStats;
+    throughput: {
+        daily: Array<{
+            date: string;
+            count: number;
+        }>;
+        weekly: Array<{
+            week: string;
+            count: number;
+        }>;
+    };
+    wip: {
+        count: number;
+        aging: FlowAgingIssue[];
+    };
+    completed: FlowCompletedIssue[];
+    diagnostics: {
+        issues: number;
+        skippedWip: number;
+        excludedFromCycleTime: number;
+        unknownStatuses: string[];
+    };
+}
+
+// export: flowStats
+export declare function flowStats(values: number[]): FlowStats;
+
+// export: FlowStats
+export interface FlowStats {
+    count: number;
+    min: number | null;
+    p50: number | null;
+    p85: number | null;
+    p95: number | null;
+    max: number | null;
+    mean: number | null;
 }
 
 // export: formatAttachmentDate
@@ -1527,6 +1690,20 @@ export declare function insertIdSuffix(filename: string, id: string): string;
 // export: isIssueComplete
 export declare function isIssueComplete(issue: JiraIssue): boolean;
 
+// export: isoWeek
+export declare function isoWeek(date: string | Date): string;
+
+// export: IssueFlowTimeline
+export interface IssueFlowTimeline {
+    key: string;
+    created: string;
+    currentCategory?: FlowCategory;
+    startedAt?: string;
+    doneAt?: string;
+    intervals: FlowInterval[];
+    unknownStatuses: string[];
+}
+
 // export: issuesToCsv
 export declare function issuesToCsv(issues: ExportedIssue[], includeComments?: boolean, includeAttachments?: boolean): string;
 
@@ -1535,6 +1712,9 @@ export declare function issuesToJson(data: ExportData): string;
 
 // export: issueToTemplate
 export declare function issueToTemplate(issue: JiraIssue, name: string, description?: string): JiraTemplate;
+
+// export: JIRA_AUDIT_CHECKS
+export declare const JIRA_AUDIT_CHECKS: readonly JiraAuditCheck[];
 
 // export: JiraAttachment
 export interface JiraAttachment {
@@ -1546,6 +1726,38 @@ export interface JiraAttachment {
     mimeType: string;
     content: string;
 }
+
+// export: JiraAuditCheck
+export type JiraAuditCheck = "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
+
+// export: JiraAuditFinding
+export interface JiraAuditFinding {
+    check: JiraAuditCheck;
+    rule: string;
+    severity: JiraAuditSeverity;
+    key: string;
+    summary: string;
+    status: string;
+    assignee?: string;
+    detail: string;
+    ageDays?: number;
+}
+
+// export: JiraAuditReportV1
+export interface JiraAuditReportV1 {
+    schemaVersion: "1";
+    generatedAt: string;
+    summary: {
+        total: number;
+        bySeverity: Record<JiraAuditSeverity, number>;
+        byCheck: Record<JiraAuditCheck, number>;
+    };
+    findings: JiraAuditFinding[];
+    diagnostics: string[];
+}
+
+// export: JiraAuditSeverity
+export type JiraAuditSeverity = "info" | "warning" | "error";
 
 // export: JiraBoard
 export interface JiraBoard {
@@ -1761,6 +1973,16 @@ export declare class JiraClient {
         total: number;
         isLast: boolean;
     }>;
+    getChangelogs(issues: Array<{
+        id: string;
+        key: string;
+    }>, options?: {
+        fieldIds?: string[];
+        concurrency?: number;
+        signal?: AbortSignal;
+    }): Promise<Map<string, JiraChangelogEntry[]>>;
+    getStatuses(): Promise<JiraStatus[]>;
+    getBoardFilterJql(boardId: number): Promise<string>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -2577,6 +2799,9 @@ export declare function parseRoundingInterval(input: string): number;
 // export: parseStartedDate
 export declare function parseStartedDate(input: string): Date;
 
+// export: parseStatusMap
+export declare function parseStatusMap(spec: string): Record<string, FlowCategory>;
+
 // export: parseTimeToSeconds
 export declare function parseTimeToSeconds(input: string, config?: TimeConfig): number;
 
@@ -2585,6 +2810,9 @@ export declare function peekTimer(): {
     timer: TimerState;
     elapsedSeconds: number;
 };
+
+// export: percentile
+export declare function percentile(sortedValues: number[], p: number): number | undefined;
 
 // export: planDownloads
 export declare function planDownloads<T extends {
@@ -2623,6 +2851,24 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getLevel(): "project";
     protected getProject(): string;
 }
+
+// export: renderAgingText
+export declare function renderAgingText(metrics: FlowMetricsV1): string;
+
+// export: renderCfdText
+export declare function renderCfdText(cfd: CumulativeFlowV1): string;
+
+// export: renderFlowText
+export declare function renderFlowText(metrics: FlowMetricsV1, query: string): string;
+
+// export: renderJiraAuditMarkdown
+export declare function renderJiraAuditMarkdown(report: JiraAuditReportV1, query: string, baseUrl?: string): string;
+
+// export: renderJiraAuditText
+export declare function renderJiraAuditText(report: JiraAuditReportV1, query: string): string;
+
+// export: renderSparkline
+export declare function renderSparkline(values: number[]): string;
 
 // export: ReportData
 export interface ReportData {
@@ -2711,6 +2957,9 @@ export declare function resolveDownloadPath(output: string | undefined, filename
     isDirectory: boolean;
 }): string;
 
+// export: resolveStatusMap
+export declare function resolveStatusMap(...maps: Array<Record<string, FlowCategory> | undefined>): Record<string, FlowCategory>;
+
 // export: roundTime
 export declare function roundTime(seconds: number, intervalMinutes: number, mode?: "nearest" | "up" | "down"): number;
 
@@ -2758,6 +3007,24 @@ export interface SprintMetrics {
 
 // export: startTimer
 export declare function startTimer(issueKey: string, profile: string, comment?: string): TimerState;
+
+// export: StatusCategoryResolver
+export type StatusCategoryResolver = (status: {
+    id?: string | null;
+    name?: string | null;
+    statusCategory?: {
+        key?: string;
+    } | null;
+}) => FlowCategory | undefined;
+
+// export: StatusTransition
+export interface StatusTransition {
+    at: string;
+    fromId: string | null;
+    fromName: string | null;
+    toId: string;
+    toName: string | null;
+}
 
 // export: stopTimer
 // @deprecated stopTimer — Destructive read: the timer state is deleted before the caller
@@ -3330,6 +3597,16 @@ export declare class JiraClient {
         total: number;
         isLast: boolean;
     }>;
+    getChangelogs(issues: Array<{
+        id: string;
+        key: string;
+    }>, options?: {
+        fieldIds?: string[];
+        concurrency?: number;
+        signal?: AbortSignal;
+    }): Promise<Map<string, JiraChangelogEntry[]>>;
+    getStatuses(): Promise<JiraStatus[]>;
+    getBoardFilterJql(boardId: number): Promise<string>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -4051,6 +4328,9 @@ export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: st
     to: string;
 }, groupBy?: "issue" | "date"): WorklogReport;
 
+// export: attachChangelogs
+export declare function attachChangelogs(issues: JiraIssue[], logs: Map<string, JiraChangelogEntry[]>): JiraIssue[];
+
 // export: AttachmentJson
 export type AttachmentJson = {
     id: string;
@@ -4098,6 +4378,27 @@ export type AttachRequestResult = {
     ok: false;
     error: string;
 };
+
+// export: auditJiraIssues
+export declare function auditJiraIssues(input: {
+    open: JiraIssue[];
+    done: JiraIssue[];
+    resolve: StatusCategoryResolver;
+    now: Date;
+    staleThresholds: [
+        number,
+        number,
+        number
+    ];
+    checks: Set<JiraAuditCheck>;
+    includeTodo: boolean;
+    pointsField?: string;
+    inOpenSprint?: Set<string>;
+    projectsUsingVersions: Set<string>;
+}): JiraAuditReportV1;
+
+// export: buildIssueFlowTimeline
+export declare function buildIssueFlowTimeline(issue: JiraIssue, resolve: StatusCategoryResolver): IssueFlowTimeline;
 
 // export: buildReportData
 export declare function buildReportData(input: BuildReportInput): ReportData;
@@ -4182,6 +4483,24 @@ export declare function clearTimer(): void;
 // export: collectExportData
 export declare function collectExportData(client: JiraClient, issues: JiraIssue[], options: ExportOptions, onProgress?: (current: number, total: number, key: string) => void): Promise<ExportedIssue[]>;
 
+// export: computeCumulativeFlow
+export declare function computeCumulativeFlow(input: {
+    issues: JiraIssue[];
+    resolve: StatusCategoryResolver;
+    from: Date;
+    to: Date;
+    groupBy: "status" | "category";
+}): CumulativeFlowV1;
+
+// export: computeFlowMetrics
+export declare function computeFlowMetrics(input: {
+    issues: JiraIssue[];
+    resolve: StatusCategoryResolver;
+    from: Date;
+    to: Date;
+    now: Date;
+}): FlowMetricsV1;
+
 // export: CreateFilterInput
 export interface CreateFilterInput {
     name: string;
@@ -4255,10 +4574,33 @@ export interface CreateRemoteLinkInput {
     };
 }
 
+// export: createStatusCategoryResolver
+export declare function createStatusCategoryResolver(statuses: JiraStatus[], overrides?: Record<string, FlowCategory>): StatusCategoryResolver;
+
 // export: CsvImportOptions
 export interface CsvImportOptions {
     fieldMap?: Record<string, string>;
 }
+
+// export: CumulativeFlowV1
+export interface CumulativeFlowV1 {
+    groupBy: "status" | "category";
+    columns: Array<{
+        name: string;
+        category?: FlowCategory;
+    }>;
+    days: Array<{
+        date: string;
+        counts: Record<string, number>;
+    }>;
+}
+
+// export: DEFAULT_JIRA_STALE_DAYS
+export declare const DEFAULT_JIRA_STALE_DAYS: [
+    number,
+    number,
+    number
+];
 
 // export: deleteTemplate
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
@@ -4273,6 +4615,9 @@ export declare function ensureMigrated(): Promise<{
     skipped: string[];
     errors: string[];
 } | null>;
+
+// export: escapeCsvValue
+export declare function escapeCsvValue(value: unknown): string;
 
 // export: escapeMarkdown
 export declare function escapeMarkdown(text: string): string;
@@ -4313,6 +4658,91 @@ export interface ExportOptions {
     includeComments?: boolean;
     includeAttachments?: boolean;
     outputPath: string;
+}
+
+// export: extractStatusTransitions
+export declare function extractStatusTransitions(issue: JiraIssue): StatusTransition[];
+
+// export: FLOW_MIN_PERCENTILE_SAMPLES
+export declare const FLOW_MIN_PERCENTILE_SAMPLES = 5;
+
+// export: FlowAgingIssue
+export interface FlowAgingIssue {
+    key: string;
+    summary: string;
+    status: string;
+    startedAt: string;
+    ageDays: number;
+    overP85: boolean | null;
+}
+
+// export: FlowCategory
+export type FlowCategory = "todo" | "wip" | "done";
+
+// export: FlowCompletedIssue
+export interface FlowCompletedIssue {
+    key: string;
+    type: string;
+    summary: string;
+    created: string;
+    startedAt: string | null;
+    doneAt: string;
+    leadDays: number;
+    cycleDays: number | null;
+}
+
+// export: FlowInterval
+export interface FlowInterval {
+    statusId: string | null;
+    statusName: string | null;
+    category?: FlowCategory;
+    from: string;
+    to?: string;
+}
+
+// export: FlowMetricsV1
+export interface FlowMetricsV1 {
+    window: {
+        from: string;
+        to: string;
+    };
+    leadTime: FlowStats;
+    cycleTime: FlowStats;
+    throughput: {
+        daily: Array<{
+            date: string;
+            count: number;
+        }>;
+        weekly: Array<{
+            week: string;
+            count: number;
+        }>;
+    };
+    wip: {
+        count: number;
+        aging: FlowAgingIssue[];
+    };
+    completed: FlowCompletedIssue[];
+    diagnostics: {
+        issues: number;
+        skippedWip: number;
+        excludedFromCycleTime: number;
+        unknownStatuses: string[];
+    };
+}
+
+// export: flowStats
+export declare function flowStats(values: number[]): FlowStats;
+
+// export: FlowStats
+export interface FlowStats {
+    count: number;
+    min: number | null;
+    p50: number | null;
+    p85: number | null;
+    p95: number | null;
+    max: number | null;
+    mean: number | null;
 }
 
 // export: formatAttachmentDate
@@ -4415,6 +4845,20 @@ export declare function insertIdSuffix(filename: string, id: string): string;
 // export: isIssueComplete
 export declare function isIssueComplete(issue: JiraIssue): boolean;
 
+// export: isoWeek
+export declare function isoWeek(date: string | Date): string;
+
+// export: IssueFlowTimeline
+export interface IssueFlowTimeline {
+    key: string;
+    created: string;
+    currentCategory?: FlowCategory;
+    startedAt?: string;
+    doneAt?: string;
+    intervals: FlowInterval[];
+    unknownStatuses: string[];
+}
+
 // export: issuesToCsv
 export declare function issuesToCsv(issues: ExportedIssue[], includeComments?: boolean, includeAttachments?: boolean): string;
 
@@ -4423,6 +4867,9 @@ export declare function issuesToJson(data: ExportData): string;
 
 // export: issueToTemplate
 export declare function issueToTemplate(issue: JiraIssue, name: string, description?: string): JiraTemplate;
+
+// export: JIRA_AUDIT_CHECKS
+export declare const JIRA_AUDIT_CHECKS: readonly JiraAuditCheck[];
 
 // export: JiraAttachment
 export interface JiraAttachment {
@@ -4434,6 +4881,38 @@ export interface JiraAttachment {
     mimeType: string;
     content: string;
 }
+
+// export: JiraAuditCheck
+export type JiraAuditCheck = "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
+
+// export: JiraAuditFinding
+export interface JiraAuditFinding {
+    check: JiraAuditCheck;
+    rule: string;
+    severity: JiraAuditSeverity;
+    key: string;
+    summary: string;
+    status: string;
+    assignee?: string;
+    detail: string;
+    ageDays?: number;
+}
+
+// export: JiraAuditReportV1
+export interface JiraAuditReportV1 {
+    schemaVersion: "1";
+    generatedAt: string;
+    summary: {
+        total: number;
+        bySeverity: Record<JiraAuditSeverity, number>;
+        byCheck: Record<JiraAuditCheck, number>;
+    };
+    findings: JiraAuditFinding[];
+    diagnostics: string[];
+}
+
+// export: JiraAuditSeverity
+export type JiraAuditSeverity = "info" | "warning" | "error";
 
 // export: JiraBoard
 export interface JiraBoard {
@@ -4649,6 +5128,16 @@ export declare class JiraClient {
         total: number;
         isLast: boolean;
     }>;
+    getChangelogs(issues: Array<{
+        id: string;
+        key: string;
+    }>, options?: {
+        fieldIds?: string[];
+        concurrency?: number;
+        signal?: AbortSignal;
+    }): Promise<Map<string, JiraChangelogEntry[]>>;
+    getStatuses(): Promise<JiraStatus[]>;
+    getBoardFilterJql(boardId: number): Promise<string>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -5465,6 +5954,9 @@ export declare function parseRoundingInterval(input: string): number;
 // export: parseStartedDate
 export declare function parseStartedDate(input: string): Date;
 
+// export: parseStatusMap
+export declare function parseStatusMap(spec: string): Record<string, FlowCategory>;
+
 // export: parseTimeToSeconds
 export declare function parseTimeToSeconds(input: string, config?: TimeConfig): number;
 
@@ -5473,6 +5965,9 @@ export declare function peekTimer(): {
     timer: TimerState;
     elapsedSeconds: number;
 };
+
+// export: percentile
+export declare function percentile(sortedValues: number[], p: number): number | undefined;
 
 // export: planDownloads
 export declare function planDownloads<T extends {
@@ -5511,6 +6006,24 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getLevel(): "project";
     protected getProject(): string;
 }
+
+// export: renderAgingText
+export declare function renderAgingText(metrics: FlowMetricsV1): string;
+
+// export: renderCfdText
+export declare function renderCfdText(cfd: CumulativeFlowV1): string;
+
+// export: renderFlowText
+export declare function renderFlowText(metrics: FlowMetricsV1, query: string): string;
+
+// export: renderJiraAuditMarkdown
+export declare function renderJiraAuditMarkdown(report: JiraAuditReportV1, query: string, baseUrl?: string): string;
+
+// export: renderJiraAuditText
+export declare function renderJiraAuditText(report: JiraAuditReportV1, query: string): string;
+
+// export: renderSparkline
+export declare function renderSparkline(values: number[]): string;
 
 // export: ReportData
 export interface ReportData {
@@ -5599,6 +6112,9 @@ export declare function resolveDownloadPath(output: string | undefined, filename
     isDirectory: boolean;
 }): string;
 
+// export: resolveStatusMap
+export declare function resolveStatusMap(...maps: Array<Record<string, FlowCategory> | undefined>): Record<string, FlowCategory>;
+
 // export: roundTime
 export declare function roundTime(seconds: number, intervalMinutes: number, mode?: "nearest" | "up" | "down"): number;
 
@@ -5646,6 +6162,24 @@ export interface SprintMetrics {
 
 // export: startTimer
 export declare function startTimer(issueKey: string, profile: string, comment?: string): TimerState;
+
+// export: StatusCategoryResolver
+export type StatusCategoryResolver = (status: {
+    id?: string | null;
+    name?: string | null;
+    statusCategory?: {
+        key?: string;
+    } | null;
+}) => FlowCategory | undefined;
+
+// export: StatusTransition
+export interface StatusTransition {
+    at: string;
+    fromId: string | null;
+    fromName: string | null;
+    toId: string;
+    toName: string | null;
+}
 
 // export: stopTimer
 // @deprecated stopTimer — Destructive read: the timer state is deleted before the caller

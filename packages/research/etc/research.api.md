@@ -37128,6 +37128,15 @@ export declare function diffResearchPlansV1(input: {
     scopeExpansionProposalIds?: readonly string[];
 }): ResearchPlanDiffV1;
 
+// export: DIGEST_SUMMARY_MAX_INPUT_CHARS
+export declare const DIGEST_SUMMARY_MAX_INPUT_CHARS = 20000;
+
+// export: DIGEST_SUMMARY_SYSTEM_PROMPT
+export declare const DIGEST_SUMMARY_SYSTEM_PROMPT: string;
+
+// export: digestSummaryInputV1
+export declare function digestSummaryInputV1(markdown: string): string;
+
 // export: directChatHasExactCurrentPageV1
 export declare function directChatHasExactCurrentPageV1(request: ResearchRequestV1): boolean;
 
@@ -42718,6 +42727,15 @@ export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGra
 // export: stampChatInteractionCommandV1
 export declare function stampChatInteractionCommandV1(command: ChatInteractionCommandV1, at: string): ChatInteractionControlV1;
 
+// export: summarizeDigestV1
+export declare function summarizeDigestV1(input: {
+    apiKey: string;
+    markdown: string;
+    locale?: string;
+    signal?: AbortSignal;
+    model?: BaseChatModel;
+}): Promise<string>;
+
 // export: validateResearchEvidenceSpanV1
 export declare function validateResearchEvidenceSpanV1(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[], span: ResearchEvidenceSpanV1): Promise<ResearchEvidenceSpanV1>;
 
@@ -48057,6 +48075,15 @@ export declare function diffResearchPlansV1(input: {
     toGraph: ResearchGraphV1;
     scopeExpansionProposalIds?: readonly string[];
 }): ResearchPlanDiffV1;
+
+// export: DIGEST_SUMMARY_MAX_INPUT_CHARS
+export declare const DIGEST_SUMMARY_MAX_INPUT_CHARS = 20000;
+
+// export: DIGEST_SUMMARY_SYSTEM_PROMPT
+export declare const DIGEST_SUMMARY_SYSTEM_PROMPT: string;
+
+// export: digestSummaryInputV1
+export declare function digestSummaryInputV1(markdown: string): string;
 
 // export: directChatHasExactCurrentPageV1
 export declare function directChatHasExactCurrentPageV1(request: ResearchRequestV1): boolean;
@@ -53608,6 +53635,15 @@ export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGra
 
 // export: stampChatInteractionCommandV1
 export declare function stampChatInteractionCommandV1(command: ChatInteractionCommandV1, at: string): ChatInteractionControlV1;
+
+// export: summarizeDigestV1
+export declare function summarizeDigestV1(input: {
+    apiKey: string;
+    markdown: string;
+    locale?: string;
+    signal?: AbortSignal;
+    model?: BaseChatModel;
+}): Promise<string>;
 
 // export: validateResearchEvidenceSpanV1
 export declare function validateResearchEvidenceSpanV1(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[], span: ResearchEvidenceSpanV1): Promise<ResearchEvidenceSpanV1>;
