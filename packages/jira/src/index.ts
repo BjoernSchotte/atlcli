@@ -16,6 +16,7 @@ export * from "./worklog.js";
 export * from "./analysis.js";
 export * from "./flow.js";
 export * from "./audit.js";
+export * from "./audit-rules.js";
 export * from "./report-data.js";
 export * from "./export.js";
 export * from "./import.js";
