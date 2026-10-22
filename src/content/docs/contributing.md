@@ -421,7 +421,7 @@ bun scripts/release.ts --dry-run
 ### What the Release Script Does
 
 1. Validates clean working directory and main branch; fetches main/tags and requires main to match origin/main
-2. Runs tests and type checking
+2. Runs tests and type checking, unless CI already proved the exact main commit: every check run finished without a failure and the Linux typecheck and Bun test lanes passed. If a check is still running or failed, the local run happens as before
 3. Allocates `YYYY.M.N` from reserved stable tags and updates root `package.json`
 4. Prepends the changelog from the previous reachable stable tag, carries reviewed **Unreleased** notes into the new entry, and credits contributors/reporters
 5. Creates the release commit, pushes a commit-bound preparation branch and opens a ready release PR; waits for `required` to succeed and merges through GitHub's protected merge path
@@ -441,7 +441,7 @@ dev publication require this complete native consumer gate.
 
 - `--dry-run` - Print the release plan and exit; makes no changes
 - `--preview` - Render the changelog entry (including the Thanks section) and exit; makes no changes
-- `--skip-tests` - Skip test step (use with caution)
+- `--skip-tests` - Skip the test step even when CI has not proved the commit (use with caution)
 
 ### Prerequisites
 

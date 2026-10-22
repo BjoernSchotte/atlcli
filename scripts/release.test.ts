@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertSuccessfulExit,
+  ciProvedCommit,
   createTag,
   RELEASE_TEST_COMMAND,
   parseArgs,
@@ -256,6 +257,20 @@ describe("release dry-run pre-release checklist (spec 011)", () => {
     expect([...RELEASE_TEST_COMMAND]).toEqual(["bun", "run", "test"]);
     expect(out).toContain("bun run typecheck && bun run test");
     expect(out).not.toContain("&& bun test");
+  });
+
+  test("skips local tests only when CI fully proved the commit", () => {
+    const green = [
+      { name: "Product quality / Linux typecheck, browser checks, build, and package contracts", status: "completed", conclusion: "success" },
+      { name: "Product quality / Linux Bun tests (general-1)", status: "completed", conclusion: "success" },
+      { name: "Documentation", status: "completed", conclusion: "skipped" },
+    ];
+    expect(ciProvedCommit(green)).toBe(true);
+    expect(ciProvedCommit([])).toBe(false);
+    expect(ciProvedCommit([...green, { name: "NFS helper", status: "in_progress", conclusion: null }])).toBe(false);
+    expect(ciProvedCommit([...green, { name: "pdf-cli-macos", status: "completed", conclusion: "failure" }])).toBe(false);
+    expect(ciProvedCommit(green.filter((run) => !run.name.includes("Bun tests")))).toBe(false);
+    expect(ciProvedCommit(green.filter((run) => !run.name.includes("typecheck")))).toBe(false);
   });
 
   test("trusts the process exit code instead of parsing test output", () => {
