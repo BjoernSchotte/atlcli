@@ -417,7 +417,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/10";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/11";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -2222,7 +2222,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/10";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/11";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -4035,7 +4035,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/10";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/11";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{
@@ -5849,7 +5849,7 @@ export declare const PDF_SPLIT_POLICY_SCHEMA_V1: "atlcli.pdf-split-policy/1";
 export declare const PDF_TABLE_POLICY_REVISION: "atlcli.pdf-table-policy/1";
 
 // export: PDF_TABLE_POLICY_REVISION_V2
-export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/10";
+export declare const PDF_TABLE_POLICY_REVISION_V2: "atlcli.pdf-table-policy/11";
 
 // export: PDF_TABLE_POLICY_V1
 export declare const PDF_TABLE_POLICY_V1: Readonly<{

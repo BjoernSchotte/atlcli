@@ -512,6 +512,46 @@ describe("open-sided and continued ruled tables", () => {
     }));
   });
 
+  it("joins the rest of a split row that is the only partly blank row of a filled table", async () => {
+    // Regression: Word breaks a split row between sentences, so its rest
+    // stayed a row of its own. Every other body cell is filled.
+    const body = [
+      ["Row1", "North1.", "May1", "Open1"],
+      ["Row2", "North2.", "May2", "Open2"],
+      ["Row3", "North3.", "May3", "Open3"],
+      ["Row4", "North4.", "May4", "Open4"],
+      ["Row5", "North5.", "May5", "Open5"],
+    ];
+    const first = openSidedTable([["Item", "Owner", "Due", "State"], ...body], 216, { topRule: true });
+    const next = openSidedTable([["", "Region", "", ""], ["Beta", "South", "June", "Done"]], 790, { topRule: false, verticalTop: 814 });
+    const result = await normalizePdf(pagesPdf([first, next]));
+
+    expect(tables(result).map(tableTexts)).toEqual([[
+      ["Item", "Owner", "Due", "State"],
+      ...body.slice(0, -1),
+      ["Row5", "North5. Region", "May5", "Open5"],
+      ["Beta", "South", "June", "Done"],
+    ]]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({ code: "pdf-import/table-row-split-joined" }));
+  });
+
+  it("keeps a partly blank row after a break when the table leaves other cells blank", async () => {
+    const body = [
+      ["Row1", "North1.", "May1", "Open1"],
+      ["Row2", "North2.", "May2", "Open2"],
+      ["Row3", "North3.", "May3", "Open3"],
+      ["Row4", "North4.", "May4", "Open4"],
+      ["Row5", "North5.", "May5", "Open5"],
+    ];
+    body[2]![3] = "";
+    const first = openSidedTable([["Item", "Owner", "Due", "State"], ...body], 216, { topRule: true });
+    const next = openSidedTable([["", "Region", "", ""], ["Beta", "South", "June", "Done"]], 790, { topRule: false, verticalTop: 814 });
+    const result = await normalizePdf(pagesPdf([first, next]));
+
+    expect(tables(result).map(tableTexts)[0]).toContainEqual(["", "Region", "", ""]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({ code: "pdf-import/table-row-split-unproven" }));
+  });
+
   it("does not join rows across a break of a table drawn without outer rules", async () => {
     // Regression: such a table is open on every page, so every continued
     // page's first row was taken for the rest of the previous page's last.
