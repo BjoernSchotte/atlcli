@@ -72,8 +72,8 @@ path as linked, for example `atlcli skill references/safety.md`.
    drops the named flags but keeps the positionals and runs the verb:
    `atlcli jira watch PROJ-101 --help` adds a watcher, and
    `atlcli jira issue attach PROJ-101 ./f.txt --help` uploads the file. The
-   `wiki` commands, `digest`, `doctor`, `update`, `models` and `completion`
-   print help for `--help`, except `wiki my` and `wiki recent`, which run
+   `wiki` commands, `digest`, `skill`, `doctor`, `update`, `models` and
+   `completion` print help for `--help`, except `wiki my` and `wiki recent`, which run
    their search. `atlcli audit jira --help` prints the root help; use
    `atlcli audit jira help`.
 5. **Resolve names before using them.** Transition names are workflow actions
@@ -125,6 +125,7 @@ path as linked, for example `atlcli skill references/safety.md`.
 | Jira hygiene: stuck or unassigned work, stale and overdue issues, rules file, baseline (`audit jira`) | [references/jira-audit.md](references/jira-audit.md) |
 | What changed since the last look, what waits on the user, a standup note: `atlcli digest` | [references/digest.md](references/digest.md) |
 | Plugins (`git`, `drawio`), `models`, `log`, `update`, `completion` | [references/plugins-and-local-tools.md](references/plugins-and-local-tools.md) |
+| This skill's own files, printing or installing it: `atlcli skill` | [references/plugins-and-local-tools.md](references/plugins-and-local-tools.md#skill) |
 
 `atlcli research` and `atlcli chat` send Jira and Confluence content to the
 Anthropic API and need `ANTHROPIC_API_KEY`. Use them only when the user asks

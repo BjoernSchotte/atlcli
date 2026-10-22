@@ -19,6 +19,7 @@ Confluence (see [Plugins](#plugins)).
 - [log](#log)
 - [update and release-info](#update-and-release-info)
 - [completion](#completion)
+- [skill](#skill)
 - [Not for agents](#not-for-agents)
 
 ## Plugins
@@ -121,6 +122,35 @@ it without the user asking.
 `atlcli completion zsh` and `atlcli completion bash` print a completion script
 to stdout. The user installs it by adding `eval "$(atlcli completion zsh)"` to
 their shell profile. Do not edit the profile yourself.
+
+## skill
+
+`atlcli skill` prints this skill as built into the installed binary, so an
+agent can read it without an installed copy.
+
+```bash
+atlcli skill                                     # SKILL.md
+atlcli skill --list                              # every file of the skill
+atlcli skill references/safety.md                # one file
+atlcli skill safety.md                           # a link inside a reference, as written
+atlcli skill references/safety.md --json         # {"path": ..., "content": ...}
+atlcli skill --install ~/.claude/skills          # writes ~/.claude/skills/atlcli/
+```
+
+- A path is a link from the skill, as written: a `#anchor` is ignored, and a
+  name that is not found at the skill root is looked up under `references/`.
+  An unknown path fails with `ATLCLI_ERR_USAGE` and lists the files (in JSON
+  under `details.available`).
+- Put `--json` after the path. `atlcli skill --json <path>` fails with
+  `--json takes no value`, since the parser would take the path as the value.
+- `<path>`, `--list` and `--install` exclude each other. `--help` prints the
+  command help.
+- `--install <skills-root>` writes the skill to `<skills-root>/atlcli/`,
+  overwriting the skill's files there and leaving other files in place; the
+  output lists those others (`extra` in JSON). A symbolic link in place of
+  `atlcli/`, its `references/` or one of the skill's files is refused before
+  anything is written. It is a local write: ask first and name the target
+  directory.
 
 ## Not for agents
 

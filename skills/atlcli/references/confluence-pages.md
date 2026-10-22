@@ -61,6 +61,11 @@ atlcli wiki my --contributed --json         # pages you contributed to
 atlcli wiki recent --days 14 --space DEV --json
 ```
 
+With `--json`, the results of `wiki search`, `wiki my` and `wiki recent` carry
+`creator`, `creatorId`, `lastModifiedBy` and `lastModifiedById` when Confluence
+returns them; a missing key means the value is unknown. `wiki search
+--format compact` carries none of them.
+
 Both accept `--space`, `--label` (one label) and `--limit`. `recent` looks back
 7 days unless `--days` says otherwise.
 
