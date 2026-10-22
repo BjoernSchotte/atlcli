@@ -64,6 +64,8 @@ description: "atlcli digest: what changed since your last look and what waits on
 
 A page that matches several sections appears once, in the first one in this order: mentions, your pages, watched, recent. In `--json` output its entry lists the other sections in `alsoIn`.
 
+Backlog reordering (`Rank`) is not a change line; an issue whose only change is its rank is not listed.
+
 Your own edits and comments are left out. Pass `--include-own` to keep them; your own Jira changes are then marked `(you)`.
 
 Empty sections are not printed. If nothing changed, the digest says `Nothing new since <window>.`

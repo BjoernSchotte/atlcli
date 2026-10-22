@@ -198,6 +198,17 @@ describe("buildDigest", () => {
     expect(d.jira!.changed[0].changes).toEqual([{ at: ago(5), author: "Ann", you: false, field: "assignee", from: null, to: "acc-1" }]);
   });
 
+  test("rank changes are not change lines; a rank-only issue drops out", () => {
+    const history = (id: string, field: string, to: string) =>
+      ({ id, author: { accountId: "ann", displayName: "Ann" }, created: ago(5), items: [{ field, fieldtype: "custom", from: "", fromString: "", to: "", toString: to }] }) as unknown as JiraChangelogEntry;
+    const changelogs = new Map([
+      ["A-7", [history("1", "Rang", "Ranked higher"), history("2", "status", "Done")]],
+      ["A-8", [history("3", "Rank", "Ranked lower")]],
+    ]);
+    const d = buildDigest(raw({ jira: { changed: [jiraIssue("A-7"), jiraIssue("A-8")], changelogs } }), { now: NOW, includeOwn: false, limit: 10 });
+    expect(d.jira!.changed.map((c) => [c.key, c.changes.map((x) => x.field)])).toEqual([["A-7", ["status"]]]);
+  });
+
   test("Data Center: changed issues without change details are still listed", () => {
     const d = buildDigest(raw({ jira: { changed: [jiraIssue("A-5")], changelogs: undefined } }), { now: NOW, includeOwn: false, limit: 10 });
     expect(d.jira!.changed).toMatchObject([{ key: "A-5", changes: [] }]);

@@ -152,7 +152,7 @@ atlcli jira sprint report 456
 ```json
 {
   "schemaVersion": "1",
-  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed", "dates": "10/6/2026 - 10/17/2026" },
+  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed", "dates": "2026-10-06 - 2026-10-17" },
   "pointsField": "customfield_10016",
   "velocity": 34,
   "sayDoRatio": 85,

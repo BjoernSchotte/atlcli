@@ -59,6 +59,7 @@ import {
   calculateSprintMetrics,
   calculateVelocityTrend,
   calculateBurndown,
+  calendarDay,
   latestSprints,
   attachChangelogs,
   getStoryPoints,
@@ -1602,7 +1603,7 @@ async function handleBoardList(
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const type = getFlag(flags, "type") as "scrum" | "kanban" | "simple" | undefined;
   const name = getFlag(flags, "name");
-  const project = getFlag(flags, "project") ?? defaults.project;
+  const project = hasFlag(flags, "all-projects") ? undefined : (getFlag(flags, "project") ?? defaults.project);
 
   const result = await client.listBoards({
     maxResults: Number.isNaN(limit) ? 50 : limit,
@@ -1688,7 +1689,7 @@ function boardHelp(): string {
   return `atlcli jira board <command>
 
 Commands:
-  list [--limit <n>] [--type scrum|kanban|simple] [--name <text>] [--project <key>]
+  list [--limit <n>] [--type scrum|kanban|simple] [--name <text>] [--project <key> | --all-projects]
   get --id <boardId>
   backlog --id <boardId> [--limit <n>] [--jql <query>]
   issues --id <boardId> [--limit <n>] [--jql <query>]
@@ -1960,10 +1961,9 @@ async function handleSprintReport(
   const sprint = await client.getSprint(Number(sprintId));
 
   // Get sprint issues
-  const issuesResult = await client.getSprintIssues(Number(sprintId), {
-    maxResults: 200,
-    fields: ["status", "summary", pointsField],
-  });
+  const issuesResult = {
+    issues: await client.getAllSprintIssues(Number(sprintId), { fields: ["status", "summary", pointsField] }),
+  };
 
   // One bulk changelog read instead of one request per issue.
   const issuesWithChangelog = attachChangelogs(
@@ -1983,7 +1983,7 @@ async function handleSprintReport(
   // Format dates
   const dateRange =
     metrics.startDate && metrics.endDate
-      ? `${new Date(metrics.startDate).toLocaleDateString()} - ${new Date(metrics.endDate).toLocaleDateString()}`
+      ? `${calendarDay(metrics.startDate)} - ${calendarDay(metrics.endDate)}`
       : "N/A";
 
   output(
@@ -3176,10 +3176,9 @@ async function handleAnalyzeVelocity(
   const resolve = await sprintStatusResolver(client, flags, opts);
 
   for (const sprint of sprintsResult.values) {
-    const issuesResult = await client.getSprintIssues(sprint.id, {
-      maxResults: 200,
-      fields: ["status", "summary", pointsField],
-    });
+    const issuesResult = {
+      issues: await client.getAllSprintIssues(sprint.id, { fields: ["status", "summary", pointsField] }),
+    };
 
     const metrics = calculateSprintMetrics(
       sprint as JiraSprint,
@@ -3261,10 +3260,11 @@ async function handleAnalyzeBurndown(
   }
 
   // Get sprint issues with changelog for accurate burndown
-  const issuesResult = await client.getSprintIssues(Number(sprintId), {
-    maxResults: 200,
-    fields: ["status", "summary", "resolutiondate", pointsField],
-  });
+  const issuesResult = {
+    issues: await client.getAllSprintIssues(Number(sprintId), {
+      fields: ["status", "summary", "resolutiondate", pointsField],
+    }),
+  };
 
   // One bulk changelog read instead of one request per issue.
   const issuesWithChangelog = attachChangelogs(
@@ -3334,10 +3334,9 @@ async function handleAnalyzeScopeChange(
   const sprint = await client.getSprint(Number(sprintId));
 
   // Get sprint issues
-  const issuesResult = await client.getSprintIssues(Number(sprintId), {
-    maxResults: 200,
-    fields: ["status", "summary", pointsField],
-  });
+  const issuesResult = {
+    issues: await client.getAllSprintIssues(Number(sprintId), { fields: ["status", "summary", pointsField] }),
+  };
 
   // One bulk changelog read instead of one request per issue.
   const issuesWithChangelog = attachChangelogs(
@@ -3433,10 +3432,9 @@ async function handleAnalyzePredictability(
   const resolve = await sprintStatusResolver(client, flags, opts);
 
   for (const sprint of sprintsResult.values) {
-    const issuesResult = await client.getSprintIssues(sprint.id, {
-      maxResults: 200,
-      fields: ["status", "summary", pointsField],
-    });
+    const issuesResult = {
+      issues: await client.getAllSprintIssues(sprint.id, { fields: ["status", "summary", pointsField] }),
+    };
 
     const metrics = calculateSprintMetrics(
       sprint as JiraSprint,

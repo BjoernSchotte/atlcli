@@ -167,7 +167,7 @@ export function buildReportData(input: BuildReportInput): ReportData {
     : undefined;
 
   const s = input.source;
-  const day = (value?: string) => (value ? value.slice(0, 10) : undefined);
+  const day = (value?: string) => (value ? calendarDay(value) : undefined);
   return {
     kind: input.kind,
     source: {
@@ -226,6 +226,18 @@ export function descriptionExcerpt(description: unknown, max = EXCERPT_MAX): str
   const cut = line.slice(0, max + 1);
   const space = cut.lastIndexOf(" ");
   return `${(space > max / 2 ? cut.slice(0, space) : line.slice(0, max)).replace(/[\s.,;:–-]+$/, "")}…`;
+}
+
+/**
+ * `YYYY-MM-DD` in local time, as Jira shows it. Sprint dates come in UTC, so
+ * a sprint ending at midnight CEST would otherwise show the day before. A
+ * date without a time (versions) is returned as is.
+ */
+export function calendarDay(value: string): string {
+  const at = new Date(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(at.getTime())) return value.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
 }
 
 function proseOf(nodes: AdfNode[]): string {

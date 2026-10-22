@@ -24,7 +24,8 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--project` | Filter by project key |
+| `--project` | Filter by project key. Default: `defaults.project` of the profile |
+| `--all-projects` | Ignore `--project` and `defaults.project`; list the boards of every project |
 | `--type` | Filter by type: `scrum`, `kanban` |
 | `--name` | Filter by name pattern |
 | `--limit` | Maximum results |
@@ -37,6 +38,9 @@ atlcli jira board list --project PROJ
 
 # Only Scrum boards
 atlcli jira board list --type scrum
+
+# Every Scrum board, whatever the profile's default project
+atlcli jira board list --all-projects --type scrum
 
 # Search by name
 atlcli jira board list --name "Team"

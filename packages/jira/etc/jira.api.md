@@ -595,6 +595,10 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraSearchResults>;
+    getAllSprintIssues(sprintId: number, options?: {
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraIssue[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -1409,6 +1413,9 @@ export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraI
 
 // export: calculateVelocityTrend
 export declare function calculateVelocityTrend(boardId: number, boardName: string, sprintMetrics: SprintMetrics[]): VelocityTrend;
+
+// export: calendarDay
+export declare function calendarDay(value: string): string;
 
 // export: cancelTimer
 export declare function cancelTimer(): TimerState;
@@ -2283,6 +2290,10 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraSearchResults>;
+    getAllSprintIssues(sprintId: number, options?: {
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraIssue[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -3948,6 +3959,10 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraSearchResults>;
+    getAllSprintIssues(sprintId: number, options?: {
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraIssue[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -4762,6 +4777,9 @@ export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraI
 
 // export: calculateVelocityTrend
 export declare function calculateVelocityTrend(boardId: number, boardName: string, sprintMetrics: SprintMetrics[]): VelocityTrend;
+
+// export: calendarDay
+export declare function calendarDay(value: string): string;
 
 // export: cancelTimer
 export declare function cancelTimer(): TimerState;
@@ -5636,6 +5654,10 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraSearchResults>;
+    getAllSprintIssues(sprintId: number, options?: {
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraIssue[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {

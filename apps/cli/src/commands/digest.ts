@@ -22,7 +22,6 @@ import {
   type AuditRules,
   JiraClient,
   type JiraAuditBaseline,
-  type JiraIssue,
   digestAuditRules,
   isRuleActive,
   type StatusCategoryResolver,
@@ -156,8 +155,8 @@ async function fetchJira(
           const active = await client.listSprints(opts.board!, { state: "active" });
           return Promise.all(
             active.values.map(async (sprint): Promise<DigestRawSprint> => {
-              const result = await client.getSprintIssues(sprint.id, { fields: ["status", "assignee"], maxResults: 200 });
-              return { id: sprint.id, name: sprint.name, endDate: sprint.endDate, issues: result.issues as JiraIssue[] };
+              const issues = await client.getAllSprintIssues(sprint.id, { fields: ["status", "assignee"] });
+              return { id: sprint.id, name: sprint.name, endDate: sprint.endDate, issues };
             })
           );
         }),

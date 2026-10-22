@@ -302,6 +302,8 @@ function issueChanges(log: JiraChangelogEntry[] | undefined, since: number, me: 
     const you = Boolean(me) && history.author?.accountId === me;
     if (you && !includeOwn) continue;
     for (const item of history.items) {
+      // Backlog reordering ("Rank", or "Rang" in German) is noise in a digest.
+      if (Object.hasOwn(item, "toString") && /^Ranked (higher|lower)$/.test(item.toString ?? "")) continue;
       changes.push({
         at: history.created,
         author: history.author?.displayName ?? "",
