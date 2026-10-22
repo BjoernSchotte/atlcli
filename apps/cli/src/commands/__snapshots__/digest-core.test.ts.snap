@@ -1,0 +1,80 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`buildDigest text and Markdown snapshots are deterministic 1`] = `
+"Digest since 2h · Me
+
+Jira
+  Waiting on you (1)
+    A-1  [In Progress]  Summary A-1 · High
+  Changed (2)
+    A-1  [In Progress]  Summary A-1 · assignee
+      status: To Do → In Progress by Ann · 30m ago
+    A-3  [In Progress]  Summary A-3 · watching
+      description: → xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx… by Ann · 10m ago
+  Sprint S7 — 4 day(s) left
+    [██████████──────────] 50%  to do 0 · in progress 1 · done 1 · yours open 1
+
+Confluence
+  Mentions (1)
+    Page 1 (DOCSY) — Bob · 50m ago
+  Comments on your pages (1)
+    Eve on Page 1 · 20m ago
+  Open inline comments (2)
+    Eve on Page 1 · 3d ago
+    Eve on Page 1 · 33h ago
+  Your pages edited (1)
+    Page 3 (DOCSY) — Bob · 30m ago
+  Watched pages changed (1)
+    Page 4 (DOCSY) — Bob · 10m ago
+  Recently changed in space (1)
+    Page 5 (DOCSY) — Bob · 5m ago"
+`;
+
+exports[`buildDigest text and Markdown snapshots are deterministic 2`] = `
+"# Digest since 2h
+
+## Jira
+
+### Waiting on you (1)
+
+- [A-1](https://x/browse/A-1) Summary A-1 · *In Progress* · High
+
+### Changed (2)
+
+- [A-1](https://x/browse/A-1) Summary A-1 · *In Progress* · assignee
+  - status: To Do → In Progress by Ann · 30m ago
+- [A-3](https://x/browse/A-3) Summary A-3 · *In Progress* · watching
+  - description: → xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx… by Ann · 10m ago
+
+### Sprint S7 — 4 day(s) left
+
+- \`[██████████──────────] 50%\` to do 0 · in progress 1 · done 1 · yours open 1
+
+## Confluence
+
+### Mentions (1)
+
+- [Page 1](https://x/wiki/1) (DOCSY) — Bob · 50m ago
+
+### Comments on your pages (1)
+
+- Eve on Page 1 · 20m ago
+
+### Open inline comments (2)
+
+- Eve on Page 1 · 3d ago
+- Eve on Page 1 · 33h ago
+
+### Your pages edited (1)
+
+- [Page 3](https://x/wiki/3) (DOCSY) — Bob · 30m ago
+
+### Watched pages changed (1)
+
+- [Page 4](https://x/wiki/4) (DOCSY) — Bob · 10m ago
+
+### Recently changed in space (1)
+
+- [Page 5](https://x/wiki/5) (DOCSY) — Bob · 5m ago
+"
+`;
