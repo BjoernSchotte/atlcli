@@ -1,6 +1,6 @@
 # Jira audit rules: configurable severity, scope and suppression
 
-Status: **Concept** (2026-10-22). Plan only, nothing implemented.
+Status: **Concept, decisions recorded** (2026-10-22). Plan only, nothing implemented.
 
 ## Problem
 
@@ -33,12 +33,10 @@ Status: **Concept** (2026-10-22). Plan only, nothing implemented.
 1. Per rule: `off | info | warning | error`. `off` means silent (not computed). Below `minLevel` means quiet (computed and counted, not listed). `error` means loud (exit code 1 when present).
 2. Thresholds per rule. Severity follows from tiered thresholds (`stale: { info: 30, warning: 60, error: 90 }`).
 3. Scoped overrides by project, issue type, status or JQL. They are evaluated in order, and the last match wins.
-4. Suppression in three places:
-   - a baseline file for existing findings;
-   - a Jira label on the issue (`atlcli-ignore`, `atlcli-ignore-<rule>`), visible to everyone in Jira;
-   - acceptances per status for workflow findings.
+4. Suppression in two places: a baseline file for existing findings, and overrides in the rules file (which also accept a misplaced workflow status per project).
 5. Custom JQL rules: every hit is a finding, and the scope is ANDed in.
 6. Report-only stays: atlcli never writes labels, transitions issues or edits workflows.
+7. The digest shows loud (`error`) findings for its configured projects as an "Audit" section.
 
 ## Non-goals
 
@@ -63,8 +61,10 @@ rules:
   hygiene/no-parent: off
   hygiene/unestimated-in-sprint: warning
   hygiene/done-without-version: info
-  hygiene/overdue: { warning: 0d, error: 14d }          # new
-  hygiene/flagged: { warning: 3d, error: 10d }          # new
+  hygiene/overdue: { warning: 0d, error: 14d }          # new: due date passed by N days
+  hygiene/due-soon: { info: 3d }                        # new: due within N days
+  hygiene/flagged: { warning: 3d, error: 10d }          # new: flagged (impediment) for N days
+  flow/status-aging: { warning: p85, error: p95 }       # new: time in the current status vs. that status's history
 
 custom:
   - id: team/bug-without-component
@@ -84,9 +84,7 @@ overrides:
     rules:
       flow/unassigned-wip: error
 
-suppress:
-  labels: true               # honour atlcli-ignore / atlcli-ignore-<rule> on issues
-  baseline: .atlcli/audit-baseline.json
+baseline: .atlcli/audit-baseline.json
 ```
 
 ## Behaviour
@@ -97,9 +95,8 @@ suppress:
   2. `extends`;
   3. `rules`;
   4. every matching `override`, in order;
-  5. label suppression;
-  6. the baseline;
-  7. `minLevel` for display.
+  5. the baseline;
+  6. `minLevel` for display.
 - **Matching overrides:**
   - `project`, `issueType` and `status` are matched in memory: by key or name (case-insensitive), or by id.
   - A `jql` match runs one extra search per distinct JQL and is matched by issue key. The report states this cost.
@@ -108,7 +105,11 @@ suppress:
   - Findings listed there are dropped.
   - `--prune-baseline` removes stale entries; a stale entry is reported as info, following ESLint.
   - For per-status rules such as `workflow`, the key is the status id.
-- **Labels:** `atlcli-ignore` suppresses every rule on an issue, `atlcli-ignore-<rule>` suppresses one. An optional `atlcli-snooze-YYYY-MM-DD` suppresses until that date. atlcli only reads labels and never sets them.
+- **Status aging:**
+  - Each status gets its own percentile bands, computed from the time issues done in the last 90 days spent in that status.
+  - Five samples per status are needed; with fewer, the rule is skipped for that status with a note.
+  - The time an open issue has spent in its current status is compared against these bands.
+- **Digest:** the digest runs the rules for its `--project` / `digest.projects` and lists the remaining `error` findings in an "Audit" section. It skips the expensive rules (`stuck-wip`, `status-aging`) unless the rules file enables them for the digest (`digest: true` per rule).
 - **Partial coverage:** when a search hits `--limit`, the affected rule is marked `partial` in the report, not only in a global note.
 - **Exit code:** 1 if any `error` finding remains after suppression; `--fail-on warning` makes the check stricter.
 - **Output:** JSON gains `rule`, `category`, `suppressed` counts per reason, and `partial`. Text and Markdown show the counts of quiet findings in one line.
@@ -129,14 +130,20 @@ The threshold is configurable (`share: 0.5`).
 3. Severity resolution: overrides, labels, baseline, `minLevel`. Pure, with table tests.
 4. Custom JQL rules.
 5. Baseline write and prune.
-6. New rules: overdue, flagged, epic without fix version.
+6. New rules: overdue, due-soon, flagged, status-aging.
 7. Workflow rule refinement (the share split).
-8. Docs: an audit-rules reference page with minimal and advanced examples. Live E2E on ATLCLI.
+8. Digest "Audit" section (`error` only).
+9. Docs: an audit-rules reference page with minimal and advanced examples. Live E2E on ATLCLI.
+
+## Decisions (2026-10-22)
+
+- **Rules file location:** both. The project file `.atlcli/audit-rules.yaml` wins over `~/.atlcli` (`audit.jira.rules`), and `--rules` wins over both.
+- **Suppression:** a baseline file and overrides only. Jira labels are not used.
+- **Digest:** an "Audit" section with `error` findings only.
+- **New rules in the first stage:** overdue / due soon, flagged too long, aging per status. Epic without fix version is deferred.
 
 ## Open questions
 
-1. Where should the rules file live: in the project directory (versioned) or in `~/.atlcli` (personal)? Both, with precedence?
-2. Should the label prefix `atlcli-ignore` be configurable, given that the CLI rename is pending?
-3. Should the baseline be per profile or per project directory?
-4. Which built-in profiles, and what goes into `strict`?
-5. Should the digest show audit errors as their own section, as "loud" findings?
+1. Should the baseline sit next to the rules file it applies to (project or `~/.atlcli`), or be per profile?
+2. Which built-in profiles, and what goes into `strict`?
+3. Which field does `flagged` read: the Flagged custom field (`customfield_*`, detected by name), or is it configurable?
