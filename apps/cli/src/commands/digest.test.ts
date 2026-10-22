@@ -49,6 +49,13 @@ beforeAll(async () => {
         return Response.json({ message: "forbidden for this test" }, { status: 403 });
       }
       switch (url.pathname) {
+        case "/rest/api/3/status":
+          return Response.json([
+            { id: "2", name: "In Progress", statusCategory: { key: "indeterminate" } },
+            { id: "5", name: "Fertig", statusCategory: { key: "indeterminate" } },
+          ]);
+        case "/rest/agile/1.0/board/9":
+          return Response.json({ id: 9, name: "Kanban", type: "kanban" });
         case "/rest/api/3/myself":
           return Response.json({ accountId: "me-j", displayName: "Me" });
         case "/rest/api/3/search/jql":
@@ -155,6 +162,29 @@ describe("atlcli digest", () => {
     const { exitCode } = await runCli(["digest", "--json"]);
     expect(exitCode).toBe(1);
     expect(existsSync(statePath())).toBe(false);
+  });
+
+  test("a kanban board is skipped without a sprint request or warning", async () => {
+    const { stdout } = await runCli(["digest", "--only", "jira", "--board", "9", "--no-mark", "--json"]);
+    const digest = JSON.parse(stdout);
+    expect(digest.warnings).toEqual([]);
+    expect(digest.jira.sprints).toEqual([]);
+    expect(paths.some((p) => p.includes("/sprint"))).toBe(false);
+  });
+
+  test("--project adds the overview; a configured status map reaches the waiting query", async () => {
+    const config = JSON.parse(await readFile(join(home, ".atlcli", "config.json"), "utf8"));
+    await writeFile(join(home, ".atlcli", "config.json"), JSON.stringify({ ...config, flow: { statusMap: { Fertig: "done" } } }));
+    try {
+      const { stdout } = await runCli(["digest", "--only", "jira", "--project", "ATLCLI", "--no-mark", "--json"]);
+      const digest = JSON.parse(stdout);
+      expect(digest.queries["jira.projects"]).toBe('project in (ATLCLI) AND updated >= -1440m ORDER BY updated DESC');
+      expect(digest.queries["jira.waiting"]).toContain("(statusCategory != Done AND status not in (5))");
+      expect(digest.jira.projects[0].key).toBe("ATLCLI");
+      expect(digest.jira.projects[0].changed.map((i: { key: string }) => i.key)).toEqual(["ATLCLI-1"]);
+    } finally {
+      await writeFile(join(home, ".atlcli", "config.json"), JSON.stringify(config));
+    }
   });
 
   test("a profile name with ../ cannot leave ~/.atlcli/profiles", async () => {

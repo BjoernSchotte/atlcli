@@ -4,7 +4,7 @@
  * rendering. No IO; `now` is always passed in.
  */
 import type { ConfluenceSearchResult } from "@atlcli/confluence";
-import type { JiraChangelogEntry, JiraIssue } from "@atlcli/jira";
+import type { JiraChangelogEntry, JiraIssue, StatusCategoryResolver } from "@atlcli/jira";
 import { buildMyIssuesJql } from "./jira.js";
 import { buildMyPagesCql, buildRecentPagesCql } from "./search.js";
 
@@ -90,14 +90,19 @@ export interface DigestQueries {
   myPageIds: string;
   watched: string;
   recent?: string;
+  projects?: string;
 }
 
-/** Every JQL/CQL string the digest runs, except the comment query (see `buildCommentsCql`). */
-export function buildDigestQueries(opts: { minutes: number; space?: string }): DigestQueries {
+/**
+ * Every JQL/CQL string the digest runs, except the comment query (see
+ * `buildCommentsCql`). `open` is the not-done JQL (`statusScopeJql`), so a
+ * status map also applies here.
+ */
+export function buildDigestQueries(opts: { minutes: number; space?: string; projects?: string[]; open?: string }): DigestQueries {
   const window = `now("-${opts.minutes}m")`;
   return {
-    // Done-category statuses without a resolution are not waiting on anyone.
-    waiting: `${buildMyIssuesJql({})} AND statusCategory != Done ORDER BY priority DESC, updated DESC`,
+    // Done statuses without a resolution are not waiting on anyone.
+    waiting: `${buildMyIssuesJql({})} AND ${opts.open ?? "statusCategory != Done"} ORDER BY priority DESC, updated DESC`,
     changed: `(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) AND updated >= -${opts.minutes}m ORDER BY updated DESC`,
     mentions: `mention = currentUser() AND lastmodified >= ${window} ORDER BY lastmodified DESC`,
     myPagesEdited: `${buildMyPagesCql({})} AND lastmodified >= ${window} ORDER BY lastmodified DESC`,
@@ -106,7 +111,14 @@ export function buildDigestQueries(opts: { minutes: number; space?: string }): D
     ...(opts.space
       ? { recent: `${buildRecentPagesCql({ space: opts.space, since: `-${opts.minutes}m` })} ORDER BY lastModified DESC` }
       : {}),
+    ...(opts.projects?.length
+      ? { projects: `project in (${opts.projects.map(jqlValue).join(", ")}) AND updated >= -${opts.minutes}m ORDER BY updated DESC` }
+      : {}),
   };
+}
+
+function jqlValue(value: string): string {
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(value) ? value : `"${value.replace(/["\\]/g, "\\$&")}"`;
 }
 
 /** New comments on the given pages (CQL scopes comments by `container`). */
@@ -122,6 +134,7 @@ export interface DigestIssue {
   summary: string;
   status: string;
   priority?: string;
+  assignee?: string;
   url: string;
 }
 
@@ -147,6 +160,15 @@ export interface DigestSprint {
   counts: { todo: number; wip: number; done: number };
   yoursOpen: number;
   progress: string;
+}
+
+/** Everything that happened in one project, whoever did it. */
+export interface DigestProjectOverview {
+  key: string;
+  created: DigestIssue[];
+  /** Moved into a done status (after the status map) in the window. */
+  completed: DigestIssue[];
+  changed: DigestIssueChange[];
 }
 
 export interface DigestPage {
@@ -175,7 +197,13 @@ export interface DigestV1 {
   since: { at: string; source: DigestSince["source"]; label: string };
   profile: string;
   me: { displayName?: string };
-  jira?: { waiting: DigestIssue[]; changed: DigestIssueChange[]; sprints: DigestSprint[] };
+  jira?: {
+    waiting: DigestIssue[];
+    changed: DigestIssueChange[];
+    sprints: DigestSprint[];
+    /** Present when projects were asked for (`--project`, `digest.projects`). */
+    projects?: DigestProjectOverview[];
+  };
   confluence?: {
     mentions: DigestPage[];
     myPagesEdited: DigestPage[];
@@ -210,6 +238,12 @@ export interface DigestRawInput {
     /** `undefined` when the site gives no change details (Data Center). */
     changelogs?: Map<string, JiraChangelogEntry[]>;
     sprints?: DigestRawSprint[];
+    /** The configured projects, in order, and their changed issues. */
+    projectKeys?: string[];
+    projectIssues?: JiraIssue[];
+    projectChangelogs?: Map<string, JiraChangelogEntry[]>;
+    /** Status resolver after the status map; without one, the Jira status category. */
+    resolve?: StatusCategoryResolver;
   };
   confluence: {
     mentions?: ConfluenceSearchResult[];
@@ -230,14 +264,92 @@ function issueUrl(base: string | undefined, key: string): string {
   return `${base ?? ""}/browse/${key}`;
 }
 
-function toDigestIssue(issue: JiraIssue, base: string | undefined): DigestIssue {
+function toDigestIssue(issue: JiraIssue, base: string | undefined, withAssignee = false): DigestIssue {
   return {
     key: issue.key,
     summary: issue.fields.summary ?? "",
     status: issue.fields.status?.name ?? "",
     ...(issue.fields.priority?.name ? { priority: issue.fields.priority.name } : {}),
+    ...(withAssignee && issue.fields.assignee?.displayName ? { assignee: issue.fields.assignee.displayName } : {}),
     url: issueUrl(base, issue.key),
   };
+}
+
+/** The change lines in the window; the user's own only with `includeOwn`. */
+function issueChanges(log: JiraChangelogEntry[] | undefined, since: number, me: string | undefined, includeOwn: boolean): DigestChange[] {
+  const changes: DigestChange[] = [];
+  for (const history of log ?? []) {
+    if (Date.parse(history.created) < since) continue;
+    const you = Boolean(me) && history.author?.accountId === me;
+    if (you && !includeOwn) continue;
+    for (const item of history.items) {
+      changes.push({
+        at: history.created,
+        author: history.author?.displayName ?? "",
+        you,
+        field: item.field,
+        // Own-property reads: a missing `toString` key would otherwise hit Object.prototype.
+        from: short(Object.hasOwn(item, "fromString") && item.fromString !== null ? item.fromString : item.from),
+        to: short(Object.hasOwn(item, "toString") && item.toString !== null ? item.toString : item.to),
+      });
+    }
+  }
+  return changes;
+}
+
+const categoryOf: StatusCategoryResolver = (status) => {
+  const key = status.statusCategory?.key;
+  return key === "done" ? "done" : key === "indeterminate" ? "wip" : key === "new" ? "todo" : undefined;
+};
+
+/**
+ * Per project: issues created, completed and changed in the window, whoever
+ * changed them. Completed means done now and a status change into done in the
+ * window (without change details: done now).
+ */
+function projectOverviews(
+  input: DigestRawInput,
+  opts: { since: number; me: string | undefined; cap: <T>(section: string, items: T[]) => T[] }
+): DigestProjectOverview[] {
+  const resolve = input.jira.resolve ?? categoryOf;
+  const base = input.jiraBaseUrl;
+  const logs = input.jira.projectChangelogs;
+  return (input.jira.projectKeys ?? []).map((key) => {
+    const issues = (input.jira.projectIssues ?? []).filter(
+      (i) => (i.fields.project?.key ?? i.key.split("-")[0]).toUpperCase() === key.toUpperCase()
+    );
+    const created: DigestIssue[] = [];
+    const completed: DigestIssue[] = [];
+    const changed: DigestIssueChange[] = [];
+    for (const issue of issues) {
+      const view = toDigestIssue(issue, base, true);
+      if (issue.fields.created && Date.parse(issue.fields.created) >= opts.since) created.push(view);
+      const log = logs?.get(issue.key);
+      if (issue.fields.status && resolve(issue.fields.status) === "done") {
+        const movedToDone =
+          !logs ||
+          (log ?? []).some(
+            (h) =>
+              Date.parse(h.created) >= opts.since &&
+              h.items.some(
+                (item) =>
+                  item.field === "status" &&
+                  resolve({ id: item.to, name: Object.hasOwn(item, "toString") ? item.toString : null }) === "done"
+              )
+          );
+        if (movedToDone) completed.push(view);
+      }
+      const changes = logs ? issueChanges(log, opts.since, opts.me, true) : [];
+      if (logs && changes.length === 0) continue;
+      changed.push({ ...view, roles: [], changes });
+    }
+    return {
+      key,
+      created: opts.cap(`jira.projects.${key}.created`, created),
+      completed: opts.cap(`jira.projects.${key}.completed`, completed),
+      changed: opts.cap(`jira.projects.${key}.changed`, changed),
+    };
+  });
 }
 
 function short(value: unknown): string | null {
@@ -310,24 +422,8 @@ export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn
         roles: roles.length ? roles : ["watching"],
         changes: [],
       };
-      const log = input.jira.changelogs?.get(issue.key);
       if (input.jira.changelogs) {
-        for (const history of log ?? []) {
-          if (Date.parse(history.created) < since) continue;
-          const you = Boolean(me) && history.author?.accountId === me;
-          if (you && !includeOwn) continue;
-          for (const item of history.items) {
-            entry.changes.push({
-              at: history.created,
-              author: history.author?.displayName ?? "",
-              you,
-              field: item.field,
-              // Own-property reads: a missing `toString` key would otherwise hit Object.prototype.
-              from: short(Object.hasOwn(item, "fromString") && item.fromString !== null ? item.fromString : item.from),
-              to: short(Object.hasOwn(item, "toString") && item.toString !== null ? item.toString : item.to),
-            });
-          }
-        }
+        entry.changes = issueChanges(input.jira.changelogs.get(issue.key), since, me, includeOwn);
         if (entry.changes.length === 0) continue;
       }
       changed.push(entry);
@@ -336,9 +432,9 @@ export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn
     const sprints = (input.jira.sprints ?? []).map((raw): DigestSprint => {
       const counts = { todo: 0, wip: 0, done: 0 };
       let yoursOpen = 0;
+      const resolve = input.jira.resolve ?? categoryOf;
       for (const issue of raw.issues) {
-        const key = issue.fields.status?.statusCategory?.key;
-        const category = key === "done" ? "done" : key === "indeterminate" ? "wip" : "todo";
+        const category = (issue.fields.status && resolve(issue.fields.status)) || "todo";
         counts[category]++;
         if (category !== "done" && me && issue.fields.assignee?.accountId === me) yoursOpen++;
       }
@@ -359,6 +455,7 @@ export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn
       waiting: cap("jira.waiting", (input.jira.waiting ?? []).map((i) => toDigestIssue(i, base))),
       changed: cap("jira.changed", changed),
       sprints,
+      ...(input.jira.projectKeys?.length ? { projects: projectOverviews(input, { since, me, cap }) } : {}),
     };
   }
 
@@ -491,6 +588,8 @@ const TITLES: Record<string, string> = {
   myPagesEdited: "Your pages edited",
   watched: "Watched pages changed",
   recent: "Recently changed in space",
+  created: "Created",
+  completed: "Completed",
 };
 
 function changeLine(change: DigestChange, now: Date): string {
@@ -501,6 +600,7 @@ function changeLine(change: DigestChange, now: Date): string {
 function isEmpty(d: DigestV1): boolean {
   const lists = [
     ...(d.jira ? [d.jira.waiting, d.jira.changed, d.jira.sprints] : []),
+    ...(d.jira?.projects ?? []).flatMap((p) => [p.created, p.completed, p.changed]),
     ...(d.confluence ? Object.values(d.confluence) : []),
   ];
   return lists.every((list) => list.length === 0);
@@ -534,6 +634,20 @@ function blocks(d: DigestV1, now: Date): Array<{ product: string; blocks: Block[
       b.push({ heading: `Sprint ${s.name}${left}`, lines: [{ text, md: `\`${s.progress}\` to do ${s.counts.todo} · in progress ${s.counts.wip} · done ${s.counts.done} · yours open ${s.yoursOpen}` }] });
     }
     out.push({ product: "Jira", blocks: b });
+    for (const p of d.jira.projects ?? []) {
+      const pb: Block[] = [];
+      const who = (i: DigestIssue) => (i.assignee ? ` · ${i.assignee}` : "");
+      for (const section of ["completed", "created"] as const) {
+        if (p[section].length) pb.push({ heading: `${TITLES[section]} (${p[section].length})`, lines: p[section].map((i) => issueLine(i, who(i))) });
+      }
+      if (p.changed.length) {
+        pb.push({
+          heading: `${TITLES.changed} (${p.changed.length})`,
+          lines: p.changed.map((i) => ({ ...issueLine(i, who(i)), sub: i.changes.map((c) => changeLine(c, now)) })),
+        });
+      }
+      out.push({ product: `Jira project ${p.key}`, blocks: pb });
+    }
   }
   if (d.confluence) {
     const b: Block[] = [];
@@ -619,6 +733,7 @@ export function renderDigestMarkdown(d: DigestV1, now: Date): string {
 export function digestItemCount(d: DigestV1): number {
   return (
     (d.jira ? d.jira.waiting.length + d.jira.changed.length + d.jira.sprints.length : 0) +
+    (d.jira?.projects ?? []).reduce((n, p) => n + p.created.length + p.completed.length + p.changed.length, 0) +
     (d.confluence ? Object.values(d.confluence).reduce((n, list) => n + list.length, 0) : 0)
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ConfluenceSearchResult } from "@atlcli/confluence";
-import type { JiraChangelogEntry, JiraIssue } from "@atlcli/jira";
+import { type JiraChangelogEntry, type JiraIssue, createStatusCategoryResolver } from "@atlcli/jira";
 import {
   type DigestRawInput,
   type DigestSince,
@@ -259,5 +259,72 @@ describe("marker state", () => {
     });
     expect(parseDigestState({ schemaVersion: 2, jira: { lastRunAt: "nope" } })).toEqual({ schemaVersion: 2 });
     expect(() => parseDigestState({ hello: 1 })).toThrow();
+  });
+});
+
+describe("project overview", () => {
+  // "Fertig" sits in the In Progress category but is mapped to done.
+  const resolve = createStatusCategoryResolver(
+    [
+      { id: "1", name: "In Progress", statusCategory: { id: 4, key: "indeterminate", name: "In Progress" } },
+      { id: "5", name: "Fertig", statusCategory: { id: 4, key: "indeterminate", name: "In Progress" } },
+    ],
+    { Fertig: "done" }
+  );
+  const fertig = { id: "5", name: "Fertig", statusCategory: { key: "indeterminate" } };
+
+  test("project query and the status-mapped waiting query", () => {
+    const q = buildDigestQueries({ minutes: 60, projects: ["GROW", "my proj"], open: "(statusCategory != Done AND status not in (5))" });
+    expect(q.projects).toBe('project in (GROW, "my proj") AND updated >= -60m ORDER BY updated DESC');
+    expect(q.waiting).toContain("AND (statusCategory != Done AND status not in (5)) ORDER BY");
+    expect(buildDigestQueries({ minutes: 60 }).projects).toBeUndefined();
+  });
+
+  test("completed, created and changed per project, by anyone, after the status map", () => {
+    const d = buildDigest(
+      raw({
+        products: ["jira"],
+        jira: {
+          projectKeys: ["GROW", "EMPTY"],
+          projectIssues: [
+            jiraIssue("GROW-1", { status: fertig, assignee: { displayName: "Rob" }, created: ago(5000) }),
+            jiraIssue("GROW-2", { created: ago(30) }),
+            jiraIssue("GROW-3", { status: fertig, created: ago(9000) }),
+          ],
+          projectChangelogs: new Map([
+            ["GROW-1", [history(ago(40), ME_J, "status", "In Progress", "Fertig")]],
+            ["GROW-2", [history(ago(30), "ann", "summary", "a", "b")]],
+            // Done long before the window, only a label changed since.
+            ["GROW-3", [history(ago(9000), "ann", "status", "In Progress", "Fertig"), history(ago(10), "ann", "labels", null, "x")]],
+          ]),
+          resolve,
+        },
+      }),
+      { now: NOW, includeOwn: false, limit: 10 }
+    );
+    const [grow, empty] = d.jira!.projects!;
+    expect(grow.completed.map((i) => i.key)).toEqual(["GROW-1"]);
+    expect(grow.completed[0].assignee).toBe("Rob");
+    expect(grow.created.map((i) => i.key)).toEqual(["GROW-2"]);
+    // The overview keeps your own changes even without --include-own.
+    expect(grow.changed.map((i) => i.key)).toEqual(["GROW-1", "GROW-2", "GROW-3"]);
+    expect(grow.changed[0].changes[0]).toMatchObject({ you: true, to: "Fertig" });
+    expect(empty).toEqual({ key: "EMPTY", created: [], completed: [], changed: [] });
+    const text = renderDigestText(d, NOW);
+    expect(text).toContain("Jira project GROW");
+    expect(text).toContain("  Completed (1)\n    GROW-1  [Fertig]  Summary GROW-1 · Rob");
+    expect(text).not.toContain("Jira project EMPTY");
+  });
+
+  test("the sprint counts follow the status map", () => {
+    const d = buildDigest(
+      raw({
+        products: ["jira"],
+        jira: { sprints: [{ id: 1, name: "S", issues: [jiraIssue("A-1", { status: fertig }), jiraIssue("A-2")] }], resolve },
+      }),
+      { now: NOW, includeOwn: false, limit: 10 }
+    );
+    expect(d.jira!.sprints[0].counts).toEqual({ todo: 0, wip: 1, done: 1 });
+    expect(d.jira!.projects).toBeUndefined();
   });
 });

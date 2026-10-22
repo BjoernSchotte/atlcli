@@ -55,6 +55,10 @@ export type Profile = {
   flow?: {
     statusMap?: Record<string, "todo" | "wip" | "done">;
   };
+  /** `atlcli digest` settings for this profile; `projects` replace the global list. */
+  digest?: {
+    projects?: string[];
+  };
   /** `audit jira` settings for this profile, overriding the global ones. */
   audit?: {
     jira?: { staleDays?: [number, number, number] };
