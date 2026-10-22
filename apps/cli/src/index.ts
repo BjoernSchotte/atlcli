@@ -28,6 +28,7 @@ import { handleModels } from "./commands/models.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleJira } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
+import { handleSkill } from "./commands/skill.js";
 import {
   chatHelp,
   handleChat,
@@ -179,6 +180,9 @@ async function main(): Promise<void> {
       case "plugin":
         await handlePlugin(rest, parsed.flags, opts);
         break;
+      case "skill":
+        await handleSkill(rest, parsed.flags, opts);
+        break;
       case "update":
         await handleUpdate(rest, parsed.flags, opts);
         break;
@@ -299,6 +303,9 @@ function showCommandHelp(
     case "plugin":
       handlePlugin(subArgs, helpFlags, opts);
       break;
+    case "skill":
+      handleSkill(subArgs, helpFlags, opts);
+      break;
     case "update":
       handleUpdate(subArgs, helpFlags, opts);
       break;
@@ -412,6 +419,7 @@ Commands:
   log         Query and manage logs
   models      Optional local models (table structure for PDF import)
   plugin      Manage plugins
+  skill       Print or install the agent skill
   update      Check for and install updates
   version     Show version
   release-info Show versioned build provenance

@@ -43,8 +43,8 @@ const DOCS_ONLY_WORKFLOWS = new Set([".github/workflows/docs.yml"]);
  */
 const TOOLING_FILES = new Set([".gitignore"]);
 /**
- * `skills/` holds Markdown, but it is product content that the unit tests
- * check (`scripts/skill-links.test.ts`).
+ * `skills/` holds Markdown, but it is product content: the CLI embeds it as
+ * `atlcli skill`, and the unit tests check it.
  */
 const PRODUCT_PREFIXES = ["apps/", "packages/", "patches/", "plugins/", "scripts/", "services/", "skills/"];
 

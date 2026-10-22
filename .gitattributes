@@ -14,8 +14,8 @@ patches/** text eol=lf
 *.mjs text eol=lf
 *.d.ts text eol=lf
 
-# The agent skill is read by agents and installers byte for byte, so a CRLF
-# checkout must not change what it contains.
+# The agent skill is read by agents and installers byte for byte, and the CLI
+# embeds it in every build, so a CRLF checkout must not change what it contains.
 skills/** text eol=lf
 
 # Binary assets must NEVER be line-ending normalized — normalization would

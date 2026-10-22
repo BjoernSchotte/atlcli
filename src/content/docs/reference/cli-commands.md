@@ -997,6 +997,17 @@ atlcli flag set helloworld false
 
 **Purpose:** Simple test to verify feature flags work correctly. When the flag is not set or `false`, the command behaves as if it doesn't exist.
 
+### Agent Skill
+
+```bash
+atlcli skill                              # Print SKILL.md
+atlcli skill references/safety.md         # Print one file of the skill
+atlcli skill --list                       # List the files
+atlcli skill --install .claude/skills     # Write the skill to .claude/skills/atlcli/
+```
+
+See [Agent Skill](agent-skill.md).
+
 ### Update
 
 ```bash
@@ -1015,5 +1026,6 @@ atlcli -v                               # Short form
 ## Related Topics
 
 - [Shell Completions](shell-completions.md) - Tab completion setup
+- [Agent Skill](agent-skill.md) - The agent skill and `atlcli skill`
 - [Environment Variables](environment.md) - Environment configuration
 - [Troubleshooting](troubleshooting.md) - Common issues

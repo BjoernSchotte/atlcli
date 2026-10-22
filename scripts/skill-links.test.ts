@@ -239,6 +239,19 @@ describe("skills/atlcli", () => {
     expect(broken, `broken skill links:\n  ${broken.join("\n  ")}`).toEqual([]);
   });
 
+  // `atlcli skill` prints SKILL.md alone, so its opening has to say how the
+  // linked files are reached.
+  it("tells the reader how to read a linked file without installing", () => {
+    const opening = readFileSync(join(SKILL_DIR, "SKILL.md"), "utf8").split(/^## /m)[0]!;
+    expect(opening).toContain("`atlcli skill <path>`");
+    expect(opening).toContain("`atlcli skill references/safety.md`");
+  });
+
+  it("names the release its content was checked against", () => {
+    const opening = readFileSync(join(SKILL_DIR, "SKILL.md"), "utf8").split(/^## /m)[0]!;
+    expect(opening).toMatch(/checked against atlcli v\d{4}\.\d+\.\d+\./);
+  });
+
   it("keeps every file name unambiguous for atlcli skill <path>", () => {
     expect(layoutViolations(skillFilePaths())).toEqual([]);
   });

@@ -114,6 +114,9 @@ jobs:
           mkdir "$RUNNER_TEMP/nfs-installed"
           tar -xzf "release/atlcli-${{ matrix.target }}.tar.gz" -C "$RUNNER_TEMP/nfs-installed"
           "$RUNNER_TEMP/nfs-installed/atlcli" --version
+          # The agent skill is embedded at build time; prove it reached the binary.
+          "$RUNNER_TEMP/nfs-installed/atlcli" skill --list | grep -qx SKILL.md
+          test "$("$RUNNER_TEMP/nfs-installed/atlcli" skill | shasum -a 256)" = "$(shasum -a 256 < skills/atlcli/SKILL.md)"
           "$RUNNER_TEMP/nfs-installed/atlcli-confluence-nfs" --version
           test -s "$RUNNER_TEMP/nfs-installed/THIRD-PARTY-nfs.html"
 

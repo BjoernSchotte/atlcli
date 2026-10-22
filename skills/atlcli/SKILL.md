@@ -25,8 +25,15 @@ metadata:
 # atlcli
 
 `atlcli` is installed and authenticated against the user's Atlassian site.
-This skill describes atlcli v2026.10.3. Check `atlcli version` first; on
-another version, follow rule 7 before relying on a detail here.
+This skill was checked against atlcli v2026.10.3. On a newer version, follow
+rule 7 before relying on a detail here. The skill ships with atlcli:
+`atlcli skill` prints the copy built from the same source as the installed
+binary. A copy installed with `atlcli skill --install` or from the repository
+stays as it was installed; when unsure whether this copy is current, run
+`atlcli skill`.
+
+Where the linked files are missing, `atlcli skill <path>` prints one, with the
+path as linked, for example `atlcli skill references/safety.md`.
 
 ## Rules that apply to every invocation
 
