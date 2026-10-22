@@ -12,6 +12,7 @@ import {
   renderFlowText,
   renderSparkline,
   resolveStatusMap,
+  statusScopeJql,
 } from "./flow.js";
 import { calculateBurndown } from "./analysis.js";
 import type { JiraChangelogEntry, JiraIssue, JiraStatus } from "./types.js";
@@ -298,5 +299,31 @@ describe("calculateBurndown on ascending changelogs", () => {
       ["2026-10-03", 0],
       ["2026-10-04", 0],
     ]);
+  });
+});
+
+describe("createStatusCategoryResolver with changelog names", () => {
+  test("a known id follows the site name's override even when the changelog names it differently", () => {
+    // Live: the changelog says "Done" for the id of the site status "Fertig" (In Progress category).
+    const statuses: JiraStatus[] = [{ id: "10001", name: "Fertig", statusCategory: { id: 4, key: "indeterminate", name: "In Progress" } }];
+    const resolve = createStatusCategoryResolver(statuses, { Fertig: "done" });
+    expect(resolve({ id: "10001", name: "Done" })).toBe("done");
+    expect(resolve({ id: "10001" })).toBe("done");
+    expect(resolve({ name: "fertig" })).toBe("done");
+  });
+});
+
+describe("statusScopeJql", () => {
+  test("without a map that moves statuses across done: the plain category", () => {
+    const scope = statusScopeJql(STATUSES, createStatusCategoryResolver(STATUSES, { "Code Review": "wip" }));
+    expect(scope).toEqual({ open: "statusCategory != Done", done: "statusCategory = Done" });
+  });
+
+  test("statuses mapped into and out of done are listed by id", () => {
+    const resolve = createStatusCategoryResolver(STATUSES, { "In Progress": "done", Closed: "wip" });
+    expect(statusScopeJql(STATUSES, resolve)).toEqual({
+      open: "((statusCategory != Done AND status not in (2)) OR status in (5))",
+      done: "((statusCategory = Done AND status not in (5)) OR status in (2))",
+    });
   });
 });

@@ -33,6 +33,7 @@ import {
   renderCfdText,
   renderFlowText,
   resolveStatusMap,
+  statusScopeJql,
 } from "@atlcli/jira";
 import { assertCliAuthSupported } from "./session-guard.js";
 
@@ -126,12 +127,19 @@ export async function searchAll(
   return { issues: issues.slice(0, limit), truncated: Boolean(nextPageToken) || issues.length > limit };
 }
 
+export interface StatusScope {
+  resolve: StatusCategoryResolver;
+  /** JQL for not-done and done issues, agreeing with the status map. */
+  open: string;
+  done: string;
+}
+
 /** Status resolver from the site statuses plus global, profile and flag overrides. */
 export async function loadStatusResolver(
   ctx: JiraContext,
   flags: Flags,
   opts: OutputOptions
-): Promise<StatusCategoryResolver> {
+): Promise<StatusScope> {
   let flagMap: Record<string, FlowCategory> | undefined;
   const spec = getFlag(flags, "status-map");
   if (spec !== undefined) {
@@ -142,7 +150,9 @@ export async function loadStatusResolver(
     }
   }
   const overrides = resolveStatusMap(ctx.config.flow?.statusMap, ctx.profile.flow?.statusMap, flagMap);
-  return createStatusCategoryResolver(await ctx.client.getStatuses(), overrides);
+  const statuses = await ctx.client.getStatuses();
+  const resolve = createStatusCategoryResolver(statuses, overrides);
+  return { resolve, ...statusScopeJql(statuses, resolve) };
 }
 
 function positiveInt(flags: Flags, name: string, fallback: number, opts: OutputOptions): number {
@@ -168,8 +178,8 @@ async function fetchFlowData(flags: Flags, opts: OutputOptions): Promise<FlowDat
   const limit = positiveInt(flags, "limit", DEFAULT_FLOW_LIMIT, opts);
   const ctx = await loadJiraContext(flags, opts);
   const base = await selectionJql(ctx, flags, opts);
-  const resolve = await loadStatusResolver(ctx, flags, opts);
-  const query = `(${base}) AND (statusCategory != Done OR updated >= -${days}d) ORDER BY created ASC`;
+  const { resolve, open } = await loadStatusResolver(ctx, flags, opts);
+  const query = `(${base}) AND (${open} OR updated >= -${days}d) ORDER BY created ASC`;
   const { issues, truncated } = await searchAll(
     ctx.client,
     query,

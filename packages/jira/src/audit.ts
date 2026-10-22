@@ -12,10 +12,10 @@ import {
 } from "./flow.js";
 import type { JiraIssue } from "./types.js";
 
-export type JiraAuditCheck = "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
+export type JiraAuditCheck = "workflow" | "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
 export type JiraAuditSeverity = "info" | "warning" | "error";
 
-export const JIRA_AUDIT_CHECKS: readonly JiraAuditCheck[] = ["stuck-wip", "unassigned-wip", "stale", "hygiene"];
+export const JIRA_AUDIT_CHECKS: readonly JiraAuditCheck[] = ["workflow", "stuck-wip", "unassigned-wip", "stale", "hygiene"];
 export const DEFAULT_JIRA_STALE_DAYS: [number, number, number] = [30, 60, 90];
 
 export interface JiraAuditFinding {
@@ -78,6 +78,10 @@ export function auditJiraIssues(input: {
   inOpenSprint?: Set<string>;
   /** Project keys that have at least one version. */
   projectsUsingVersions: Set<string>;
+  /** Issues with a resolution whose status is outside the Done category; undefined skips the rule. */
+  resolvedNotDone?: JiraIssue[];
+  /** More matched than `resolvedNotDone` holds: counts are lower bounds. */
+  resolvedNotDoneTruncated?: boolean;
 }): JiraAuditReportV1 {
   const { now, checks } = input;
   const findings: JiraAuditFinding[] = [];
@@ -108,6 +112,33 @@ export function auditJiraIssues(input: {
   }
 
   const [staleInfo, staleWarn, staleError] = input.staleThresholds;
+
+  // A status that holds resolved issues but sits outside the Done category is
+  // a workflow mistake: every category-based number (flow, stuck-wip, digest)
+  // treats that finished work as open. One finding per status.
+  if (checks.has("workflow") && input.resolvedNotDone) {
+    const byStatus = new Map<string, { status: NonNullable<JiraIssue["fields"]["status"]>; keys: string[] }>();
+    for (const issue of input.resolvedNotDone) {
+      const status = issue.fields.status;
+      if (!status || input.resolve(status) === "done") continue;
+      const id = status.id ?? status.name;
+      const entry = byStatus.get(id) ?? { status, keys: [] };
+      entry.keys.push(issue.key);
+      byStatus.set(id, entry);
+    }
+    for (const { status, keys } of byStatus.values()) {
+      const category = (status.statusCategory as { name?: string } | undefined)?.name ?? status.statusCategory?.key ?? "?";
+      findings.push({
+        check: "workflow",
+        rule: "resolved-not-done",
+        severity: "warning",
+        key: keys[0],
+        summary: `Status "${status.name}" (${category} category)`,
+        status: status.name,
+        detail: `${keys.length}${input.resolvedNotDoneTruncated ? "+" : ""} resolved issue(s) outside the Done category (e.g. ${keys.slice(0, 3).join(", ")}). If the status means done, move it to Done in the workflow or map it (--status-map "${status.name}=done"); otherwise these issues kept a resolution when they were reopened.`,
+      });
+    }
+  }
 
   for (const issue of input.open) {
     const timeline = buildIssueFlowTimeline(issue, input.resolve);
@@ -224,6 +255,7 @@ export function auditJiraIssues(input: {
 }
 
 const CHECK_TITLES: Record<JiraAuditCheck, string> = {
+  workflow: "Workflow",
   "stuck-wip": "Stuck in progress",
   "unassigned-wip": "In progress without assignee",
   stale: "Stale",

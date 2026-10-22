@@ -97,6 +97,23 @@ describe("auditJiraIssues", () => {
     expect(report.findings[1].detail).toContain("P85 (17.0 d)");
   });
 
+  test("workflow: one finding per status holding resolved issues outside Done, unless mapped to done", () => {
+    const resolved = [issue("P-1", { status: "2" }), issue("P-2", { status: "2" }), issue("P-3", { status: "1" })];
+    const report = run([], [], { ...only("workflow"), resolvedNotDone: resolved, resolvedNotDoneTruncated: true });
+    expect(report.findings.map((f) => [f.rule, f.key, f.status, f.severity])).toEqual([
+      ["resolved-not-done", "P-1", "In Progress", "warning"],
+      ["resolved-not-done", "P-3", "To Do", "warning"],
+    ]);
+    expect(report.findings[0].summary).toBe('Status "In Progress" (In Progress category)');
+    expect(report.findings[0].detail).toContain('2+ resolved issue(s) outside the Done category (e.g. P-1, P-2)');
+    expect(report.findings[0].detail).toContain('--status-map "In Progress=done"');
+
+    const mapped = createStatusCategoryResolver(STATUSES, { "In Progress": "done" });
+    const after = run([], [], { ...only("workflow"), resolvedNotDone: resolved, resolve: mapped });
+    expect(after.findings.map((f) => f.key)).toEqual(["P-3"]);
+    expect(run([], [], only("workflow")).findings).toEqual([]);
+  });
+
   test("stuck-wip is skipped with a diagnostic below five completions", () => {
     const report = run([issue("P-1", { status: "2", startedDaysAgo: 100 })], doneSet([1, 2, 3, 4]), only("stuck-wip"));
     expect(report.findings).toEqual([]);
@@ -156,7 +173,7 @@ describe("auditJiraIssues", () => {
     expect(withAll.summary).toEqual({
       total: 3,
       bySeverity: { error: 0, warning: 1, info: 2 },
-      byCheck: { "stuck-wip": 0, "unassigned-wip": 0, stale: 0, hygiene: 3 },
+      byCheck: { workflow: 0, "stuck-wip": 0, "unassigned-wip": 0, stale: 0, hygiene: 3 },
     });
   });
 

@@ -72,7 +72,7 @@ beforeAll(async () => {
       if (pathname === "/rest/api/3/search/jql") {
         const { jql } = (await req.json()) as { jql: string };
         searches.push(jql);
-        const issues = jql.includes("openSprints()") ? [OPEN[1]] : jql.includes("statusCategory = Done") ? DONE : OPEN;
+        const issues = jql.includes("resolution IS NOT EMPTY") ? [] : jql.includes("openSprints()") ? [OPEN[1]] : jql.includes("statusCategory = Done") ? DONE : OPEN;
         return Response.json({ issues });
       }
       if (pathname === "/rest/api/3/changelog/bulkfetch") {
@@ -160,6 +160,16 @@ describe("audit jira", () => {
     const { stdout, exitCode } = await runCli([...BASE, "--json"], { FLAG_AUDIT: "false" });
     expect(exitCode).toBe(1);
     expect(JSON.parse(stdout).error.message).toBe("Audit feature is not enabled. Run: atlcli flag set audit true --global");
+  });
+});
+
+describe("audit jira with a status map", () => {
+  test("a status mapped to done is searched as done, so stuck-wip gets its reference set", async () => {
+    searches = [];
+    const { exitCode } = await runCli([...BASE, "--checks", "stuck-wip", "--status-map", "In Progress=done", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(searches).toContain('(project = "ATLCLI") AND (statusCategory != Done AND status not in (2)) ORDER BY key ASC');
+    expect(searches).toContain('(project = "ATLCLI") AND (statusCategory = Done OR status in (2)) AND updated >= -90d ORDER BY key ASC');
   });
 });
 

@@ -18,6 +18,8 @@ import { loadJiraContext, loadStatusResolver, searchAll, selectionJql } from "./
 type Flags = Record<string, string | boolean | string[]>;
 
 const DONE_WINDOW_DAYS = 90;
+/** Issues sampled for the workflow check; enough to name every misplaced status in practice. */
+const WORKFLOW_SAMPLE = 200;
 
 /** `"stale,hygiene"` → checks; unknown names are a usage error. */
 export function parseAuditChecks(value: string | undefined): Set<JiraAuditCheck> | string {
@@ -62,25 +64,31 @@ export async function handleAuditJira(args: string[], flags: Flags, opts: Output
   }
 
   const base = await selectionJql(ctx, flags, opts);
-  const resolve = await loadStatusResolver(ctx, flags, opts);
+  const { resolve, open, done } = await loadStatusResolver(ctx, flags, opts);
   const pointsField = getFlag(flags, "points-field") ?? (await ctx.client.detectStoryPointsField()) ?? undefined;
   const fields = ["summary", "status", "issuetype", "assignee", "updated", "created", "parent", "fixVersions", "project", ...(pointsField ? [pointsField] : [])];
 
   const [openResult, doneResult] = await Promise.all([
-    searchAll(ctx.client, `(${base}) AND statusCategory != Done ORDER BY key ASC`, fields, limit),
-    searchAll(ctx.client, `(${base}) AND statusCategory = Done AND resolved >= -${DONE_WINDOW_DAYS}d ORDER BY key ASC`, fields, limit),
+    searchAll(ctx.client, `(${base}) AND ${open} ORDER BY key ASC`, fields, limit),
+    // `updated`, not `resolved`: a status mapped to done may carry no resolution.
+    searchAll(ctx.client, `(${base}) AND ${done} AND updated >= -${DONE_WINDOW_DAYS}d ORDER BY key ASC`, fields, limit),
   ]);
   const logs = await ctx.client.getChangelogs([...openResult.issues, ...doneResult.issues], { fieldIds: ["status"] });
 
   let inOpenSprint: Set<string> | undefined;
   if (checks.has("hygiene") && pointsField) {
     try {
-      const inSprint = await searchAll(ctx.client, `(${base}) AND statusCategory != Done AND sprint in openSprints()`, ["summary"], limit);
+      const inSprint = await searchAll(ctx.client, `(${base}) AND ${open} AND sprint in openSprints()`, ["summary"], limit);
       inOpenSprint = new Set(inSprint.issues.map((i) => i.key));
     } catch {
       // No Agile / sprint field on this site: the rule is skipped with a diagnostic.
     }
   }
+
+  // Raw category on purpose: this finds the statuses a status map may be missing.
+  const resolvedNotDone = checks.has("workflow")
+    ? await searchAll(ctx.client, `(${base}) AND statusCategory != Done AND resolution IS NOT EMPTY ORDER BY updated DESC`, ["summary", "status"], WORKFLOW_SAMPLE)
+    : undefined;
 
   const projectsUsingVersions = new Set<string>();
   if (checks.has("hygiene")) {
@@ -103,6 +111,8 @@ export async function handleAuditJira(args: string[], flags: Flags, opts: Output
     pointsField,
     inOpenSprint,
     projectsUsingVersions,
+    resolvedNotDone: resolvedNotDone?.issues,
+    resolvedNotDoneTruncated: resolvedNotDone?.truncated,
   });
   if (openResult.truncated || doneResult.truncated) {
     report.diagnostics.push(`truncated: more than ${limit} issues matched; raise --limit or narrow the query.`);
@@ -123,6 +133,8 @@ export function auditJiraHelp(): string {
 Report-only hygiene findings over open issues and issues done in the last ${DONE_WINDOW_DAYS} days.
 
 Checks (all run unless --checks is given):
+  workflow         Statuses holding resolved issues outside the Done category (warning);
+                   they skew every category-based number until fixed or mapped
   stuck-wip        In progress longer than the cycle-time P85 (warning) / P95 (error)
   unassigned-wip   In progress without an assignee (warning)
   stale            No update for 30 / 60 / 90 days (info / warning / error); in-progress only unless --all
