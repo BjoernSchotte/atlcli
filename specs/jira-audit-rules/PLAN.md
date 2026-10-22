@@ -1,6 +1,6 @@
 # Jira audit rules: configurable severity, scope and suppression
 
-Status: **Concept, decisions recorded** (2026-10-22). Plan only, nothing implemented.
+Status: **Implemented** (2026-10-22). See "Deviations from this plan" at the end.
 
 ## Problem
 
@@ -109,7 +109,7 @@ baseline:
   - **Default baseline, when no file exists:** a baseline lists concrete findings, so atlcli cannot ship one. The default is therefore an age cutoff: `olderThan: 180d`.
     - Findings on issues not updated for 180 days are treated as legacy. They are not listed one by one, only counted per rule as one quiet line ("41 legacy findings, older than 180 days; `--update-baseline` to accept, `--no-baseline` to list").
     - This keeps the first run on an old project short without hiding anything.
-    - The cutoff does not apply to `workflow`, which reports statuses, nor to the `stale` error level at its own thresholds below 180 days.
+    - The cutoff does not apply to `workflow`, which reports statuses.
     - The cutoff can be configured or switched off in the rules file (`baseline.olderThan: off`).
     - Once a baseline file exists, its entries apply in addition to the cutoff.
 - **Status aging:**
@@ -118,7 +118,7 @@ baseline:
   - The time an open issue has spent in its current status is compared against these bands.
 - **Digest:** the digest runs the rules for its `--project` / `digest.projects` and lists the remaining `error` findings in an "Audit" section. It skips the expensive rules (`stuck-wip`, `status-aging`) unless the rules file enables them for the digest (`digest: true` per rule).
 - **Partial coverage:** when a search hits `--limit`, the affected rule is marked `partial` in the report, not only in a global note.
-- **Exit code:** 1 if any `error` finding remains after suppression; `--fail-on warning` makes the check stricter.
+- **Exit code:** 2 if a listed finding reaches `--fail-on` (default `error`); 1 stays for failures and usage errors.
 - **Output:** JSON gains `rule`, `category`, `suppressed` counts per reason, and `partial`. Text and Markdown show the counts of quiet findings in one line.
 
 ## Workflow rule refinement
@@ -193,3 +193,24 @@ The proposal has three profiles. `default` applies when `extends` is not set:
 ## Open questions
 
 None at the moment. The plan is ready for review.
+
+## Deviations from this plan (implementation, 2026-10-22)
+
+- **Personal rules location:**
+  - Personal rules live in files, like templates: `~/.atlcli/profiles/<profile>/audit-rules.yaml`, then `~/.atlcli/audit-rules.yaml`. There is no `audit.jira.rules` key in `config.json`.
+  - The first file found wins, with no merging.
+  - Without a file, `audit.jira.staleDays` still sets the stale thresholds.
+- **Exit code:** findings exit with **2**, not 1. Code 1 keeps meaning "failed or wrong arguments", so scripts can tell the two apart.
+- **Workflow rule:** it uses the issue history, not the share of resolved issues.
+  - Live checks showed the share heuristic was wrong in 2 of 3 projects:
+    - In COPS, "Fertig" holds mostly unresolved issues, but its workflow simply sets no resolution.
+    - In ADMIN, "Review" holds 4 issues, all resolved on entering the status.
+  - The rule now checks whether the history entry that set the resolution also moved the issue into its current status (`on-entry`), or whether the resolution was set earlier and kept (`kept`).
+  - The finding names the case and the fix. When the resolution was set on entry, the finding also suggests stopping the transition from setting a resolution, for statuses such as Review that do not mean done.
+  - The `share` option is dropped.
+- **Epics:** epics are left out of `flow/stuck-wip`, `flow/status-aging` and their reference sets. Live, year-long epics were flagged against story cycle times.
+- **Report:** the JSON report is `schemaVersion: "2"`:
+  - findings carry `rule` (full id), `category` and `subject`;
+  - `byCheck` is replaced by `byRule`;
+  - new fields: `quiet`, `legacy`, `suppressed`, `partial` and `staleBaselineEntries`.
+- **Digest:** the "Audit errors" section reads up to 300 open issues. It needs the audit feature flag.
