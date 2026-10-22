@@ -99,6 +99,7 @@ describe.skipIf(!RUN).serial("digest, flow metrics and audit jira live (Bundle B
       const a = await tracker.createIssue("digest-flow-a");
       const b = await tracker.createIssue("digest-flow-b");
       const c = await tracker.createIssue("digest-flow-c");
+      if (!me.accountId) throw new Error("The E2E account has no Jira accountId.");
       await jira.assignIssue(a.key, { accountId: me.accountId });
       await jira.assignIssue(c.key, { accountId: me.accountId });
       await transitionToCategory(jira, a.key, "indeterminate");
