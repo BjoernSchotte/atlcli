@@ -228,6 +228,23 @@ Map statuses to flow categories for `jira analyze flow | aging | cfd` and `audit
 
 The profile's map wins per key over the global one, and `--status-map` wins over both. See [Flow Metrics](jira/flow-metrics.md#status-mapping).
 
+### Digest projects
+
+Projects for the digest's project overview, whoever changed the issues:
+
+```json
+{
+  "digest": { "projects": ["GROW"] },
+  "profiles": { "work": { "digest": { "projects": ["GROW", "VDS"] } } }
+}
+```
+
+| Option | Type | Default | Constraints |
+|--------|------|---------|-------------|
+| `digest.projects` | string[] | `[]` | Jira project keys; a profile's list replaces the global one; `--project` wins |
+
+See [Daily Digest](digest.md#project-overview).
+
 ### Digest state
 
 `atlcli digest` keeps one last-run marker per product in `~/.atlcli/profiles/<profile>/digest-state.json`:

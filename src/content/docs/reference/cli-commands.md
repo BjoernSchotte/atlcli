@@ -954,6 +954,7 @@ atlcli digest                                  # Since the last run (first run: 
 atlcli digest --since 7d --no-mark             # Peek without moving the marker
 atlcli digest --only jira --board <id>         # Jira only, with the active sprint
 atlcli digest --space <key> --markdown         # Adds "recently changed in space"
+atlcli digest --project GROW,VDS --since 2d    # Adds a per-project overview (config: digest.projects)
 atlcli digest --include-own --json             # Keep your own edits; JSON output
 ANTHROPIC_API_KEY=... atlcli digest --summarize
 ```
