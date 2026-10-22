@@ -38,7 +38,7 @@ wiki export jobs list|show · wiki import recipe validate|list|show
 wiki vfs cache stats · wiki vfs conflicts list|show
 auth status|list · config list|get · flag list|get · log list|show
 plugin list · models list · doctor · version · release-info
-research · chat   (documented as bounded, read-only)
+research · chat   (no Atlassian writes; research keeps local session files)
 ```
 
 Any other `list`, `get`, or `status` verb follows the same pattern. Group help
@@ -53,7 +53,9 @@ itself a destructive command.
 
 These read from Atlassian but write a local file. Treat them as local writes:
 confirm the output path, and never overwrite an existing file the user did not
-name.
+name. `jira issue attachment download` refuses an existing file without
+`--overwrite`, and a PDF `wiki export` refuses one without `--force`; a DOCX
+`wiki export` and `jira template export` overwrite without asking.
 
 ```
 jira export -o <file> · jira template export · jira issue attachment download
@@ -107,7 +109,9 @@ until `--confirm` is added, so the plain run is the preview.
 
 - `wiki import <file>` and the batch and `--update-page` forms. `--confirm` and
   `--dry-run` together fail with `ATLCLI_ERR_VALIDATION`. `--update-page` with
-  `--confirm` also needs `--expect-version <n>`.
+  `--confirm` checks `--expect-version <n>` only when it is given, although the
+  help calls it required; without it, the `target-diverged` check against the
+  import baseline still refuses a page edited since the import.
 - `wiki page tasks-to-issues --id <id> --project <key>` and `--sync`: without
   `--confirm` the output has `dryRun: true` plus the plan.
 
@@ -180,8 +184,8 @@ count before the real run.
 `jira bulk *` accepts `--issues K1,K2,...` in place of `--jql`.
 
 `atlcli audit wiki --fix` (behind the `audit` feature flag) applies its "safe"
-actions (labelling, report generation) against Confluence with no confirmation
-flag, and gates the rest behind an interactive prompt. `--dry-run` works
+actions with no confirmation flag: labels on Confluence pages and a local
+report file. It gates the rest (archive, delete) behind an interactive prompt. `--dry-run` works
 alongside `--fix` and is the only preview. Never pass `--fix` on the strength of
 an inferred intent.
 

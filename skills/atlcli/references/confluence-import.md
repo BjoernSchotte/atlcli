@@ -164,9 +164,13 @@ atlcli wiki import --manifest batch.yaml --confirm --resume
 ## Data Center
 
 DOCX and PDF imports on Data Center create single pages (images and labels
-work). `--split`, `--update-page`, `--restriction`, `--staging-parent`,
-`--content-property` and comment import are rejected before anything is
-created. A PDF that resolves to a page tree is rejected, not flattened. The
+work). A confirmed DOCX import rejects `--split`, `--update-page`,
+`--restriction`, `--staging-parent` and `--content-property` before anything is
+created; Word comments are left out with the warning
+`docx-import/comments-unsupported-on-dc`, and the unsupported policy decides
+whether that fails the import. A PDF import rejects restrictions, a staging
+parent and content properties, and a split that resolves to a page tree is
+rejected, not flattened. The
 Data Center path is covered by contract tests, not certified against a live
 installation.
 

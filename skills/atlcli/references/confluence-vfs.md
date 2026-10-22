@@ -17,9 +17,9 @@ Markdown file `_index.md` inside it. Three commands share one core:
 | `wiki vfs` | Maintain the local cache and list unmerged writes. |
 
 The tree is a cache, not a copy. Listing a directory costs one request,
-`ls` and `stat` never fetch bodies, and a recursive operation that would need
+`ls` and `stat` never fetch bodies, and a recursive `grep` that would need
 more than 300 page bodies stops with exit code 2 instead of downloading a
-space. For a complete local copy use `wiki docs pull`
+space; other recursive commands have no such cap. For a complete local copy use `wiki docs pull`
 ([confluence-docs-sync.md](confluence-docs-sync.md)).
 
 ## Which tool for which job
@@ -108,12 +108,15 @@ atlcli wiki sh --space DOCS --mode rw -c '
   renames, `mv a dir/` reparents.
 - A conflicting concurrent edit makes the write fail with `EBUSY` and keeps your
   content: `atlcli wiki vfs conflicts list`, `show <id>`, `discard <id>`.
-- The shell warns once per page, naming it, when the page does not survive the
-  Markdown round trip (for example multi-column layouts and inline colour
-  spans). Do not save such a page through the shell. Use the Confluence editor.
+- A page that does not survive the Markdown round trip (for example
+  multi-column layouts and inline colour spans) is saved without any warning:
+  `wiki sh` and `wiki mount` pass no logger, so the loss warning is never
+  printed. Do not save such a page through the shell. Use the Confluence
+  editor.
 - `sed -i` reports every write failure as `No such file or directory`. Repeat
   the write as `echo … > file` to see the real error (`EROFS` means read-only
-  mode, a denial of your own credentials is `EACCES`).
+  mode; `EACCES` is a denial of your own credentials, or a delete without
+  `--allow-delete`).
 - Writes are coalesced for 500 ms. `--sync-writes` persists each write at once.
 
 ## Mounting

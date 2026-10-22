@@ -72,9 +72,9 @@ with `AND`:
 | `--sprint current` (or `active`) | `sprint IN openSprints()` |
 | `--sprint 42` | `sprint = "42"` |
 
-With no flags at all the query is `ORDER BY created DESC` across everything the
-configured default allows. Check `atlcli config list --json` before concluding
-a result set is site-wide.
+With no flags at all the query is `project = <default>` when a default project
+is configured, otherwise `ORDER BY created DESC` across the whole site. Check
+`atlcli config list --json` before concluding a result set is site-wide.
 
 ```bash
 atlcli jira search --project PROJ --assignee me --status 'In Progress' --json

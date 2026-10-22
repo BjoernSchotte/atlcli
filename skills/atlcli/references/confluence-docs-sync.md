@@ -100,7 +100,8 @@ Pull options worth knowing:
 | `--skip-user-check`, `--refresh-users`, `--fetch-contributors` | Control the user-status and contributor lookups stored in `sync.db`. |
 
 `--page-id` pulls the page and the folders on the path to it, not the rest of
-the space. Pages the account cannot read (404) are skipped.
+the space. Pages of a tree or space pull that the account cannot read (404) are
+skipped; an unreadable `--page-id` target fails the pull.
 
 State lives in `./.atlcli/`: `config.json`, `state.json`, `cache/`, `logs/`, and
 `sync.db` after the first pull. Do not edit it.
@@ -268,8 +269,9 @@ XML inside a `<!--raw … -->` comment.
 
 Parameters are only honoured where the converter reads them, and unread ones
 are dropped without warning. `toc` takes none: use `:::toc-zone minLevel=2
-maxLevel=4` around a region for a levelled table of contents. `expand` reads
-only its quoted title, so `expanded=true` does nothing.
+maxLevel=4` around a region for a levelled table of contents. `expand` takes
+only a title: `:::expand "Details" expanded=true` produces the title
+`"Details" expanded=true`, quotes included.
 
 ## Validation
 
@@ -309,8 +311,10 @@ for directories that lack an `index.md`. Pages are created in the new editor
 
 ## Conflicts
 
-Only `sync` produces conflicts. When both sides changed a page, its three-way
-merge either succeeds or writes conflict markers into the file:
+Only `sync` produces page conflicts (`pull` can record attachment conflicts,
+writing a `*-conflict.*` copy next to the attachment). When both sides changed a
+page, its three-way merge either succeeds or writes conflict markers into the
+file:
 
 ```text
 <<<<<<< LOCAL
@@ -367,7 +371,8 @@ enable it or install its hook unless the user asks.
 - Enabled, it commits the pulled files after each `wiki docs pull` into a
   directory that is a git repository.
 - `atlcli git hook install [dir]` writes a `.git/hooks/post-commit` script that
-  runs `atlcli wiki docs push <dir>` after every git commit in that repository.
+  runs `atlcli wiki docs push <dir> --quiet` after every git commit in that
+  repository.
   A commit then writes to Confluence, with the unchecked push behaviour
   described above. The script skips the push when a `sync` daemon holds the
   lock, and a failed push does not block the commit.

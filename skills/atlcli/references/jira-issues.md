@@ -287,7 +287,8 @@ atlcli jira issue unlink-page --key PROJ-101 --link <linkId> --json
 the two issues it fails and lists their IDs: narrow it with `--type <name>` or
 pass `--link <id>`. `unlink --link <id>` deletes at once, with no `--confirm`.
 
-`unlink-page` takes the link ID from `issue pages`, not the page ID.
+`unlink-page` takes the link ID from `issue pages` as `--link <id>`, or
+`--page <pageId>`, which removes the link by the page's global ID.
 
 ## Attachments
 

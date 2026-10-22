@@ -39,9 +39,9 @@ and can hook every command. Install only a plugin the user named.
 
 An enabled plugin changes what other commands do:
 
-- `git`: after every `wiki docs pull` into a Git repository it stages and
-  commits the directory with the message `sync(confluence): pull N page(s) from
-  Confluence`. `atlcli git hook install [dir]` writes `.git/hooks/post-commit`,
+- `git`: after a `wiki docs pull` into a Git repository that changed files, it
+  stages and commits the directory with the message `sync(confluence): pull N
+  page(s) from Confluence`, where N counts the changed files. `atlcli git hook install [dir]` writes `.git/hooks/post-commit`,
   which runs `atlcli wiki docs push <dir> --quiet` after every `git commit` in
   that repository. That push writes to Confluence, and the hook file keeps working after the plugin is disabled. `atlcli git hook status` and
   `atlcli git hook remove` inspect and remove it. `--force` overwrites a foreign
@@ -127,4 +127,6 @@ their shell profile. Do not edit the profile yourself.
 - `atlcli helloworld` prints a greeting and only when the `helloworld` flag is
   on.
 - The Chrome side-panel extension (PDF and Word export, Ask AI) is a browser
-  UI with no CLI surface. For export from a script use `wiki export`.
+  UI with no CLI surface. From a script, use `wiki export` for PDF and Word,
+  and `atlcli chat` or `atlcli research` for questions (only when the user asks
+  for them, see SKILL.md).

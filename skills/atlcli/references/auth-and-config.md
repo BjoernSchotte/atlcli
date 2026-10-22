@@ -49,8 +49,10 @@ profile (`authType` `apiToken`):
 A Server/Data Center profile (`authType` `bearer`) reports `username`,
 `hasPatInConfig`, `hasKeychainToken` (macOS only, and only when a username is
 set) and `hasEnvToken` instead. `tlsCaFile` and `tlsSkipVerify` appear when the
-profile sets them. A profile of type `session` is rejected by every CLI
-command with `auth type "session" is only supported in browser contexts`.
+profile sets them. A profile of type `session` is rejected with `auth type
+"session" is only supported in browser contexts` by the commands that talk to
+Jira or Confluence (`wiki publish` skips that check); `config`, `auth status`,
+`flag` and `log` still work.
 
 Target a different site per command with `--profile <name>`; it is a global
 flag and works on every command. The only other way to pick a profile is
@@ -86,8 +88,9 @@ Keychain, or configure token in profile.
 ```
 
 has no token from any of the three sources. With a Server/Data Center profile
-that relies on the Keychain, the lookup can be refused for the process while
-`atlcli auth status` still reports a healthy profile. Do not "fix" it by
+that relies on the Keychain, the lookup can be refused for the process;
+`atlcli auth status` then shows `"hasKeychainToken": false` and still lists
+the site, since it checks no token. Do not "fix" it by
 writing credentials anywhere. Ask the user to run the command in their own
 shell, or to export `ATLCLI_API_TOKEN` for the session.
 
@@ -129,9 +132,9 @@ it and turning dots into underscores (`uno.service` is `FLAG_UNO_SERVICE`).
 `atlcli flag set <name> <value>` writes project-level config unless `--global`
 is passed, and `flag unset <name>` removes one; both are user decisions.
 
-Two commands are gated by a flag and absent from the help until it is set:
-`audit` (flag `audit`; without it `atlcli audit` prints `Audit feature is not
-enabled`) and `helloworld`. Check `atlcli flag list` when a documented
+Two commands are gated by a flag and never listed in the root help, set or
+not: `audit` (flag `audit`; without it `atlcli audit` prints `Audit feature is
+not enabled`) and `helloworld`. Check `atlcli flag list` when a documented
 capability seems missing.
 
 ## Logs

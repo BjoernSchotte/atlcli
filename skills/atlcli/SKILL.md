@@ -25,8 +25,12 @@ metadata:
 # atlcli
 
 `atlcli` is installed and authenticated against the user's Atlassian site.
-This skill was checked against atlcli v2026.10.3. On a newer version, follow
-rule 7 before relying on a detail here. The skill ships with atlcli:
+This skill was checked against the atlcli source at commit 54a116ce plus
+`atlcli skill`, after release v2026.10.3. v2026.10.3 does not have
+`atlcli digest`, `atlcli audit jira`, `atlcli skill`,
+`jira analyze flow|aging|cfd` or `--status-map`. On any version other than
+that source, follow rule 7 before relying on a detail here. The skill ships
+with atlcli:
 `atlcli skill` prints the copy built from the same source as the installed
 binary. A copy installed with `atlcli skill --install` or from the repository
 stays as it was installed; when unsure whether this copy is current, run
@@ -47,9 +51,9 @@ path as linked, for example `atlcli skill references/safety.md`.
 2. **Always pass `--json`.** Some commands print tables without it. Errors
    from atlcli's own checks (usage, validation, auth, config) come back as
    `{"error":{"code":"ATLCLI_ERR_…"}}`. An HTTP error from Jira or Confluence
-   does not: stdout stays empty, stderr gets one line such as
-   `Jira API error (403): …`, and the exit code is 1. Check the exit code,
-   not only stdout.
+   mostly does not: stdout stays empty, stderr gets one line such as
+   `Jira API error (403): …`, and the exit code is 1. A few commands wrap it
+   as `ATLCLI_ERR_API` instead. Check the exit code, not only stdout.
 3. **Mind the flag parser.** `--flag=value` keeps only the text before a
    second `=`, so `--jql='project = PROJ'` silently becomes `project `. Use the
    space form, `--jql 'project = PROJ'`. In the space form a value starting
@@ -64,7 +68,8 @@ path as linked, for example `atlcli skill references/safety.md`.
    drops the named flags but keeps the positionals and runs the verb:
    `atlcli jira watch PROJ-101 --help` adds a watcher, and
    `atlcli jira issue attach PROJ-101 ./f.txt --help` uploads the file. The
-   `wiki` commands, `doctor`, `update` and `models` print help for `--help`.
+   `wiki` commands, `doctor`, `update` and `models` print help for `--help`,
+   except `wiki my` and `wiki recent`, which run their search.
 5. **Resolve names before using them.** Transition names are workflow actions
    (`Start Progress`), not statuses (`In Progress`). Issue types, account
    IDs, custom field IDs, board and page IDs all get looked up, never guessed.
@@ -129,8 +134,9 @@ top   auth completion config doctor flag log models plugin update version
       release-info research chat pdf-template
 ```
 
-Some commands are gated behind feature flags and absent from the help until
-enabled: `atlcli audit` prints `Audit feature is not enabled`. Enabling one
+Some commands are gated behind feature flags and never listed in the root
+help, enabled or not: without its flag `atlcli audit` prints `Audit feature is
+not enabled`. Enabling one
 with `atlcli flag set <name> true --global` edits `~/.atlcli/config.json`, so
 ask first. Enabled plugins add their own top-level commands (`atlcli git`,
 `atlcli drawio`). Check `atlcli flag list` and `atlcli plugin list --json` when

@@ -9,8 +9,10 @@ metadata:
 
 `atlcli audit wiki` reports content health for pages in a local `wiki docs`
 directory: stale pages, orphans, broken internal links, single or inactive
-contributors, restricted, draft and archived pages. The command is hidden
-until its feature flag is on, so the bare `atlcli` help does not list it.
+contributors, restricted, draft and archived pages. The command needs its
+feature flag, and the root `atlcli` help never lists it. `atlcli audit wiki
+--help` prints the root help, not the audit help; with the flag on, the bare
+`atlcli audit` lists the targets with examples.
 
 ## Contents
 
@@ -77,9 +79,11 @@ non-interactive agent shell. Do not pipe `yes` into them.
 
 ## Pitfalls
 
-- `--all` with `--fix` includes every check, so the stale label lands on every
-  page that is high risk by the configured threshold. Set `--stale-high`
-  explicitly and read the dry run.
+- `--all` turns on every check except the external-link checks
+  (`--external-links`, `--check-external`). Its stale thresholds come only from
+  `audit.staleThresholds` in the config, so without them no stale check runs;
+  with them and `--fix`, the stale label lands on every page that is high risk
+  by that threshold. Set `--stale-high` explicitly and read the dry run.
 - Results describe the last pull, not the live wiki. Pull first if
   freshness matters.
 

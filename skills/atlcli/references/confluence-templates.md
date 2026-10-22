@@ -101,8 +101,9 @@ applied without creating the page. Run it first and show the user.
 
 ## Anti-patterns
 
-- Publishing a template-created page without a `--dry-run` review. Unresolved
-  template variables end up visible in the published page.
+- Publishing a template-created page without a `--dry-run` review. An
+  unresolved `{{variable}}` renders as an empty string, and
+  `wiki page create --template` does not enforce required variables.
 - Running `--interactive` or `wiki template edit` unattended. Both wait for a
   human.
 

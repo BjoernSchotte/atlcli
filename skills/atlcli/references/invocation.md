@@ -26,8 +26,8 @@ atlcli <group> [<subgroup>] <verb> [positional] [--flags]
 
 Groups: `auth`, `completion`, `config`, `doctor`, `flag`, `wiki`, `jira`,
 `research`, `chat`, `pdf-template`, `log`, `models`, `plugin`, `update`,
-`version`, `release-info`. `atlcli audit` is absent from the root help until
-the `audit` feature flag is set (see
+`version`, `release-info`. `atlcli audit` is never listed in the root help,
+with or without its `audit` feature flag (see
 [auth-and-config.md](auth-and-config.md#feature-flags)).
 
 Global options accepted anywhere: `--profile <name>`, `--json`, `--no-log`,
@@ -51,8 +51,11 @@ An unknown subcommand behaves differently per tree:
 
 - Under `jira` it exits **1** with `ATLCLI_ERR_USAGE` and `Unknown subcommand:
   <name>` (`atlcli jira bogus --json`, `atlcli jira issue bogus --json`).
-- Under `wiki` (`atlcli wiki bogus`, `atlcli wiki page bogus`) it prints the
-  group help and exits **0**.
+- Under `wiki` (`atlcli wiki bogus`, `atlcli wiki page bogus`), `auth`,
+  `config`, `flag` and `log` it prints the group help and exits **0**.
+- Some `wiki` subtrees read the unknown word as an argument instead:
+  `atlcli wiki publish bogus` fails on the missing project file and
+  `atlcli wiki import bogus` on the file type, both with exit **1**.
 
 So the exit status alone does not tell help from success under `wiki`. Read
 the output.
@@ -69,7 +72,9 @@ itself:
 | Tree | What `--help` on a verb does |
 | --- | --- |
 | `wiki page`, `wiki docs`, `wiki space`, `wiki search`, `wiki export`, `wiki template`, `wiki import`, `wiki publish`, `wiki sh`, `wiki mount`, `wiki vfs` | the handler checks `help` first and prints help |
-| `doctor`, `update`, `models` | prints help |
+| `wiki my`, `wiki recent` | **no help check**: the search runs |
+| `doctor`, `update`, `models`, `completion`, `research`, `chat`, `pdf-template` | prints help |
+| `audit`, `release-info` | prints the root help (`version --help` prints the version) |
 | `jira` (every subtree) | **no help check**: the verb runs with its flags stripped |
 | `auth`, `config`, `flag`, `log`, `plugin` | **no help check**: the verb runs with its positionals |
 
@@ -116,8 +121,9 @@ Parser behaviour that bites:
 - `--key value` consumes `value` only if it does **not** start with `-`, or is
   exactly `-` (stdin/stdout, as in `--description-file -`). Any other value that
   starts with `-` is discarded **silently**: the flag becomes boolean `true`,
-  nothing is reported, and the command runs as though the flag were absent
-  (`--profile '-foo'` runs on the default profile). For such a value use the `=`
+  nothing is reported, and the value is parsed as flags of its own
+  (`--profile '-foo'` runs on the default profile and sets the short flags
+  `-f` and `-o`). For such a value use the `=`
   form, which is immune to the leading `-`: `--summary='-1 repro only'`. A value
   that both starts with `-` and contains `=` has no clean form; for a query,
   prefix one space (`--jql ' -x = 1'`), which survives to the API and is

@@ -45,9 +45,10 @@ atlcli jira sprint report 456 --json
 
 `--state` is `future`, `active`, or `closed`; `list` and `issues` take `--limit`
 (default 50). `sprint report <sprintId>` takes the sprint ID positionally
-(`--id` also works). It reads at most 200 sprint issues and makes one changelog
-request per issue, and it needs the story-points field (auto-detected, or
-`--points-field <id>`).
+(`--id` also works). It reads at most 200 sprint issues and their changelogs
+(a bulk read on Cloud, one request per issue on Data Center; v2026.10.3
+makes one request per issue everywhere), and it needs the story-points field
+(auto-detected, or `--points-field <id>`).
 
 Writes:
 
@@ -112,7 +113,8 @@ atlcli jira epic remove PROJ-101 --json
 
 Epic keys are positional on `get`, `issues`, and `progress`; the epic is a
 flag (`--epic`) only on `add`. `epic list` uses the board's epics when `--board`
-is given or `global.board` is set (and then ignores `--project`); otherwise it
+is given or a default board is set (the profile's, else `global.board`; it then
+ignores `--project`); otherwise it
 searches `issuetype = Epic` in `--project` (default 50). `epic create` takes the
 description as Markdown through `--description <text>` or
 `--description-file <path|->`; `--field` is ignored there without error. `epic

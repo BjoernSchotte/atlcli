@@ -167,9 +167,9 @@ atlcli/
 └── spec/                 # Internal specs and roadmaps
 ```
 
-`skills/atlcli/SKILL.md` names the atlcli release its content was last checked
-against. Change that version only after reviewing the skill's content against
-that release.
+`skills/atlcli/SKILL.md` names the atlcli source its content was last checked
+against: an upstream commit, and the release it follows. Change that reference
+only after reviewing the skill's content against the new source.
 
 ## E2E Resources
 

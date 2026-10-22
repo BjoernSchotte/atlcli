@@ -247,9 +247,13 @@ describe("skills/atlcli", () => {
     expect(opening).toContain("`atlcli skill references/safety.md`");
   });
 
-  it("names the release its content was checked against", () => {
-    const opening = readFileSync(join(SKILL_DIR, "SKILL.md"), "utf8").split(/^## /m)[0]!;
-    expect(opening).toMatch(/checked against atlcli v\d{4}\.\d+\.\d+\./);
+  // A commit, not a date: a release and dev builds can share a date, and the
+  // upstream commit is what `atlcli release-info` prints as its source.
+  it("names what its content was checked against", () => {
+    const opening = readFileSync(join(SKILL_DIR, "SKILL.md"), "utf8").split(/^## /m)[0]!.replace(/\s+/g, " ");
+    expect(opening).toMatch(
+      /This skill was checked against the atlcli source at commit [0-9a-f]{7,40} plus `atlcli skill`, after release v\d{4}\.\d+\.\d+\./,
+    );
   });
 
   it("keeps every file name unambiguous for atlcli skill <path>", () => {
