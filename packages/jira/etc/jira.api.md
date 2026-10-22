@@ -1241,6 +1241,8 @@ export declare function auditJiraIssues(input: {
     pointsField?: string;
     inOpenSprint?: Set<string>;
     projectsUsingVersions: Set<string>;
+    resolvedNotDone?: JiraIssue[];
+    resolvedNotDoneTruncated?: boolean;
 }): JiraAuditReportV1;
 
 // export: buildIssueFlowTimeline
@@ -1729,7 +1731,7 @@ export interface JiraAttachment {
 }
 
 // export: JiraAuditCheck
-export type JiraAuditCheck = "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
+export type JiraAuditCheck = "workflow" | "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
 
 // export: JiraAuditFinding
 export interface JiraAuditFinding {
@@ -3018,6 +3020,12 @@ export type StatusCategoryResolver = (status: {
         key?: string;
     } | null;
 }) => FlowCategory | undefined;
+
+// export: statusScopeJql
+export declare function statusScopeJql(statuses: JiraStatus[], resolve: StatusCategoryResolver): {
+    open: string;
+    done: string;
+};
 
 // export: StatusTransition
 export interface StatusTransition {
@@ -4398,6 +4406,8 @@ export declare function auditJiraIssues(input: {
     pointsField?: string;
     inOpenSprint?: Set<string>;
     projectsUsingVersions: Set<string>;
+    resolvedNotDone?: JiraIssue[];
+    resolvedNotDoneTruncated?: boolean;
 }): JiraAuditReportV1;
 
 // export: buildIssueFlowTimeline
@@ -4886,7 +4896,7 @@ export interface JiraAttachment {
 }
 
 // export: JiraAuditCheck
-export type JiraAuditCheck = "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
+export type JiraAuditCheck = "workflow" | "stuck-wip" | "unassigned-wip" | "stale" | "hygiene";
 
 // export: JiraAuditFinding
 export interface JiraAuditFinding {
@@ -6175,6 +6185,12 @@ export type StatusCategoryResolver = (status: {
         key?: string;
     } | null;
 }) => FlowCategory | undefined;
+
+// export: statusScopeJql
+export declare function statusScopeJql(statuses: JiraStatus[], resolve: StatusCategoryResolver): {
+    open: string;
+    done: string;
+};
 
 // export: StatusTransition
 export interface StatusTransition {
