@@ -653,7 +653,8 @@ atlcli jira worklog report --group-by date
 ### Boards
 
 ```bash
-atlcli jira board list                  # List all boards
+atlcli jira board list                  # Boards of the default project, if set
+atlcli jira board list --all-projects   # Boards of every project
 atlcli jira board list --project <key>
 atlcli jira board list --type scrum     # Filter by type
 atlcli jira board list --name <pattern>

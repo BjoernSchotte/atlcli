@@ -108,17 +108,9 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
   // Points are optional on a review page: use the flag, else detect, else none.
   const pointsField = getFlag(flags, "points-field") ?? (await jira.detectStoryPointsField().catch(() => null)) ?? undefined;
   const sprint = await jira.getSprint(sprintId);
-  const issues: JiraIssue[] = [];
-  for (let startAt = 0; ; ) {
-    const page = await jira.getSprintIssues(sprintId, {
-      startAt,
-      maxResults: 100,
-      fields: [...REPORT_FIELDS, ...(pointsField ? [pointsField] : [])],
-    });
-    issues.push(...page.issues);
-    startAt += page.issues.length;
-    if (page.issues.length === 0 || startAt >= page.total) break;
-  }
+  const issues = await jira.getAllSprintIssues(sprintId, {
+    fields: [...REPORT_FIELDS, ...(pointsField ? [pointsField] : [])],
+  });
   // ponytail: no scope change on the page; it needs one changelog request per
   // issue until spec digest-flow-metrics T1 adds bulk changelogs.
   const resolve = await reportStatusResolver(jira, flags, opts);

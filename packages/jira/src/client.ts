@@ -1855,6 +1855,22 @@ export class JiraClient {
   }
 
   /**
+   * Every issue in a sprint: pages through `getSprintIssues`.
+   */
+  async getAllSprintIssues(
+    sprintId: number,
+    options: { jql?: string; fields?: string[] } = {}
+  ): Promise<JiraIssue[]> {
+    const issues: JiraIssue[] = [];
+    for (let startAt = 0; ; ) {
+      const page = await this.getSprintIssues(sprintId, { ...options, startAt, maxResults: 100 });
+      issues.push(...page.issues);
+      startAt += page.issues.length;
+      if (page.issues.length === 0 || startAt >= page.total) return issues;
+    }
+  }
+
+  /**
    * Move issues to a sprint.
    *
    * POST /rest/agile/1.0/sprint/{sprintId}/issue
