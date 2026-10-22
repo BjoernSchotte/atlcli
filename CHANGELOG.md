@@ -2,7 +2,7 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [Unreleased]
+## [2026.10.4] - 2026-10-22
 
 ### Security
 
@@ -10,6 +10,56 @@ The release binaries now embed Bun 1.4.4 instead of 1.4.2. Bun 1.4.3 and 1.4.4
 fix vulnerabilities in TLS, `fetch`, HTTP and WebSocket handling, which atlcli
 uses for every Atlassian request. Upgrade with `brew upgrade atlcli` or download
 the new archive.
+
+### Bug Fixes
+
+- **release:** Wait up to 45 minutes for the stable release workflow ([3ca2975](https://github.com/bjoernschotte/atlcli/commit/3ca29759da616773db1a6380d928eee00941f3ee))
+- **jira:** Apply the status map to searches; add audit workflow check ([73ca67e](https://github.com/bjoernschotte/atlcli/commit/73ca67e747b6b2d90722331a35a6ab91ededb6a6))
+- **import-pdf:** Keep wrapped and unnumbered contents entries out of headings ([f452149](https://github.com/bjoernschotte/atlcli/commit/f452149e9a400bfac9a0849b05bd16a0caf28b07))
+- **import-pdf:** Join a split row's rest when it is a filled table's only partly blank row ([5da631c](https://github.com/bjoernschotte/atlcli/commit/5da631cdf90f9ed35e6d24d4a45aa4bb8afd95d0))
+- **jira:** Sprint metrics and report pages follow the status map ([3ae9fed](https://github.com/bjoernschotte/atlcli/commit/3ae9fedeaa58a52a241febb98024b3f7697dc73a))
+- **jira:** Velocity and predictability use the most recent sprints ([92e2cc4](https://github.com/bjoernschotte/atlcli/commit/92e2cc4b71086ebdc516f0375d01b205ebc4b72e))
+- **jira:** Page sprint issues, local sprint dates, board list --all-projects, no rank lines in digest ([e109d1b](https://github.com/bjoernschotte/atlcli/commit/e109d1b7b2fdf5d9a2039ef87a73a180872a77a6))
+
+### Documentation
+
+- Daily digest, flow metrics and Jira audit ([949d5d8](https://github.com/bjoernschotte/atlcli/commit/949d5d86c517bea053ebbfb4422f9ce16f9dcbb9))
+- Digest project overview, status map scope, audit workflow check ([8a19acc](https://github.com/bjoernschotte/atlcli/commit/8a19acc127a579d7d2bea14272d1a3fb3406bb6d))
+- **spec:** Concept for configurable Jira audit rules ([4bb0050](https://github.com/bjoernschotte/atlcli/commit/4bb005043320388df8143d1841d5a046e6721159))
+- **spec:** Record audit rules decisions ([53cf4d1](https://github.com/bjoernschotte/atlcli/commit/53cf4d186017fade1db91cb43ec6f89601146b7d))
+- **spec:** Audit rules baseline, profiles and flagged field ([dfdf6a1](https://github.com/bjoernschotte/atlcli/commit/dfdf6a1a90f6eb8c08d9f35e7ed237149365c825))
+- Audit rules reference, Jira audit rewrite, digest audit errors ([c992a4a](https://github.com/bjoernschotte/atlcli/commit/c992a4a0be30043dc268e54f69ecdc1be8706d98))
+- **changelog:** Note the Bun security update for the next release ([fb84609](https://github.com/bjoernschotte/atlcli/commit/fb846091cfcecc7210ec8c7125b537ae77dc1bfd))
+
+### Features
+
+- **release:** Skip local tests when CI already proved the main commit ([864c801](https://github.com/bjoernschotte/atlcli/commit/864c801140057702415cd517077175c40e6aab69))
+- **jira:** Flow metrics and bulk changelog reads ([4eeb16f](https://github.com/bjoernschotte/atlcli/commit/4eeb16fcdafa3ddb166f173eafd4e9112e75b39f))
+- **cli:** Add audit jira ([505e293](https://github.com/bjoernschotte/atlcli/commit/505e293f3c4d04c905c8397c80068aa59901c9bf))
+- **confluence:** Author, container and comment fields for search; shared query builders ([78d6474](https://github.com/bjoernschotte/atlcli/commit/78d6474c8421cb42800f7d6b4de281f6bfd69194))
+- **cli:** Add atlcli digest ([5fd8312](https://github.com/bjoernschotte/atlcli/commit/5fd8312e4280d4858768e33b3dd2e3938c90acbf))
+- **cli:** Digest project overview, status map and kanban boards ([2a05a7a](https://github.com/bjoernschotte/atlcli/commit/2a05a7ab44305b1bd6a553abff1d26e62973b469))
+- **jira:** Configurable audit rules, baseline and new rules ([b65e760](https://github.com/bjoernschotte/atlcli/commit/b65e760635be6164177a10924fd3c8239bdb700f))
+- **cli:** Audit rules file, baseline flags, exit 2, digest audit errors ([170e7dc](https://github.com/bjoernschotte/atlcli/commit/170e7dc00f61efc3a321fe0ed9998eed34eba1a6))
+- **jira:** Sprint metrics as of the sprint, replayed from the changelog ([a1d252c](https://github.com/bjoernschotte/atlcli/commit/a1d252c640d6629bf8281192386e2a8ec2fea719))
+
+### Miscellaneous
+
+- Regenerate API reports for flow, audit, digest ([d8ead95](https://github.com/bjoernschotte/atlcli/commit/d8ead957b22410be90cccbef43082424605709b8))
+- Regenerate API reports ([8527f0d](https://github.com/bjoernschotte/atlcli/commit/8527f0d2d02e180c0bf3f14b6f1e32432c85002d))
+- Regenerate API reports ([040a784](https://github.com/bjoernschotte/atlcli/commit/040a784cf3b4ba2a8b45865bccab4edd74fc7241))
+- Run fake-indexeddb test files in their own process ([8216961](https://github.com/bjoernschotte/atlcli/commit/82169615ddbc6f42af14f096299e5636033f0b27))
+
+### Testing
+
+- **cli:** Live E2E for digest, flow metrics and audit jira ([04a6785](https://github.com/bjoernschotte/atlcli/commit/04a67853c182597c8034d1d80a1a2fa86b85f86d))
+- **cli:** Guard the E2E account id for the type checker ([6dd4bd6](https://github.com/bjoernschotte/atlcli/commit/6dd4bd67600bb28090a5e1eb11f491f89edc7c73))
+- **cli:** Cover the atomic runtime package install ([1a665a2](https://github.com/bjoernschotte/atlcli/commit/1a665a2cf46a345f7512347efb9d693527fdf62c))
+
+### Build
+
+- Pin Bun 1.4.4 for its security fixes ([e9e2c18](https://github.com/bjoernschotte/atlcli/commit/e9e2c18b9c6c9399efddd38c467f85bc35c7eb0e))
+
 
 ## [2026.10.3] - 2026-10-22
 
