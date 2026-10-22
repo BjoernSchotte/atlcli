@@ -2,6 +2,108 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.3] - 2026-10-22
+
+### Bug Fixes
+
+- **docs:** Pull --page-id materializes only the page's ancestor path ([a20d4e2](https://github.com/bjoernschotte/atlcli/commit/a20d4e2ce29d2a82c84e3885c9d48c785a84e5a3))
+- **import-pdf:** Avoid false layout fallbacks ([8f4cbbc](https://github.com/bjoernschotte/atlcli/commit/8f4cbbc341813af39e7d56c2ce222e73f0fd9303))
+- **import-pdf:** Join tagged tables longer than 250 rows across pages ([a54fb73](https://github.com/bjoernschotte/atlcli/commit/a54fb734d895a5c56aab12a3ec783a9a385d2a20))
+- **import-pdf:** Contain rejected tagged tables to their region ([4def3f9](https://github.com/bjoernschotte/atlcli/commit/4def3f9a02f14f1b3fbde279270eaecc258a4074))
+- **import-pdf:** Keep underscores, banded columns and digit wraps native ([9581285](https://github.com/bjoernschotte/atlcli/commit/9581285be7dc7d1da1417ffb9f36dbbf979eb047))
+- **import-pdf:** Keep pages with open-sided or linearized tables native ([b77d7d9](https://github.com/bjoernschotte/atlcli/commit/b77d7d97d2a7bddbe89da286c5e5cc9cd676e951))
+- **import-pdf:** Keep hyphens of compounds wrapped at a line end ([436c950](https://github.com/bjoernschotte/atlcli/commit/436c9504e90152c561c84ab16bb6e4484d6510f3))
+- **import-pdf:** Read the pieces of a cell line in line order ([15041d5](https://github.com/bjoernschotte/atlcli/commit/15041d5a2b90c52f7d250a331b4344d1d162a552))
+- **confluence:** Page list honors --space and --limit ([da74a81](https://github.com/bjoernschotte/atlcli/commit/da74a81219e72164f142d2d6cfd3590d5a7f57b0))
+- **ci:** Raise Node engines floor to 22.12.0; consumer smoke runs on it ([74b9878](https://github.com/bjoernschotte/atlcli/commit/74b987886749185662cfc3ce7acdef5a9b36f05c))
+- **docs:** Build the docs site into dist-docs/, not the CLI's dist/ ([e3a02b6](https://github.com/bjoernschotte/atlcli/commit/e3a02b63434f221630a3e2c6e0c05601b8ff8246))
+- **confluence:** Wait for a busy sync.db instead of failing at once ([f03df9d](https://github.com/bjoernschotte/atlcli/commit/f03df9d71d0d07620a0f0d25773e23de254932c1))
+- **cli:** Docs pull --limit caps pages pulled, not the search page size ([6282674](https://github.com/bjoernschotte/atlcli/commit/6282674faad0b4123530895737cbd3db9ff209b5))
+- **release:** Unblock nightly dev releases after advisory-only CI failures ([6199643](https://github.com/bjoernschotte/atlcli/commit/6199643bcd58af53fff0f01a278a5273c5c6ba0a))
+- **confluence:** Keep markdown after a smart link at a line start ([f1f665d](https://github.com/bjoernschotte/atlcli/commit/f1f665ddf3fde1fa1fc4e4dd3f801f270962dbf2))
+- **import-pdf:** Ground table breaks, headings and hyphens in producer exports ([2e0d3d1](https://github.com/bjoernschotte/atlcli/commit/2e0d3d1701d86d0ec93659a60c42e0e8c8fe0afe))
+- **confluence:** Accept the table __autoSize hint without a warning ([5b8a122](https://github.com/bjoernschotte/atlcli/commit/5b8a1225e7ca805552ddea61f9f3dc098f243ed5))
+- **security:** Bound PDF object decoding, keep ADF sentinels out of page tasks ([e381d9f](https://github.com/bjoernschotte/atlcli/commit/e381d9f91d61e7afd76580968d326a5729996113))
+
+### Documentation
+
+- **import-pdf:** Plan quality reconstruction ([d3b515a](https://github.com/bjoernschotte/atlcli/commit/d3b515a95ca378fa99dfdec5929fa736666d9099))
+- **import-pdf:** Record quality baseline ([64f3dd6](https://github.com/bjoernschotte/atlcli/commit/64f3dd6f4586f93440fab325eb7afaf869b772e8))
+- **import-pdf:** Close quality implementation evidence ([0946571](https://github.com/bjoernschotte/atlcli/commit/0946571298cbb96b02e3038e3f3ab775776cc1e9))
+- **import-pdf:** Reopen native table acceptance gaps ([396141c](https://github.com/bjoernschotte/atlcli/commit/396141cbf16bc91fd2f8573235660eb31c251e49))
+- **import-pdf:** Detail remaining native-table proof gates ([e594f59](https://github.com/bjoernschotte/atlcli/commit/e594f59fe01dc60bc20486d650e9f0dc4c0a5ca0))
+- **spec:** Plan TypeScript 7 migration ([83182c0](https://github.com/bjoernschotte/atlcli/commit/83182c0876d2b6a4036e29dbf1ecac24235eadb3))
+- **spec:** Record ts7 migration planning decisions ([d21851d](https://github.com/bjoernschotte/atlcli/commit/d21851d8ce9b9147108b84c0bd69dfabbb786627))
+- **spec:** Mark ts7 T1/T2 done, record Node 22.12 floor ([a99e5d5](https://github.com/bjoernschotte/atlcli/commit/a99e5d580f0beeb6505c67e37b7f8f4b6c4e9fd6))
+- Document the TS 7 / TS 6 compiler split and record adoption evidence ([ab98ad9](https://github.com/bjoernschotte/atlcli/commit/ab98ad94fba6fe2922bbd0561885885671d2a7f2))
+- **spec:** Plan Jira content workflows and digest/flow metrics bundles ([c47716f](https://github.com/bjoernschotte/atlcli/commit/c47716f7b2df4f37e241c83419d7b6d28e2ab6f2))
+- **spec:** Record decisions for bundles A and B ([1d439db](https://github.com/bjoernschotte/atlcli/commit/1d439db9aab8a4d9886d377a64449a4fa4c27ac5))
+- Drop README contributors list, credits live in CHANGELOG ([5422640](https://github.com/bjoernschotte/atlcli/commit/542264054f5ce9781802124ebc96aa59d1526612))
+
+### Features
+
+- **import-pdf:** Preserve ordered V2 facts ([4371ce7](https://github.com/bjoernschotte/atlcli/commit/4371ce7e5002792828e9c329791fc53e23bcdd75))
+- **import-pdf:** Add evidence-based text assembly ([11fbf9e](https://github.com/bjoernschotte/atlcli/commit/11fbf9ee3695fe4212905c7638f9b5ed409f9449))
+- **import-pdf:** Route tagged semantics through V2 assembly ([f0bebaa](https://github.com/bjoernschotte/atlcli/commit/f0bebaa63fc1eedd519a2e12458e9cff077b7d76))
+- **import-pdf:** Route geometry semantics through V2 assembly ([a421486](https://github.com/bjoernschotte/atlcli/commit/a4214868fe4b160d8bcd4f637b6f80811322903a))
+- **import-pdf:** Cut production review over to V2 ([0628710](https://github.com/bjoernschotte/atlcli/commit/0628710824cca5026a1b63fdc10521dcb8a10439))
+- **import-pdf:** Reconcile tagged geometry ownership ([89980ee](https://github.com/bjoernschotte/atlcli/commit/89980eece502090ae6e53c3dff89ce6352277da5))
+- **import-pdf:** Preserve producer structures ([0ce3813](https://github.com/bjoernschotte/atlcli/commit/0ce3813f05d4c6c296ae98822607e4d78d330d5f))
+- **import-pdf:** Enforce semantic quality gates ([08f35e8](https://github.com/bjoernschotte/atlcli/commit/08f35e8bbb6b14600d42fb773fbf94719243e0cc))
+- **import-pdf:** Surface source fidelity reviews ([1751ad7](https://github.com/bjoernschotte/atlcli/commit/1751ad75b831e8aa63ddd3e80e1ec98159d7a539))
+- **import-pdf:** Read the full-document structure tree ([d5f597f](https://github.com/bjoernschotte/atlcli/commit/d5f597f267797095b0c138625e93cd09234249d4))
+- **import-pdf:** Use the document tree in the tagged lane (PIQ-13..15) ([94c3590](https://github.com/bjoernschotte/atlcli/commit/94c35901aa2e6f77d9a6fbbf3cef6aa36ededc48))
+- **import-pdf:** Add the neutral acceptance corpus and live proof ([ba25230](https://github.com/bjoernschotte/atlcli/commit/ba252307b7e9c95bfaecda6f3953cd897ecdbd10))
+- **import-pdf:** Rebuild untagged tables and layout from the drawing ([f5b5f2c](https://github.com/bjoernschotte/atlcli/commit/f5b5f2c09e81b53af14ba0e3ab266a2f2be4a241))
+- **import-pdf:** Keep siblings of unresolved tags, tables on fallback pages, and alt-text drafts ([3c89165](https://github.com/bjoernschotte/atlcli/commit/3c891651a8415fe6f35f778e42794c8fb4c39845))
+- **jira:** Markdown<->ADF conversion ([85bbd48](https://github.com/bjoernschotte/atlcli/commit/85bbd489a16483f44c6d8a060fc3f309eecc7c83))
+- **jira:** Markdown content in the CLI, comment CRUD, history, unlink ([1b9248d](https://github.com/bjoernschotte/atlcli/commit/1b9248dd52120a44180ec8dd2d88d5b16dccc0a4))
+- **confluence:** Turn page task items into Jira issues ([7a71608](https://github.com/bjoernschotte/atlcli/commit/7a716084dce13a566be71418bf47993e6f5b2a57))
+- **jira:** Release notes and sprint review pages ([2688549](https://github.com/bjoernschotte/atlcli/commit/268854994cad87794b7a0866e7106675cda84439))
+- **import-pdf:** Opt-in Table Transformer proposals for untagged tables ([5ca012f](https://github.com/bjoernschotte/atlcli/commit/5ca012f412c9de53f2b106aa23fa0730072369ab))
+- **jira:** Readable report PDFs with issue pills and description excerpts ([8481fc9](https://github.com/bjoernschotte/atlcli/commit/8481fc9259d79818458527b676ee57d763775a6b))
+- **pdf:** Configurable cover and closing page, curated Report template ([3e8944d](https://github.com/bjoernschotte/atlcli/commit/3e8944ded64c84296c0690be366ac58a1d9490b2))
+- **pdf:** Title block on page 1, built-in "report" template for reports ([df6467b](https://github.com/bjoernschotte/atlcli/commit/df6467b50aa37288a590a6a3eb210808f80ff005))
+- **import-pdf:** Verify untagged headings, join split rows, attach OCR layers ([5391750](https://github.com/bjoernschotte/atlcli/commit/539175014153ebe7601066703b0957243133a164))
+
+### Miscellaneous
+
+- **import-pdf:** Remove the multi-engine oracle spike ([9dbb429](https://github.com/bjoernschotte/atlcli/commit/9dbb429ac6931342ba40c824edd612953846bcfa))
+- **import-pdf:** Port producer fixture tools from Python to TypeScript ([fe7d9e8](https://github.com/bjoernschotte/atlcli/commit/fe7d9e8664d239cf676f45acd1a204284a58b273))
+- **fixtures:** Drop unused Python fixture generators ([c0f2417](https://github.com/bjoernschotte/atlcli/commit/c0f2417a2dd047dc90a8b5a12340b79cc65d2a28))
+- **bench:** Port the Glow PTY probe from Python to TypeScript ([a5ec244](https://github.com/bjoernschotte/atlcli/commit/a5ec2446a1a23fd5a834493500b1d3d806392eef))
+- Route docs-only workflow, .gitignore and CI test files narrowly ([fdaafee](https://github.com/bjoernschotte/atlcli/commit/fdaafee50ac0014edf67b9ef06946a56cd1a3c9a))
+- Cut PR wall time (6 test shards, macOS Homebrew, Intel/CfT off PRs) ([5cddc20](https://github.com/bjoernschotte/atlcli/commit/5cddc20012b973a9de94507edae170c48993a1dc))
+- PR fast lane; native platform proof runs after merge on main ([0ff4da4](https://github.com/bjoernschotte/atlcli/commit/0ff4da4538f2ef30efb2ed8e1acd2da112ff4984))
+- **web-publish:** Untrack a generated Astro test build and restore the consumer inventory ([0205fa0](https://github.com/bjoernschotte/atlcli/commit/0205fa0c5e04f89968a2dcd85d65965ddf1a5643))
+
+### Performance
+
+- **nfs:** Let tests shorten helper deadlines instead of waiting them out ([07dd5f8](https://github.com/bjoernschotte/atlcli/commit/07dd5f8b4f8d63958a3ac55c2f098e0131cdb781))
+
+### Styling
+
+- **nfs:** Rustfmt helper argument tests ([d9afdb3](https://github.com/bjoernschotte/atlcli/commit/d9afdb3d784d0f3c2401e2ac7fb0ce5683a1b671))
+- **confluence:** Drop trailing blank line in tasks-to-issues ([a1b404c](https://github.com/bjoernschotte/atlcli/commit/a1b404cbbb8afc58e558c1ee37d1216e1f9da772))
+
+### Testing
+
+- **import-pdf:** Add neutral quality corpus ([3061012](https://github.com/bjoernschotte/atlcli/commit/3061012f66593aefaf9d65f65865870ce7baa74c))
+- **import-pdf:** Align hyphen boundary oracle ([4eeb6ee](https://github.com/bjoernschotte/atlcli/commit/4eeb6ee9ded83d96de72a8e3ae2b2134ec3256b2))
+- **import-pdf:** Prove fragmented cloud readback ([2383570](https://github.com/bjoernschotte/atlcli/commit/238357049b39241ee7b756cb1ea85b691a67c791))
+- **import-pdf:** Prove multi-engine oracle architecture ([213ddcc](https://github.com/bjoernschotte/atlcli/commit/213ddcc815671c1572a7a6cf53def7990751acee))
+- **import-pdf:** Repin V1 facts digests for PDFium 2.15.1 ([b4919d2](https://github.com/bjoernschotte/atlcli/commit/b4919d2580bc4884e33b65d57fa2749477c1fc46))
+- **vfs:** Replace inline Python probes in the NFS bridge tests ([3dbd203](https://github.com/bjoernschotte/atlcli/commit/3dbd2037ba3e3c60ebad9aba1a0920492fc98f37))
+- **pdf:** Decode-proof corpus uses one asset per role (87 s -> <1 s) ([20ba1ee](https://github.com/bjoernschotte/atlcli/commit/20ba1ee630a44989233797f99d2b5bac0906d093))
+- **nfs:** Explicit 20 s timeout for the bounded-pages journal test ([6ec1137](https://github.com/bjoernschotte/atlcli/commit/6ec1137179e36416d686ac4ab51304c699aad35b))
+- **consumer-smoke:** Check the text assembly revision's shape, not a pinned number ([83ec618](https://github.com/bjoernschotte/atlcli/commit/83ec618d71bf34f4053713dacaddac28c7676b7f))
+- **consumer-smoke:** Compare the revision prefix in the generated chunk source ([8247d56](https://github.com/bjoernschotte/atlcli/commit/8247d563e350a623b4b5ce5da2c3e96eaf969d4e))
+- **jira:** Live E2E suite for content workflows ([578d4b9](https://github.com/bjoernschotte/atlcli/commit/578d4b9a6982643bef2ef43190fa819a8268d305))
+
+### Build
+
+- Prepare for TypeScript 7 (bun-types 1.4.2, explicit extension types) ([8452a2b](https://github.com/bjoernschotte/atlcli/commit/8452a2bc581dda6d48c52c56dd5ce49058c28f97))
+- Adopt TypeScript 7 native compiler side-by-side with the TS 6 API ([bc4ccf4](https://github.com/bjoernschotte/atlcli/commit/bc4ccf4e81ef4bbd7c3eb0f39819b67bcf2614f0))
 ## [2026.10.2] - 2026-10-14
 
 First public CalVer product release. Tag `v2026.10.1` remains reserved after an
