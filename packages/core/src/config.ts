@@ -97,6 +97,23 @@ export type AuditConfig = {
     | "external-links"
     | "folders"
   >;
+  /** `audit jira` settings. */
+  jira?: JiraAuditConfig;
+};
+
+/** `audit jira` settings; a profile's values win over the global ones. */
+export type JiraAuditConfig = {
+  /** Days without an update for the info / warning / error stale levels. Default 30, 60, 90. */
+  staleDays?: [number, number, number];
+};
+
+/**
+ * Flow metrics settings (`jira analyze flow|aging|cfd`, `audit jira`).
+ * A profile's `flow.statusMap` wins per key over the global one.
+ */
+export type FlowConfig = {
+  /** Status name or id → flow category, overriding the Jira status category. */
+  statusMap?: Record<string, "todo" | "wip" | "done">;
 };
 
 /**
@@ -152,6 +169,8 @@ export type Config = {
   audit?: AuditConfig;
   /** Virtual filesystem configuration */
   vfs?: VfsConfig;
+  /** Flow metrics configuration */
+  flow?: FlowConfig;
   /** Registered projects for --global audit flag */
   projects?: ProjectConfig[];
   /** @deprecated Use 'global' instead. Kept for migration. */

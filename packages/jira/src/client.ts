@@ -32,6 +32,7 @@ import type {
   JiraComponent,
   JiraVersion,
   JiraRemoteLink,
+  JiraStatus,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
@@ -88,6 +89,9 @@ export interface JiraClientOptions {
 // public client API while allowing retry tests to observe requested backoffs
 // without waiting through production-duration timers.
 const retrySchedulerHook = Symbol.for("atlcli.jira.retry-scheduler.test-hook");
+
+/** Issues per `changelog/bulkfetch` request; Jira Cloud rejects more. */
+const BULK_CHANGELOG_CHUNK = 1000;
 
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
@@ -1265,6 +1269,102 @@ export class JiraClient {
     const startAt = page.startAt ?? options.startAt ?? 0;
     const total = page.total ?? startAt + values.length;
     return { values, startAt, total, isLast: page.isLast ?? startAt + values.length >= total };
+  }
+
+  /**
+   * Change histories for many issues, keyed by issue key, oldest first, with
+   * `created` as an ISO string.
+   *
+   * Cloud: POST /rest/api/3/changelog/bulkfetch (1000 issues per request,
+   * following `nextPageToken`; the endpoint returns newest first and
+   * `created` as epoch milliseconds). Data Center: `getIssue(expand=changelog)`
+   * in waves of `concurrency`, which Jira caps at ~100 histories per issue.
+   */
+  async getChangelogs(
+    issues: Array<{ id: string; key: string }>,
+    options: { fieldIds?: string[]; concurrency?: number; signal?: AbortSignal } = {}
+  ): Promise<Map<string, JiraChangelogEntry[]>> {
+    const byKey = new Map<string, JiraChangelogEntry[]>(issues.map((i) => [i.key, []]));
+    if (this.isCloud) {
+      const keyById = new Map(issues.map((i) => [i.id, i.key]));
+      for (let i = 0; i < issues.length; i += BULK_CHANGELOG_CHUNK) {
+        const chunk = issues.slice(i, i + BULK_CHANGELOG_CHUNK);
+        let nextPageToken: string | undefined;
+        do {
+          const page = await this.request<{
+            issueChangeLogs?: Array<{
+              issueId: string;
+              changeHistories?: Array<Omit<JiraChangelogEntry, "created"> & { created: string | number }>;
+            }>;
+            nextPageToken?: string;
+          }>("/changelog/bulkfetch", {
+            method: "POST",
+            apiBase: "/rest/api/3",
+            body: {
+              issueIdsOrKeys: chunk.map((issue) => issue.key),
+              fieldIds: options.fieldIds,
+              maxResults: 10000,
+              nextPageToken,
+            },
+            signal: options.signal,
+            logBody: "meta-only",
+          });
+          for (const log of page.issueChangeLogs ?? []) {
+            const key = keyById.get(log.issueId) ?? log.issueId;
+            const entries = byKey.get(key) ?? [];
+            for (const history of log.changeHistories ?? []) {
+              entries.push({ ...history, created: new Date(history.created).toISOString() });
+            }
+            byKey.set(key, entries);
+          }
+          nextPageToken = page.nextPageToken;
+        } while (nextPageToken);
+      }
+    } else {
+      const concurrency = Math.max(1, options.concurrency ?? 5);
+      for (let i = 0; i < issues.length; i += concurrency) {
+        const wave = issues.slice(i, i + concurrency);
+        const results = await Promise.all(
+          wave.map((issue) =>
+            this.getIssue(issue.key, { fields: ["status"], expand: "changelog", signal: options.signal })
+          )
+        );
+        wave.forEach((issue, index) => {
+          byKey.set(issue.key, [...(results[index].changelog?.histories ?? [])]);
+        });
+      }
+    }
+    for (const entries of byKey.values()) {
+      entries.sort((a, b) => Date.parse(a.created) - Date.parse(b.created));
+    }
+    return byKey;
+  }
+
+  /**
+   * Every status the site knows, with its status category.
+   *
+   * GET /rest/api/3/status
+   */
+  async getStatuses(): Promise<JiraStatus[]> {
+    return this.request<JiraStatus[]>("/status");
+  }
+
+  /**
+   * The JQL behind a board: its saved filter, read through the board
+   * configuration.
+   *
+   * GET /rest/agile/1.0/board/{id}/configuration, then GET /filter/{id}
+   */
+  async getBoardFilterJql(boardId: number): Promise<string> {
+    const config = await this.request<{ filter?: { id?: string } }>(
+      `/board/${boardId}/configuration`,
+      { apiBase: this.agilePath }
+    );
+    if (!config.filter?.id) {
+      throw new Error(`Board ${boardId} has no saved filter.`);
+    }
+    const filter = await this.getFilter(config.filter.id);
+    return filter.jql;
   }
 
   // ============ Worklogs ============

@@ -1,0 +1,302 @@
+import { describe, expect, test } from "bun:test";
+import {
+  attachChangelogs,
+  buildIssueFlowTimeline,
+  computeCumulativeFlow,
+  computeFlowMetrics,
+  createStatusCategoryResolver,
+  isoWeek,
+  parseStatusMap,
+  percentile,
+  renderAgingText,
+  renderFlowText,
+  renderSparkline,
+  resolveStatusMap,
+} from "./flow.js";
+import { calculateBurndown } from "./analysis.js";
+import type { JiraChangelogEntry, JiraIssue, JiraStatus } from "./types.js";
+
+const STATUSES: JiraStatus[] = [
+  { id: "1", name: "To Do", statusCategory: { id: 2, key: "new", name: "To Do" } },
+  { id: "2", name: "In Progress", statusCategory: { id: 4, key: "indeterminate", name: "In Progress" } },
+  { id: "3", name: "Code Review", statusCategory: { id: 2, key: "new", name: "To Do" } },
+  { id: "4", name: "Done", statusCategory: { id: 3, key: "done", name: "Done" } },
+  { id: "5", name: "Closed", statusCategory: { id: 3, key: "done", name: "Done" } },
+];
+const NAME: Record<string, string> = Object.fromEntries(STATUSES.map((s) => [s.id, s.name]));
+const resolve = createStatusCategoryResolver(STATUSES);
+
+/** An issue created at `created` that walked through `path` ([statusId, ISO] pairs). */
+function issue(
+  key: string,
+  created: string,
+  path: Array<[string, string]>,
+  extra: Partial<JiraIssue["fields"]> = {}
+): JiraIssue {
+  const histories: JiraChangelogEntry[] = [];
+  let from = "1";
+  for (const [to, at] of path) {
+    histories.push({
+      id: `${key}-${at}`,
+      author: { accountId: "u1", displayName: "U" } as JiraChangelogEntry["author"],
+      created: at,
+      items: [{ field: "status", fieldtype: "jira", from, fromString: NAME[from] ?? null, to, toString: NAME[to] ?? null }],
+    });
+    from = to;
+  }
+  const current = STATUSES.find((s) => s.id === from) ?? { id: from, name: `Status ${from}` };
+  return {
+    id: key.replace(/\D/g, ""),
+    key,
+    self: "",
+    fields: {
+      summary: `Summary ${key}`,
+      issuetype: { id: "1", name: "Story" },
+      project: { id: "1", key: "P" },
+      status: current,
+      created,
+      ...extra,
+    } as JiraIssue["fields"],
+    changelog: { histories },
+  };
+}
+
+describe("status mapping", () => {
+  test("maps Jira status categories and lets overrides win by id or name, case-insensitively", () => {
+    expect(resolve({ id: "2" })).toBe("wip");
+    expect(resolve({ id: "3", name: "Code Review" })).toBe("todo");
+    const overridden = createStatusCategoryResolver(STATUSES, { "code review": "wip", "5": "wip" });
+    expect(overridden({ id: "3", name: "Code Review" })).toBe("wip");
+    expect(overridden({ id: "5", name: "Closed" })).toBe("wip");
+    expect(resolve({ id: "99", name: "Gone" })).toBeUndefined();
+  });
+
+  test("parseStatusMap accepts names with spaces and rejects unknown categories", () => {
+    expect(parseStatusMap("Code Review=wip, Blocked = WIP")).toEqual({ "Code Review": "wip", Blocked: "wip" });
+    expect(() => parseStatusMap("Code Review=doing")).toThrow(/Invalid status map entry/);
+    expect(() => parseStatusMap("=wip")).toThrow();
+  });
+
+  test("resolveStatusMap: profile beats global per key, the flag beats both", () => {
+    expect(
+      resolveStatusMap(
+        { Review: "todo", Blocked: "wip" },
+        { review: "wip" },
+        { Blocked: "todo" }
+      )
+    ).toEqual({ review: "wip", Blocked: "todo" });
+  });
+});
+
+describe("buildIssueFlowTimeline", () => {
+  test("straight-through flow", () => {
+    const t = buildIssueFlowTimeline(
+      issue("P-1", "2026-10-01T08:00:00.000Z", [["2", "2026-10-02T08:00:00.000Z"], ["4", "2026-10-05T08:00:00.000Z"]]),
+      resolve
+    );
+    expect(t.startedAt).toBe("2026-10-02T08:00:00.000Z");
+    expect(t.doneAt).toBe("2026-10-05T08:00:00.000Z");
+    expect(t.intervals.map((i) => i.category)).toEqual(["todo", "wip", "done"]);
+  });
+
+  test("reopen after done keeps the first start and uses the last entry into done", () => {
+    const t = buildIssueFlowTimeline(
+      issue("P-2", "2026-10-01T00:00:00.000Z", [
+        ["2", "2026-10-02T00:00:00.000Z"],
+        ["4", "2026-10-03T00:00:00.000Z"],
+        ["2", "2026-10-04T00:00:00.000Z"],
+        ["4", "2026-10-06T00:00:00.000Z"],
+        ["5", "2026-10-07T00:00:00.000Z"],
+      ]),
+      resolve
+    );
+    expect(t.startedAt).toBe("2026-10-02T00:00:00.000Z");
+    // Done → Closed stays one done run, so the run's start counts.
+    expect(t.doneAt).toBe("2026-10-06T00:00:00.000Z");
+  });
+
+  test("skipped wip and an unknown status", () => {
+    const skipped = buildIssueFlowTimeline(
+      issue("P-3", "2026-10-01T00:00:00.000Z", [["4", "2026-10-02T00:00:00.000Z"]]),
+      resolve
+    );
+    expect(skipped.startedAt).toBeUndefined();
+    expect(skipped.doneAt).toBe("2026-10-02T00:00:00.000Z");
+    const unknown = buildIssueFlowTimeline(
+      issue("P-4", "2026-10-01T00:00:00.000Z", [["99", "2026-10-02T00:00:00.000Z"]]),
+      resolve
+    );
+    expect(unknown.unknownStatuses).toEqual(["99"]);
+  });
+
+  test("histories in any order are replayed oldest first", () => {
+    const i = issue("P-5", "2026-10-01T00:00:00.000Z", [["2", "2026-10-02T00:00:00.000Z"], ["4", "2026-10-03T00:00:00.000Z"]]);
+    i.changelog!.histories.reverse();
+    expect(buildIssueFlowTimeline(i, resolve).doneAt).toBe("2026-10-03T00:00:00.000Z");
+  });
+
+  test("no transitions: the current status is the only interval; done falls back to resolutiondate", () => {
+    const i = issue("P-6", "2026-10-01T00:00:00.000Z", [], {
+      status: STATUSES[3],
+      resolutiondate: "2026-10-04T00:00:00.000Z",
+    });
+    const t = buildIssueFlowTimeline(i, resolve);
+    expect(t.intervals).toHaveLength(1);
+    expect(t.doneAt).toBe("2026-10-04T00:00:00.000Z");
+  });
+});
+
+describe("percentile (nearest rank)", () => {
+  test("n=1, n=2, n=20 and P85 of seven values", () => {
+    expect(percentile([], 50)).toBeUndefined();
+    expect(percentile([4], 85)).toBe(4);
+    expect(percentile([1, 2], 50)).toBe(1);
+    expect(percentile([1, 2], 85)).toBe(2);
+    const twenty = Array.from({ length: 20 }, (_, i) => i + 1);
+    expect(percentile(twenty, 50)).toBe(10);
+    expect(percentile(twenty, 85)).toBe(17);
+    expect(percentile(twenty, 95)).toBe(19);
+    expect(percentile([1, 2, 3, 4, 5, 6, 7], 85)).toBe(6);
+  });
+});
+
+describe("computeFlowMetrics", () => {
+  const from = new Date("2026-10-01T00:00:00.000Z");
+  const to = new Date("2026-10-14T23:59:59.999Z");
+  const now = new Date("2026-10-15T00:00:00.000Z");
+
+  function done(n: number, startDay: number, doneDay: number): JiraIssue {
+    const d = (day: number) => `2026-10-${String(day).padStart(2, "0")}T12:00:00.000Z`;
+    return issue(`P-${n}`, d(1), [["2", d(startDay)], ["4", d(doneDay)]]);
+  }
+
+  test("no P85 below five completions, and nothing is flagged in aging", () => {
+    const m = computeFlowMetrics({
+      issues: [done(1, 2, 4), done(2, 2, 6), issue("P-9", "2026-10-01T00:00:00.000Z", [["2", "2026-10-03T00:00:00.000Z"]])],
+      resolve,
+      from,
+      to,
+      now,
+    });
+    expect(m.cycleTime.count).toBe(2);
+    expect(m.cycleTime.p50).toBe(2);
+    expect(m.cycleTime.p85).toBeNull();
+    expect(m.wip.aging[0]).toMatchObject({ key: "P-9", ageDays: 12, overP85: null });
+    expect(renderAgingText(m)).toContain("P85 n/a d");
+    expect(renderFlowText(m, "project = P")).toContain("fewer than 5 completed issues");
+  });
+
+  test("stats, throughput across an ISO week boundary, aging over P85, skipped wip", () => {
+    const issues = [
+      done(1, 2, 3), // cycle 1
+      done(2, 2, 4), // 2
+      done(3, 2, 5), // 3 (Mon 2026-10-05 starts W41)
+      done(4, 2, 6), // 4
+      done(5, 2, 12), // 10
+      issue("P-6", "2026-10-01T00:00:00.000Z", [["4", "2026-10-06T00:00:00.000Z"]]), // skipped wip
+      issue("P-7", "2026-09-01T00:00:00.000Z", [["2", "2026-09-02T00:00:00.000Z"]]), // aging, 43 days
+      issue("P-8", "2026-10-01T00:00:00.000Z", [["2", "2026-10-13T00:00:00.000Z"]]), // aging, 2 days
+      issue("P-10", "2026-08-01T00:00:00.000Z", [["2", "2026-08-02T00:00:00.000Z"], ["4", "2026-08-03T00:00:00.000Z"]]), // done before the window
+    ];
+    const m = computeFlowMetrics({ issues, resolve, from, to, now });
+    expect(m.cycleTime).toEqual({ count: 5, min: 1, p50: 3, p85: 10, p95: 10, max: 10, mean: 4 });
+    expect(m.leadTime.count).toBe(6);
+    expect(m.diagnostics.skippedWip).toBe(1);
+    expect(m.completed.map((c) => c.key)).toEqual(["P-1", "P-2", "P-3", "P-6", "P-4", "P-5"]);
+    expect(m.throughput.weekly).toEqual([
+      { week: "2026-W40", count: 2 },
+      { week: "2026-W41", count: 3 },
+      { week: "2026-W42", count: 1 },
+    ]);
+    expect(m.throughput.daily).toHaveLength(14);
+    expect(m.wip.aging.map((a) => [a.key, a.overP85])).toEqual([["P-7", true], ["P-8", false]]);
+    expect(renderAgingText(m)).toMatch(/^!\s+P-7/m);
+  });
+
+  test("an unmapped status keeps the issue out of cycle time", () => {
+    const i = issue("P-1", "2026-10-01T00:00:00.000Z", [["2", "2026-10-02T00:00:00.000Z"], ["77", "2026-10-03T00:00:00.000Z"], ["4", "2026-10-04T00:00:00.000Z"]]);
+    const m = computeFlowMetrics({ issues: [i], resolve, from, to, now });
+    expect(m.completed[0].cycleDays).toBeNull();
+    expect(m.diagnostics).toMatchObject({ excludedFromCycleTime: 1, unknownStatuses: ["77"] });
+  });
+});
+
+describe("computeCumulativeFlow", () => {
+  test("counts each issue's status at the end of every UTC day", () => {
+    const issues = [
+      // Moves to In Progress one millisecond before midnight UTC: counts as wip that day.
+      issue("P-1", "2026-10-01T10:00:00.000Z", [["2", "2026-10-01T23:59:59.998Z"], ["4", "2026-10-03T00:00:00.000Z"]]),
+      // Created after the first day's snapshot.
+      issue("P-2", "2026-10-02T01:00:00.000Z", []),
+    ];
+    const cfd = computeCumulativeFlow({
+      issues,
+      resolve,
+      from: new Date("2026-10-01T00:00:00.000Z"),
+      to: new Date("2026-10-03T12:00:00.000Z"),
+      groupBy: "status",
+    });
+    expect(cfd.columns.map((c) => c.name)).toEqual(["To Do", "In Progress", "Done"]);
+    expect(cfd.days).toEqual([
+      { date: "2026-10-01", counts: { "To Do": 0, "In Progress": 1, Done: 0 } },
+      { date: "2026-10-02", counts: { "To Do": 1, "In Progress": 1, Done: 0 } },
+      { date: "2026-10-03", counts: { "To Do": 1, "In Progress": 0, Done: 1 } },
+    ]);
+    const byCategory = computeCumulativeFlow({
+      issues,
+      resolve,
+      from: new Date("2026-10-03T00:00:00.000Z"),
+      to: new Date("2026-10-03T00:00:00.000Z"),
+      groupBy: "category",
+    });
+    expect(byCategory.days[0].counts).toEqual({ todo: 1, done: 1 });
+  });
+});
+
+describe("helpers", () => {
+  test("renderSparkline: all zeros, a single value, a ramp", () => {
+    expect(renderSparkline([0, 0, 0])).toBe("▁▁▁");
+    expect(renderSparkline([5])).toBe("█");
+    expect(renderSparkline([0, 7, 14])).toBe("▁▅█");
+    expect(renderSparkline([])).toBe("");
+  });
+
+  test("isoWeek handles the year boundary", () => {
+    expect(isoWeek("2026-01-01T00:00:00Z")).toBe("2026-W01");
+    expect(isoWeek("2027-01-01T00:00:00Z")).toBe("2026-W53");
+  });
+
+  test("attachChangelogs keeps the issue fields and sorts are the fetcher's job", () => {
+    const i = issue("P-1", "2026-10-01T00:00:00.000Z", [], { resolutiondate: "x" });
+    const log: JiraChangelogEntry[] = [{ id: "1", author: {} as JiraChangelogEntry["author"], created: "2026-10-02T00:00:00.000Z", items: [] }];
+    const [attached] = attachChangelogs([i], new Map([["P-1", log]]));
+    expect(attached.fields.resolutiondate).toBe("x");
+    expect(attached.changelog?.histories).toBe(log);
+    expect(attachChangelogs([i], new Map())[0].changelog?.histories).toEqual([]);
+  });
+});
+
+describe("calculateBurndown on ascending changelogs", () => {
+  test("completion is the last transition, which needs oldest-first histories", () => {
+    const sprint = {
+      id: 1,
+      name: "S1",
+      state: "closed",
+      startDate: "2026-10-01T00:00:00.000Z",
+      endDate: "2026-10-04T00:00:00.000Z",
+    } as Parameters<typeof calculateBurndown>[0];
+    const i = issue(
+      "P-1",
+      "2026-10-01T00:00:00.000Z",
+      [["2", "2026-10-02T09:00:00.000Z"], ["4", "2026-10-03T09:00:00.000Z"]],
+      { customfield_10016: 3 } as Partial<JiraIssue["fields"]>
+    );
+    const burndown = calculateBurndown(sprint, [i], "customfield_10016");
+    expect(burndown.map((d) => [d.date, d.remaining])).toEqual([
+      ["2026-10-01", 3],
+      ["2026-10-02", 3],
+      ["2026-10-03", 0],
+      ["2026-10-04", 0],
+    ]);
+  });
+});
