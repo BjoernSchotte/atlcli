@@ -34,6 +34,11 @@ trim = true
 conventional_commits = true
 filter_unconventional = true
 split_commits = false
+# Merge commits carry no change of their own; skip them so the parse-error
+# warning only fires for a real commit that would be lost.
+commit_preprocessors = [
+    { pattern = "^Merge (pull request|branch|remote-tracking branch|origin/)", replace = "chore(merge): $0" },
+]
 commit_parsers = [
     { field = "breaking", pattern = "true", group = "<!-- 0 -->Breaking changes" },
     { message = "^feat", group = "Features" },
@@ -44,6 +49,7 @@ commit_parsers = [
     { message = "^style", group = "Styling" },
     { message = "^test", group = "Testing" },
     { message = "^chore\\(release\\)", skip = true },
+    { message = "^chore\\(merge\\)", skip = true },
     { message = "^chore|^ci", group = "Miscellaneous" },
     { body = ".*security", group = "Security" },
 ]
