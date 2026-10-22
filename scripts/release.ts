@@ -582,7 +582,8 @@ export async function pushRelease(newVersion: string, state: ReleaseState, cwd =
 async function waitForRelease(newVersion: string, sourceSha: string): Promise<void> {
   console.log("Waiting for GitHub release artifacts...");
   const tag = `v${newVersion}`;
-  const maxWait = 10 * 60 * 1000; // 10 minutes
+  // The stable workflow (preflight, five native builds, draft, native consumer gate) takes about 20 minutes.
+  const maxWait = 45 * 60 * 1000;
   const pollInterval = 15 * 1000; // 15 seconds
   const start = Date.now();
 
