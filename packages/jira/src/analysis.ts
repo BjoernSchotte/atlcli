@@ -193,6 +193,18 @@ function parseSprintIds(value: string | null): number[] {
 }
 
 /**
+ * The `count` most recent sprints, oldest first. Jira lists a board's sprints
+ * oldest first, so the first page is the wrong end for "the last N sprints".
+ */
+export function latestSprints<T extends Pick<JiraSprint, "startDate" | "endDate" | "completeDate">>(
+  sprints: T[],
+  count: number
+): T[] {
+  const when = (s: T) => s.completeDate ?? s.endDate ?? s.startDate ?? "";
+  return [...sprints].sort((a, b) => when(a).localeCompare(when(b))).slice(-count);
+}
+
+/**
  * Calculate velocity trend across multiple sprints.
  *
  * @param boardId - The board ID
