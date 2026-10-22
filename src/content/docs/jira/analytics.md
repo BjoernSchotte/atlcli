@@ -32,7 +32,7 @@ All of them print JSON (`schemaVersion: "1"`), with or without `--json`.
 |---|---|---|---|
 | `--board` | board id | `defaults.board` (predictability) | velocity, predictability |
 | `--sprint` | sprint id | required | burndown, scope-change |
-| `--sprints` | integer | `5` | velocity, predictability |
+| `--sprints` | integer | `5` | velocity, predictability: the most recently closed sprints, listed oldest first |
 | `--points-field` | field id | auto-detected | all |
 | `--status-map` | `"<status>=todo\|wip\|done,…"` | `flow.statusMap` | all: which statuses count as completed |
 

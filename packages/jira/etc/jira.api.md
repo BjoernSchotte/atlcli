@@ -2896,6 +2896,9 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: latestSprints
+export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "endDate" | "completeDate">>(sprints: T[], count: number): T[];
+
 // export: listTemplates
 // @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead
 export declare function listTemplates(): Promise<JiraTemplateInfo[]>;
@@ -6245,6 +6248,9 @@ export interface JiraWorklog {
     timeSpentSeconds: number;
     issueId: string;
 }
+
+// export: latestSprints
+export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "endDate" | "completeDate">>(sprints: T[], count: number): T[];
 
 // export: listTemplates
 // @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead

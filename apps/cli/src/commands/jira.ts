@@ -59,6 +59,7 @@ import {
   calculateSprintMetrics,
   calculateVelocityTrend,
   calculateBurndown,
+  latestSprints,
   attachChangelogs,
   getStoryPoints,
   generateProgressBar as generateAnalyticsProgressBar,
@@ -195,6 +196,18 @@ type ClientWithDefaults = {
   client: JiraClient;
   defaults: { project?: string; space?: string; board?: number };
 };
+
+/** The board's `count` most recently closed sprints, oldest first. */
+async function recentClosedSprints(client: JiraClient, boardId: number, count: number) {
+  const all: Awaited<ReturnType<JiraClient["listSprints"]>>["values"] = [];
+  for (let startAt = 0; ; ) {
+    const page = await client.listSprints(boardId, { state: "closed", startAt, maxResults: 50 });
+    all.push(...page.values);
+    startAt += page.values.length;
+    if (page.values.length === 0 || (page as { isLast?: boolean }).isLast) break;
+  }
+  return latestSprints(all, count);
+}
 
 /**
  * Status resolver for sprint metrics: Jira's categories plus `flow.statusMap`
@@ -3141,11 +3154,7 @@ async function handleAnalyzeVelocity(
     }
   }
 
-  // Get closed sprints
-  const sprintsResult = await client.listSprints(Number(boardId), {
-    state: "closed",
-    maxResults: sprintCount,
-  });
+  const sprintsResult = { values: await recentClosedSprints(client, Number(boardId), sprintCount) };
 
   if (sprintsResult.values.length === 0) {
     output(
@@ -3186,7 +3195,7 @@ async function handleAnalyzeVelocity(
   const trend = calculateVelocityTrend(
     Number(boardId),
     board.name,
-    sprintMetrics.reverse() // Chronological order (oldest first)
+    sprintMetrics // Chronological order (oldest first), from recentClosedSprints
   );
 
   output(
@@ -3403,11 +3412,7 @@ async function handleAnalyzePredictability(
     }
   }
 
-  // Get closed sprints
-  const sprintsResult = await client.listSprints(Number(boardId), {
-    state: "closed",
-    maxResults: sprintCount,
-  });
+  const sprintsResult = { values: await recentClosedSprints(client, Number(boardId), sprintCount) };
 
   if (sprintsResult.values.length === 0) {
     output(
@@ -3452,7 +3457,7 @@ async function handleAnalyzePredictability(
       schemaVersion: "1",
       board: { id: board.id, name: board.name },
       pointsField,
-      sprints: sprintMetrics.reverse().map((m) => ({
+      sprints: sprintMetrics.map((m) => ({
         id: m.sprintId,
         name: m.sprintName,
         committed: m.committedPoints,

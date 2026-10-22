@@ -14,7 +14,7 @@ import {
   resolveStatusMap,
   statusScopeJql,
 } from "./flow.js";
-import { calculateBurndown, calculateSprintMetrics } from "./analysis.js";
+import { calculateBurndown, calculateSprintMetrics, latestSprints } from "./analysis.js";
 import type { JiraChangelogEntry, JiraIssue, JiraStatus } from "./types.js";
 
 const STATUSES: JiraStatus[] = [
@@ -332,6 +332,17 @@ describe("sprint metrics under a status map", () => {
       ["2026-10-02", 0],
       ["2026-10-03", 0],
     ]);
+  });
+});
+
+describe("latestSprints", () => {
+  test("keeps the most recent sprints, oldest first", () => {
+    // Regression: velocity and predictability took Jira's first page, the oldest sprints.
+    const s = (id: number, endDate: string, completeDate?: string) => ({ id, endDate, completeDate });
+    const sprints = [s(3, "2025-06-18"), s(1, "2024-11-20"), s(2, "2024-12-04", "2025-06-01"), s(4, "2025-07-02")];
+    expect(latestSprints(sprints, 2).map((x) => x.id)).toEqual([3, 4]);
+    expect(latestSprints(sprints, 3).map((x) => x.id)).toEqual([2, 3, 4]);
+    expect(latestSprints(sprints, 10)).toHaveLength(4);
   });
 });
 
