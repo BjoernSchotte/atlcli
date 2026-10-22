@@ -27,6 +27,7 @@ export default defineConfig({
       customCss: ['./src/styles/custom.css'],
       sidebar: [
         { label: 'Getting Started', link: '/getting-started/' },
+        { label: 'Daily Digest', link: '/digest/' },
         {
           label: 'Confluence',
           collapsed: false,
@@ -91,6 +92,8 @@ export default defineConfig({
             { label: 'Subtasks', link: '/jira/subtasks/' },
             { label: 'Attachments', link: '/jira/attachments/' },
             { label: 'Analytics', link: '/jira/analytics/' },
+            { label: 'Flow Metrics', link: '/jira/flow-metrics/' },
+            { label: 'Audit', link: '/jira/audit/' },
             { label: 'Bulk Operations', link: '/jira/bulk-operations/' },
             { label: 'Filters', link: '/jira/filters/' },
             { label: 'Templates', link: '/jira/templates/' },

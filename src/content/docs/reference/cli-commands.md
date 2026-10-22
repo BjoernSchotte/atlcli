@@ -805,9 +805,35 @@ atlcli jira filter share --id <id> --group <name>
 atlcli jira analyze velocity --board <id>
 atlcli jira analyze velocity --board <id> --sprints <n>
 atlcli jira analyze burndown --sprint <id>
-atlcli jira analyze burndown --sprint <id> --ideal
+atlcli jira analyze scope-change --sprint <id>
 atlcli jira analyze predictability --board <id>
 ```
+
+See [Analytics](../jira/analytics.md).
+
+### Flow Metrics
+
+```bash
+atlcli jira analyze flow --project <key> [--since 90d]      # Cycle/lead time, throughput
+atlcli jira analyze flow --board <id> --csv                 # One row per completed issue
+atlcli jira analyze aging --jql <query>                     # Work in progress by age
+atlcli jira analyze cfd --project <key> --group-by category # Cumulative flow per day
+atlcli jira analyze flow --project <key> --status-map "Code Review=wip"
+```
+
+Selection: `--jql` > `--board` (its saved filter) > `--project` > `defaults.board` > `defaults.project`. `--limit` (default 1000) caps the issues read. See [Flow Metrics](../jira/flow-metrics.md).
+
+### Jira Audit
+
+```bash
+atlcli audit jira --project <key>                           # All checks
+atlcli audit jira --board <id> --checks stuck-wip,unassigned-wip
+atlcli audit jira --jql <query> --stale 14,30,60 --all
+atlcli audit jira --project <key> --markdown > audit.md
+atlcli audit jira --project <key> --json
+```
+
+Needs `atlcli flag set audit true --global`. See [Jira Audit](../jira/audit.md).
 
 ### Fields
 
@@ -920,6 +946,19 @@ atlcli flag unset helloworld --global   # Remove from global config
 Example: `helloworld` → `FLAG_HELLOWORLD`, `export.backend` → `FLAG_EXPORT_BACKEND`
 
 ## Utility Commands
+
+### Digest
+
+```bash
+atlcli digest                                  # Since the last run (first run: 24h)
+atlcli digest --since 7d --no-mark             # Peek without moving the marker
+atlcli digest --only jira --board <id>         # Jira only, with the active sprint
+atlcli digest --space <key> --markdown         # Adds "recently changed in space"
+atlcli digest --include-own --json             # Keep your own edits; JSON output
+ANTHROPIC_API_KEY=... atlcli digest --summarize
+```
+
+See [Daily Digest](../digest.md).
 
 ### Research
 
