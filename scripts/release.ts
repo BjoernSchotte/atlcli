@@ -7,6 +7,9 @@
  *   bun scripts/release.ts --dry-run     # Print the release plan (no changes)
  *   bun scripts/release.ts --preview     # Render the changelog entry (no changes)
  *   bun scripts/release.ts --skip-tests   # Skip test step
+ *
+ * The local test step is skipped on its own when CI already proved the exact
+ * main commit (every check finished, none failed, typecheck and Bun tests passed).
  */
 
 import { $ } from "bun";
@@ -183,6 +186,36 @@ async function getCurrentVersion(): Promise<string> {
 }
 
 export const RELEASE_TEST_COMMAND = ["bun", "run", "test"] as const;
+
+export interface CheckRun {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
+const PASSING = new Set(["success", "skipped", "neutral"]);
+
+/**
+ * True when CI fully proved a commit: every check run finished without
+ * failing, and the typecheck and Bun test lanes ran and passed. Anything
+ * still running or missing means the local test step runs instead.
+ */
+export function ciProvedCommit(runs: readonly CheckRun[]): boolean {
+  const passed = (prefix: string) => runs.some((run) => run.name.startsWith(prefix) && run.conclusion === "success");
+  return runs.length > 0
+    && runs.every((run) => run.status === "completed" && PASSING.has(run.conclusion ?? ""))
+    && passed("Product quality / Linux typecheck")
+    && passed("Product quality / Linux Bun tests");
+}
+
+async function ciProvedHead(sha: string): Promise<boolean> {
+  try {
+    const runs = await $`gh api ${`repos/${REPO_OWNER}/${REPO_NAME}/commits/${sha}/check-runs?per_page=100`} --jq .check_runs`.json() as CheckRun[];
+    return ciProvedCommit(runs);
+  } catch {
+    return false;
+  }
+}
 
 export function assertSuccessfulExit(label: string, exitCode: number): void {
   if (exitCode !== 0) {
@@ -549,7 +582,8 @@ export async function pushRelease(newVersion: string, state: ReleaseState, cwd =
 async function waitForRelease(newVersion: string, sourceSha: string): Promise<void> {
   console.log("Waiting for GitHub release artifacts...");
   const tag = `v${newVersion}`;
-  const maxWait = 10 * 60 * 1000; // 10 minutes
+  // The stable workflow (preflight, five native builds, draft, native consumer gate) takes about 20 minutes.
+  const maxWait = 45 * 60 * 1000;
   const pollInterval = 15 * 1000; // 15 seconds
   const start = Date.now();
 
@@ -597,7 +631,7 @@ Policy: YYYY.M.N, UTC month, monthly release counter; libraries retain SemVer.
 Candidate uses the local tag snapshot; a real release refreshes origin/main and tags first.
 
 Steps that would be executed:
-  1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun run test
+  1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun run test (skipped when CI already proved HEAD)
   2. Update version: package.json (version: "${newVersion}")
   3. Prepend the new stable-range changelog: bunx git-cliff <previous-stable>..HEAD --tag v${newVersion} --prepend CHANGELOG.md
   4. Add "New Contributors" + "Thanks" sections to CHANGELOG.md (via GitHub API)
@@ -707,10 +741,12 @@ async function main(): Promise<void> {
     console.log(`\nReleasing: ${currentVersion} → ${newVersion}\n`);
 
     // 3. Run tests (unless skipped)
-    if (!args.skipTests) {
-      await runTests();
-    } else {
+    if (args.skipTests) {
       console.log("Skipping tests (--skip-tests)");
+    } else if (await ciProvedHead(state.startingHead)) {
+      console.log(`Skipping local tests: CI already proved ${state.startingHead.slice(0, 8)} (typecheck, Bun tests, all checks green)`);
+    } else {
+      await runTests();
     }
 
     // 4. Update package.json
