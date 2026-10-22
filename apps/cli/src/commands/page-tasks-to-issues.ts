@@ -259,7 +259,7 @@ async function createIssueForTask(
       project: { key: context.project },
       issuetype: { name: getFlag(context.flags, "type") ?? "Task" },
       summary: entry.summary,
-      description: toJiraRichText(jira, description, { onWarning: context.warn }),
+      description: toJiraRichText(jira, description, { onWarning: context.warn, sentinels: false }),
       assignee: jira.isCloudSite && task.assigneeAccountId ? { accountId: task.assigneeAccountId } : undefined,
       duedate: task.dueDate,
       labels: labels.length > 0 ? labels : undefined,

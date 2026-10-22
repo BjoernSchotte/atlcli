@@ -1016,6 +1016,7 @@ export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfO
 export interface MarkdownToAdfOptions {
     baseUrl?: string;
     onWarning?: (message: string) => void;
+    sentinels?: boolean;
 }
 
 // export: planJiraFieldChangesV1
@@ -2535,6 +2536,7 @@ export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfO
 export interface MarkdownToAdfOptions {
     baseUrl?: string;
     onWarning?: (message: string) => void;
+    sentinels?: boolean;
 }
 
 // export: migrateTemplates
@@ -3904,6 +3906,7 @@ export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfO
 export interface MarkdownToAdfOptions {
     baseUrl?: string;
     onWarning?: (message: string) => void;
+    sentinels?: boolean;
 }
 
 // export: planJiraFieldChangesV1
@@ -5423,6 +5426,7 @@ export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfO
 export interface MarkdownToAdfOptions {
     baseUrl?: string;
     onWarning?: (message: string) => void;
+    sentinels?: boolean;
 }
 
 // export: migrateTemplates

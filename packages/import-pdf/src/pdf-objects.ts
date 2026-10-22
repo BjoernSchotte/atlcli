@@ -13,7 +13,7 @@
  * reader runs. It is pure TypeScript and runs unchanged in Node, Bun and
  * browsers.
  */
-import { unzlibSync, inflateSync } from "fflate";
+import { Inflate, Unzlib } from "fflate";
 
 export interface PdfRef {
   kind: "ref";
@@ -278,6 +278,8 @@ interface XrefEntry {
 export interface PdfObjectReaderOptions {
   /** Upper bound on indirect objects materialized; protects against hostile files. */
   maxObjects?: number;
+  /** Upper bound on bytes all decoded streams may produce together; stops decompression bombs. */
+  maxDecodedBytes?: number;
 }
 
 export class PdfObjectReader {
@@ -289,9 +291,11 @@ export class PdfObjectReader {
   private readonly objStreams = new Map<number, Map<number, PdfValue>>();
   private readonly resolving = new Set<number>();
   private readonly maxObjects: number;
+  private decodedBudget: number;
 
   constructor(readonly bytes: Uint8Array, options: PdfObjectReaderOptions = {}) {
     this.maxObjects = options.maxObjects ?? 2_000_000;
+    this.decodedBudget = options.maxDecodedBytes ?? 256 * 1024 * 1024;
     let trailer: PdfDict | null = null;
     let recovered = false;
     try {
@@ -357,7 +361,8 @@ export class PdfObjectReader {
     filters.forEach((f, i) => {
       const name = f && typeof f === "object" && !Array.isArray(f) && f.kind === "name" ? f.value : null;
       if (name === "FlateDecode" || name === "Fl") {
-        data = inflate(data);
+        data = inflate(data, this.decodedBudget);
+        this.decodedBudget -= data.length;
         const p = this.dict(params[i] ?? null);
         if (p) data = applyPredictor(data, p, this);
       } else {
@@ -445,10 +450,15 @@ export class PdfObjectReader {
     const ranges = Array.isArray(index) ? (index as number[]) : [0, typeof size === "number" ? size : 0];
     const data = this.decode(stream);
     const rowLen = widths[0] + widths[1] + widths[2];
+    if (!widths.every((x) => Number.isInteger(x) && x >= 0 && x <= 8) || rowLen < 1) {
+      throw new PdfObjectError("pdf-objects/xref", "xref stream /W is invalid");
+    }
     let p = 0;
     for (let r = 0; r + 1 < ranges.length; r += 2) {
-      for (let i = 0; i < ranges[r + 1]; i++) {
-        if (p + rowLen > data.length) break;
+      // Each entry consumes a row, so a count beyond the data cannot add entries.
+      const count = Math.min(ranges[r + 1], Math.floor((data.length - p) / rowLen));
+      for (let i = 0; i < count; i++) {
+        if (this.xref.size >= this.maxObjects) throw new PdfObjectError("pdf-objects/budget", "object budget exceeded");
         const type = widths[0] === 0 ? 1 : readInt(data, p, widths[0]);
         const f2 = readInt(data, p + widths[0], widths[1]);
         const f3 = readInt(data, p + widths[0] + widths[1], widths[2]);
@@ -540,11 +550,21 @@ export class PdfObjectReader {
   }
 
   private readByScan(num: number): PdfValue {
-    const re = new RegExp(`(?:^|[\\s>])${num}\\s+\\d+\\s+obj\\b`, "g");
+    const found = this.scanIndex().get(num);
+    return found === undefined ? null : this.readIndirectAt(found, num);
+  }
+
+  /** Offsets of the last "num gen obj" header per object, built once instead of a regex pass per object. */
+  private scanned?: Map<number, number>;
+  private scanIndex(): Map<number, number> {
+    if (this.scanned) return this.scanned;
+    this.scanned = new Map();
+    const re = /(?:^|[\s>])(\d+)\s+\d+\s+obj\b/g;
     const text = this.latinText();
-    let found: number | null = null;
-    for (let r = re.exec(text); r; r = re.exec(text)) found = r.index + (r[0].length - r[0].trimStart().length);
-    return found === null ? null : this.readIndirectAt(found, num);
+    for (let r = re.exec(text); r; r = re.exec(text)) {
+      this.scanned.set(Number(r[1]), r.index + (r[0].length - r[0].trimStart().length));
+    }
+    return this.scanned;
   }
 
   private latin?: string;
@@ -609,12 +629,37 @@ export function pdfText(v: PdfValue | undefined): string {
   return latin1(b);
 }
 
-function inflate(data: Uint8Array): Uint8Array {
+const INFLATE_CHUNK = 16 * 1024;
+
+/** Inflates in chunks and stops once the output passes `limit`, so a small stream cannot expand unbounded. */
+function inflate(data: Uint8Array, limit: number): Uint8Array {
+  const run = (zlib: boolean, input: Uint8Array): Uint8Array => {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const onData = (chunk: Uint8Array) => {
+      total += chunk.length;
+      if (total > limit) throw new PdfObjectError("pdf-objects/budget", "decoded stream budget exceeded");
+      chunks.push(chunk);
+    };
+    const stream = zlib ? new Unzlib(onData) : new Inflate(onData);
+    for (let at = 0; at < input.length; at += INFLATE_CHUNK) {
+      stream.push(input.subarray(at, at + INFLATE_CHUNK), at + INFLATE_CHUNK >= input.length);
+    }
+    if (input.length === 0) stream.push(input, true);
+    const out = new Uint8Array(total);
+    let at = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, at);
+      at += chunk.length;
+    }
+    return out;
+  };
   try {
-    return unzlibSync(data);
-  } catch {
+    return run(true, data);
+  } catch (error) {
+    if (error instanceof PdfObjectError) throw error;
     // Some producers omit the zlib header or checksum.
-    return inflateSync(data.subarray(data[0] === 0x78 ? 2 : 0));
+    return run(false, data.subarray(data[0] === 0x78 ? 2 : 0));
   }
 }
 

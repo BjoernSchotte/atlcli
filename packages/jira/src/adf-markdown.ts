@@ -24,6 +24,12 @@ export interface MarkdownToAdfOptions {
   baseUrl?: string;
   /** Receives non-fatal conversion notes (local images, raw HTML). */
   onWarning?: (message: string) => void;
+  /**
+   * Decode `<!--adf:…-->` sentinels into the ADF nodes they carry (default true).
+   * Pass false for markdown derived from content other people wrote, such as a
+   * Confluence page: a sentinel there would inject arbitrary ADF.
+   */
+  sentinels?: boolean;
 }
 
 export interface AdfToMarkdownOptions {
@@ -237,7 +243,7 @@ class BlockWalker {
         return this.table();
       case "html_block": {
         this.pos++;
-        const sentinel = decodeSentinel(token.content);
+        const sentinel = this.options.sentinels === false ? undefined : decodeSentinel(token.content);
         if (sentinel) return sentinel;
         this.options.onWarning?.("Raw HTML block was kept as plain text.");
         return { type: "paragraph", content: [{ type: "text", text: token.content.replace(/\n$/, "") }] };
@@ -425,7 +431,7 @@ function convertInline(children: Token[], options: MarkdownToAdfOptions): AdfNod
         break;
       }
       case "html_inline": {
-        const sentinel = decodeSentinel(token.content);
+        const sentinel = options.sentinels === false ? undefined : decodeSentinel(token.content);
         if (sentinel) {
           out.push(sentinel);
         } else {
