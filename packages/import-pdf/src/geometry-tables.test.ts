@@ -475,17 +475,35 @@ describe("open-sided and continued ruled tables", () => {
     ]]);
   });
 
-  it("keeps a row after a break that closes the previous frame and says it may be split", async () => {
-    // Word and LibreOffice draw the frame across a split row: the rest is a
-    // row of its own, indistinguishable from a row left partly blank.
+  it("joins the rest of a row split by a break when its text continues the row before", async () => {
+    // Word and LibreOffice draw the frame across a split row; its rest fills
+    // only cells the row before fills, and its text goes on mid-sentence.
     const first = openSidedTable([["Item", "Owner", "Due", "State"], ["Alpha", "North", "May", "Open"]], 120, { topRule: true });
     const next = openSidedTable([["", "region", "", ""], ["Beta", "South", "June", "Done"]], 790, { topRule: false, verticalTop: 814 });
     const result = await normalizePdf(pagesPdf([first, next]));
 
     expect(tables(result).map(tableTexts)).toEqual([[
       ["Item", "Owner", "Due", "State"],
-      ["Alpha", "North", "May", "Open"],
-      ["", "region", "", ""],
+      ["Alpha", "North region", "May", "Open"],
+      ["Beta", "South", "June", "Done"],
+    ]]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/table-row-split-joined",
+      context: { pageIndex: 1, rowIndex: 1 },
+    }));
+  });
+
+  it("keeps a row after a break whose text starts a new sentence and says it may be split", async () => {
+    // A row left partly blank on purpose looks the same; without continuing
+    // text nothing proves the split.
+    const first = openSidedTable([["Item", "Owner", "Due", "State"], ["Alpha", "North.", "May", "Open"]], 120, { topRule: true });
+    const next = openSidedTable([["", "Region", "", ""], ["Beta", "South", "June", "Done"]], 790, { topRule: false, verticalTop: 814 });
+    const result = await normalizePdf(pagesPdf([first, next]));
+
+    expect(tables(result).map(tableTexts)).toEqual([[
+      ["Item", "Owner", "Due", "State"],
+      ["Alpha", "North.", "May", "Open"],
+      ["", "Region", "", ""],
       ["Beta", "South", "June", "Done"],
     ]]);
     expect(result.document.issues).toContainEqual(expect.objectContaining({

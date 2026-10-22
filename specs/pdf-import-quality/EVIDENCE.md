@@ -2083,3 +2083,49 @@ private input was used.
       pass.
 - [x] No customer PDF or customer-derived artifact was read, staged, or
       written.
+
+## Heading verification, split rows, OCR layers, table model (2026-10-21)
+
+Headings on the private untagged corpus were checked against the documents'
+own section numbers (body-free counts only, local, not recorded here):
+numbered headings of one depth landed on up to four levels, deeper styles
+fell past level six, and tables of contents were read as headings with their
+page numbers as headings of their own.
+
+- **Set font size from the text matrix.** `FPDFText_GetFontSize` is the `Tf`
+  operand; Word's one-point fonts carry their size in the text matrix. The
+  adapter multiplies by the matrix's vertical scale, so sizes are exact and the
+  glyph-height estimate only applies when none is reported. Adapter V2 `/5`.
+- **Bold from the font name for any non-bold weight.** LibreOffice reports 400
+  for bold fonts, not 0; the name now decides whenever the weight is below 600.
+- **One level per style.** A size together with bold or regular is a style; at
+  one size bold ranks above regular. Neutral evidence: `libreoffice-contents.pdf`
+  sets `1` and `1.1` headings both in 12 pt, bold and regular.
+- **Tables of contents.** A line ending in a right-hand page number whose text
+  stands again on a later page proves a contents line; three with
+  non-decreasing numbers prove a table of contents. Its lines become
+  paragraphs and its page numbers are suppressed with evidence. A numbered
+  column elsewhere repeats no later text and stays.
+- **Numbering check.** Headings whose level disagrees with the majority level
+  of their numbering depth, or sits no deeper than a shallower depth, are
+  reported as `pdf-import/heading-numbering-mismatch`. After the changes the
+  corpus reports none; depth 1 and depth 2 each hold one level. Geometry policy
+  V2 `/10`.
+- **Split rows joined by text.** The rest of a row split by a break, with the
+  frame drawn across, is joined when it fills only cells the row before fills
+  and each of its cells continues a cell that stops mid-sentence or starts in
+  lowercase (`pdf-import/table-row-split-joined`). LibreOffice's export of the
+  neutral clause table splits mid-sentence and joins; Word's splits between
+  sentences and stays reported. On the corpus every reported split row joined.
+  Table policy V2 `/10`.
+- **OCR layers.** Text in render mode 3 is recorded as `invisible`. A page image
+  of a scan gets its OCR layer as a collapsed, unverified section after its
+  caption (`pdf-import/ocr-text-attached`); the scan itself stays a page image.
+- **Table model measured.** On the untagged corpus the Table Transformer had one
+  candidate region in all documents and its proposal did not fit the
+  characters; the geometric tables were identical with and without it, at about
+  0.1 s extra per document. It stays opt-in.
+
+Not covered: a contents line that wraps, or that ends without a page number,
+stays a heading; a Word export of `contents.docx` is missing because Word's
+sandbox asked for file access, which was not granted unattended.

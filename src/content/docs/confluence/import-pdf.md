@@ -202,10 +202,14 @@ editable semantics cannot be preserved safely. Choose an explicit alternative:
   Publication additionally requires `--unsupported report` and
   `--accept-reported-pages`.
 
-There is no OCR fallback. Hidden OCR text is treated as evidence to validate,
-not as permission to duplicate or invent visible content: a scanned page whose
-image covers most of the page stays a page image even when it carries an
-invisible OCR text layer.
+AtlCLI runs no OCR of its own. A scanned page whose image covers most of the
+page stays a page image even when it carries an invisible OCR text layer: the
+layer is the scanner's guess, not source text. With `--scan-policy page-image`
+or `--visual-fallback`, that layer is attached after the page image as a
+collapsed **Recognized text (OCR, unverified)** section, one paragraph per
+line, so the page can be searched and copied from. The review reports it as
+`pdf-import/ocr-text-attached` (info). A page image of visible text gets no
+such section.
 
 `--visual-fallback auto|inline|collapsed|appendix` is the clearer opt-in and
 implies `--scan-policy page-image`. `auto` is recommended: localized unsafe
@@ -267,7 +271,8 @@ tables from the drawing itself, without learned models:
 | No outer side borders (a common Word table style), or no top rule on a continued page | The open side is implied where every row rule or column rule ends; native table |
 | Inside rules only (Word's "no outer border", any number of columns) | Native table with its first and last row; one table across pages |
 | Row split by a page break, frame drawn but left open on both sides of the break | One row; each cell's text continues as one paragraph |
-| Row split by a page break, frame drawn across the break (Word and LibreOffice by default) | Two rows: the rest leaves the finished cells blank. Reported as `pdf-import/table-row-split-unproven`, because a row left partly blank on purpose looks the same |
+| Row split by a page break, frame drawn across the break (Word and LibreOffice by default), text continuing mid-sentence | One row: the rest fills only cells the row before fills, and each of its cells continues a cell that stops mid-sentence or starts in lowercase. Reported as `pdf-import/table-row-split-joined` (info) |
+| Row split by a page break, frame drawn across the break, the rest starting a new sentence | Two rows: the rest leaves the finished cells blank. Reported as `pdf-import/table-row-split-unproven`, because a row left partly blank on purpose looks the same |
 | Several text pieces on one line of a cell, one set slightly higher (another font size) | Read left to right in the line |
 | Only horizontal rules between rows | Rows from the rules, columns from left text edges shared by several rows; wrapped cell text stays in its cell |
 | No lines, three or more columns of single-line cells | Native table when every row has the same cells and the columns are clearly separated |
@@ -277,14 +282,30 @@ tables from the drawing itself, without learned models:
 | Aligned text that is not a proven table | Rows linearized as `cell \| cell` paragraphs plus a rendered crop of the region; the rest of the page stays editable. The page falls back only when other text lies inside that region |
 | A page of a multi-page table falls back | The table's parts on the other pages are imported as their own table |
 
-Headings on untagged pages come from font size: text set clearly larger than
-the size most characters are set in. Word for Mac reports no usable font size,
-so sizes are estimated from glyph heights; headings of one style share one
-level. The same compound and dehyphenation rules apply to tagged pages and
-table cells.
+Headings on untagged pages come from font style: text set clearly larger than
+the size most characters are set in. Each style, a size together with bold or
+regular, gets one level: larger sizes rank higher, and at one size bold ranks
+above regular. The size is read from the text matrix, so Word's scaled
+one-point fonts get their set size; glyph heights estimate it only when the
+PDF reports none.
 
-Bold header rows are recognized from the font name when the PDF reports no
-font weight. Clause numbers, terms, and table-of-contents page numbers beside
+A table of contents is set in the styles of the headings it lists. A line
+that ends in a page number at the right and whose text stands again on a
+later page is a contents line; three such lines with page numbers that never
+decrease make a table of contents. Its lines are imported as paragraphs, not
+headings, and its page numbers, which name pages Confluence does not have,
+are suppressed with evidence (`pdf/geometry-contents-page-number-suppressed`).
+
+Section numbers are checked against the levels: headings numbered to one
+depth (`2`, `3`) should share a level, and a deeper number (`2.1`) should sit
+deeper. Headings that disagree are reported as
+`pdf-import/heading-numbering-mismatch` and keep their font-style level.
+
+The same compound and dehyphenation rules apply to tagged pages and table
+cells.
+
+Bold text is recognized from the font name when the PDF reports no bold
+weight (macOS Quartz reports none, LibreOffice reports 400 for bold fonts). Clause numbers, terms, and table-of-contents page numbers beside
 their text are read as part of the line, not as a second column.
 
 Reading order on untagged pages:
@@ -568,7 +589,10 @@ release claim.
 | A tagged table becomes a page image or linearized text | The table nests another table, or a cell's text has an unresolved boundary or invalid Unicode | Check `pdf-import/table-tagged-linearized` and its `reason` in the JSON preview. Re-export with tagging enabled, or flatten the nested table in the source. |
 | Issue `pdf-import/table-continuation-unjoined`: the table repeats on every page | One page part does not qualify as a grid, or the table exceeds 5,000 rows | Check the issue `reason`. Each page part stays a native table when it qualifies on its own. |
 | `The table model is not installed` or `The table model runtime is not installed` | `--table-model` was given before the model was pulled | Run `atlcli models pull table-transformer`, or set `ATLCLI_MODELS_DIR` to the directory you pulled into. |
-| Issue `pdf-import/table-row-split-unproven` | The first row after a page break leaves cells blank that the row before fills | Open the page and check the two rows: if they are one split row, join them after import, or set **Allow row to break across pages** off in the source. |
+| Issue `pdf-import/table-row-split-unproven` | The first row after a page break leaves cells blank that the row before fills, and its text starts a new sentence | Open the page and check the two rows: if they are one split row, join them after import, or set **Allow row to break across pages** off in the source. |
+| Issue `pdf-import/table-row-split-joined` | The rest of a split row continued the row before mid-sentence and was joined | Usually correct. If the two rows were meant to be separate, split the row after import. |
+| Issue `pdf-import/heading-numbering-mismatch` | A heading's font style ranks it differently from its section number (for example a `2.1` heading set larger than `2`) | Check the listed headings; correct them with a `set-heading-level` override. |
+| A table of contents arrives as headings | Its lines wrap, end without a page number, or repeat no heading text, so nothing proves a contents line | Correct the levels with `set-heading-level` overrides, or delete the contents and add a Confluence **Table of Contents** macro. |
 | Issue `pdf-import/text-dehyphenation-unproven` | A line-end hyphen before a lowercase word was removed without evidence elsewhere in the PDF | Usually correct (a split syllable). Check compound words such as `well-known` in the listed blocks. |
 | An untagged table arrives as paragraphs | No drawn grid or row rules, fewer than three aligned columns, or text crossing a cell edge | Export with table borders, or as a tagged PDF. The text is complete and in reading order either way. |
 | Issue `pdf-import/document-structure-unavailable` | The structure tree could not be read as a whole (damaged cross-references or budget) | Import continues with page-scoped structure; multi-page tables may fall back. Re-save the PDF from its producer. |

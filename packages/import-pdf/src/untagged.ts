@@ -40,6 +40,7 @@ import {
   type PdfReadingOrderPageV2,
 } from "./reading-order.js";
 import { projectUntaggedGeometryTablesV2, type PdfGeometryGridV2 } from "./geometry-tables.js";
+import { detectContentsV2 } from "./contents.js";
 import { detectRepeatedRegions } from "./repeated-regions.js";
 import {
   analyzeUntaggedTable,
@@ -459,34 +460,85 @@ function fragmentRunsV2(page: PdfPageFactsV2, assembly: PdfTextAssemblyV2, fragm
   };
 }
 
+type PdfHeadingLevelV2 = 1 | 2 | 3 | 4 | 5 | 6;
+
+/**
+ * One level per heading style. Estimated sizes of one style differ in the
+ * last digits; at one size a bold style ranks above a regular one. Contents
+ * lines repeat the styles of the headings they list and set none.
+ */
 function headingLevelsV2(
   pages: readonly PdfReadingOrderPageV2[],
   suppressed: ReadonlySet<string>,
+  contents: ReadonlySet<string>,
   bodyFont: number,
-): Map<number, 1 | 2 | 3 | 4 | 5 | 6> {
-  const sizes = [...new Set(pages.flatMap((page) => page.ordered)
-    .filter((fragment) => !suppressed.has(fragment.id))
+): (fragment: PdfGeometryFragmentV2) => PdfHeadingLevelV2 | undefined {
+  const bold = (fragment: PdfGeometryFragmentV2): boolean => fragment.fontWeight >= 600;
+  const style = (fragment: PdfGeometryFragmentV2): string => `${fragment.fontSizePoints}:${bold(fragment)}`;
+  const candidates = pages.flatMap((page) => page.ordered)
+    .filter((fragment) => !suppressed.has(fragment.id) && !contents.has(fragment.id))
     .filter((fragment) =>
       fragment.text.length <= PDF_GEOMETRY_POLICY_V2.maximumHeadingLength
       && fragment.fontSizePoints >= Math.max(
         bodyFont * PDF_GEOMETRY_POLICY_V2.headingFontRatio,
         bodyFont + PDF_GEOMETRY_POLICY_V2.headingFontDeltaPoints,
       )
-    )
-    .map((fragment) => fragment.fontSizePoints))].sort((left, right) => right - left);
-  // Estimated sizes of one style differ in the last digits: one level each.
-  const levels = new Map<number, 1 | 2 | 3 | 4 | 5 | 6>();
+    );
+  const styles = [...new Map(candidates.map((fragment) => [style(fragment), fragment])).values()]
+    .sort((left, right) => right.fontSizePoints - left.fontSizePoints || Number(bold(right)) - Number(bold(left)));
+  const levels = new Map<string, PdfHeadingLevelV2>();
   let level = 0;
   let top = Infinity;
-  for (const size of sizes) {
-    if (size < top * (1 - PDF_GEOMETRY_POLICY_V2.headingSizeTolerance)) {
+  let topBold = true;
+  for (const fragment of styles) {
+    if (fragment.fontSizePoints < top * (1 - PDF_GEOMETRY_POLICY_V2.headingSizeTolerance)) {
       level += 1;
-      top = size;
+      top = fragment.fontSizePoints;
+      topBold = bold(fragment);
+    } else if (topBold && !bold(fragment)) {
+      level += 1;
+      topBold = false;
     }
     if (level > 6) break;
-    levels.set(size, level as 1 | 2 | 3 | 4 | 5 | 6);
+    levels.set(style(fragment), level as PdfHeadingLevelV2);
   }
-  return levels;
+  return (fragment) => contents.has(fragment.id) ? undefined : levels.get(style(fragment));
+}
+
+const SECTION_NUMBER_V2 = /^(\d+(?:\.\d+)*)\.?\s+\S/u;
+
+/**
+ * Section numbers are the document's own outline: headings numbered to one
+ * depth share a level, and a deeper number sits at a deeper level. Font
+ * styles that disagree are reported, not overruled.
+ */
+function headingNumberingIssuesV2(blocks: readonly ImportBlock[]): ImportIssue[] {
+  const numbered = blocks.flatMap((block) => {
+    if (block.type !== "heading") return [];
+    const text = block.runs.map((run) => run.kind === "text" ? run.text : "").join("").trim();
+    const number = SECTION_NUMBER_V2.exec(text)?.[1];
+    return number ? [{ id: block.id, level: block.level, depth: number.split(".").length }] : [];
+  });
+  // Most headings of one depth set the outline's level for that depth.
+  const outline = new Map<number, number>();
+  for (const depth of new Set(numbered.map((heading) => heading.depth))) {
+    const levels = numbered.filter((heading) => heading.depth === depth).map((heading) => heading.level);
+    outline.set(depth, levels.sort((left, right) =>
+      levels.filter((level) => level === right).length - levels.filter((level) => level === left).length
+    )[0]!);
+  }
+  const conflicting = numbered.filter((heading) =>
+    heading.level !== outline.get(heading.depth)
+    || [...outline].some(([depth, level]) => depth < heading.depth && level >= heading.level)
+  );
+  return conflicting.length === 0 ? [] : [{
+    code: "pdf-import/heading-numbering-mismatch",
+    severity: "warning",
+    outcome: "approximated",
+    message: "Heading levels from font styles disagree with the section numbering; review the heading levels.",
+    sourceRefs: conflicting.map((heading) => heading.id),
+    context: { headings: conflicting.length },
+  }];
 }
 
 /**
@@ -513,7 +565,7 @@ function linearizedTableContainedV2(
 function suppressedEvidenceV2(
   page: PdfPageFactsV2,
   fragment: PdfGeometryFragmentV2,
-  reason: "page-furniture" | "repeated-region" | "overlap-duplicate",
+  reason: "page-furniture" | "repeated-region" | "overlap-duplicate" | "contents-page-number",
 ): PdfDecisionEvidenceV2 {
   return {
     sourceId: fragment.id,
@@ -665,7 +717,7 @@ function projectQualifiedPageV2(
   page: PdfPageFactsV2,
   analysis: PdfReadingOrderPageV2,
   suppressed: ReadonlySet<string>,
-  headingLevelByFont: ReadonlyMap<number, 1 | 2 | 3 | 4 | 5 | 6>,
+  headingLevelOf: (fragment: PdfGeometryFragmentV2) => PdfHeadingLevelV2 | undefined,
   tables: readonly PdfTableProjectionV2[],
   documentLexicon: ReadonlySet<string>,
 ): GeometryProjectionV2 {
@@ -697,13 +749,13 @@ function projectQualifiedPageV2(
       projection.blocks.push(projectListV2(page, listFragments, projection));
       continue;
     }
-    const headingLevel = headingLevelByFont.get(fragment.fontSizePoints);
+    const headingLevel = headingLevelOf(fragment);
     const group = [fragment];
     if (!headingLevel) {
       while (index + group.length < available.length) {
         const next = available[index + group.length]!;
         if (
-          headingLevelByFont.has(next.fontSizePoints)
+          headingLevelOf(next) !== undefined
           || listMarker(next.text)
           || !qualifiedParagraphContinuationV2(group.at(-1)!, next)
         ) break;
@@ -810,8 +862,10 @@ export async function normalizeUntaggedPdfFactsV2(
         .filter((fragment) => fragment.furniture || fragment.duplicateOf)
         .map((fragment) => fragment.id)),
     ]);
+    const contents = detectContentsV2(analyses, automaticallySuppressed);
+    for (const id of contents.pageNumbers) automaticallySuppressed.add(id);
     const bodyFont = geometryBodyFontSizeV2(analyses);
-    const headingLevelByFont = headingLevelsV2(analyses, automaticallySuppressed, bodyFont);
+    const headingLevelOf = headingLevelsV2(analyses, automaticallySuppressed, contents.entries, bodyFont);
     const blocks: ImportBlock[] = [];
     const evidence: PdfDecisionEvidenceV2[] = [];
     const issues: ImportIssue[] = facts.issues.map(({ pageIndex, ...issue }) => ({
@@ -845,7 +899,9 @@ export async function normalizeUntaggedPdfFactsV2(
       for (const fragment of suppressed) {
         const reason = fragment.furniture
           ? "page-furniture"
-          : fragment.duplicateOf ? "overlap-duplicate" : "repeated-region";
+          : fragment.duplicateOf
+            ? "overlap-duplicate"
+            : contents.pageNumbers.has(fragment.id) ? "contents-page-number" : "repeated-region";
         evidence.push(suppressedEvidenceV2(page, fragment, reason));
         appendPdfTextAssemblyV2({ boundaries, transformations }, fragment.assembly);
         issues.push(...pdfTextAssemblyIssuesV2(fragment.assembly, page.index, fragment.id));
@@ -855,7 +911,7 @@ export async function normalizeUntaggedPdfFactsV2(
           code: "pdf-import/geometry-regions-suppressed",
           severity: "info",
           outcome: "approximated",
-          message: "Page furniture, repeated regions, or exact overlapping duplicates were suppressed with source evidence.",
+          message: "Page furniture, repeated regions, contents page numbers, or exact overlapping duplicates were suppressed with source evidence.",
           sourceRefs: suppressed.map((fragment) => fragment.id),
           context: { pageIndex: page.index, regions: suppressed.length },
         });
@@ -866,7 +922,7 @@ export async function normalizeUntaggedPdfFactsV2(
             page,
             analysis,
             automaticallySuppressed,
-            headingLevelByFont,
+            headingLevelOf,
             pageTables,
             documentLexicon,
           )
@@ -947,6 +1003,7 @@ export async function normalizeUntaggedPdfFactsV2(
         ).length,
       });
     }
+    issues.push(...headingNumberingIssuesV2(blocks));
     return { blocks, evidence, issues, boundaries, transformations, pageOutcomes, requiresFallbackPages };
   };
   const { blocks, evidence, issues, boundaries, transformations, pageOutcomes, requiresFallbackPages } = project();

@@ -496,7 +496,7 @@ export function geometryFragmentV2(
     fontSizePoints: median(sourceCharacters.filter((character) => character.fontSizePoints > 1)
       .map((character) => character.fontSizePoints)),
     fontWeight: median(sourceCharacters.map((character) =>
-      character.fontWeight || (character.boldFontName ? 700 : 0)
+      Math.max(character.fontWeight, character.boldFontName ? 700 : 0)
     )),
     angleRadians: median(sourceCharacters.map((character) => character.angleRadians)),
     direction: assembly.direction,

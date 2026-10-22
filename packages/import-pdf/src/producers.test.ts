@@ -7,17 +7,27 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { describe, expect, it } from "bun:test";
 import type { ImportBlock } from "@atlcli/import-core";
+import { digestPdfFactsV2 } from "./canonical.js";
 import { createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { attachPdfOcrTextV2 } from "./ocr-text.js";
+import { analyzeGeometryReadingOrderV2 } from "./reading-order.js";
+import { normalizeUntaggedPdfFactsV2 } from "./untagged.js";
 import { buildPdfImportReviewV3 } from "./review.js";
 import { parsePdfSplitPolicy } from "./split.js";
-import { tableBreakTables } from "../../../specs/pdf-import-quality/fixtures/producers/source.js";
+import {
+  CONTENTS_SECTIONS,
+  CONTENTS_TITLE,
+  contentsBody,
+  tableBreakTables,
+} from "../../../specs/pdf-import-quality/fixtures/producers/source.js";
 
 const producerRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures/producers");
 
-async function review(bytes: Uint8Array) {
+async function review(bytes: Uint8Array, scanPolicy?: "page-image") {
   return buildPdfImportReviewV3(bytes, await createNodePdfiumFactsAdapterV2(), {
     target: { spaceKey: "X", title: "T", deployment: "cloud", supportsPageTree: true, evidence: "profile" },
     splitPolicy: parsePdfSplitPolicy("off"),
+    ...(scanPolicy ? { scanPolicy } : {}),
   });
 }
 
@@ -43,15 +53,60 @@ describe("desktop producer exports", () => {
       // Drawn with inside rules only: open on every page, rows still complete.
       expect(tables[1]).toEqual(roster);
       // The producer draws the frame across the split row, so its rest is a
-      // row of its own whose finished cells are blank; the review says so.
-      const clausesRows = tables[2]!;
-      expect(clausesRows).toHaveLength(clauses!.length + 1);
-      expect(clausesRows.slice(0, -3)).toEqual(clauses!.slice(0, -2));
-      expect(clausesRows.at(-2)!.slice(0, 2)).toEqual(["", ""]);
-      expect(clausesRows.at(-1)).toEqual(clauses!.at(-1));
-      expect(result.document.issues.filter((issue) => issue.code === "pdf-import/table-row-split-unproven")).toHaveLength(1);
+      // row of its own whose finished cells are blank. LibreOffice breaks the
+      // clause text mid-sentence, which joins the rest; Word breaks it between
+      // sentences, so the rest stays a row and the review says so.
+      const split = result.document.issues.filter((issue) => issue.code.startsWith("pdf-import/table-row-split-"));
+      if (producer === "libreoffice") {
+        expect(tables[2]).toEqual(clauses);
+        expect(split.map((issue) => issue.code)).toEqual(["pdf-import/table-row-split-joined"]);
+      } else {
+        const clausesRows = tables[2]!;
+        expect(clausesRows).toHaveLength(clauses!.length + 1);
+        expect(clausesRows.slice(0, -3)).toEqual(clauses!.slice(0, -2));
+        expect(clausesRows.at(-2)!.slice(0, 2)).toEqual(["", ""]);
+        expect(clausesRows.at(-1)).toEqual(clauses!.at(-1));
+        expect(split.map((issue) => issue.code)).toEqual(["pdf-import/table-row-split-unproven"]);
+      }
     });
   }
+
+  it("reads a table of contents as text and numbered headings by style", async () => {
+    // Regression: contents lines set in the heading styles they list became
+    // headings with their page numbers as headings of their own, and a bold
+    // and a regular heading of one size shared a level.
+    const result = await review(new Uint8Array(await readFile(resolve(producerRoot, "libreoffice-contents.pdf"))));
+    const blocks = result.document.blocks.map((block) => [block.type === "heading" ? `h${block.level}` : block.type, text(block)]);
+
+    expect(result.pages.filter((page) => page.fallbackScope !== "none")).toEqual([]);
+    expect(blocks).toEqual([
+      ["h1", CONTENTS_TITLE],
+      ...CONTENTS_SECTIONS.map(({ number, title }) => ["paragraph", `${number} ${title}`]),
+      ...CONTENTS_SECTIONS.flatMap(({ number, title }) => [
+        [number.includes(".") ? "h3" : "h2", `${number} ${title}`],
+        ["paragraph", contentsBody(number)],
+      ]),
+    ]);
+    expect(result.evidence.filter((item) => item.decisionCode === "pdf/geometry-contents-page-number-suppressed"))
+      .toHaveLength(CONTENTS_SECTIONS.length);
+    expect(result.document.issues.map((issue) => issue.code)).not.toContain("pdf-import/heading-numbering-mismatch");
+  });
+
+  it("reports headings whose styles disagree with their section numbers", async () => {
+    const { facts } = await (await createNodePdfiumFactsAdapterV2())
+      .analyze(new Uint8Array(await readFile(resolve(producerRoot, "libreoffice-contents.pdf"))));
+    // Set one second-level heading larger than the first-level ones.
+    const page = facts.pages[2]!;
+    const fragment = analyzeGeometryReadingOrderV2(page, new Set()).ordered.find((item) => item.text === "2.1 Intake")!;
+    const enlarged = new Set(fragment.characters.map((character) => character.index));
+    for (const character of page.characters) if (enlarged.has(character.index)) character.fontSizePoints = 18;
+
+    const result = await normalizeUntaggedPdfFactsV2(facts, await digestPdfFactsV2(facts));
+    const mismatch = result.document.issues.find((issue) => issue.code === "pdf-import/heading-numbering-mismatch");
+    const headings = new Map(result.document.blocks.flatMap((block) => block.type === "heading" ? [[block.id, text(block)]] : []));
+
+    expect(mismatch?.sourceRefs?.map((id) => headings.get(id))).toEqual(["2.1 Intake"]);
+  });
 
   it("reads the slides of a presentation export without duplicating a shaded box as an image", async () => {
     // Regression: a filled text box drawn as moveto, four linetos and a close
@@ -111,5 +166,30 @@ describe("scanned pages with an OCR text layer", () => {
     expect(result.facts.pages[0]!.kind).toBe("mixed");
     expect(result.pages[0]!.fallbackScope).not.toBe("none");
     expect(result.document.blocks.filter((block) => block.type === "paragraph" || block.type === "heading")).toEqual([]);
+  });
+
+  it("attaches the OCR layer unverified beside the page image", async () => {
+    const result = await review(ocrScanPdf(), "page-image");
+    const blocks = result.document.blocks;
+    const ocr = blocks.find((block) => block.type === "disclosure" && block.title.startsWith("Recognized text"));
+
+    // Page image, its caption, then the OCR text.
+    expect(blocks.map((block) => block.type)).toEqual(["image", "paragraph", "disclosure"]);
+    expect(ocr?.type === "disclosure" ? ocr.blocks.map(text) : null)
+      .toEqual(["Neutral Scan Report", "The scanned page lists neutral records."]);
+    expect(result.document.issues).toContainEqual(expect.objectContaining({
+      code: "pdf-import/ocr-text-attached",
+      severity: "info",
+      context: { pageIndex: 0, lines: 2 },
+    }));
+  });
+
+  it("attaches no OCR text to a page image of visible text", async () => {
+    // The fallback page of a digital export holds visible text, not a scan's guess.
+    const { facts } = await (await createNodePdfiumFactsAdapterV2()).analyze(ocrScanPdf());
+    for (const character of facts.pages[0]!.characters) delete character.invisible;
+    const document = { schema: "x", sourceKind: "pdf", blocks: [{ id: "i", type: "image", assetId: "a", presentation: "page-fallback", sourceRefs: ["pdf:p0"] }], assets: [], issues: [] } as never;
+
+    expect(attachPdfOcrTextV2(facts, document)).toBe(document);
   });
 });

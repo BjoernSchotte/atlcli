@@ -583,6 +583,10 @@ export function continueCellBlocksV2(blocks: ImportBlock[], next: readonly Impor
 }
 
 const cellText = (cell: PdfGeometryGridCellV2) => cell.fragments.map((fragment) => fragment.text.trim()).join(" ");
+const blocksText = (blocks: readonly ImportBlock[]): string => blocks
+  .map((block) => "runs" in block ? block.runs.map((run) => run.kind === "text" ? run.text : "").join("") : "")
+  .join(" ").trim();
+const SENTENCE_END = /[.!?…:;]["'”’)\]]*$/u;
 
 /** Whether `next` continues `previous` on the following page with the same columns. */
 export function geometryGridContinues(
@@ -651,15 +655,31 @@ export function projectGeometryTableV2(
         cell.rowspan === 1 && cell.colspan === 1 && lastRow.get(cell.column)?.rowspan === undefined
         && lastRow.get(cell.column)?.colspan === undefined
       );
-    const splitRow = sameSimpleCells && grid.openTop === true
+    const framedSplit = sameSimpleCells && grid.openTop === true
       && first.grid.openTop !== true && parts[partIndex - 1]!.grid.openBottom === true;
     // Word and LibreOffice draw the frame across a split row, so its rest is
-    // a row of its own whose finished cells are blank: indistinguishable from
-    // a row that leaves cells blank on purpose. Say so instead of guessing.
-    if (sameSimpleCells && !splitRow
+    // a row of its own whose finished cells are blank, like a row that leaves
+    // cells blank on purpose. Its text proves the split: every filled cell
+    // continues a filled cell whose text stops mid-sentence, or starts in
+    // lowercase. Otherwise say so instead of guessing.
+    const restOfRow = sameSimpleCells && !framedSplit
       && firstCells.some((cell) => cell.fragments.length > 0)
-      && firstCells.some((cell) => cell.fragments.length === 0 && (lastRow.get(cell.column)?.blocks.length ?? 0) > 0)) {
-      issues.push({
+      && firstCells.some((cell) => cell.fragments.length === 0 && (lastRow.get(cell.column)?.blocks.length ?? 0) > 0);
+    const textSplit = restOfRow && firstCells.every((cell) => {
+      if (cell.fragments.length === 0) return true;
+      const previous = blocksText(lastRow.get(cell.column)?.blocks ?? []);
+      return previous.length > 0 && (!SENTENCE_END.test(previous) || /^\p{Ll}/u.test(cellText(cell)));
+    });
+    const splitRow = framedSplit || textSplit;
+    if (restOfRow) {
+      issues.push(textSplit ? {
+        code: "pdf-import/table-row-split-joined",
+        severity: "info",
+        outcome: "approximated",
+        message: "The first row after a page break continues the text of the row before it; it was joined to that row.",
+        sourceRefs: [tableId],
+        context: { pageIndex: page.index, rowIndex: rows.length - 1 },
+      } : {
         code: "pdf-import/table-row-split-unproven",
         severity: "warning",
         outcome: "native",
