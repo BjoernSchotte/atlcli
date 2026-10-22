@@ -176,12 +176,14 @@ describe.skipIf(!RUN).serial("digest, flow metrics and audit jira live (Bundle B
       // audit jira: A becomes unassigned work in progress.
       await jira.assignIssue(a.key, null);
       const audit = await eventually(
-        () => cliJson(["audit", "jira", "--jql", jql, "--checks", "unassigned-wip,hygiene"]),
-        (r) => r.findings.some((f: { rule: string; key: string }) => f.rule === "unassigned-wip" && f.key === a.key),
+        // Everything listed, no baseline, no exit 2: this checks the rules, not the gate.
+        () => cliJson(["audit", "jira", "--jql", jql, "--checks", "unassigned-wip,hygiene", "--min-level", "info", "--no-baseline", "--fail-on", "never"]),
+        (r) => r.findings.some((f: { rule: string; key: string }) => f.rule === "flow/unassigned-wip" && f.key === a.key),
         "audit search index"
       );
+      expect(audit.schemaVersion).toBe("2");
       const versions = await jira.getProjectVersions(E2E_PROJECT_KEY);
-      const doneWithoutVersion = audit.findings.some((f: { rule: string; key: string }) => f.rule === "done-without-version" && f.key === b.key);
+      const doneWithoutVersion = audit.findings.some((f: { rule: string; key: string }) => f.rule === "hygiene/done-without-version" && f.key === b.key);
       expect(doneWithoutVersion).toBe(versions.length > 0);
 
       // Optional: --summarize with a real key.

@@ -3,11 +3,11 @@
  * the Jira Cloud paths.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseAuditChecks, parseStaleDays } from "./audit-jira.js";
+import { parseStaleDays } from "./audit-jira.js";
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const DAY = 24 * 60 * 60 * 1000;
@@ -68,6 +68,7 @@ beforeAll(async () => {
     async fetch(req) {
       const { pathname } = new URL(req.url);
       if (pathname === "/rest/api/3/status") return Response.json(STATUSES);
+      if (pathname === "/rest/api/3/field") return Response.json([]);
       if (pathname === "/rest/api/3/project/ATLCLI/versions") return Response.json([{ id: "1", name: "1.0" }]);
       if (pathname === "/rest/api/3/search/jql") {
         const { jql } = (await req.json()) as { jql: string };
@@ -120,40 +121,111 @@ async function runCli(args: string[], env: Record<string, string> = { FLAG_AUDIT
 
 const BASE = ["audit", "jira", "--project", "ATLCLI", "--points-field", "customfield_10016"];
 
+const rulesFile = () => join(home, ".atlcli", "audit-rules.yaml");
+const baselineFile = () => join(home, ".atlcli", "profiles", "p", "audit-baseline.json");
+
 describe("audit jira", () => {
-  test("--json reports every check group", async () => {
+  test("default profile: loud findings listed, info findings quiet, exit 2 on errors", async () => {
     searches = [];
     const { stdout, stderr, exitCode } = await runCli([...BASE, "--json"]);
     expect(stderr).toBe("");
-    expect(exitCode).toBe(0);
+    expect(exitCode).toBe(2);
     const report = JSON.parse(stdout);
+    expect(report.schemaVersion).toBe("2");
     expect(report.query).toBe('project = "ATLCLI"');
+    expect(report.rules).toEqual({ source: "built-in profile default", extends: "default", minLevel: "warning" });
     const rules = report.findings.map((f: { rule: string; key: string; severity: string }) => `${f.rule}:${f.key}:${f.severity}`);
     expect(rules).toEqual([
-      "stuck-wip:ATLCLI-1:error",
-      "unassigned-wip:ATLCLI-1:warning",
-      "stale:ATLCLI-1:error",
-      "unestimated-in-sprint:ATLCLI-2:warning",
-      ...DONE.map((d) => `done-without-version:${d.key}:info`),
-      "no-parent:ATLCLI-1:info",
+      "flow/stuck-wip:ATLCLI-1:error",
+      "flow/unassigned-wip:ATLCLI-1:warning",
+      "hygiene/stale:ATLCLI-1:error",
+      "hygiene/unestimated-in-sprint:ATLCLI-2:warning",
     ]);
+    expect(report.quiet).toEqual({ "hygiene/no-parent": 1, "hygiene/done-without-version": DONE.length });
+    expect(report.diagnostics).toContain("hygiene/flagged skipped: no Flagged field found (set flagged.field in the rules file).");
     expect(searches.some((jql) => jql.includes("sprint in openSprints()"))).toBe(true);
+    expect(searches.some((jql) => jql.includes("resolution IS NOT EMPTY"))).toBe(true);
+
+    expect((await runCli([...BASE, "--fail-on", "never", "--json"])).exitCode).toBe(0);
+    const all = JSON.parse((await runCli([...BASE, "--min-level", "info", "--json"])).stdout);
+    expect(all.findings).toHaveLength(4 + 1 + DONE.length);
   });
 
   test("--checks stale limits the output; --markdown renders tables", async () => {
     const json = JSON.parse((await runCli([...BASE, "--checks", "stale", "--json"])).stdout);
-    expect(json.findings.map((f: { check: string }) => f.check)).toEqual(["stale"]);
+    expect(json.findings.map((f: { rule: string }) => f.rule)).toEqual(["hygiene/stale"]);
     const md = (await runCli([...BASE, "--checks", "stale", "--markdown"])).stdout;
     expect(md).toContain("## Stale (1)");
     expect(md).toContain(`| error | [ATLCLI-1](${server.url.origin}/browse/ATLCLI-1) | Issue 1 |`);
   });
 
-  test("usage errors: no selection, unknown check", async () => {
+  test("a project rules file: profile, overrides, custom JQL rules", async () => {
+    await writeFile(
+      rulesFile(),
+      [
+        "extends: minimal",
+        "minLevel: info",
+        "rules:",
+        "  hygiene/no-parent: warning",
+        "custom:",
+        "  - id: team/no-fix-version",
+        "    jql: fixVersion IS EMPTY",
+        "    severity: info",
+        "    message: No fix version.",
+        "overrides:",
+        "  - match: { project: ATLCLI }",
+        "    rules:",
+        "      hygiene/stale: off",
+      ].join("\n")
+    );
+    try {
+      searches = [];
+      const report = JSON.parse((await runCli([...BASE, "--json"])).stdout);
+      // macOS reports the temp dir through its /private symlink.
+      expect(report.rules).toEqual({ source: expect.stringMatching(new RegExp(`${rulesFile()}$`)), extends: "minimal", minLevel: "info" });
+      expect(searches).toContain('(project = "ATLCLI") AND (fixVersion IS EMPTY) ORDER BY key ASC');
+      const rules = [...new Set(report.findings.map((f: { rule: string }) => f.rule))];
+      expect(rules).toEqual(["flow/unassigned-wip", "hygiene/no-parent", "team/no-fix-version"]);
+    } finally {
+      await rm(rulesFile(), { force: true });
+    }
+  });
+
+  test("an invalid rules file is a usage error naming the path", async () => {
+    await writeFile(rulesFile(), "rules:\n  hygiene/stale: { warning: soon }\n");
+    try {
+      const { stdout, exitCode } = await runCli([...BASE, "--json"]);
+      expect(exitCode).toBe(1);
+      expect(JSON.parse(stdout).error.message).toContain(`${rulesFile()}: rules.hygiene/stale.warning: expected days`);
+    } finally {
+      await rm(rulesFile(), { force: true });
+    }
+  });
+
+  test("--update-baseline accepts current findings; later runs hide them", async () => {
+    await rm(baselineFile(), { force: true });
+    const first = JSON.parse((await runCli([...BASE, "--update-baseline", "--json"])).stdout);
+    const saved = JSON.parse(await readFile(baselineFile(), "utf8"));
+    expect(saved.schemaVersion).toBe(1);
+    expect(saved.entries.map((e: { rule: string; subject: string }) => `${e.rule}:${e.subject}`)).toContain("hygiene/stale:ATLCLI-1");
+    expect(first.diagnostics.join(" ")).toContain(`accepted in ${baselineFile()}`);
+    const { stdout, exitCode } = await runCli([...BASE, "--json"]);
+    expect(exitCode).toBe(0);
+    const next = JSON.parse(stdout);
+    expect(next.findings).toEqual([]);
+    expect(next.summary.suppressed.baseline).toBe(saved.entries.length);
+    expect(JSON.parse((await runCli([...BASE, "--no-baseline", "--json"])).stdout).findings).toHaveLength(4);
+    await rm(baselineFile(), { force: true });
+  });
+
+  test("usage errors: no selection, unknown check, bad --fail-on", async () => {
     const none = await runCli(["audit", "jira", "--json"]);
     expect(none.exitCode).toBe(1);
     expect(JSON.parse(none.stdout).error.code).toBe("ATLCLI_ERR_USAGE");
     const bad = await runCli([...BASE, "--checks", "nope", "--json"]);
     expect(JSON.parse(bad.stdout).error.message).toContain('Unknown check "nope"');
+    const failOn = await runCli([...BASE, "--fail-on", "loud", "--json"]);
+    expect(JSON.parse(failOn.stdout).error.message).toContain("--fail-on must be one of");
   });
 
   test("feature flag off: same message as audit wiki", async () => {
@@ -166,7 +238,7 @@ describe("audit jira", () => {
 describe("audit jira with a status map", () => {
   test("a status mapped to done is searched as done, so stuck-wip gets its reference set", async () => {
     searches = [];
-    const { exitCode } = await runCli([...BASE, "--checks", "stuck-wip", "--status-map", "In Progress=done", "--json"]);
+    const { exitCode } = await runCli([...BASE, "--checks", "stuck-wip", "--status-map", "In Progress=done", "--fail-on", "never", "--json"]);
     expect(exitCode).toBe(0);
     expect(searches).toContain('(project = "ATLCLI") AND (statusCategory != Done AND status not in (2)) ORDER BY key ASC');
     expect(searches).toContain('(project = "ATLCLI") AND (statusCategory = Done OR status in (2)) AND updated >= -90d ORDER BY key ASC');
@@ -174,9 +246,7 @@ describe("audit jira with a status map", () => {
 });
 
 describe("flag parsers", () => {
-  test("parseAuditChecks / parseStaleDays", () => {
-    expect([...(parseAuditChecks("stale, hygiene") as Set<string>)]).toEqual(["stale", "hygiene"]);
-    expect(parseAuditChecks(",")).toContain("--checks is empty");
+  test("parseStaleDays", () => {
     expect(parseStaleDays("10,20,30")).toEqual([10, 20, 30]);
     expect(parseStaleDays("30,20,90")).toContain("ascending");
     expect(parseStaleDays("30,60")).toContain("three");
