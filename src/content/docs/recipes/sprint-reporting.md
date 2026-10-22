@@ -182,13 +182,13 @@ echo "## Flow"
 atlcli jira analyze flow --board "$BOARD_ID" --since 14d
 echo
 echo "## Needs attention"
-atlcli audit jira --board "$BOARD_ID" --checks stuck-wip,unassigned-wip
+atlcli audit jira --board "$BOARD_ID" --checks stuck-wip,unassigned-wip --fail-on never  # report only, no exit 2
 ```
 
 ## Related Topics
 
 - [Analytics](../jira/analytics.md) - Velocity, burndown, predictability
 - [Flow Metrics](../jira/flow-metrics.md) - Cycle time, throughput, aging work, cumulative flow
-- [Jira Audit](../jira/audit.md) - Stuck, unassigned and stale work
+- [Jira Audit](../jira/audit.md) - Stuck, unassigned, stale and overdue work, under configurable rules
 - [Boards & Sprints](../jira/boards-sprints.md) - Sprint management
 - [CI/CD Docs](ci-cd-docs.md) - CI/CD pipeline integration

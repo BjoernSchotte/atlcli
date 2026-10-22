@@ -205,7 +205,14 @@ Stale thresholds for `atlcli audit jira`, in days, for the info, warning and err
 |--------|------|---------|-------------|
 | `audit.jira.staleDays` | `[number, number, number]` | `[30, 60, 90]` | Three ascending positive integers |
 
-A profile can set its own `audit.jira.staleDays`, which wins over the global value; `--stale` wins over both. See [Jira Audit](jira/audit.md).
+A profile can set its own `audit.jira.staleDays`, which wins over the global value; `--stale` wins over both. It applies only when no audit rules file exists.
+
+Rules, severities, overrides and the baseline live in a separate YAML file, not in `config.json`. atlcli uses the first one it finds:
+1. `./.atlcli/audit-rules.yaml`
+2. `~/.atlcli/profiles/<profile>/audit-rules.yaml`
+3. `~/.atlcli/audit-rules.yaml`
+
+The baseline lives in `~/.atlcli/profiles/<profile>/audit-baseline.json`. See [Audit Rules](jira/audit-rules.md).
 
 ### Flow Metrics
 

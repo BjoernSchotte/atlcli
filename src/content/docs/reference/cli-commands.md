@@ -826,14 +826,15 @@ Selection: `--jql` > `--board` (its saved filter) > `--project` > `defaults.boar
 ### Jira Audit
 
 ```bash
-atlcli audit jira --project <key>                           # All checks
-atlcli audit jira --board <id> --checks stuck-wip,unassigned-wip
-atlcli audit jira --jql <query> --stale 14,30,60 --all
-atlcli audit jira --project <key> --markdown > audit.md
+atlcli audit jira --project <key>                           # Rules from .atlcli/audit-rules.yaml or the default profile
+atlcli audit jira --board <id> --checks flow --min-level info
+atlcli audit jira --project <key> --update-baseline         # Accept today's findings
+atlcli audit jira --jql <query> --rules team-rules.yaml --fail-on warning
+atlcli audit jira --project <key> --markdown > audit.md     # Exits 2 when an error remains
 atlcli audit jira --project <key> --json
 ```
 
-Needs `atlcli flag set audit true --global`. See [Jira Audit](../jira/audit.md).
+Needs `atlcli flag set audit true --global`. See [Jira Audit](../jira/audit.md) and [Audit Rules](../jira/audit-rules.md).
 
 ### Fields
 

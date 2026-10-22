@@ -54,6 +54,7 @@ description: "atlcli digest: what changed since your last look and what waits on
 | Jira | Changed | Issues you are assigned to, reported or watch that changed in the window, each with its changes (`status: To Do → In Progress by Ann · 3h ago`) |
 | Jira | Sprint | Each active sprint of the board: progress bar, to do / in progress / done counts, your open issues, days left |
 | Jira project | Completed · Created · Changed | Per project from `--project` or `digest.projects`: issues moved into a done status, issues created, and issues changed in the window, by anyone, with assignee and change lines |
+| Jira | Audit errors | Error-level findings of the [audit rules](jira/audit-rules.md) for those projects; only when the audit feature is enabled |
 | Confluence | Mentions | Pages and comments that mention you |
 | Confluence | Comments on your pages | New comments on your 50 most recently modified pages |
 | Confluence | Open inline comments | Unresolved inline comments on your 10 most recently modified pages (`--max-pages`), oldest first. These are not limited to the window: they wait on you. |
@@ -108,6 +109,19 @@ Set the projects once in `~/.atlcli/config.json`, globally or per profile. A pro
 The overview reads up to 200 changed issues across all projects in one search, plus one bulk changelog request. Each list is cut at `--limit`.
 
 "Done" follows the Jira status category (To Do, In Progress, Done), not status names. If a workflow puts a done status in another category, map it with `flow.statusMap` or `--status-map`, e.g. `"Fertig=done"`. The map also applies to "Waiting on you" and the sprint counts.
+
+### Audit errors
+
+With the audit feature enabled (`atlcli flag set audit true --global`), the digest also runs the [audit rules](jira/audit-rules.md) for its projects and lists what is still at `error` after the baseline. It uses the same rules file and baseline as `atlcli audit jira`. It runs only the rules that can reach `error`, and leaves out `flow/stuck-wip` and `flow/status-aging`, which read the done issues and their history, unless the rule sets `digest: true`.
+
+The section reads up to 300 open issues across the projects; beyond that, a warning says the list is a lower bound. With the default rules, the section costs a few requests: one search for open issues, one for resolved issues outside Done, one bulk changelog request, and one field list for the Flagged field.
+
+```
+Jira
+  Audit errors (2)
+    GROW-60  [In Progress]  HR marketing — hygiene/overdue: Due 2025-12-31, 294 d overdue.
+    GROW-1343  [In Progress]  Meetups — hygiene/stale: Not updated for 157 d.
+```
 
 ## The last-run marker
 
@@ -203,4 +217,5 @@ That is the upper bound, to keep queries cheap after a long break. A warning say
 - [Jira search and `jira my`](jira/search.md)
 - [Confluence search: `wiki my` and `wiki recent`](confluence/search.md)
 - [Configuration: defaults and profiles](configuration.md)
+- [Jira Audit](jira/audit.md) and [Audit Rules](jira/audit-rules.md)
 - [Research](reference/research.md), the agentic alternative for open questions

@@ -54,6 +54,8 @@ beforeAll(async () => {
             { id: "2", name: "In Progress", statusCategory: { key: "indeterminate" } },
             { id: "5", name: "Fertig", statusCategory: { key: "indeterminate" } },
           ]);
+        case "/rest/api/3/field":
+          return Response.json([]);
         case "/rest/agile/1.0/board/9":
           return Response.json({ id: 9, name: "Kanban", type: "kanban" });
         case "/rest/api/3/myself":
@@ -184,6 +186,24 @@ describe("atlcli digest", () => {
       expect(digest.jira.projects[0].changed.map((i: { key: string }) => i.key)).toEqual(["ATLCLI-1"]);
     } finally {
       await writeFile(join(home, ".atlcli", "config.json"), JSON.stringify(config));
+    }
+  });
+
+  test("with audit enabled, --project adds the audit errors of the rules for those projects", async () => {
+    const rules = join(home, ".atlcli", "audit-rules.yaml");
+    await writeFile(rules, "custom:\n  - id: team/needs-review\n    jql: labels = review\n    severity: error\n    message: Needs a review.\n");
+    try {
+      const on = JSON.parse((await runCli(["digest", "--only", "jira", "--project", "ATLCLI", "--no-mark", "--json"], { FLAG_AUDIT: "true" })).stdout);
+      expect(on.warnings).toEqual([]);
+      expect(on.jira.audit).toEqual([
+        expect.objectContaining({ rule: "team/needs-review", key: "ATLCLI-1", detail: "Needs a review.", status: "In Progress" }),
+      ]);
+      const text = (await runCli(["digest", "--only", "jira", "--project", "ATLCLI", "--no-mark"], { FLAG_AUDIT: "true" })).stdout;
+      expect(text).toContain("Audit errors (1)\n    ATLCLI-1  [In Progress]  Fix login — team/needs-review: Needs a review.");
+      const off = JSON.parse((await runCli(["digest", "--only", "jira", "--project", "ATLCLI", "--no-mark", "--json"], { FLAG_AUDIT: "false" })).stdout);
+      expect(off.jira.audit).toBeUndefined();
+    } finally {
+      await rm(rules, { force: true });
     }
   });
 

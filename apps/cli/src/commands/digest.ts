@@ -3,13 +3,11 @@
  * what waits on me, across Jira and Confluence, in a bounded number of
  * requests. This file is the IO shell; everything else is in digest-core.ts.
  */
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
 import {
   ERROR_CODES,
   type OutputOptions,
+  getFlagValue,
   type Profile,
   fail,
   getActiveProfile,
@@ -21,16 +19,23 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient, type ConfluenceSearchResult } from "@atlcli/confluence";
 import {
+  type AuditRules,
   JiraClient,
+  type JiraAuditBaseline,
   type JiraIssue,
+  digestAuditRules,
+  isRuleActive,
   type StatusCategoryResolver,
   createStatusCategoryResolver,
+  parseAuditBaseline,
   parseStatusMap,
   resolveStatusMap,
   statusScopeJql,
 } from "@atlcli/jira";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { profileFilePath, writeJsonAtomic } from "./profile-paths.js";
 import { searchAll } from "./jira-flow.js";
+import { auditBaselinePath, collectJiraAudit, loadAuditRules } from "./audit-jira.js";
 import {
   DIGEST_COMMENT_PAGES,
   type DigestProduct,
@@ -44,6 +49,7 @@ import {
   buildDigestQueries,
   digestItemCount,
   nextDigestState,
+  projectsJql,
   parseDigestState,
   renderDigestMarkdown,
   renderDigestText,
@@ -58,13 +64,12 @@ const SECRET_FLAGS = ["api-key", "apikey", "anthropic-key", "key"];
 const COMMENT_READ_CONCURRENCY = 5;
 /** Changed issues read per run for the project overview (all projects together). */
 export const DIGEST_PROJECT_FETCH = 200;
+/** Open issues the digest's audit section reads across its projects. */
+export const DIGEST_AUDIT_LIMIT = 300;
 
 /** `~/.atlcli/profiles/<profile>/digest-state.json`; `homedir()` is read at call time. */
 export function digestStatePath(profile: string): string {
-  const safe = /^[A-Za-z0-9._-]+$/.test(profile) && profile !== "." && profile !== ".."
-    ? profile
-    : encodeURIComponent(profile).replace(/\./g, "%2E");
-  return join(homedir(), ".atlcli", "profiles", safe, "digest-state.json");
+  return profileFilePath(profile, "digest-state.json");
 }
 
 async function readState(path: string): Promise<{ state: DigestState; warning?: string }> {
@@ -81,17 +86,6 @@ async function readState(path: string): Promise<{ state: DigestState; warning?: 
   }
 }
 
-/** Temporary file in the same directory, then rename (as `writeResearchMarkdownAtomic`). */
-async function writeStateAtomic(path: string, state: DigestState): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.tmp-${randomUUID()}`;
-  try {
-    await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    await rename(temporary, path);
-  } finally {
-    await unlink(temporary).catch(() => undefined);
-  }
-}
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -112,7 +106,14 @@ function sectionRunner(product: DigestProduct, errors: DigestRawInput["errors"])
 async function fetchJira(
   client: JiraClient,
   minutes: number,
-  opts: { board?: number; fetchLimit: number; projects: string[]; statusMap: Record<string, "todo" | "wip" | "done"> },
+  opts: {
+    board?: number;
+    fetchLimit: number;
+    projects: string[];
+    statusMap: Record<string, "todo" | "wip" | "done">;
+    /** Rules for the "Audit" section, already cut to the digest (`digestAuditRules`). */
+    audit?: { rules: AuditRules; baseline?: JiraAuditBaseline };
+  },
   raw: DigestRawInput
 ): Promise<{ projectsTruncated: boolean }> {
   const run = sectionRunner("jira", raw.errors);
@@ -122,7 +123,7 @@ async function fetchJira(
     ? await run("statuses", async () => {
         const statuses = await client.getStatuses();
         const resolve: StatusCategoryResolver = createStatusCategoryResolver(statuses, opts.statusMap);
-        return { resolve, open: statusScopeJql(statuses, resolve).open };
+        return { resolve, ...statusScopeJql(statuses, resolve) };
       })
     : undefined;
   const q = buildDigestQueries({ minutes, projects: opts.projects, open: scope?.open });
@@ -134,7 +135,8 @@ async function fetchJira(
     });
   }
   let projectsTruncated = false;
-  const [me, waiting, changed, sprints, project] = await Promise.all([
+  const audit = opts.audit;
+  const [me, waiting, changed, sprints, project, auditResult] = await Promise.all([
     run("me", () => client.getCurrentUser()),
     run("waiting", async () => (await client.search(q.waiting, { fields: ["summary", "status", "priority"], maxResults: opts.fetchLimit })).issues),
     run("changed", async () => {
@@ -172,6 +174,12 @@ async function fetchJira(
           return { issues: result.issues, changelogs };
         })
       : Promise.resolve(undefined),
+    audit && scope && q.projects && Object.keys(audit.rules.rules).some((id) => isRuleActive(audit.rules, id))
+      ? run("audit", async () => {
+          const { report } = await collectJiraAudit(client, { base: projectsJql(opts.projects), rules: audit.rules, scope, limit: DIGEST_AUDIT_LIMIT, baseline: audit.baseline, useBaseline: true });
+          return report;
+        })
+      : Promise.resolve(undefined),
   ]);
   raw.me.jiraAccountId = me?.accountId;
   raw.me.displayName ??= me?.displayName;
@@ -184,6 +192,7 @@ async function fetchJira(
       ? { projectKeys: opts.projects, projectIssues: project?.issues, projectChangelogs: project?.changelogs }
       : {}),
     ...(scope ? { resolve: scope.resolve } : {}),
+    ...(auditResult ? { audit: { findings: auditResult.findings, partial: auditResult.partial } } : {}),
   };
   return { projectsTruncated };
 }
@@ -292,6 +301,24 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
   }
   const statusMap = resolveStatusMap(config.flow?.statusMap, profile.flow?.statusMap, flagMap);
 
+  // The "Audit" section: errors from the audit rules for the digest's projects, when audit is enabled.
+  let audit: { rules: AuditRules; baseline?: JiraAuditBaseline } | undefined;
+  const auditErrors: DigestRawInput["errors"] = [];
+  if (projects.length && products.includes("jira") && (await getFlagValue<boolean>("audit", false))) {
+    try {
+      const rules = digestAuditRules(await loadAuditRules(profile, config.audit?.jira?.staleDays));
+      let baseline: JiraAuditBaseline | undefined;
+      try {
+        baseline = parseAuditBaseline(JSON.parse(await readFile(auditBaselinePath(profile.name), "utf8")));
+      } catch {
+        // No baseline (or an unreadable one): nothing accepted.
+      }
+      audit = { rules, baseline };
+    } catch (err) {
+      auditErrors.push({ section: "jira.audit", message: message(err) });
+    }
+  }
+
   const statePath = digestStatePath(profile.name);
   const { state, warning: stateWarning } = await readState(statePath);
   const runStartedAt = new Date();
@@ -320,7 +347,7 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
     jiraBaseUrl: undefined,
     jira: {},
     confluence: {},
-    errors: stateWarning ? [{ section: "state", message: stateWarning }] : [],
+    errors: [...(stateWarning ? [{ section: "state", message: stateWarning }] : []), ...auditErrors],
     ...(verbose || opts.json ? { queries: {} } : {}),
   };
   const fetchLimit = 2 * limit + 1;
@@ -330,7 +357,7 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
     const jira = new JiraClient(profile, { observeTransport: count });
     raw.jiraBaseUrl = jira.siteUrl;
     tasks.push(
-      fetchJira(jira, sinceMinutes(since.jira!, runStartedAt), { board, fetchLimit, projects, statusMap }, raw).then((r) => {
+      fetchJira(jira, sinceMinutes(since.jira!, runStartedAt), { board, fetchLimit, projects, statusMap, audit }, raw).then((r) => {
         projectsTruncated = r.projectsTruncated;
       })
     );
@@ -379,7 +406,7 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
   });
   if (JSON.stringify(next) !== JSON.stringify({ ...state, schemaVersion: 2 })) {
     try {
-      await writeStateAtomic(statePath, next);
+      await writeJsonAtomic(statePath, next);
     } catch (err) {
       process.stderr.write(`Warning: could not write ${statePath}: ${message(err)}\n`);
     }
@@ -396,6 +423,7 @@ What changed since your last look, and what waits on you, across Jira and Conflu
 Sections:
   Jira         Waiting on you · Changed (your issues and watched ones) · Active sprint
   Projects     Per project: completed · created · changed, by anyone (--project, digest.projects)
+  Audit        Error findings of the audit rules for those projects (when audit is enabled)
   Confluence   Mentions · Comments on your pages · Open inline comments ·
                Your pages edited · Watched pages changed · Recently changed in space
 

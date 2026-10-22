@@ -4,7 +4,7 @@
  * rendering. No IO; `now` is always passed in.
  */
 import type { ConfluenceSearchResult } from "@atlcli/confluence";
-import type { JiraChangelogEntry, JiraIssue, StatusCategoryResolver } from "@atlcli/jira";
+import type { JiraAuditFinding, JiraChangelogEntry, JiraIssue, StatusCategoryResolver } from "@atlcli/jira";
 import { buildMyIssuesJql } from "./jira.js";
 import { buildMyPagesCql, buildRecentPagesCql } from "./search.js";
 
@@ -112,9 +112,14 @@ export function buildDigestQueries(opts: { minutes: number; space?: string; proj
       ? { recent: `${buildRecentPagesCql({ space: opts.space, since: `-${opts.minutes}m` })} ORDER BY lastModified DESC` }
       : {}),
     ...(opts.projects?.length
-      ? { projects: `project in (${opts.projects.map(jqlValue).join(", ")}) AND updated >= -${opts.minutes}m ORDER BY updated DESC` }
+      ? { projects: `${projectsJql(opts.projects)} AND updated >= -${opts.minutes}m ORDER BY updated DESC` }
       : {}),
   };
+}
+
+/** `project in (GROW, "my proj")`. */
+export function projectsJql(projects: string[]): string {
+  return `project in (${projects.map(jqlValue).join(", ")})`;
 }
 
 function jqlValue(value: string): string {
@@ -171,6 +176,16 @@ export interface DigestProjectOverview {
   changed: DigestIssueChange[];
 }
 
+export interface DigestAuditFinding {
+  rule: string;
+  key: string;
+  summary: string;
+  status: string;
+  assignee?: string;
+  detail: string;
+  url: string;
+}
+
 export interface DigestPage {
   id: string;
   title: string;
@@ -203,6 +218,8 @@ export interface DigestV1 {
     sprints: DigestSprint[];
     /** Present when projects were asked for (`--project`, `digest.projects`). */
     projects?: DigestProjectOverview[];
+    /** Error findings of the audit rules for those projects; present when the audit ran. */
+    audit?: DigestAuditFinding[];
   };
   confluence?: {
     mentions: DigestPage[];
@@ -244,6 +261,8 @@ export interface DigestRawInput {
     projectChangelogs?: Map<string, JiraChangelogEntry[]>;
     /** Status resolver after the status map; without one, the Jira status category. */
     resolve?: StatusCategoryResolver;
+    /** The audit section's findings (already errors only), and inputs it read only in part. */
+    audit?: { findings: JiraAuditFinding[]; partial: string[] };
   };
   confluence: {
     mentions?: ConfluenceSearchResult[];
@@ -456,7 +475,27 @@ export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn
       changed: cap("jira.changed", changed),
       sprints,
       ...(input.jira.projectKeys?.length ? { projects: projectOverviews(input, { since, me, cap }) } : {}),
+      ...(input.jira.audit
+        ? {
+            audit: cap(
+              "jira.audit",
+              input.jira.audit.findings.map((f) => ({
+                rule: f.rule,
+                key: f.key,
+                summary: f.summary,
+                status: f.status,
+                ...(f.assignee ? { assignee: f.assignee } : {}),
+                detail: f.detail,
+                url: issueUrl(base, f.key),
+              }))
+            ),
+          }
+        : {}),
     };
+    // Not under `truncated`: --limit does not help, and not a `jira.` section, which would hold the marker back.
+    if (input.jira.audit?.partial.length) {
+      digest.warnings.push({ section: "audit", message: `read only part of the ${input.jira.audit.partial.join(", ")}; the audit errors are a lower bound.` });
+    }
   }
 
   if (input.products.includes("confluence")) {
@@ -590,6 +629,7 @@ const TITLES: Record<string, string> = {
   recent: "Recently changed in space",
   created: "Created",
   completed: "Completed",
+  audit: "Audit errors",
 };
 
 function changeLine(change: DigestChange, now: Date): string {
@@ -601,6 +641,7 @@ function isEmpty(d: DigestV1): boolean {
   const lists = [
     ...(d.jira ? [d.jira.waiting, d.jira.changed, d.jira.sprints] : []),
     ...(d.jira?.projects ?? []).flatMap((p) => [p.created, p.completed, p.changed]),
+    d.jira?.audit ?? [],
     ...(d.confluence ? Object.values(d.confluence) : []),
   ];
   return lists.every((list) => list.length === 0);
@@ -632,6 +673,15 @@ function blocks(d: DigestV1, now: Date): Array<{ product: string; blocks: Block[
       const left = s.daysLeft === null ? "" : ` — ${s.daysLeft} day(s) left`;
       const text = `${s.progress}  to do ${s.counts.todo} · in progress ${s.counts.wip} · done ${s.counts.done} · yours open ${s.yoursOpen}`;
       b.push({ heading: `Sprint ${s.name}${left}`, lines: [{ text, md: `\`${s.progress}\` to do ${s.counts.todo} · in progress ${s.counts.wip} · done ${s.counts.done} · yours open ${s.yoursOpen}` }] });
+    }
+    if (d.jira.audit?.length) {
+      b.push({
+        heading: `${TITLES.audit} (${d.jira.audit.length})`,
+        lines: d.jira.audit.map((f) => ({
+          text: `${f.key}  [${f.status}]  ${f.summary} — ${f.rule}: ${f.detail}`,
+          md: `[${f.key}](${f.url}) ${escapeMd(f.summary)} · *${f.status}* — \`${f.rule}\`: ${escapeMd(f.detail)}`,
+        })),
+      });
     }
     out.push({ product: "Jira", blocks: b });
     for (const p of d.jira.projects ?? []) {
@@ -734,6 +784,7 @@ export function digestItemCount(d: DigestV1): number {
   return (
     (d.jira ? d.jira.waiting.length + d.jira.changed.length + d.jira.sprints.length : 0) +
     (d.jira?.projects ?? []).reduce((n, p) => n + p.created.length + p.completed.length + p.changed.length, 0) +
+    (d.jira?.audit?.length ?? 0) +
     (d.confluence ? Object.values(d.confluence).reduce((n, list) => n + list.length, 0) : 0)
   );
 }

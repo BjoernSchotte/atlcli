@@ -94,6 +94,7 @@ export default defineConfig({
             { label: 'Analytics', link: '/jira/analytics/' },
             { label: 'Flow Metrics', link: '/jira/flow-metrics/' },
             { label: 'Audit', link: '/jira/audit/' },
+            { label: 'Audit Rules', link: '/jira/audit-rules/' },
             { label: 'Bulk Operations', link: '/jira/bulk-operations/' },
             { label: 'Filters', link: '/jira/filters/' },
             { label: 'Templates', link: '/jira/templates/' },

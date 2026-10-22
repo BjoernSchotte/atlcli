@@ -316,6 +316,20 @@ describe("project overview", () => {
     expect(text).not.toContain("Jira project EMPTY");
   });
 
+  test("audit errors: listed with rule and detail, capped; a partial read is a warning that does not hold the marker", () => {
+    const finding = (key: string) => ({ rule: "hygiene/stale", category: "hygiene" as const, severity: "error" as const, key, summary: `S ${key}`, status: "In Progress", detail: "Not updated for 120 d.", subject: key });
+    const d = buildDigest(
+      raw({ products: ["jira"], jira: { audit: { findings: [finding("GROW-1"), finding("GROW-2")], partial: ["open issues"] } } }),
+      { now: NOW, includeOwn: false, limit: 1 }
+    );
+    expect(d.jira!.audit).toEqual([{ rule: "hygiene/stale", key: "GROW-1", summary: "S GROW-1", status: "In Progress", detail: "Not updated for 120 d.", url: "https://x/browse/GROW-1" }]);
+    expect(d.truncated).toContain("jira.audit");
+    expect(d.warnings).toContainEqual({ section: "audit", message: "read only part of the open issues; the audit errors are a lower bound." });
+    expect(succeededProducts(d, ["jira"])).toEqual(["jira"]);
+    expect(renderDigestText(d, NOW)).toContain("  Audit errors (1)\n    GROW-1  [In Progress]  S GROW-1 — hygiene/stale: Not updated for 120 d.");
+    expect(renderDigestMarkdown(d, NOW)).toContain("- [GROW-1](https://x/browse/GROW-1) S GROW-1 · *In Progress* — `hygiene/stale`: Not updated for 120 d.");
+  });
+
   test("the sprint counts follow the status map", () => {
     const d = buildDigest(
       raw({

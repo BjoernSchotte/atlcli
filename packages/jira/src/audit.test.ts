@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
-  DEFAULT_JIRA_STALE_DAYS,
-  JIRA_AUDIT_CHECKS,
-  type JiraAuditCheck,
+  type JiraAuditInput,
   auditJiraIssues,
+  createAuditBaseline,
+  parseAuditBaseline,
+  pruneAuditBaseline,
   renderJiraAuditMarkdown,
   renderJiraAuditText,
 } from "./audit.js";
+import { type AuditRules, defaultAuditRules, parseAuditRules, resolveAuditChecks, restrictAuditRules } from "./audit-rules.js";
 import { createStatusCategoryResolver } from "./flow.js";
 import type { JiraIssue, JiraStatus } from "./types.js";
 
@@ -14,14 +16,17 @@ const STATUSES: JiraStatus[] = [
   { id: "1", name: "To Do", statusCategory: { id: 2, key: "new", name: "To Do" } },
   { id: "2", name: "In Progress", statusCategory: { id: 4, key: "indeterminate", name: "In Progress" } },
   { id: "3", name: "Done", statusCategory: { id: 3, key: "done", name: "Done" } },
+  { id: "4", name: "Review", statusCategory: { id: 4, key: "indeterminate", name: "In Progress" } },
 ];
 const resolve = createStatusCategoryResolver(STATUSES);
 const NOW = new Date("2026-10-22T12:00:00.000Z");
 const DAY = 24 * 60 * 60 * 1000;
 const ago = (d: number) => new Date(NOW.getTime() - d * DAY).toISOString();
 
+type Change = { daysAgo: number; field: string; fieldId?: string; from?: string | null; to: string | null; toString?: string | null };
+
 function issue(key: string, opts: {
-  status: "1" | "2" | "3";
+  status: "1" | "2" | "3" | "4";
   startedDaysAgo?: number;
   doneDaysAgo?: number;
   updatedDaysAgo?: number;
@@ -31,6 +36,9 @@ function issue(key: string, opts: {
   points?: number;
   fixVersions?: number;
   project?: string;
+  duedate?: string;
+  flagged?: boolean;
+  changes?: Change[];
 }): JiraIssue {
   const histories = [];
   if (opts.startedDaysAgo !== undefined) {
@@ -38,6 +46,9 @@ function issue(key: string, opts: {
   }
   if (opts.doneDaysAgo !== undefined) {
     histories.push({ id: `${key}-d`, author: {}, created: ago(opts.doneDaysAgo), items: [{ field: "status", fieldtype: "jira", from: "2", fromString: "In Progress", to: "3", toString: "Done" }] });
+  }
+  for (const [i, c] of (opts.changes ?? []).entries()) {
+    histories.push({ id: `${key}-c${i}`, author: {}, created: ago(c.daysAgo), items: [{ field: c.field, fieldId: c.fieldId, fieldtype: "custom", from: c.from ?? null, fromString: null, to: c.to, toString: c.toString ?? c.to }] });
   }
   return {
     id: key,
@@ -54,6 +65,8 @@ function issue(key: string, opts: {
       ...(opts.parent === false ? {} : { parent: { id: "9", key: "P-EPIC" } }),
       fixVersions: Array.from({ length: opts.fixVersions ?? 1 }, (_, i) => ({ id: String(i), name: `v${i}` })),
       ...(opts.points !== undefined ? { customfield_10016: opts.points } : {}),
+      ...(opts.duedate ? { duedate: opts.duedate } : {}),
+      ...(opts.flagged ? { customfield_10021: [{ value: "Impediment" }] } : {}),
     } as unknown as JiraIssue["fields"],
     changelog: { histories } as unknown as JiraIssue["changelog"],
   };
@@ -64,72 +77,76 @@ function doneSet(cycles: number[]): JiraIssue[] {
   return cycles.map((c, i) => issue(`D-${i + 1}`, { status: "3", startedDaysAgo: 30 + c, doneDaysAgo: 30 }));
 }
 
-function run(open: JiraIssue[], done: JiraIssue[], overrides: Partial<Parameters<typeof auditJiraIssues>[0]> = {}) {
+/** The strict profile, everything listed, no legacy cutoff: what a rule finds is what the test sees. */
+const STRICT: AuditRules = { ...defaultAuditRules("strict"), legacyDays: null };
+
+function only(checks: string, rules: AuditRules = STRICT): Pick<JiraAuditInput, "rules"> {
+  return { rules: restrictAuditRules(rules, resolveAuditChecks(checks, rules.custom.map((c) => c.id)) as Set<string>) };
+}
+
+function run(open: JiraIssue[], done: JiraIssue[], overrides: Partial<JiraAuditInput> = {}) {
   return auditJiraIssues({
+    rules: STRICT,
     open,
     done,
     resolve,
     now: NOW,
-    staleThresholds: DEFAULT_JIRA_STALE_DAYS,
-    checks: new Set<JiraAuditCheck>(JIRA_AUDIT_CHECKS),
-    includeTodo: false,
     projectsUsingVersions: new Set(),
+    useBaseline: true,
     ...overrides,
-  });
+  }).report;
 }
 
-const only = (check: JiraAuditCheck) => ({ checks: new Set<JiraAuditCheck>([check]) });
+const rows = (r: { findings: Array<{ rule: string; key: string; severity: string }> }) => r.findings.map((f) => [f.rule, f.key, f.severity]);
 
-describe("auditJiraIssues", () => {
+describe("auditJiraIssues: rules", () => {
   test("stuck-wip: warning above P85, error above P95, nothing at the boundary", () => {
     // Cycle times 1..20 days: P85 = 17, P95 = 19.
     const done = doneSet(Array.from({ length: 20 }, (_, i) => i + 1));
     const report = run(
-      [
-        issue("P-1", { status: "2", startedDaysAgo: 17 }),
-        issue("P-2", { status: "2", startedDaysAgo: 18 }),
-        issue("P-3", { status: "2", startedDaysAgo: 25 }),
-      ],
+      [issue("P-1", { status: "2", startedDaysAgo: 17 }), issue("P-2", { status: "2", startedDaysAgo: 18 }), issue("P-3", { status: "2", startedDaysAgo: 25 })],
       done,
       only("stuck-wip")
     );
-    expect(report.findings.map((f) => [f.key, f.severity])).toEqual([["P-3", "error"], ["P-2", "warning"]]);
-    expect(report.findings[1].detail).toContain("P85 (17.0 d)");
+    expect(rows(report)).toEqual([["flow/stuck-wip", "P-3", "error"], ["flow/stuck-wip", "P-2", "warning"]]);
+    expect(report.findings[1].detail).toContain("the cycle-time P85 (17.0 d)");
   });
 
-  test("workflow: one finding per status holding resolved issues outside Done, unless mapped to done", () => {
-    const resolved = [issue("P-1", { status: "2" }), issue("P-2", { status: "2" }), issue("P-3", { status: "1" })];
-    const report = run([], [], { ...only("workflow"), resolvedNotDone: resolved, resolvedNotDoneTruncated: true });
-    expect(report.findings.map((f) => [f.rule, f.key, f.status, f.severity])).toEqual([
-      ["resolved-not-done", "P-1", "In Progress", "warning"],
-      ["resolved-not-done", "P-3", "To Do", "warning"],
-    ]);
-    expect(report.findings[0].summary).toBe('Status "In Progress" (In Progress category)');
-    expect(report.findings[0].detail).toContain('2+ resolved issue(s) outside the Done category (e.g. P-1, P-2)');
-    expect(report.findings[0].detail).toContain('--status-map "In Progress=done"');
-
-    const mapped = createStatusCategoryResolver(STATUSES, { "In Progress": "done" });
-    const after = run([], [], { ...only("workflow"), resolvedNotDone: resolved, resolve: mapped });
-    expect(after.findings.map((f) => f.key)).toEqual(["P-3"]);
-    expect(run([], [], only("workflow")).findings).toEqual([]);
+  test("epics are left out of stuck-wip and its reference set (live: year-long epics flagged against story cycle times)", () => {
+    const epic = { name: "Epic", hierarchyLevel: 1 };
+    const done = [...doneSet(Array.from({ length: 20 }, (_, i) => i + 1)), issue("E-1", { status: "3", startedDaysAgo: 900, doneDaysAgo: 30, type: epic })];
+    const report = run([issue("E-2", { status: "2", startedDaysAgo: 800, type: epic }), issue("P-1", { status: "2", startedDaysAgo: 25 })], done, only("stuck-wip,flow/status-aging"));
+    expect(rows(report)).toEqual([["flow/stuck-wip", "P-1", "error"], ["flow/status-aging", "P-1", "error"]]);
+    // The 870-day epic did not stretch the P95.
+    expect(report.findings[0].detail).toContain("P95 (19.0 d)");
   });
 
-  test("stuck-wip is skipped with a diagnostic below five completions", () => {
-    const report = run([issue("P-1", { status: "2", startedDaysAgo: 100 })], doneSet([1, 2, 3, 4]), only("stuck-wip"));
+  test("stuck-wip percentiles are skipped with a diagnostic below five completions; day thresholds still apply", () => {
+    const open = [issue("P-1", { status: "2", startedDaysAgo: 100 })];
+    const report = run(open, doneSet([1, 2, 3, 4]), only("stuck-wip"));
     expect(report.findings).toEqual([]);
-    expect(report.diagnostics[0]).toContain("stuck-wip skipped: 4 completed issue(s)");
+    expect(report.diagnostics[0]).toContain("flow/stuck-wip percentiles skipped: 4 completed issue(s)");
+    const days = parseAuditRules({ extends: "strict", rules: { "flow/stuck-wip": { warning: "60d", error: "off" } } }, "t");
+    expect(rows(run(open, doneSet([1, 2, 3, 4]), only("stuck-wip", { ...days, legacyDays: null })))).toEqual([["flow/stuck-wip", "P-1", "warning"]]);
+  });
+
+  test("status-aging compares the time in the current status with that status's history", () => {
+    // Done issues spent 1..10 days in "In Progress" (P85 = 9, P95 = 10).
+    const done = Array.from({ length: 10 }, (_, i) => issue(`D-${i + 1}`, { status: "3", startedDaysAgo: 40 + i + 1, doneDaysAgo: 40 }));
+    const open = [issue("P-1", { status: "2", startedDaysAgo: 9.5 }), issue("P-2", { status: "2", startedDaysAgo: 30 }), issue("P-3", { status: "4", startedDaysAgo: 30 })];
+    const report = run(open, done, only("flow/status-aging"));
+    expect(rows(report)).toEqual([["flow/status-aging", "P-2", "error"], ["flow/status-aging", "P-1", "warning"]]);
+    expect(report.findings[0].detail).toBe('In "In Progress" for 30 d, above the P95 for "In Progress" (10.0 d).');
+    // "Review" has no history in the done set.
+    expect(report.diagnostics.join(" ")).toContain('status-aging percentiles skipped for "Review"');
   });
 
   test("unassigned-wip only for in-progress issues", () => {
-    const report = run(
-      [issue("P-1", { status: "2", startedDaysAgo: 1, assignee: null }), issue("P-2", { status: "1", assignee: null })],
-      [],
-      only("unassigned-wip")
-    );
-    expect(report.findings.map((f) => [f.key, f.severity])).toEqual([["P-1", "warning"]]);
+    const report = run([issue("P-1", { status: "2", startedDaysAgo: 1, assignee: null }), issue("P-2", { status: "1", assignee: null })], [], only("unassigned-wip"));
+    expect(rows(report)).toEqual([["flow/unassigned-wip", "P-1", "error"]]);
   });
 
-  test("stale levels at the exact thresholds; todo only with includeTodo", () => {
+  test("stale levels at the exact thresholds; to do only when included", () => {
     const open = [
       issue("P-1", { status: "2", startedDaysAgo: 100, updatedDaysAgo: 29 }),
       issue("P-2", { status: "2", startedDaysAgo: 100, updatedDaysAgo: 30 }),
@@ -137,12 +154,45 @@ describe("auditJiraIssues", () => {
       issue("P-4", { status: "2", startedDaysAgo: 100, updatedDaysAgo: 90 }),
       issue("P-5", { status: "1", updatedDaysAgo: 120 }),
     ];
-    expect(run(open, [], only("stale")).findings.map((f) => [f.key, f.severity])).toEqual([
-      ["P-4", "error"],
-      ["P-3", "warning"],
-      ["P-2", "info"],
+    const wipOnly = parseAuditRules({ extends: "strict", rules: { "hygiene/stale": { include: ["wip"] } } }, "t");
+    expect(rows(run(open, [], only("stale", { ...wipOnly, legacyDays: null })))).toEqual([
+      ["hygiene/stale", "P-4", "error"],
+      ["hygiene/stale", "P-3", "warning"],
+      ["hygiene/stale", "P-2", "info"],
     ]);
-    expect(run(open, [], { ...only("stale"), includeTodo: true }).findings[0]).toMatchObject({ key: "P-5", ageDays: 120 });
+    expect(run(open, [], only("stale")).findings[0]).toMatchObject({ key: "P-5", ageDays: 120 });
+  });
+
+  test("overdue counts days after the due date; due-soon counts down to it", () => {
+    const rules = parseAuditRules({ rules: { "hygiene/overdue": { warning: "0d", error: "14d" }, "hygiene/due-soon": { info: "3d", warning: "1d" } }, minLevel: "info" }, "t");
+    const open = [
+      issue("P-1", { status: "2", duedate: "2026-10-21" }), // ended at 2026-10-22T00:00Z: 0.5 d overdue
+      issue("P-2", { status: "2", duedate: "2026-10-01" }), // 20.5 d overdue
+      issue("P-3", { status: "2", duedate: "2026-10-22" }), // due today: 0.5 d left
+      issue("P-4", { status: "2", duedate: "2026-10-24" }), // 2.5 d left
+      issue("P-5", { status: "2", duedate: "2026-11-30" }),
+    ];
+    const report = run(open, [], only("hygiene/overdue,hygiene/due-soon", { ...rules, legacyDays: null }));
+    expect(rows(report)).toEqual([
+      ["hygiene/overdue", "P-2", "error"],
+      ["hygiene/overdue", "P-1", "warning"],
+      ["hygiene/due-soon", "P-3", "warning"],
+      ["hygiene/due-soon", "P-4", "info"],
+    ]);
+    expect(report.findings[0].detail).toBe("Due 2026-10-01, 20 d overdue.");
+    expect(report.findings[3].detail).toBe("Due 2026-10-24, in 3 d.");
+  });
+
+  test("flagged: duration from the changelog by field id, else a lower bound from the last update", () => {
+    const open = [
+      issue("P-1", { status: "2", flagged: true, changes: [{ daysAgo: 20, field: "Markiert", fieldId: "customfield_10021", to: "10019", toString: "Impediment" }] }),
+      issue("P-2", { status: "2", flagged: true, updatedDaysAgo: 2 }),
+      issue("P-3", { status: "2" }),
+    ];
+    const report = run(open, [], { ...only("hygiene/flagged"), flaggedField: "customfield_10021" });
+    expect(rows(report)).toEqual([["hygiene/flagged", "P-1", "error"], ["hygiene/flagged", "P-2", "warning"]]);
+    expect(report.findings.map((f) => f.detail)).toEqual(["Flagged for 20 d.", "Flagged for at least 2 d (since the last update)."]);
+    expect(run(open, [], only("hygiene/flagged")).diagnostics.join(" ")).toContain("hygiene/flagged skipped: no Flagged field found");
   });
 
   test("hygiene: no-parent exempts epics and subtasks; unestimated only with a points field; done-without-version only where versions exist", () => {
@@ -154,35 +204,168 @@ describe("auditJiraIssues", () => {
       issue("P-5", { status: "2", startedDaysAgo: 1, points: 3 }),
     ];
     const done = [issue("D-1", { status: "3", doneDaysAgo: 2, fixVersions: 0 }), issue("X-1", { status: "3", doneDaysAgo: 2, fixVersions: 0, project: "X" })];
+    const hygiene = "no-parent,unestimated-in-sprint,done-without-version".split(",").map((r) => `hygiene/${r}`).join(",");
 
-    const without = run(open, done, { ...only("hygiene"), inOpenSprint: new Set(["P-4", "P-5"]) });
-    expect(without.findings.map((f) => [f.rule, f.key])).toEqual([["no-parent", "P-1"]]);
-    expect(without.diagnostics).toEqual(["unestimated-in-sprint skipped: no story points field detected."]);
+    const without = run(open, done, { ...only(hygiene), inOpenSprint: new Set(["P-4", "P-5"]) });
+    expect(rows(without)).toEqual([["hygiene/no-parent", "P-1", "warning"]]);
+    expect(without.diagnostics).toEqual(["hygiene/unestimated-in-sprint skipped: no story points field detected."]);
 
-    const withAll = run(open, done, {
-      ...only("hygiene"),
-      pointsField: "customfield_10016",
-      inOpenSprint: new Set(["P-4", "P-5"]),
-      projectsUsingVersions: new Set(["P"]),
-    });
-    expect(withAll.findings.map((f) => [f.rule, f.severity, f.key])).toEqual([
-      ["unestimated-in-sprint", "warning", "P-4"],
-      ["done-without-version", "info", "D-1"],
-      ["no-parent", "info", "P-1"],
+    const withAll = run(open, done, { ...only(hygiene), pointsField: "customfield_10016", inOpenSprint: new Set(["P-4", "P-5"]), projectsUsingVersions: new Set(["P"]) });
+    expect(rows(withAll)).toEqual([
+      ["hygiene/no-parent", "P-1", "warning"],
+      ["hygiene/unestimated-in-sprint", "P-4", "error"],
+      ["hygiene/done-without-version", "D-1", "warning"],
     ]);
     expect(withAll.summary).toEqual({
       total: 3,
-      bySeverity: { error: 0, warning: 1, info: 2 },
-      byCheck: { workflow: 0, "stuck-wip": 0, "unassigned-wip": 0, stale: 0, hygiene: 3 },
+      bySeverity: { error: 1, warning: 2, info: 0 },
+      byRule: { "hygiene/no-parent": 1, "hygiene/unestimated-in-sprint": 1, "hygiene/done-without-version": 1 },
+      suppressed: { quiet: 0, baseline: 0, legacy: 0 },
     });
   });
+});
 
-  test("renderers group by check and escape table cells", () => {
+describe("auditJiraIssues: workflow rule", () => {
+  /**
+   * A resolved issue in `status`. `onEntry`: the move into the status set the
+   * resolution (one history entry); otherwise it was set on an earlier move to
+   * Done and kept. `undefined`: no history.
+   */
+  function resolvedIn(key: string, status: "2" | "4", onEntry?: boolean): JiraIssue {
+    const base = issue(key, { status });
+    const move = (to: string) => ({ field: "status", fieldId: "status", fieldtype: "jira", from: "1", fromString: null, to, toString: null });
+    const resolution = { field: "resolution", fieldId: "resolution", fieldtype: "jira", from: null, fromString: null, to: "10000", toString: "Done" };
+    const histories =
+      onEntry === undefined
+        ? []
+        : onEntry
+          ? [{ id: "h1", author: {}, created: ago(5), items: [move(status), resolution] }]
+          : [{ id: "h1", author: {}, created: ago(9), items: [move("3"), resolution] }, { id: "h2", author: {}, created: ago(5), items: [move(status)] }];
+    return { ...base, changelog: { histories } as unknown as JiraIssue["changelog"] };
+  }
+  const issues = [resolvedIn("P-1", "2", true), resolvedIn("P-2", "2", true), resolvedIn("P-3", "4", false), resolvedIn("P-4", "4", true), resolvedIn("P-5", "4", false)];
+
+  test("the history tells a done status from resolutions kept on the way in", () => {
+    const report = run([], [], { ...only("workflow"), resolvedNotDone: { issues, truncated: true } });
+    expect(report.findings.map((f) => [f.key, f.status, f.subject])).toEqual([
+      ["P-1", "In Progress", "status:2"],
+      ["P-3", "Review", "status:4"],
+    ]);
+    expect(report.findings[0].summary).toBe('Status "In Progress" (In Progress category)');
+    expect(report.findings[0].detail).toBe(
+      '2+ resolved issue(s); for 2 the transition into this status set the resolution (P-1, P-2). If the status means done, move it to Done in the workflow, or map it: --status-map "In Progress=done"; if not, stop that transition from setting a resolution.'
+    );
+    expect(report.findings[1].detail).toBe(
+      "3+ resolved issue(s); for 2 the resolution was set elsewhere and kept when they moved here (P-3, P-4, P-5). Fix: clear the resolution on these issues."
+    );
+    const unknown = run([], [], { ...only("workflow"), resolvedNotDone: { issues: [resolvedIn("P-9", "2")], truncated: false } });
+    expect(unknown.findings[0].detail).toContain("the history does not show where the resolution was set. Either the status means done");
+  });
+
+  test("a status mapped to done, or an override turning the rule off for a status, is not reported", () => {
+    const mapped = createStatusCategoryResolver(STATUSES, { "In Progress": "done" });
+    expect(run([], [], { ...only("workflow"), resolve: mapped, resolvedNotDone: { issues, truncated: false } }).findings.map((f) => f.key)).toEqual(["P-3"]);
+    const rules = parseAuditRules({ extends: "strict", overrides: [{ match: { project: "P", status: "Review" }, rules: { "workflow/resolved-not-done": "off" } }] }, "t");
+    expect(run([], [], { ...only("workflow", rules), resolvedNotDone: { issues, truncated: false } }).findings.map((f) => f.key)).toEqual(["P-1"]);
+    expect(run([], [], only("workflow")).findings).toEqual([]);
+  });
+});
+
+describe("auditJiraIssues: overrides and custom rules", () => {
+  test("overrides apply in order by project, type, status and JQL hits", () => {
+    const rules = parseAuditRules(
+      {
+        extends: "minimal",
+        minLevel: "info",
+        rules: { "flow/unassigned-wip": "info" },
+        overrides: [
+          { match: { project: "GROW" }, rules: { "flow/unassigned-wip": "warning" } },
+          { match: { jql: "priority = Highest" }, rules: { "flow/unassigned-wip": "error" } },
+          { match: { issueType: "Bug", status: "Review" }, rules: { "flow/unassigned-wip": "off" } },
+        ],
+      },
+      "t"
+    );
+    const open = [
+      issue("P-1", { status: "2", assignee: null }),
+      issue("GROW-1", { status: "2", assignee: null, project: "GROW" }),
+      issue("GROW-2", { status: "2", assignee: null, project: "GROW" }),
+      issue("P-2", { status: "4", assignee: null, type: { name: "Bug" } }),
+    ];
+    const report = run(open, [], { ...only("unassigned-wip", { ...rules, legacyDays: null }), jqlMatches: [undefined, new Set(["GROW-2"]), undefined] });
+    expect(rows(report)).toEqual([
+      ["flow/unassigned-wip", "GROW-2", "error"],
+      ["flow/unassigned-wip", "GROW-1", "warning"],
+      ["flow/unassigned-wip", "P-1", "info"],
+    ]);
+  });
+
+  test("custom rules: each hit is a finding with the rule's message and severity", () => {
+    const rules = parseAuditRules({ minLevel: "info", custom: [{ id: "team/bug-without-component", jql: "issuetype = Bug AND component IS EMPTY", severity: "error", message: "Bug without a component." }] }, "t");
+    const report = run([], [], { ...only("custom", { ...rules, legacyDays: null }), custom: new Map([["team/bug-without-component", [issue("P-9", { status: "1" })]]]) });
+    expect(report.findings).toEqual([
+      expect.objectContaining({ rule: "team/bug-without-component", category: "custom", severity: "error", key: "P-9", detail: "Bug without a component." }),
+    ]);
+  });
+});
+
+describe("auditJiraIssues: suppression", () => {
+  const open = [
+    issue("P-1", { status: "2", startedDaysAgo: 300, updatedDaysAgo: 200, assignee: null }), // legacy (default 180 d)
+    issue("P-2", { status: "2", startedDaysAgo: 5, assignee: null }),
+    issue("P-3", { status: "2", startedDaysAgo: 5, parent: false }), // no-parent: info, quiet in default
+  ];
+
+  test("default profile: legacy cutoff, quiet info findings, baseline; workflow is never legacy", () => {
+    const rules = defaultAuditRules();
+    const baseline = { schemaVersion: 1 as const, entries: [{ rule: "flow/unassigned-wip", subject: "P-2", acceptedAt: ago(1) }, { rule: "hygiene/stale", subject: "P-77", acceptedAt: ago(1) }] };
+    const old = issue("W-1", { status: "4", updatedDaysAgo: 400 });
+    const result = auditJiraIssues({
+      rules,
+      open,
+      done: [],
+      resolve,
+      now: NOW,
+      projectsUsingVersions: new Set(),
+      resolvedNotDone: { issues: [old], truncated: false },
+      baseline,
+      useBaseline: true,
+    });
+    const { report } = result;
+    expect(rows(report)).toEqual([["workflow/resolved-not-done", "W-1", "warning"]]);
+    expect(report.summary.suppressed).toEqual({ quiet: 1, baseline: 1, legacy: 2 });
+    expect(report.legacy).toEqual({ "flow/unassigned-wip": 1, "hygiene/stale": 1 });
+    expect(report.quiet).toEqual({ "hygiene/no-parent": 1 });
+    expect(report.staleBaselineEntries).toBe(1);
+    const text = renderJiraAuditText(report, "q");
+    expect(text).toContain("Quiet: 1 finding(s) below warning (hygiene/no-parent 1); --min-level info lists them.");
+    expect(text).toContain("Legacy: 2 finding(s) on issues not updated for 180 d");
+    expect(text).toContain("Baseline: 1 entr(y/ies) no longer match; --prune-baseline removes them.");
+
+    // --no-baseline lists everything at or above the min level.
+    const all = auditJiraIssues({ rules, open, done: [], resolve, now: NOW, projectsUsingVersions: new Set(), baseline, useBaseline: false }).report;
+    expect(all.findings.map((f) => `${f.rule}:${f.key}`)).toEqual(["flow/unassigned-wip:P-1", "flow/unassigned-wip:P-2", "hygiene/stale:P-1"]);
+    expect(all.legacyDays).toBeNull();
+
+    // Updating keeps the accepted date of entries already there; pruning drops the stale one.
+    const next = createAuditBaseline(result.candidates, NOW, baseline);
+    expect(next.entries.find((e) => e.subject === "P-2")?.acceptedAt).toBe(ago(1));
+    expect(next.entries.find((e) => e.subject === "status:4")).toMatchObject({ rule: "workflow/resolved-not-done", acceptedAt: NOW.toISOString() });
+    expect(pruneAuditBaseline(baseline, result.candidates).entries.map((e) => e.subject)).toEqual(["P-2"]);
+    expect(parseAuditBaseline(JSON.parse(JSON.stringify(next)))).toEqual(next);
+    expect(() => parseAuditBaseline({ entries: [] })).toThrow();
+  });
+});
+
+describe("renderers", () => {
+  test("group by rule and escape table cells", () => {
     const report = run([issue("P-1", { status: "2", startedDaysAgo: 1, assignee: null })], [], only("unassigned-wip"));
     report.findings[0].summary = "a | b";
-    expect(renderJiraAuditText(report, "project = P")).toContain("In progress without assignee (1)\n  [warning] P-1  a | b — In progress without an assignee.");
+    expect(renderJiraAuditText(report, "project = P")).toContain(
+      "In progress without assignee — flow/unassigned-wip (1)\n  [error] P-1  a | b — In progress without an assignee."
+    );
     const md = renderJiraAuditMarkdown(report, "project = P", "https://x.atlassian.net");
-    expect(md).toContain("| warning | [P-1](https://x.atlassian.net/browse/P-1) | a \\| b |  | In progress without an assignee. |");
+    expect(md).toContain("| error | [P-1](https://x.atlassian.net/browse/P-1) | a \\| b |  | In progress without an assignee. |");
     expect(renderJiraAuditText(run([], [], only("stale")), "q")).toContain("No findings.");
   });
 });
