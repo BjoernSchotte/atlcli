@@ -173,6 +173,16 @@ describe("lossy-case policy", () => {
     expect(markdownToAdf(markdown)).toEqual(original);
   });
 
+  test("sentinels: false keeps sentinels from untrusted markdown as text", () => {
+    const evil: AdfNode = { type: "text", text: "x", marks: [{ type: "link", attrs: { href: "javascript:alert(1)" } }] };
+    const markdown = adfToMarkdown(doc({ type: "paragraph", content: [evil] }, extension));
+    const warnings: string[] = [];
+    const converted = JSON.stringify(markdownToAdf(markdown, { sentinels: false, onWarning: (w) => warnings.push(w) }));
+    expect(converted).not.toContain('"href":"javascript:');
+    expect(converted).not.toContain("com.example");
+    expect(warnings.length).toBeGreaterThan(0);
+  });
+
   test("inline sentinel survives inside a paragraph", () => {
     const inlineExt: AdfNode = { type: "inlineExtension", attrs: { extensionType: "x", extensionKey: "y" } };
     const original = doc({ type: "paragraph", content: [{ type: "text", text: "a " }, inlineExt, { type: "text", text: " b" }] });

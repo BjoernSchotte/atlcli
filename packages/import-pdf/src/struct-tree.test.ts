@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { zlibSync } from "fflate";
-import { classifyMarkedContent, PdfObjectReader } from "./pdf-objects.js";
+import { classifyMarkedContent, PdfObjectError, PdfObjectReader } from "./pdf-objects.js";
 import {
   correlateDocStructTree,
   elementCharacters,
@@ -136,6 +136,29 @@ describe("PdfObjectReader", () => {
     const table = onlyElement(readDocStructTree(classicPdf(objects)));
     const row = table.kids[0];
     expect(row.kind === "element" ? row.element.kids : null).toEqual([{ kind: "invalid", reason: "cycle" }]);
+  });
+
+  it("rejects a cross-reference stream whose rows have no width instead of looping over /Index", () => {
+    const bytes = compressedPdf(TREE_OBJECTS);
+    const text = new TextDecoder("latin1").decode(bytes).replace("/W [1 2 1]", "/W [0 0 0] /Index [0 50000000]");
+    const started = performance.now();
+    // The stream is rejected at once; the import then reports the tree unreadable.
+    expect(() => new PdfObjectReader(latin1(text))).toThrow(PdfObjectError);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("stops inflating a stream once the decoded budget is exceeded", () => {
+    const bomb = zlibSync(new Uint8Array(4 * 1024 * 1024));
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [] /Count 0 >>",
+      `<< /Length ${bomb.length} /Filter /FlateDecode >>\nstream\n${String.fromCharCode(...bomb)}\nendstream`,
+    ];
+    const reader = new PdfObjectReader(classicPdf(objects), { maxDecodedBytes: 1024 * 1024 });
+    const stream = reader.object(3);
+    if (!stream || typeof stream !== "object" || Array.isArray(stream) || stream.kind !== "stream") throw new Error("no stream");
+    expect(() => reader.decode(stream)).toThrow(/decoded stream budget exceeded/);
+    expect(new PdfObjectReader(classicPdf(objects)).decode(stream)).toHaveLength(4 * 1024 * 1024);
   });
 
   it("returns null for a document without a structure tree", () => {

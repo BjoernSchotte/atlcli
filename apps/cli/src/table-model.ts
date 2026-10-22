@@ -118,14 +118,21 @@ export async function pullTableTransformer(options: {
     const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
     if (integrity !== pkg.integrity) throw new Error(`Runtime package ${pkg.name} integrity mismatch.`);
     const scratch = await mkdtemp(join(os.tmpdir(), "atlcli-runtime-"));
+    // Extract beside the target and rename it into place, so an interrupted
+    // pull never leaves a package.json that marks a half-extracted package installed.
+    const partial = `${target}.partial`;
     try {
       const tarball = join(scratch, "package.tgz");
       await writeFile(tarball, bytes);
-      await mkdir(target, { recursive: true });
-      await (options.extract ?? extractTarball)(tarball, target);
-      await pruneForeignBinaries(target);
+      await rm(partial, { recursive: true, force: true });
+      await mkdir(partial, { recursive: true });
+      await (options.extract ?? extractTarball)(tarball, partial);
+      await pruneForeignBinaries(partial);
+      await rm(target, { recursive: true, force: true });
+      await rename(partial, target);
     } finally {
       await rm(scratch, { recursive: true, force: true });
+      await rm(partial, { recursive: true, force: true });
     }
     downloadedBytes += bytes.byteLength;
   }
