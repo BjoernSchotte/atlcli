@@ -96,7 +96,8 @@ export interface DigestQueries {
 export function buildDigestQueries(opts: { minutes: number; space?: string }): DigestQueries {
   const window = `now("-${opts.minutes}m")`;
   return {
-    waiting: `${buildMyIssuesJql({})} ORDER BY priority DESC, updated DESC`,
+    // Done-category statuses without a resolution are not waiting on anyone.
+    waiting: `${buildMyIssuesJql({})} AND statusCategory != Done ORDER BY priority DESC, updated DESC`,
     changed: `(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) AND updated >= -${opts.minutes}m ORDER BY updated DESC`,
     mentions: `mention = currentUser() AND lastmodified >= ${window} ORDER BY lastmodified DESC`,
     myPagesEdited: `${buildMyPagesCql({})} AND lastmodified >= ${window} ORDER BY lastmodified DESC`,
@@ -239,8 +240,8 @@ function toDigestIssue(issue: JiraIssue, base: string | undefined): DigestIssue 
   };
 }
 
-function short(value: string | null): string | null {
-  if (value === null) return null;
+function short(value: unknown): string | null {
+  if (typeof value !== "string") return null;
   const flat = value.replace(/\s+/g, " ").trim();
   return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
 }
@@ -321,8 +322,9 @@ export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn
               author: history.author?.displayName ?? "",
               you,
               field: item.field,
-              from: short(item.fromString ?? item.from),
-              to: short(item.toString ?? item.to),
+              // Own-property reads: a missing `toString` key would otherwise hit Object.prototype.
+              from: short(Object.hasOwn(item, "fromString") && item.fromString !== null ? item.fromString : item.from),
+              to: short(Object.hasOwn(item, "toString") && item.toString !== null ? item.toString : item.to),
             });
           }
         }

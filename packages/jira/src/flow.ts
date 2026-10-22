@@ -127,13 +127,13 @@ export function extractStatusTransitions(issue: JiraIssue): StatusTransition[] {
   for (const entry of histories) {
     for (const item of entry.items) {
       const fieldId = (item as { fieldId?: string }).fieldId;
-      if ((fieldId ?? item.field) !== "status" || item.to === null) continue;
+      if ((fieldId ?? item.field) !== "status" || item.to === null || item.to === undefined) continue;
       transitions.push({
         at: entry.created,
-        fromId: item.from,
-        fromName: item.fromString,
+        fromId: item.from ?? null,
+        fromName: Object.hasOwn(item, "fromString") ? item.fromString : null,
         toId: item.to,
-        toName: item.toString,
+        toName: Object.hasOwn(item, "toString") ? item.toString : null,
       });
     }
   }

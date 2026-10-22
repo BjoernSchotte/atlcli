@@ -61,7 +61,7 @@ describe("resolveDigestSince", () => {
 describe("queries", () => {
   test("every query string", () => {
     expect(buildDigestQueries({ minutes: 90, space: "DOCSY" })).toEqual({
-      waiting: "assignee = currentUser() AND resolution IS EMPTY ORDER BY priority DESC, updated DESC",
+      waiting: "assignee = currentUser() AND resolution IS EMPTY AND statusCategory != Done ORDER BY priority DESC, updated DESC",
       changed: "(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) AND updated >= -90m ORDER BY updated DESC",
       mentions: 'mention = currentUser() AND lastmodified >= now("-90m") ORDER BY lastmodified DESC',
       myPagesEdited: 'type = page AND creator = currentUser() AND lastmodified >= now("-90m") ORDER BY lastmodified DESC',
@@ -190,6 +190,12 @@ describe("buildDigest", () => {
     expect(d.jira!.sprints).toEqual([
       { id: 7, name: "S7", daysLeft: 4, counts: { todo: 0, wip: 1, done: 1 }, yoursOpen: 1, progress: "[██████████──────────] 50%" },
     ]);
+  });
+
+  test("regression: changelog items without fromString/toString (bulkfetch) do not crash", () => {
+    const bare = { id: "h", author: { accountId: "ann", displayName: "Ann" }, created: ago(5), items: [{ field: "assignee", fieldtype: "jira", fieldId: "assignee", from: null, to: "acc-1" }] } as unknown as JiraChangelogEntry;
+    const d = buildDigest(raw({ jira: { changed: [jiraIssue("A-7")], changelogs: new Map([["A-7", [bare]]]) } }), { now: NOW, includeOwn: false, limit: 10 });
+    expect(d.jira!.changed[0].changes).toEqual([{ at: ago(5), author: "Ann", you: false, field: "assignee", from: null, to: "acc-1" }]);
   });
 
   test("Data Center: changed issues without change details are still listed", () => {
