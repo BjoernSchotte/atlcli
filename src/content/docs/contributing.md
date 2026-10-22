@@ -162,6 +162,7 @@ atlcli/
 │   ├── core/             # Shared utilities
 │   ├── confluence/       # Confluence API client
 │   └── jira/             # Jira API client
+├── skills/               # Agent skill (atlcli/SKILL.md, references/)
 ├── docs/                 # Documentation (this site)
 └── spec/                 # Internal specs and roadmaps
 ```

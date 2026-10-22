@@ -42,7 +42,11 @@ const DOCS_ONLY_WORKFLOWS = new Set([".github/workflows/docs.yml"]);
  * tarball (every publishable package ships an explicit `files` allowlist).
  */
 const TOOLING_FILES = new Set([".gitignore"]);
-const PRODUCT_PREFIXES = ["apps/", "packages/", "patches/", "plugins/", "scripts/", "services/"];
+/**
+ * `skills/` holds Markdown, but it is product content that the unit tests
+ * check (`scripts/skill-links.test.ts`).
+ */
+const PRODUCT_PREFIXES = ["apps/", "packages/", "patches/", "plugins/", "scripts/", "services/", "skills/"];
 
 /** Transitive workspace inputs of the three Astro publishing packages. */
 const ASTRO_PACKAGE_PREFIXES = [

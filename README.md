@@ -309,6 +309,15 @@ See [Virtual Filesystem](https://atlcli.sh/confluence/virtual-filesystem/), and
 [Confluence for Coding Agents](https://atlcli.sh/recipes/confluence-vfs-agents/)
 for a snippet to paste into `AGENTS.md`.
 
+## Agent skill
+
+atlcli ships an agent skill that teaches a coding agent the CLI: the flag
+grammar, JSON output and error codes, and the rule to confirm every write with
+the user. It lives in [`skills/atlcli/`](skills/atlcli/) in the Agent Skills
+layout; copy that directory into your agent's skills directory.
+
+See [Agent Skill](https://atlcli.sh/reference/agent-skill/).
+
 ## CLI or browser extension?
 
 Both use the same Confluence, DOCX, and PDF engines.

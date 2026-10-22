@@ -160,6 +160,7 @@ export default defineConfig({
             { label: 'Configuration', link: '/configuration/' },
             { label: 'Doctor', link: '/reference/doctor/' },
             { label: 'Shell Completion', link: '/reference/shell-completions/' },
+            { label: 'Agent Skill', link: '/reference/agent-skill/' },
             { label: 'Updating', link: '/reference/updating/' },
             { label: 'Development Releases', link: '/reference/dev-releases/' },
             { label: 'Logging', link: '/reference/logging/' },
