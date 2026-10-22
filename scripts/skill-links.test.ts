@@ -256,6 +256,22 @@ describe("skills/atlcli", () => {
     );
   });
 
+  // The dispatch switch in `main` is the full list of root commands; the root
+  // help is not, since it never lists the flag-gated `audit`.
+  it("names every root command of the CLI", () => {
+    const index = readFileSync(join(REPO_ROOT, "apps", "cli", "src", "index.ts"), "utf8");
+    const dispatch = index.slice(index.indexOf("switch (command) {"));
+    const commands = [...dispatch.slice(0, dispatch.indexOf("default:")).matchAll(/case "([a-z-]+)":/g)]
+      .map((match) => match[1]!)
+      // A flag-gated greeting that tests feature flags; nothing for an agent to call.
+      .filter((command) => command !== "helloworld");
+    const skill = readFileSync(join(SKILL_DIR, "SKILL.md"), "utf8");
+    const groups = skill.slice(skill.indexOf("## Command groups")).split(/^## (?!Command groups)/m)[0]!;
+    const missing = commands.filter((command) => !new RegExp(`(?<![\\w-])${command}(?![\\w-])`).test(groups));
+    expect(commands.length).toBeGreaterThan(10);
+    expect(missing).toEqual([]);
+  });
+
   it("keeps every file name unambiguous for atlcli skill <path>", () => {
     expect(layoutViolations(skillFilePaths())).toEqual([]);
   });

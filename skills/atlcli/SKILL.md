@@ -8,10 +8,11 @@ description: >-
   pages, Confluence page CRUD, labels, comments, page history, Markdown
   workspace sync (wiki docs pull/push), Confluence as a shell or filesystem
   (wiki sh/mount), page templates, DOCX and PDF export, DOCX and PDF import
-  as Confluence pages, static-site publishing, and wiki content audits. Use
-  whenever "atlcli" is mentioned, and whenever a task touches Jira or
-  Confluence at all, such as reading or filing a ticket, commenting,
-  updating a status, assigning work, checking a board or sprint, logging
+  as Confluence pages, static-site publishing, wiki content audits, and a
+  daily digest of what changed across Jira and Confluence. Use whenever
+  "atlcli" is mentioned, and whenever a task touches Jira or Confluence at
+  all, such as reading or filing a ticket, commenting, updating a status,
+  assigning work, checking a board or sprint, preparing a standup, logging
   time, finding or editing a wiki page, exporting a page to Word or PDF, or
   importing a Word or PDF file into the wiki, even when the user never names
   the tool. Also covers atlcli invocation rules, profiles and credentials,
@@ -30,11 +31,10 @@ This skill was checked against the atlcli source at commit 54a116ce plus
 `atlcli digest`, `atlcli audit jira`, `atlcli skill`,
 `jira analyze flow|aging|cfd` or `--status-map`. On any version other than
 that source, follow rule 7 before relying on a detail here. The skill ships
-with atlcli:
-`atlcli skill` prints the copy built from the same source as the installed
-binary. A copy installed with `atlcli skill --install` or from the repository
-stays as it was installed; when unsure whether this copy is current, run
-`atlcli skill`.
+with atlcli: `atlcli skill` prints the copy built from the same source as the
+installed binary. A copy installed with `atlcli skill --install` or from the
+repository stays as it was installed; when unsure whether this copy is
+current, run `atlcli skill`.
 
 Where the linked files are missing, `atlcli skill <path>` prints one, with the
 path as linked, for example `atlcli skill references/safety.md`.
@@ -68,8 +68,9 @@ path as linked, for example `atlcli skill references/safety.md`.
    drops the named flags but keeps the positionals and runs the verb:
    `atlcli jira watch PROJ-101 --help` adds a watcher, and
    `atlcli jira issue attach PROJ-101 ./f.txt --help` uploads the file. The
-   `wiki` commands, `doctor`, `update` and `models` print help for `--help`,
-   except `wiki my` and `wiki recent`, which run their search.
+   `wiki` commands, `digest`, `doctor`, `update`, `models` and `completion`
+   print help for `--help`, except `wiki my` and `wiki recent`, which run
+   their search.
 5. **Resolve names before using them.** Transition names are workflow actions
    (`Start Progress`), not statuses (`In Progress`). Issue types, account
    IDs, custom field IDs, board and page IDs all get looked up, never guessed.
@@ -116,6 +117,7 @@ path as linked, for example `atlcli skill references/safety.md`.
 | **Creating pages from a Word or PDF file**: `wiki import` preview and confirm, page trees, in-place update, batch | [references/confluence-import.md](references/confluence-import.md) |
 | A static Astro or Starlight site from Confluence pages: `wiki publish` | [references/confluence-publish.md](references/confluence-publish.md) |
 | Content health of a synced docs directory: stale pages, orphans, broken links (`audit wiki`) | [references/confluence-audit.md](references/confluence-audit.md) |
+| What changed since the last look, what waits on the user, a standup note: `atlcli digest` | [references/digest.md](references/digest.md) |
 | Plugins (`git`, `drawio`), `models`, `log`, `update`, `completion` | [references/plugins-and-local-tools.md](references/plugins-and-local-tools.md) |
 
 `atlcli research` and `atlcli chat` send Jira and Confluence content to the
@@ -131,7 +133,7 @@ jira  project issue board sprint worklog epic analyze bulk filter export
 wiki  page space docs search my recent template export import publish
       sh mount vfs
 top   auth completion config doctor flag log models plugin update version
-      release-info research chat pdf-template
+      release-info research chat pdf-template digest skill
 ```
 
 Some commands are gated behind feature flags and never listed in the root

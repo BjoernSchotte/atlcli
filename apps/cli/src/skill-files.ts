@@ -18,6 +18,7 @@ import confluencePdf from "../../../skills/atlcli/references/confluence-pdf.md" 
 import confluencePublish from "../../../skills/atlcli/references/confluence-publish.md" with { type: "text" };
 import confluenceTemplates from "../../../skills/atlcli/references/confluence-templates.md" with { type: "text" };
 import confluenceVfs from "../../../skills/atlcli/references/confluence-vfs.md" with { type: "text" };
+import digest from "../../../skills/atlcli/references/digest.md" with { type: "text" };
 import invocation from "../../../skills/atlcli/references/invocation.md" with { type: "text" };
 import jiraAgile from "../../../skills/atlcli/references/jira-agile.md" with { type: "text" };
 import jiraBulkAndAdmin from "../../../skills/atlcli/references/jira-bulk-and-admin.md" with { type: "text" };
@@ -45,6 +46,7 @@ export const SKILL_FILES: readonly SkillFile[] = [
   { path: "references/confluence-publish.md", content: confluencePublish },
   { path: "references/confluence-templates.md", content: confluenceTemplates },
   { path: "references/confluence-vfs.md", content: confluenceVfs },
+  { path: "references/digest.md", content: digest },
   { path: "references/invocation.md", content: invocation },
   { path: "references/jira-agile.md", content: jiraAgile },
   { path: "references/jira-bulk-and-admin.md", content: jiraBulkAndAdmin },

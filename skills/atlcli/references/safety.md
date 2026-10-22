@@ -39,6 +39,7 @@ wiki vfs cache stats · wiki vfs conflicts list|show
 auth status|list · config list|get · flag list|get · log list|show
 plugin list · models list · doctor · version · release-info
 research · chat   (no Atlassian writes; research keeps local session files)
+digest --no-mark
 ```
 
 Any other `list`, `get`, or `status` verb follows the same pattern. Group help
@@ -50,6 +51,12 @@ comment, so `jira issue comment --key PROJ-101 list` posts "list". Read comments
 with `jira issue comments list --key <key>`. atlcli can remove a comment again
 only with `jira issue comments delete --key <key> --id <id> --confirm`, which is
 itself a destructive command.
+
+A plain `atlcli digest` is read-only on Jira and Confluence but moves the
+user's last-run marker, so the user's next digest starts after your run. Pass
+`--no-mark` unless the user asks for their own digest, and treat
+`--summarize` like `research` and `chat`: it sends data to Anthropic. See
+[digest.md](digest.md).
 
 These read from Atlassian but write a local file. Treat them as local writes:
 confirm the output path, and never overwrite an existing file the user did not

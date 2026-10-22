@@ -25,7 +25,7 @@ atlcli <group> [<subgroup>] <verb> [positional] [--flags]
 ```
 
 Groups: `auth`, `completion`, `config`, `doctor`, `flag`, `wiki`, `jira`,
-`research`, `chat`, `pdf-template`, `log`, `models`, `plugin`, `update`,
+`research`, `chat`, `digest`, `pdf-template`, `log`, `models`, `plugin`, `update`,
 `version`, `release-info`. `atlcli audit` is never listed in the root help,
 with or without its `audit` feature flag (see
 [auth-and-config.md](auth-and-config.md#feature-flags)).
@@ -73,7 +73,7 @@ itself:
 | --- | --- |
 | `wiki page`, `wiki docs`, `wiki space`, `wiki search`, `wiki export`, `wiki template`, `wiki import`, `wiki publish`, `wiki sh`, `wiki mount`, `wiki vfs` | the handler checks `help` first and prints help |
 | `wiki my`, `wiki recent` | **no help check**: the search runs |
-| `doctor`, `update`, `models`, `completion`, `research`, `chat`, `pdf-template` | prints help |
+| `doctor`, `update`, `models`, `completion`, `research`, `chat`, `digest`, `pdf-template` | prints help |
 | `audit`, `release-info` | prints the root help (`version --help` prints the version) |
 | `jira` (every subtree) | **no help check**: the verb runs with its flags stripped |
 | `auth`, `config`, `flag`, `log`, `plugin` | **no help check**: the verb runs with its positionals |
