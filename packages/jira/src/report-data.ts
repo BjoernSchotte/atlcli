@@ -5,7 +5,7 @@
  * atlcli markdown dialect, so templates can insert it with `{{{…}}}` without
  * an issue summary like `Fix *all* the [things]` turning into formatting.
  */
-import { getStoryPoints } from "./analysis.js";
+import { getStoryPoints, type SprintIssueSnapshot } from "./analysis.js";
 import type { StatusCategoryResolver } from "./flow.js";
 import type { AdfNode, JiraIssue, SprintMetrics } from "./types.js";
 
@@ -97,6 +97,11 @@ export interface BuildReportInput {
   baseUrl: string;
   pointsField?: string;
   sprintMetrics?: SprintMetrics;
+  /**
+   * Each issue as of the sprint's end, by key (see `issueAt`). Issues no longer
+   * in the sprint then are left out; done and points follow the snapshot.
+   */
+  asOf?: Map<string, SprintIssueSnapshot>;
   /** Status resolver (status map); without it, categories come from Jira. */
   resolve?: StatusCategoryResolver;
   now: Date;
@@ -109,9 +114,11 @@ export function buildReportData(input: BuildReportInput): ReportData {
   const browse = (key: string) => `${base}/browse/${key}`;
 
   const issues = input.issues
+    .filter((issue) => input.asOf?.get(issue.key)?.inSprint !== false)
     .map((issue): ReportIssue => {
       const f = issue.fields;
       const category = statusCategory(f.status, input.resolve);
+      const then = input.asOf?.get(issue.key);
       const parent = f.parent;
       const isEpicParent = parent?.fields?.issuetype?.name === "Epic" || parent?.fields?.issuetype?.hierarchyLevel === 1;
       const parentSummary = parent?.fields?.summary ?? parent?.key ?? "";
@@ -127,13 +134,13 @@ export function buildReportData(input: BuildReportInput): ReportData {
         type: f.issuetype?.name ?? "Other",
         status: f.status?.name ?? "",
         statusCategory: category,
-        done: category === "done",
+        done: then ? then.done : category === "done",
         assignee: f.assignee?.displayName,
         epic:
           parent && isEpicParent
             ? { key: parent.key, url: browse(parent.key), summary: parentSummary, summaryMd: escapeMarkdown(parentSummary) }
             : undefined,
-        points: input.pointsField ? getStoryPoints(issue, input.pointsField) : undefined,
+        points: input.pointsField ? (then?.points ?? getStoryPoints(issue, input.pointsField)) : undefined,
       };
     })
     .sort((a, b) => compareKeys(a.key, b.key));
@@ -158,11 +165,12 @@ export function buildReportData(input: BuildReportInput): ReportData {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   const done = issues.filter((issue) => issue.done).length;
-  const inProgress = issues.filter((issue) => issue.statusCategory === "inprogress").length;
+  const inProgress = issues.filter((issue) => !issue.done && issue.statusCategory === "inprogress").length;
+  const m = input.sprintMetrics;
   const points = input.pointsField
     ? {
-        committed: sum(issues.map((issue) => issue.points ?? 0)),
-        completed: sum(issues.filter((issue) => issue.done).map((issue) => issue.points ?? 0)),
+        committed: m?.committedPoints ?? sum(issues.map((issue) => issue.points ?? 0)),
+        completed: m?.completedPoints ?? sum(issues.filter((issue) => issue.done).map((issue) => issue.points ?? 0)),
       }
     : undefined;
 

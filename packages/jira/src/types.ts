@@ -239,6 +239,8 @@ export interface JiraChangelogEntry {
   items: Array<{
     field: string;
     fieldtype: string;
+    /** Stable field id (`status`, `customfield_10020`); missing on older Data Center. */
+    fieldId?: string;
     from: string | null;
     fromString: string | null;
     to: string | null;

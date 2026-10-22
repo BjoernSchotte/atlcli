@@ -46,6 +46,26 @@ atlcli jira sprint report 456 --status-map "Fertig=done"
 
 [Jira Audit](audit.md) finds such statuses (`workflow/resolved-not-done`). The better fix is to move the status into the Done category in the workflow.
 
+### As of the sprint
+
+Sprint metrics count the sprint as it was, not as the issues are today. atlcli replays each issue's change history (sprint, story points, status) to the sprint's start and end. The end is the moment the sprint was completed; for an active sprint, it is now.
+
+| Term | Meaning |
+|---|---|
+| Committed | Issues in the sprint at its exact start, at their estimate then |
+| Completed | Issues in the sprint at its end, in a done status then, at their estimate then |
+| Added / removed | Points that joined after the start / left before the end |
+| Issues | Issues in the sprint at its end |
+
+Left out, as in Jira's sprint report:
+
+- **Sub-tasks**: they follow their parent.
+- **Issues done before the sprint started**: Jira lists them as "completed outside this sprint".
+
+Work finished after the sprint no longer counts as completed. An estimate changed during the sprint counts as committed at its old value.
+
+**Limitation:** an issue moved out of the sprint before it closed no longer appears in the sprint's issue list. Its removal therefore stays invisible; Jira lists it as "removed from sprint".
+
 ### Story points detection
 
 atlcli looks for a field named **Story Points**, **Story point estimate** or **Estimation**. Override it with `--points-field`:
@@ -96,7 +116,7 @@ atlcli jira analyze burndown --sprint 456
 }
 ```
 
-An issue counts as completed on the day of its last transition, if it is in a done status now (see [Completed work](#completed-work)). Work completed after the sprint's end date does not appear in the burndown, but counts in the sprint report.
+The burndown starts at the committed points (see [As of the sprint](#as-of-the-sprint)). An issue burns down on the day of its last status change, if it is in a done status at the sprint's end. Issues added during the sprint do not burn down.
 
 ## Scope change
 
@@ -164,7 +184,7 @@ atlcli jira sprint report 456
 
 ## Requests
 
-Burndown, scope change and the sprint report read the change history of all sprint issues in one request per 1000 issues on Jira Cloud (`changelog/bulkfetch`). On Data Center they read it per issue, five at a time.
+Every sprint metric reads the change history of all sprint issues in one request per 1000 issues on Jira Cloud (`changelog/bulkfetch`); velocity and predictability do so once per sprint. On Data Center they read it per issue, five at a time.
 
 ## Best practices
 

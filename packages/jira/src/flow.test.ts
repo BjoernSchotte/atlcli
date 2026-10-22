@@ -14,7 +14,7 @@ import {
   resolveStatusMap,
   statusScopeJql,
 } from "./flow.js";
-import { calculateBurndown, calculateSprintMetrics, latestSprints } from "./analysis.js";
+import { calculateBurndown, calculateSprintMetrics, issueAt, latestSprints } from "./analysis.js";
 import type { JiraChangelogEntry, JiraIssue, JiraStatus } from "./types.js";
 
 const STATUSES: JiraStatus[] = [
@@ -332,6 +332,102 @@ describe("sprint metrics under a status map", () => {
       ["2026-10-02", 0],
       ["2026-10-03", 0],
     ]);
+  });
+});
+
+describe("sprint metrics as of the sprint", () => {
+  // Regression: metrics used the issues' current state. Old sprints showed
+  // ~100 % predictability, work done after the sprint counted, and scope
+  // change was always 0 (sprint ids were read from the names in fromString).
+  const PF = "customfield_10036";
+  const sprint = {
+    id: 910,
+    name: "S910",
+    state: "closed",
+    startDate: "2026-10-01T08:00:00.000Z",
+    endDate: "2026-10-14T16:00:00.000Z",
+    completeDate: "2026-10-14T16:00:00.000Z",
+  } as Parameters<typeof calculateSprintMetrics>[0];
+  const fertig = createStatusCategoryResolver(
+    [...STATUSES, { id: "9", name: "Fertig", statusCategory: { id: 4, key: "indeterminate", name: "In Progress" } }],
+    { Fertig: "done" }
+  );
+  /** Change items as live Cloud bulk changelogs send them (ids in from/to; empty values omitted). */
+  const sprintItem = (from: string, to: string) =>
+    ({ field: "Sprint", fieldtype: "custom", fieldId: "customfield_10020", from, fromString: "", to, toString: "S" }) as JiraChangelogEntry["items"][number];
+  const pointsItem = (from: number | undefined, to: number) =>
+    ({ field: "Story Points", fieldtype: "custom", fieldId: PF, ...(from === undefined ? {} : { fromString: String(from) }), toString: String(to) }) as unknown as JiraChangelogEntry["items"][number];
+  function withHistory(base: JiraIssue, entries: Array<[string, JiraChangelogEntry["items"][number]]>): JiraIssue {
+    const extra = entries.map(([created, item], i) => ({ id: `${base.key}-x${i}`, author: { accountId: "u1" }, created, items: [item] }) as JiraChangelogEntry);
+    return { ...base, changelog: { histories: [...(base.changelog?.histories ?? []), ...extra] } } as JiraIssue;
+  }
+  const p = (n: number) => ({ [PF]: n }) as Partial<JiraIssue["fields"]>;
+
+  // Committed 5, done in the sprint.
+  const doneInSprint = issue("T-1", "2026-09-20T00:00:00.000Z", [["4", "2026-10-05T10:00:00.000Z"]], p(5));
+  // Committed 3, finished only after the sprint.
+  const doneLater = issue("T-2", "2026-09-20T00:00:00.000Z", [["4", "2026-10-20T10:00:00.000Z"]], p(3));
+  // Estimate raised from 2 to 8 during the sprint; "Fertig" (In Progress category) in the sprint.
+  const reestimated = withHistory(
+    issue("T-3", "2026-09-20T00:00:00.000Z", [["9", "2026-10-10T10:00:00.000Z"]], p(8)),
+    [["2026-10-03T09:00:00.000Z", pointsItem(2, 8)]]
+  );
+  // Added on day 2, done in the sprint.
+  const added = withHistory(issue("T-4", "2026-09-20T00:00:00.000Z", [["4", "2026-10-08T10:00:00.000Z"]], p(1)), [
+    ["2026-10-02T09:00:00.000Z", sprintItem("", "910")],
+  ]);
+  // Committed 4, moved to the next sprint during this one (still listed, as Jira keeps closed sprints).
+  const removed = withHistory(issue("T-5", "2026-09-20T00:00:00.000Z", [], p(4)), [
+    ["2026-10-06T09:00:00.000Z", sprintItem("910", "944")],
+  ]);
+  // Created inside the sprint, already in it: added, not committed.
+  const createdLater = issue("T-6", "2026-10-03T00:00:00.000Z", [], p(2));
+  // Finished before the sprint started: Jira lists it apart, it counts for nothing.
+  const doneBefore = issue("T-9", "2026-09-20T00:00:00.000Z", [["4", "2026-09-28T10:00:00.000Z"]], p(8));
+  const issues = [doneInSprint, doneLater, reestimated, added, removed, createdLater, doneBefore];
+
+  test("committed at the start, completed at the end, scope change from sprint ids", () => {
+    const m = calculateSprintMetrics(sprint, issues, PF, issues, fertig);
+    // Committed: 5 + 3 + 2 (T-3 before re-estimate) + 4 = 14.
+    expect(m.committedPoints).toBe(14);
+    // Completed at the end: T-1 (5), T-3 Fertig (8), T-4 (1); not T-2, done later.
+    expect([m.completedIssues, m.completedPoints]).toEqual([3, 14]);
+    // In the sprint at the end: T-1, T-2, T-3, T-4, T-6.
+    expect([m.totalIssues, m.incompleteIssues]).toEqual([5, 2]);
+    expect([m.addedDuringSprint, m.removedDuringSprint]).toEqual([3, 4]);
+    expect(m.sayDoRatio).toBe(100);
+    expect(m.scopeChangePercent).toBe(50);
+  });
+
+  test("without the map, Fertig is not done; without changelogs, the current state counts", () => {
+    expect(calculateSprintMetrics(sprint, issues, PF, issues, resolve).completedPoints).toBe(6);
+    expect(calculateSprintMetrics(sprint, issues, PF).completedPoints).toBe(5 + 3 + 1 + 8);
+  });
+
+  test("an active sprint is measured now", () => {
+    const active = { ...sprint, state: "active" as const, completeDate: undefined };
+    const m = calculateSprintMetrics(active, issues, PF, issues, fertig);
+    expect(m.completedPoints).toBe(5 + 3 + 8 + 1);
+  });
+
+  test("issueAt replays membership, estimate and status", () => {
+    const before = new Date("2026-10-02T00:00:00.000Z");
+    expect(issueAt(reestimated, 910, before, PF, fertig)).toEqual({ inSprint: true, points: 2, done: false });
+    expect(issueAt(added, 910, before, PF, fertig)).toEqual({ inSprint: false, points: 1, done: false });
+    expect(issueAt(createdLater, 910, before, PF, fertig).inSprint).toBe(false);
+    // Sub-tasks follow their parent and never count (as in Jira's sprint report).
+    const subtask = issue("T-8", "2026-09-20T00:00:00.000Z", [], { ...p(1), issuetype: { id: "5", name: "Sub-Task", subtask: true } });
+    expect(issueAt(subtask, 910, new Date(), PF, fertig).inSprint).toBe(false);
+    // An estimate set from empty: no points before it.
+    const fresh = withHistory(issue("T-7", "2026-09-20T00:00:00.000Z", [], p(3)), [["2026-10-03T00:00:00.000Z", pointsItem(undefined, 3)]]);
+    expect(issueAt(fresh, 910, before, PF).points).toBe(0);
+  });
+
+  test("burndown burns the committed scope; work done after the sprint stays", () => {
+    const bd = calculateBurndown(sprint, issues, PF, fertig);
+    expect(bd[0].remaining + bd[0].completed).toBe(14);
+    // T-1 (5) and T-3 (committed at 2) burn down; T-2 is done after the sprint, T-4 was added.
+    expect(bd.at(-1)?.remaining).toBe(14 - 5 - 2);
   });
 });
 

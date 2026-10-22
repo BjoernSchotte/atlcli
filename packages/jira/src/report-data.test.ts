@@ -53,6 +53,32 @@ describe("buildReportData", () => {
     expect(build([fertig]).issues[0]!.done).toBe(false);
   });
 
+  test("a sprint page shows each issue as of the sprint's end", () => {
+    // Regression: the review counted work finished after the sprint and issues moved out of it.
+    const later = issue("AB-1", "Story", "done", { cf: 5 });
+    const moved = issue("AB-2", "Story", "new", { cf: 3 });
+    const done = issue("AB-3", "Story", "done", { cf: 2 });
+    const asOf = new Map([
+      ["AB-1", { inSprint: true, points: 5, done: false }],
+      ["AB-2", { inSprint: false, points: 3, done: false }],
+      ["AB-3", { inSprint: true, points: 1, done: true }],
+    ]);
+    const data = buildReportData({
+      kind: "sprint",
+      source: { id: "7", name: "S7" },
+      issues: [later, moved, done],
+      baseUrl: BASE,
+      pointsField: "cf",
+      asOf,
+      now: new Date("2026-10-21T00:00:00Z"),
+    });
+    expect(data.issues.map((i) => [i.key, i.done, i.points])).toEqual([
+      ["AB-1", false, 5],
+      ["AB-3", true, 1],
+    ]);
+    expect(data.metrics).toMatchObject({ total: 2, done: 1, points: { committed: 6, completed: 1 } });
+  });
+
   test("groups by type in a stable order and by epic with 'No epic' last", () => {
     const data = build([
       issue("AB-10", "Bug", "done", epic("AB-1", "Login")),

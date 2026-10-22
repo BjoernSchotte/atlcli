@@ -191,8 +191,9 @@ describe("changelog N+1 regression", () => {
     expect(changelogCalls.map((r) => r.path)).toEqual(["/rest/api/3/changelog/bulkfetch"]);
     expect((changelogCalls[0].body?.issueIdsOrKeys as string[]).length).toBe(30);
     const out = JSON.parse(stdout);
-    expect(out.totalPoints).toBe(30);
-    expect(out.burndown.map((d: { remaining: number }) => d.remaining)).toEqual([30, 30, 30]);
+    // The 10 issues already done with no status change were done before the sprint: not committed.
+    expect(out.totalPoints).toBe(20);
+    expect(out.burndown.map((d: { remaining: number }) => d.remaining)).toEqual([20, 20, 20]);
   });
 });
 
