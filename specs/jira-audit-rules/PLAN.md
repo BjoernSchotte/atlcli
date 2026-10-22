@@ -84,7 +84,8 @@ overrides:
     rules:
       flow/unassigned-wip: error
 
-baseline: .atlcli/audit-baseline.json
+baseline:
+  olderThan: 180d            # default baseline, see "Baseline" below
 ```
 
 ## Behaviour
@@ -101,10 +102,16 @@ baseline: .atlcli/audit-baseline.json
   - `project`, `issueType` and `status` are matched in memory: by key or name (case-insensitive), or by id.
   - A `jql` match runs one extra search per distinct JQL and is matched by issue key. The report states this cost.
 - **Baseline:**
-  - `--update-baseline` writes `{ rule, key }` pairs.
-  - Findings listed there are dropped.
-  - `--prune-baseline` removes stale entries; a stale entry is reported as info, following ESLint.
-  - For per-status rules such as `workflow`, the key is the status id.
+  - **Location:** per profile, at `~/.atlcli/profiles/<profile>/audit-baseline.json`, next to the digest state.
+  - **Accepted findings:** `--update-baseline` writes `{ rule, key, acceptedAt }` entries. Findings listed there are dropped from the report and counted under `suppressed.baseline`.
+  - **Pruning:** `--prune-baseline` removes stale entries. A stale entry is reported as info, following ESLint.
+  - **Per-status rules:** for rules such as `workflow`, the key is the status id.
+  - **Default baseline, when no file exists:** a baseline lists concrete findings, so atlcli cannot ship one. The default is therefore an age cutoff: `olderThan: 180d`.
+    - Findings on issues not updated for 180 days are treated as legacy. They are not listed one by one, only counted per rule as one quiet line ("41 legacy findings, older than 180 days; `--update-baseline` to accept, `--no-baseline` to list").
+    - This keeps the first run on an old project short without hiding anything.
+    - The cutoff does not apply to `workflow`, which reports statuses, nor to the `stale` error level at its own thresholds below 180 days.
+    - The cutoff can be configured or switched off in the rules file (`baseline.olderThan: off`).
+    - Once a baseline file exists, its entries apply in addition to the cutoff.
 - **Status aging:**
   - Each status gets its own percentile bands, computed from the time issues done in the last 90 days spent in that status.
   - Five samples per status are needed; with fewer, the rule is skipped for that status with a note.
@@ -142,8 +149,47 @@ The threshold is configurable (`share: 0.5`).
 - **Digest:** an "Audit" section with `error` findings only.
 - **New rules in the first stage:** overdue / due soon, flagged too long, aging per status. Epic without fix version is deferred.
 
+- **Baseline:** per profile. Without a file, the default is the 180-day legacy cutoff.
+
+## Built-in profiles (`extends`)
+
+The proposal has three profiles. `default` applies when `extends` is not set:
+
+| Rule | `minimal` | `default` | `strict` |
+|---|---|---|---|
+| `workflow/resolved-not-done` | warning | warning | error |
+| `flow/unassigned-wip` | warning | warning | error |
+| `hygiene/overdue` | warning 7d · error 30d | warning 0d · error 14d | error 0d |
+| `hygiene/due-soon` | off | info 3d | warning 3d |
+| `hygiene/flagged` | warning 10d | warning 3d · error 10d | warning 1d · error 5d |
+| `flow/stuck-wip` | off | warning p85 · error p95 | warning p85 · error p95 |
+| `flow/status-aging` | off | off (expensive) | warning p85 · error p95 |
+| `hygiene/stale` | error 90d (wip) | info 30 · warning 60 · error 90 (wip) | the same, including to do |
+| `hygiene/no-parent` | off | info | warning |
+| `hygiene/unestimated-in-sprint` | off | warning | error |
+| `hygiene/done-without-version` | off | info | warning |
+| `minLevel` | warning | warning | info |
+| default baseline | 180d | 180d | off |
+
+- **`minimal`:** only what needs action today. It suits teams that should not be put off by the audit.
+- **`default`:** today's rules plus the cheap new ones. Info findings are quiet, so they are counted but not listed.
+- **`strict`:** everything on and everything listed, with no legacy cutoff. Use it for cleanups and coaching.
+
+`default` changes today's behaviour in two ways: info findings become quiet, and the legacy cutoff applies. `--min-level info` and `--no-baseline` restore the full list.
+
+## Flagged field
+
+- **Live facts (verified 2026-10-22):**
+  - The "Flagged" field is a custom field (`customfield_10021` on this site) of type multi-checkboxes, with the value "Impediment".
+  - Its JQL clause name `Flagged` is stable across sites and languages. `Flagged is not EMPTY` returns issues.
+- **Detection:**
+  - Read `/field` once.
+  - Pick the field whose `clauseNames` include `Flagged` and whose type is multicheckboxes.
+  - Cache the id per run, the way `detectStoryPointsField` does.
+- **Override:** `flagged.field: customfield_12345` in the rules file, or `--flagged-field`. This covers sites with their own "blocked" field.
+- **Duration:** from the changelog, the last change of that field id (`fieldId`, not the localized `field` name) from empty to set. Without a changelog entry, the issue's `updated` is used as a lower bound, and the finding says so.
+- **Without the field:** the rule is skipped with a note, not an error.
+
 ## Open questions
 
-1. Should the baseline sit next to the rules file it applies to (project or `~/.atlcli`), or be per profile?
-2. Which built-in profiles, and what goes into `strict`?
-3. Which field does `flagged` read: the Flagged custom field (`customfield_*`, detected by name), or is it configurable?
+None at the moment. The plan is ready for review.
