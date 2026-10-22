@@ -14,8 +14,9 @@ license and contains no customer content. Each export was sanitized with
 
 What the exports showed: both word processors draw the table frame across a
 split row (a bottom rule on one page, a top rule on the next), so geometry
-cannot tell a split row from a row break; the importer keeps two rows and
-reports `pdf-import/table-row-split-unproven`. Word draws a table with inside
+cannot tell a split row from a row break. LibreOffice splits the clause
+mid-sentence, which proves the split; Word splits it between sentences, and its
+rest is proven only because it is the table's sole row with blank cells. Word draws a table with inside
 rules only with one vertical rule fewer than it has columns.
 
 A scanned page with an invisible OCR text layer is generated inside the test;

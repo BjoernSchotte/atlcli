@@ -2126,6 +2126,19 @@ page numbers as headings of their own.
   characters; the geometric tables were identical with and without it, at about
   0.1 s extra per document. It stays opt-in.
 
-Not covered: a contents line that wraps, or that ends without a page number,
-stays a heading; a Word export of `contents.docx` is missing because Word's
+Not covered: a Word export of `contents.docx` is missing because Word's
 sandbox asked for file access, which was not granted unattended.
+
+## Wrapped contents entries, split rows in dense tables (2026-10-22)
+
+- **Contents entries.** On a page proven as a table of contents, an entry
+  wrapped onto up to three lines is proven by its joined lines above the page
+  number, and an unnumbered line between the first and last entry whose text
+  stands on a later page is an entry. Both become paragraphs, not headings.
+  Unit-tested with synthetic pages (`contents.test.ts`); no new export.
+- **Split rows in dense tables.** The rest of a split row that starts a new
+  sentence is joined when it is the only row of the table with blank cells and
+  at least five filled body rows prove the table leaves none blank
+  (`pdf-import/table-row-split-joined`). Word's export of the neutral clause
+  table now joins like LibreOffice's. A table that leaves other cells blank
+  still reports `pdf-import/table-row-split-unproven`. Table policy V2 `/11`.

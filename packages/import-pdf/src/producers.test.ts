@@ -54,20 +54,12 @@ describe("desktop producer exports", () => {
       expect(tables[1]).toEqual(roster);
       // The producer draws the frame across the split row, so its rest is a
       // row of its own whose finished cells are blank. LibreOffice breaks the
-      // clause text mid-sentence, which joins the rest; Word breaks it between
-      // sentences, so the rest stays a row and the review says so.
+      // clause text mid-sentence; Word breaks it between sentences, and its
+      // rest is the only row of the table with blank cells. Both join.
+      // Regression: Word's rest stayed a row of its own.
       const split = result.document.issues.filter((issue) => issue.code.startsWith("pdf-import/table-row-split-"));
-      if (producer === "libreoffice") {
-        expect(tables[2]).toEqual(clauses);
-        expect(split.map((issue) => issue.code)).toEqual(["pdf-import/table-row-split-joined"]);
-      } else {
-        const clausesRows = tables[2]!;
-        expect(clausesRows).toHaveLength(clauses!.length + 1);
-        expect(clausesRows.slice(0, -3)).toEqual(clauses!.slice(0, -2));
-        expect(clausesRows.at(-2)!.slice(0, 2)).toEqual(["", ""]);
-        expect(clausesRows.at(-1)).toEqual(clauses!.at(-1));
-        expect(split.map((issue) => issue.code)).toEqual(["pdf-import/table-row-split-unproven"]);
-      }
+      expect(tables[2]).toEqual(clauses);
+      expect(split.map((issue) => issue.code)).toEqual(["pdf-import/table-row-split-joined"]);
     });
   }
 

@@ -292,8 +292,10 @@ PDF reports none.
 A table of contents is set in the styles of the headings it lists. A line
 that ends in a page number at the right and whose text stands again on a
 later page is a contents line; three such lines with page numbers that never
-decrease make a table of contents. Its lines are imported as paragraphs, not
-headings, and its page numbers, which name pages Confluence does not have,
+decrease make a table of contents. An entry wrapped onto several lines is
+proven by its joined lines, and between the first and last entry a line without
+a page number whose text stands on a later page is an entry too. Its lines are
+imported as paragraphs, not headings, and its page numbers, which name pages Confluence does not have,
 are suppressed with evidence (`pdf/geometry-contents-page-number-suppressed`).
 
 Section numbers are checked against the levels: headings numbered to one
@@ -589,10 +591,10 @@ release claim.
 | A tagged table becomes a page image or linearized text | The table nests another table, or a cell's text has an unresolved boundary or invalid Unicode | Check `pdf-import/table-tagged-linearized` and its `reason` in the JSON preview. Re-export with tagging enabled, or flatten the nested table in the source. |
 | Issue `pdf-import/table-continuation-unjoined`: the table repeats on every page | One page part does not qualify as a grid, or the table exceeds 5,000 rows | Check the issue `reason`. Each page part stays a native table when it qualifies on its own. |
 | `The table model is not installed` or `The table model runtime is not installed` | `--table-model` was given before the model was pulled | Run `atlcli models pull table-transformer`, or set `ATLCLI_MODELS_DIR` to the directory you pulled into. |
-| Issue `pdf-import/table-row-split-unproven` | The first row after a page break leaves cells blank that the row before fills, and its text starts a new sentence | Open the page and check the two rows: if they are one split row, join them after import, or set **Allow row to break across pages** off in the source. |
-| Issue `pdf-import/table-row-split-joined` | The rest of a split row continued the row before mid-sentence and was joined | Usually correct. If the two rows were meant to be separate, split the row after import. |
+| Issue `pdf-import/table-row-split-unproven` | The first row after a page break leaves cells blank that the row before fills, its text starts a new sentence, and the table leaves other cells blank too | Open the page and check the two rows: if they are one split row, join them after import, or set **Allow row to break across pages** off in the source. |
+| Issue `pdf-import/table-row-split-joined` | The rest of a split row continued the row before mid-sentence, or was the only partly blank row of a table with at least five filled rows, and was joined | Usually correct. If the two rows were meant to be separate, split the row after import. |
 | Issue `pdf-import/heading-numbering-mismatch` | A heading's font style ranks it differently from its section number (for example a `2.1` heading set larger than `2`) | Check the listed headings; correct them with a `set-heading-level` override. |
-| A table of contents arrives as headings | Its lines wrap, end without a page number, or repeat no heading text, so nothing proves a contents line | Correct the levels with `set-heading-level` overrides, or delete the contents and add a Confluence **Table of Contents** macro. |
+| A table of contents arrives as headings | Fewer than three of its lines end in a page number, or its lines repeat no heading text, so nothing proves a contents line | Correct the levels with `set-heading-level` overrides, or delete the contents and add a Confluence **Table of Contents** macro. |
 | Issue `pdf-import/text-dehyphenation-unproven` | A line-end hyphen before a lowercase word was removed without evidence elsewhere in the PDF | Usually correct (a split syllable). Check compound words such as `well-known` in the listed blocks. |
 | An untagged table arrives as paragraphs | No drawn grid or row rules, fewer than three aligned columns, or text crossing a cell edge | Export with table borders, or as a tagged PDF. The text is complete and in reading order either way. |
 | Issue `pdf-import/document-structure-unavailable` | The structure tree could not be read as a whole (damaged cross-references or budget) | Import continues with page-scoped structure; multi-page tables may fall back. Re-save the PDF from its producer. |

@@ -49,6 +49,8 @@ export const PDF_GEOMETRY_TABLE_POLICY_V2 = Object.freeze({
   boldWeight: 600,
   /** Continuation parts must repeat every column edge within this distance. */
   continuationEdgeTolerance: 0.006,
+  /** Filled body rows that prove a lone partly blank row after a break is a split row's rest. */
+  denseSplitMinimumRows: 5,
   /** How far a proposed column edge may move to the nearest gap between glyphs. */
   proposalEdgeWindow: 0.02,
   borderless: {
@@ -661,7 +663,9 @@ export function projectGeometryTableV2(
     // a row of its own whose finished cells are blank, like a row that leaves
     // cells blank on purpose. Its text proves the split: every filled cell
     // continues a filled cell whose text stops mid-sentence, or starts in
-    // lowercase. Otherwise say so instead of guessing.
+    // lowercase. So does a table that fills every other body cell: Word
+    // breaks a split row between sentences, and its rest is then the only
+    // row with blank cells. Otherwise say so instead of guessing.
     const restOfRow = sameSimpleCells && !framedSplit
       && firstCells.some((cell) => cell.fragments.length > 0)
       && firstCells.some((cell) => cell.fragments.length === 0 && (lastRow.get(cell.column)?.blocks.length ?? 0) > 0);
@@ -670,13 +674,22 @@ export function projectGeometryTableV2(
       const previous = blocksText(lastRow.get(cell.column)?.blocks ?? []);
       return previous.length > 0 && (!SENTENCE_END.test(previous) || /^\p{Ll}/u.test(cellText(cell)));
     });
-    const splitRow = framedSplit || textSplit;
+    const bodyRows = parts.slice(0, partIndex + 1).flatMap((part, index) => {
+      const start = index === 0 ? first.grid.headerRows : index === partIndex ? 1 : repeatedHeaderRows(first.grid, part.grid);
+      return Array.from({ length: Math.max(0, part.grid.rowCount - start) }, (_, offset) =>
+        part.grid.cells.filter((cell) => cell.row === start + offset));
+    });
+    const denseSplit = restOfRow && !textSplit && bodyRows.length >= P.denseSplitMinimumRows
+      && bodyRows.every((cells) => cells.every((cell) => cell.fragments.length > 0));
+    const splitRow = framedSplit || textSplit || denseSplit;
     if (restOfRow) {
-      issues.push(textSplit ? {
+      issues.push(textSplit || denseSplit ? {
         code: "pdf-import/table-row-split-joined",
         severity: "info",
         outcome: "approximated",
-        message: "The first row after a page break continues the text of the row before it; it was joined to that row.",
+        message: textSplit
+          ? "The first row after a page break continues the text of the row before it; it was joined to that row."
+          : "The first row after a page break is the only row of the table that leaves cells blank, where the row before fills them; it was joined to that row.",
         sourceRefs: [tableId],
         context: { pageIndex: page.index, rowIndex: rows.length - 1 },
       } : {

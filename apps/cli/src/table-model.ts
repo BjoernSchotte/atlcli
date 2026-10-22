@@ -117,26 +117,37 @@ export async function pullTableTransformer(options: {
     const bytes = await download(pkg.tarball, fetchImpl);
     const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
     if (integrity !== pkg.integrity) throw new Error(`Runtime package ${pkg.name} integrity mismatch.`);
-    const scratch = await mkdtemp(join(os.tmpdir(), "atlcli-runtime-"));
-    // Extract beside the target and rename it into place, so an interrupted
-    // pull never leaves a package.json that marks a half-extracted package installed.
-    const partial = `${target}.partial`;
-    try {
-      const tarball = join(scratch, "package.tgz");
-      await writeFile(tarball, bytes);
-      await rm(partial, { recursive: true, force: true });
-      await mkdir(partial, { recursive: true });
-      await (options.extract ?? extractTarball)(tarball, partial);
-      await pruneForeignBinaries(partial);
-      await rm(target, { recursive: true, force: true });
-      await rename(partial, target);
-    } finally {
-      await rm(scratch, { recursive: true, force: true });
-      await rm(partial, { recursive: true, force: true });
-    }
+    await installRuntimePackage(bytes, target, options.extract);
     downloadedBytes += bytes.byteLength;
   }
   return { modelPath, runtimeDirectory: runtime, downloadedBytes };
+}
+
+/**
+ * Extracts a verified package tarball beside `target` and renames it into
+ * place, so an interrupted pull never leaves a package.json that marks a
+ * half-extracted package installed.
+ */
+export async function installRuntimePackage(
+  bytes: Uint8Array,
+  target: string,
+  extract: (tarball: string, target: string) => Promise<void> = extractTarball,
+): Promise<void> {
+  const scratch = await mkdtemp(join(os.tmpdir(), "atlcli-runtime-"));
+  const partial = `${target}.partial`;
+  try {
+    const tarball = join(scratch, "package.tgz");
+    await writeFile(tarball, bytes);
+    await rm(partial, { recursive: true, force: true });
+    await mkdir(partial, { recursive: true });
+    await extract(tarball, partial);
+    await pruneForeignBinaries(partial);
+    await rm(target, { recursive: true, force: true });
+    await rename(partial, target);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+    await rm(partial, { recursive: true, force: true });
+  }
 }
 
 /** The runtime package ships binaries for every platform; keep this one's. */
