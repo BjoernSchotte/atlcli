@@ -10,6 +10,7 @@ import {
   createTableTransformerProposer,
   decodeTableTransformerOutput,
   executionProviders,
+  installRuntimePackage,
   installedTableModel,
   modelsDirectory,
   preprocessTableImage,
@@ -123,5 +124,39 @@ describe.skipIf(!installed)("Table Transformer on the neutral untagged fixture",
     const proposal = await proposer.propose({ pageIndex: 1, bbox, image: image! });
     expect(proposal?.rows).toHaveLength(4);
     expect(proposal?.columns).toHaveLength(3);
+  });
+});
+
+describe("runtime package install", () => {
+  it("leaves no installed package behind when extraction fails midway", async () => {
+    const root = await mkdtemp(join(os.tmpdir(), "atlcli-install-"));
+    const target = join(root, "node_modules", "onnxruntime-node");
+    try {
+      const interrupted = installRuntimePackage(new Uint8Array([1]), target, async (_tarball, partial) => {
+        await writeFile(join(partial, "package.json"), "{}");
+        throw new Error("disk full");
+      });
+      await expect(interrupted).rejects.toThrow("disk full");
+      expect(existsSync(join(target, "package.json"))).toBe(false);
+      expect(existsSync(`${target}.partial`)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces a stale package with the complete extraction", async () => {
+    const root = await mkdtemp(join(os.tmpdir(), "atlcli-install-"));
+    const target = join(root, "node_modules", "onnxruntime-node");
+    try {
+      await mkdir(target, { recursive: true });
+      await writeFile(join(target, "stale.js"), "");
+      await installRuntimePackage(new Uint8Array([1]), target, async (_tarball, partial) => {
+        await writeFile(join(partial, "package.json"), "{}");
+      });
+      expect((await readdir(target)).sort()).toEqual(["package.json"]);
+      expect(existsSync(`${target}.partial`)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
