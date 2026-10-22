@@ -287,6 +287,18 @@ export type Profile = {
         prefetchMaxPages?: number;
         cqlGrep?: boolean;
     };
+    flow?: {
+        statusMap?: Record<string, "todo" | "wip" | "done">;
+    };
+    audit?: {
+        jira?: {
+            staleDays?: [
+                number,
+                number,
+                number
+            ];
+        };
+    };
 };
 
 // export: redactSensitive
@@ -453,6 +465,7 @@ export type AuditConfig = {
         low?: number;
     };
     defaultChecks?: Array<"stale" | "orphans" | "broken-links" | "single-contributor" | "inactive-contributors" | "external-links" | "folders">;
+    jira?: JiraAuditConfig;
 };
 
 // export: AuthChangeData
@@ -566,6 +579,7 @@ export type Config = {
     sync?: SyncConfig;
     audit?: AuditConfig;
     vfs?: VfsConfig;
+    flow?: FlowConfig;
     projects?: ProjectConfig[];
     defaults?: DefaultsConfig;
 };
@@ -695,6 +709,11 @@ export declare function flagNameToEnvVar(name: string): string;
 // export: FlagValue
 export type FlagValue = boolean | string | number;
 
+// export: FlowConfig
+export type FlowConfig = {
+    statusMap?: Record<string, "todo" | "wip" | "done">;
+};
+
 // export: formatDate
 export declare function formatDate(date: Date, format: string): string;
 
@@ -822,6 +841,15 @@ export declare function isInteractive(): boolean;
 
 // export: isSensitiveKey
 export declare function isSensitiveKey(key: string): boolean;
+
+// export: JiraAuditConfig
+export type JiraAuditConfig = {
+    staleDays?: [
+        number,
+        number,
+        number
+    ];
+};
 
 // export: listFlags
 export declare function listFlags(): Promise<FlagEntry[]>;
@@ -976,6 +1004,18 @@ export type Profile = {
         cacheMaxMb?: number;
         prefetchMaxPages?: number;
         cqlGrep?: boolean;
+    };
+    flow?: {
+        statusMap?: Record<string, "todo" | "wip" | "done">;
+    };
+    audit?: {
+        jira?: {
+            staleDays?: [
+                number,
+                number,
+                number
+            ];
+        };
     };
 };
 
@@ -1693,6 +1733,18 @@ export type Profile = {
         prefetchMaxPages?: number;
         cqlGrep?: boolean;
     };
+    flow?: {
+        statusMap?: Record<string, "todo" | "wip" | "done">;
+    };
+    audit?: {
+        jira?: {
+            staleDays?: [
+                number,
+                number,
+                number
+            ];
+        };
+    };
 };
 
 // export: redactSensitive
@@ -1931,6 +1983,7 @@ export type AuditConfig = {
         low?: number;
     };
     defaultChecks?: Array<"stale" | "orphans" | "broken-links" | "single-contributor" | "inactive-contributors" | "external-links" | "folders">;
+    jira?: JiraAuditConfig;
 };
 
 // export: AuthChangeData
@@ -2044,6 +2097,7 @@ export type Config = {
     sync?: SyncConfig;
     audit?: AuditConfig;
     vfs?: VfsConfig;
+    flow?: FlowConfig;
     projects?: ProjectConfig[];
     defaults?: DefaultsConfig;
 };
@@ -2173,6 +2227,11 @@ export declare function flagNameToEnvVar(name: string): string;
 // export: FlagValue
 export type FlagValue = boolean | string | number;
 
+// export: FlowConfig
+export type FlowConfig = {
+    statusMap?: Record<string, "todo" | "wip" | "done">;
+};
+
 // export: formatDate
 export declare function formatDate(date: Date, format: string): string;
 
@@ -2300,6 +2359,15 @@ export declare function isInteractive(): boolean;
 
 // export: isSensitiveKey
 export declare function isSensitiveKey(key: string): boolean;
+
+// export: JiraAuditConfig
+export type JiraAuditConfig = {
+    staleDays?: [
+        number,
+        number,
+        number
+    ];
+};
 
 // export: listFlags
 export declare function listFlags(): Promise<FlagEntry[]>;
@@ -2454,6 +2522,18 @@ export type Profile = {
         cacheMaxMb?: number;
         prefetchMaxPages?: number;
         cqlGrep?: boolean;
+    };
+    flow?: {
+        statusMap?: Record<string, "todo" | "wip" | "done">;
+    };
+    audit?: {
+        jira?: {
+            staleDays?: [
+                number,
+                number,
+                number
+            ];
+        };
     };
 };
 

@@ -800,3 +800,113 @@ describe("JiraClient session attachment redirects (spec 010 wave 2)", () => {
     expect(inits[0]!.init?.credentials).toBeUndefined();
   });
 });
+
+describe("JiraClient.getChangelogs", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  type Call = { url: string; body?: { issueIdsOrKeys?: string[]; nextPageToken?: string } };
+
+  function history(id: string, created: number | string) {
+    return { id, author: { accountId: "u" }, created, items: [{ field: "status", fieldtype: "jira", from: "1", fromString: "A", to: "2", toString: "B" }] };
+  }
+
+  test("Cloud: chunks 1001 issues into two bulkfetch POSTs, follows nextPageToken, maps ids to keys, sorts ascending", async () => {
+    const calls: Call[] = [];
+    globalThis.fetch = mock((url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      calls.push({ url, body });
+      if (body.issueIdsOrKeys.length === 1000 && !body.nextPageToken) {
+        return Promise.resolve(Response.json({
+          issueChangeLogs: [{ issueId: "1", changeHistories: [history("b", Date.parse("2026-10-02T00:00:00Z"))] }],
+          nextPageToken: "t2",
+        }));
+      }
+      if (body.nextPageToken === "t2") {
+        return Promise.resolve(Response.json({
+          issueChangeLogs: [{ issueId: "1", changeHistories: [history("a", Date.parse("2026-10-01T00:00:00Z"))] }],
+        }));
+      }
+      return Promise.resolve(Response.json({ issueChangeLogs: [] }));
+    }) as unknown as typeof fetch;
+
+    const issues = Array.from({ length: 1001 }, (_, i) => ({ id: String(i + 1), key: `P-${i + 1}` }));
+    const logs = await new JiraClient(mockProfile).getChangelogs(issues, { fieldIds: ["status"] });
+
+    expect(calls.map((c) => [c.body?.issueIdsOrKeys?.length, c.body?.nextPageToken])).toEqual([
+      [1000, undefined],
+      [1000, "t2"],
+      [1, undefined],
+    ]);
+    expect(calls[0].url).toBe("https://test.atlassian.net/rest/api/3/changelog/bulkfetch");
+    expect(logs.get("P-1")?.map((h) => [h.id, h.created])).toEqual([
+      ["a", "2026-10-01T00:00:00.000Z"],
+      ["b", "2026-10-02T00:00:00.000Z"],
+    ]);
+    expect(logs.get("P-1001")).toEqual([]);
+  });
+
+  test("deploymentType cloud on a custom domain takes the Cloud path", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = mock((url: string) => {
+      urls.push(url);
+      return Promise.resolve(Response.json({ issueChangeLogs: [] }));
+    }) as unknown as typeof fetch;
+
+    await new JiraClient({ ...mockProfile, baseUrl: "https://jira.example.com", deploymentType: "cloud" })
+      .getChangelogs([{ id: "1", key: "P-1" }]);
+
+    expect(urls).toEqual(["https://jira.example.com/rest/api/3/changelog/bulkfetch"]);
+  });
+
+  test("Data Center: waves of 5 getIssue calls, never more than 5 in flight", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const urls: string[] = [];
+    globalThis.fetch = mock(async (url: string) => {
+      urls.push(url);
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight--;
+      const key = new URL(url).pathname.split("/").pop();
+      return Response.json({
+        id: "1",
+        key,
+        fields: {},
+        changelog: { histories: [history("2", "2026-10-02T00:00:00.000+0200"), history("1", "2026-10-01T00:00:00.000+0200")] },
+      });
+    }) as unknown as typeof fetch;
+
+    const issues = Array.from({ length: 12 }, (_, i) => ({ id: String(i), key: `P-${i}` }));
+    const logs = await new JiraClient({ ...mockProfile, baseUrl: "https://jira.example.com" }).getChangelogs(issues);
+
+    expect(urls).toHaveLength(12);
+    expect(urls[0]).toContain("/rest/api/2/issue/P-0?fields=status&expand=changelog");
+    expect(peak).toBeLessThanOrEqual(5);
+    expect(logs.get("P-11")?.map((h) => h.id)).toEqual(["1", "2"]);
+  });
+});
+
+describe("JiraClient.getBoardFilterJql", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("reads the board configuration, then the saved filter", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = mock((url: string) => {
+      urls.push(url);
+      return Promise.resolve(
+        Response.json(url.includes("/configuration") ? { filter: { id: "11065" } } : { id: "11065", jql: "project = P ORDER BY Rank ASC" })
+      );
+    }) as unknown as typeof fetch;
+
+    expect(await new JiraClient(mockProfile).getBoardFilterJql(615)).toBe("project = P ORDER BY Rank ASC");
+    expect(urls).toEqual([
+      "https://test.atlassian.net/rest/agile/1.0/board/615/configuration",
+      "https://test.atlassian.net/rest/api/3/filter/11065",
+    ]);
+  });
+});

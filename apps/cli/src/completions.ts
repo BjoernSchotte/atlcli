@@ -15,8 +15,10 @@ export interface PluginCommandInfo {
 
 // Root commands (built-in)
 const BUILTIN_ROOT_COMMANDS = [
+  "audit",
   "auth",
   "completion",
+  "digest",
   "doctor",
   "jira",
   "log",
@@ -29,6 +31,7 @@ const BUILTIN_ROOT_COMMANDS = [
 
 // Subcommands for each root command
 const SUBCOMMANDS: Record<string, string[]> = {
+  audit: ["jira", "wiki"],
   auth: ["delete", "init", "list", "login", "logout", "rename", "status", "switch"],
   completion: ["bash", "zsh"],
   config: ["get", "list", "set", "unset"],
@@ -135,7 +138,7 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
     ],
   },
   jira: {
-    analyze: ["burndown", "predictability", "velocity"],
+    analyze: ["aging", "burndown", "cfd", "flow", "predictability", "scope-change", "velocity"],
     board: ["backlog", "get", "issues", "list"],
     bulk: ["delete", "edit", "label", "transition"],
     component: ["create", "delete", "get", "list", "update"],
@@ -447,6 +450,12 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "jira analyze velocity": ["--board", "--sprints"],
   "jira analyze burndown": ["--sprint"],
   "jira analyze predictability": ["--board", "--sprints"],
+  "jira analyze scope-change": ["--points-field", "--sprint"],
+  "jira analyze flow": ["--board", "--csv", "--jql", "--limit", "--project", "--since", "--status-map"],
+  "jira analyze aging": ["--board", "--csv", "--jql", "--limit", "--project", "--since", "--status-map"],
+  "jira analyze cfd": ["--board", "--csv", "--group-by", "--jql", "--limit", "--project", "--since", "--status-map"],
+  "audit jira": ["--all", "--board", "--checks", "--jql", "--limit", "--markdown", "--project", "--stale", "--status-map"],
+  digest: ["--board", "--include-own", "--limit", "--markdown", "--max-pages", "--no-mark", "--only", "--since", "--space", "--summarize", "--verbose"],
 
   // jira bulk flags
   "jira bulk edit": ["--assignee", "--dry-run", "--jql", "--label", "--priority"],

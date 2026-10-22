@@ -293,3 +293,25 @@ describe("Search Output Formatting", () => {
     expect(cleanExcerpt("Hello\n\nworld")).toBe("Hello world");
   });
 });
+
+describe("shared query builders", () => {
+  test("wiki my / wiki recent CQL is unchanged for the existing flag combinations", async () => {
+    const { buildMyPagesCql, buildRecentPagesCql } = await import("./search.js");
+    expect(buildMyPagesCql({})).toBe("type = page AND creator = currentUser()");
+    expect(buildMyPagesCql({ contributed: true, space: "A, B", label: "x" })).toBe(
+      'type = page AND contributor = currentUser() AND space IN ("A", "B") AND label = "x"'
+    );
+    expect(buildRecentPagesCql({ space: "DOCSY", since: "-7d" })).toBe(
+      'type = page AND space = "DOCSY" AND lastModified >= now("-7d")'
+    );
+  });
+
+  test("jira my JQL is unchanged", async () => {
+    const { buildMyIssuesJql } = await import("./jira.js");
+    expect(buildMyIssuesJql({})).toBe("assignee = currentUser() AND resolution IS EMPTY");
+    expect(buildMyIssuesJql({ project: "ATLCLI", type: "Bug", all: true })).toBe(
+      'assignee = currentUser() AND project = ATLCLI AND issuetype = "Bug"'
+    );
+    expect(buildMyIssuesJql({ status: "Open" })).toBe('assignee = currentUser() AND status = "Open"');
+  });
+});

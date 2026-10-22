@@ -19,7 +19,7 @@ import type {
 /**
  * Escape a value for CSV (RFC 4180 compliant).
  */
-function escapeCsvValue(value: unknown): string {
+export function escapeCsvValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   const str = typeof value === "object" ? JSON.stringify(value) : String(value);
   // If contains comma, quote, or newline, wrap in quotes and escape quotes

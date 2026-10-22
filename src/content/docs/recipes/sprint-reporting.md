@@ -162,8 +162,33 @@ jobs:
           path: report.md
 ```
 
+## Flow Metrics and Audit
+
+Teams without sprints, or with sprints and a lot of carry-over, get more from flow metrics than from velocity:
+
+```bash
+# Cycle time and throughput of the last 30 days, and today's aging work
+atlcli jira analyze flow --board 123 --since 30d
+atlcli jira analyze aging --board 123
+
+# What to raise in the retro: stuck, unassigned and stale work
+atlcli audit jira --board 123 --markdown > retro-findings.md
+```
+
+Add them to the weekly report script:
+
+```bash
+echo "## Flow"
+atlcli jira analyze flow --board "$BOARD_ID" --since 14d
+echo
+echo "## Needs attention"
+atlcli audit jira --board "$BOARD_ID" --checks stuck-wip,unassigned-wip
+```
+
 ## Related Topics
 
 - [Analytics](../jira/analytics.md) - Velocity, burndown, predictability
+- [Flow Metrics](../jira/flow-metrics.md) - Cycle time, throughput, aging work, cumulative flow
+- [Jira Audit](../jira/audit.md) - Stuck, unassigned and stale work
 - [Boards & Sprints](../jira/boards-sprints.md) - Sprint management
 - [CI/CD Docs](ci-cd-docs.md) - CI/CD pipeline integration

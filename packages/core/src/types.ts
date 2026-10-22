@@ -51,4 +51,12 @@ export type Profile = {
     prefetchMaxPages?: number;
     cqlGrep?: boolean;
   };
+  /** Flow metrics settings for this profile; `statusMap` wins per key over the global one. */
+  flow?: {
+    statusMap?: Record<string, "todo" | "wip" | "done">;
+  };
+  /** `audit jira` settings for this profile, overriding the global ones. */
+  audit?: {
+    jira?: { staleDays?: [number, number, number] };
+  };
 };

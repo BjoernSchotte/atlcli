@@ -36,7 +36,10 @@ atlcli jira worklog timer start PROJ-123
 - **Time Tracking** - Log work with timer or direct entry
 - **Epic Management** - Create epics, add/remove issues
 - **Cross-Product Linking** - Link issues to Confluence pages bidirectionally
-- **Analytics** - Velocity, burndown, predictability metrics
+- **Analytics** - Velocity, burndown, scope change, predictability metrics
+- **Flow Metrics** - Cycle time, lead time, throughput, aging work, cumulative flow ([details](flow-metrics.md))
+- **Audit** - Stuck, unassigned and stale work, hygiene gaps ([details](audit.md))
+- **Daily Digest** - What changed and what waits on you, with Confluence ([details](../digest.md))
 - **Bulk Operations** - Edit, transition, label multiple issues
 - **Templates** - Save and reuse issue configurations
 

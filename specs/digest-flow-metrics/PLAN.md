@@ -1,6 +1,6 @@
 # Bundle B: Daily digest, flow metrics & Jira audit
 
-- Status: **Planned**, questions decided (2026-10-21)
+- Status: **Implemented** (2026-10-22, implementation started at `main` @ bf004b5c; API evidence in `EVIDENCE.md`). Questions decided 2026-10-21.
 - Directory: `specs/digest-flow-metrics`
 - Planning baseline: `main` @ a6d4d51b. Record `git rev-parse HEAD` when implementation starts. All line numbers below come from that baseline on 2026-10-21.
 - Related: `apps/cli/src/commands/jira.ts` (`handleMy`, `handleAnalyze*`), `apps/cli/src/commands/search.ts` (`handleMy`, `handleRecent`), `packages/jira/src/analysis.ts`, `apps/cli/src/commands/audit.ts`

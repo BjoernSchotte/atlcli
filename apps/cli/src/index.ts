@@ -35,6 +35,7 @@ import {
   researchHelp,
 } from "./commands/research.js";
 import { handleAudit } from "./commands/audit.js";
+import { digestHelp, handleDigest } from "./commands/digest.js";
 import {
   handlePdfTemplate,
   pdfTemplateHelp,
@@ -157,6 +158,9 @@ async function main(): Promise<void> {
       case "research":
         await handleResearch(rest, parsed.flags, opts);
         break;
+      case "digest":
+        await handleDigest(rest, parsed.flags, opts);
+        break;
       case "chat":
         await handleChat(rest, parsed.flags, opts);
         break;
@@ -276,6 +280,9 @@ function showCommandHelp(
       break;
     case "research":
       output(researchHelp(), opts);
+      break;
+    case "digest":
+      output(digestHelp(), opts);
       break;
     case "chat":
       output(chatHelp(), opts);
@@ -398,6 +405,7 @@ Commands:
   flag        Manage feature flags
   wiki        Confluence operations (page, space, docs, search)
   jira        Jira operations (issue, board, sprint, epic)
+  digest      What changed since your last look, across Jira and Confluence
   research    Run bounded read-only Jira + Confluence research
   chat        Ask a read-only Jira or Confluence question
   pdf-template Create reviewed PDF template packs from Word documents

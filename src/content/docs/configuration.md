@@ -191,6 +191,57 @@ Valid `defaultChecks` values: `stale`, `orphans`, `broken-links`, `single-contri
 
 See [Audit](confluence/audit.md) for details.
 
+#### Jira audit
+
+Stale thresholds for `atlcli audit jira`, in days, for the info, warning and error levels:
+
+```json
+{
+  "audit": { "jira": { "staleDays": [30, 60, 90] } }
+}
+```
+
+| Option | Type | Default | Constraints |
+|--------|------|---------|-------------|
+| `audit.jira.staleDays` | `[number, number, number]` | `[30, 60, 90]` | Three ascending positive integers |
+
+A profile can set its own `audit.jira.staleDays`, which wins over the global value; `--stale` wins over both. See [Jira Audit](jira/audit.md).
+
+### Flow Metrics
+
+Map statuses to flow categories for `jira analyze flow | aging | cfd` and `audit jira`, when the Jira status category does not fit your workflow:
+
+```json
+{
+  "flow": {
+    "statusMap": { "Code Review": "wip", "Blocked": "wip" }
+  },
+  "profiles": {
+    "work": { "flow": { "statusMap": { "10234": "done" } } }
+  }
+}
+```
+
+| Option | Type | Default | Constraints |
+|--------|------|---------|-------------|
+| `flow.statusMap` | object: status name or id → `todo`, `wip` or `done` | `{}` | Names compare case-insensitively |
+
+The profile's map wins per key over the global one, and `--status-map` wins over both. See [Flow Metrics](jira/flow-metrics.md#status-mapping).
+
+### Digest state
+
+`atlcli digest` keeps one last-run marker per product in `~/.atlcli/profiles/<profile>/digest-state.json`:
+
+```json
+{
+  "schemaVersion": 2,
+  "jira": { "lastRunAt": "2026-10-22T07:58:12.311Z" },
+  "confluence": { "lastRunAt": "2026-10-22T07:58:12.311Z" }
+}
+```
+
+atlcli writes this file; you do not need to edit it. Delete it to start over with a 24-hour window. See [Daily Digest](digest.md#the-last-run-marker).
+
 ### Projects
 
 Register projects for cross-project operations:

@@ -898,6 +898,7 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        expand?: string[];
         signal?: AbortSignal;
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
@@ -925,6 +926,11 @@ export declare class ConfluenceClient {
     }>>;
     private searchByUrl;
     private parseSearchResult;
+    listPageCommentsV1(pageId: string, options: {
+        location: "inline" | "footer";
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     createPage(params: {
         spaceKey: string;
         title: string;
@@ -1325,6 +1331,16 @@ export type ConfluenceSearchResult = {
     labels?: string[];
     creator?: string;
     created?: string;
+    creatorId?: string;
+    lastModifiedBy?: string;
+    lastModifiedById?: string;
+    container?: {
+        id: string;
+        title?: string;
+        type?: string;
+    };
+    resolutionStatus?: string;
+    location?: string;
 };
 
 // export: ConfluenceSpace
@@ -4317,6 +4333,7 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        expand?: string[];
         signal?: AbortSignal;
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
@@ -4344,6 +4361,11 @@ export declare class ConfluenceClient {
     }>>;
     private searchByUrl;
     private parseSearchResult;
+    listPageCommentsV1(pageId: string, options: {
+        location: "inline" | "footer";
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     createPage(params: {
         spaceKey: string;
         title: string;
@@ -4744,6 +4766,16 @@ export type ConfluenceSearchResult = {
     labels?: string[];
     creator?: string;
     created?: string;
+    creatorId?: string;
+    lastModifiedBy?: string;
+    lastModifiedById?: string;
+    container?: {
+        id: string;
+        title?: string;
+        type?: string;
+    };
+    resolutionStatus?: string;
+    location?: string;
 };
 
 // export: ConfluenceSpace
@@ -7736,6 +7768,7 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        expand?: string[];
         signal?: AbortSignal;
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
@@ -7763,6 +7796,11 @@ export declare class ConfluenceClient {
     }>>;
     private searchByUrl;
     private parseSearchResult;
+    listPageCommentsV1(pageId: string, options: {
+        location: "inline" | "footer";
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     createPage(params: {
         spaceKey: string;
         title: string;
@@ -8163,6 +8201,16 @@ export type ConfluenceSearchResult = {
     labels?: string[];
     creator?: string;
     created?: string;
+    creatorId?: string;
+    lastModifiedBy?: string;
+    lastModifiedById?: string;
+    container?: {
+        id: string;
+        title?: string;
+        type?: string;
+    };
+    resolutionStatus?: string;
+    location?: string;
 };
 
 // export: ConfluenceSpace
@@ -10849,6 +10897,7 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        expand?: string[];
         signal?: AbortSignal;
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
@@ -10876,6 +10925,11 @@ export declare class ConfluenceClient {
     }>>;
     private searchByUrl;
     private parseSearchResult;
+    listPageCommentsV1(pageId: string, options: {
+        location: "inline" | "footer";
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     createPage(params: {
         spaceKey: string;
         title: string;
@@ -11275,6 +11329,16 @@ export type ConfluenceSearchResult = {
     labels?: string[];
     creator?: string;
     created?: string;
+    creatorId?: string;
+    lastModifiedBy?: string;
+    lastModifiedById?: string;
+    container?: {
+        id: string;
+        title?: string;
+        type?: string;
+    };
+    resolutionStatus?: string;
+    location?: string;
 };
 
 // export: ConfluenceSpace
@@ -14640,6 +14704,7 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        expand?: string[];
         signal?: AbortSignal;
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
@@ -14667,6 +14732,11 @@ export declare class ConfluenceClient {
     }>>;
     private searchByUrl;
     private parseSearchResult;
+    listPageCommentsV1(pageId: string, options: {
+        location: "inline" | "footer";
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     createPage(params: {
         spaceKey: string;
         title: string;
@@ -15067,6 +15137,16 @@ export type ConfluenceSearchResult = {
     labels?: string[];
     creator?: string;
     created?: string;
+    creatorId?: string;
+    lastModifiedBy?: string;
+    lastModifiedById?: string;
+    container?: {
+        id: string;
+        title?: string;
+        type?: string;
+    };
+    resolutionStatus?: string;
+    location?: string;
 };
 
 // export: ConfluenceSpace
@@ -17251,6 +17331,7 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        expand?: string[];
         signal?: AbortSignal;
     }): Promise<SearchResults>;
     searchDetailed(cql: string, options?: {
@@ -17278,6 +17359,11 @@ export declare class ConfluenceClient {
     }>>;
     private searchByUrl;
     private parseSearchResult;
+    listPageCommentsV1(pageId: string, options: {
+        location: "inline" | "footer";
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     createPage(params: {
         spaceKey: string;
         title: string;

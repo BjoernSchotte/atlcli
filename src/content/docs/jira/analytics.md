@@ -1,225 +1,171 @@
 ---
 title: "Analytics"
-description: "Analytics - atlcli documentation"
+description: "Sprint velocity, burndown, scope change and predictability from Jira"
 ---
 
 # Analytics
 
-Sprint velocity, burndown, and predictability metrics.
+Sprint metrics from story points: velocity, burndown, scope change and predictability. For Kanban-style metrics that need no sprints or points (cycle time, throughput, aging work), see [Flow Metrics](flow-metrics.md).
 
 ## Prerequisites
 
 - Authenticated profile (`atlcli auth login`)
 - **Jira permission**: Browse Projects
-- Board with sprint history for velocity/predictability metrics
+- A Jira Software board with sprints
+- A story points field (detected automatically, or `--points-field`)
+
+## Commands
+
+| Command | Needs | Answers |
+|---|---|---|
+| `jira analyze velocity --board <id>` | closed sprints | Points completed per sprint, and the trend |
+| `jira analyze burndown --sprint <id>` | sprint with start and end date | Remaining points per day against the ideal line |
+| `jira analyze scope-change --sprint <id>` | sprint with a start date | Points added and removed after the sprint started |
+| `jira analyze predictability --board <id>` | closed sprints | Say-do ratio (completed / committed) per sprint |
+| `jira sprint report <id>` | sprint | All of the above for one sprint |
+
+All of them print JSON (`schemaVersion: "1"`), with or without `--json`.
+
+## Options
+
+| Flag | Type | Default | Used by |
+|---|---|---|---|
+| `--board` | board id | `defaults.board` (predictability) | velocity, predictability |
+| `--sprint` | sprint id | required | burndown, scope-change |
+| `--sprints` | integer | `5` | velocity, predictability |
+| `--points-field` | field id | auto-detected | all |
+
+### Story points detection
+
+atlcli looks for a field named **Story Points**, **Story point estimate** or **Estimation**. Override it with `--points-field`:
+
+```bash
+atlcli jira analyze velocity --board 123 --points-field customfield_10016
+```
 
 ## Velocity
 
-View story points completed per sprint:
-
 ```bash
-atlcli jira analyze velocity --board 123
-```
-
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--board` | Board ID (required) |
-| `--sprints` | Number of sprints to analyze (default: 5) |
-| `--points-field` | Story points field ID (auto-detected) |
-| `--json` | JSON output |
-
-Output:
-
-```
-SPRINT                COMMITTED    COMPLETED    DELTA
-Sprint 10             21           18           -3
-Sprint 11             20           20           0
-Sprint 12             22           24           +2
-Sprint 13             20           19           -1
-Sprint 14             21           21           0
-
-Average velocity: 20.4 points/sprint
-Commitment accuracy: 91%
-```
-
-### Story Points Detection
-
-atlcli automatically detects your story points field by searching for fields named:
-
-- Story Points
-- Story point estimate
-- Estimation
-
-Override with `--field`:
-
-```bash
-atlcli jira analyze velocity --board 123 --field "customfield_10016"
-```
-
-## Burndown
-
-Sprint burndown chart data:
-
-```bash
-atlcli jira analyze burndown --sprint 456
-```
-
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--sprint` | Sprint ID (required) |
-| `--points-field` | Story points field ID (auto-detected) |
-| `--json` | JSON output |
-
-Output:
-
-```
-DATE         REMAINING    IDEAL
-2025-01-06   42           42
-2025-01-07   38           36
-2025-01-08   35           30
-2025-01-09   28           24
-2025-01-10   20           18
-2025-01-13   12           12
-2025-01-14   5            6
-```
-
-## Predictability
-
-Team predictability metrics:
-
-```bash
-atlcli jira analyze predictability --board 123
-```
-
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--board` | Board ID (required) |
-| `--sprints` | Number of sprints to analyze (default: 10) |
-
-Output:
-
-```
-Team Predictability Report (last 10 sprints)
-
-Commitment Accuracy:  89%
-  - Planned vs completed story points
-
-Velocity Variance:    12%
-  - Standard deviation across sprints
-
-Completion Rate:      94%
-  - Percentage of committed issues done
-
-Scope Change:         8%
-  - Issues added during sprints
-```
-
-### Scope Change Calculation
-
-Scope change is calculated by tracking:
-
-- `addedDuringSprint`: Issues added after sprint start
-- `removedDuringSprint`: Issues removed during sprint
-- `originalCommitment`: Issues at sprint start
-
-## Sprint Report
-
-Comprehensive sprint analysis:
-
-```bash
-atlcli jira sprint report 456
-```
-
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--points-field` | Story points field ID (auto-detected) |
-| `--json` | JSON output |
-
-Output:
-
-```
-Sprint 14 Report
-================
-Duration: Jan 6 - Jan 17, 2025 (10 days)
-Status: Active
-
-SUMMARY
--------
-Total Issues:     24
-Completed:        18 (75%)
-In Progress:       4 (17%)
-Not Started:       2 (8%)
-
-STORY POINTS
-------------
-Committed:        21
-Completed:        16
-Remaining:         5
-
-SCOPE CHANGES
--------------
-Added:            3 issues
-Removed:          1 issue
-
-TOP CONTRIBUTORS
-----------------
-Alice:            8 issues completed
-Bob:              6 issues completed
-Carol:            4 issues completed
-```
-
-### JSON Export
-
-```bash
-atlcli jira sprint report 456 --json > sprint-14-report.json
-```
-
-## JSON Output
-
-All analytics commands support `--json`:
-
-```bash
-atlcli jira analyze velocity --board 123 --json
+atlcli jira analyze velocity --board 123 --sprints 5
 ```
 
 ```json
 {
   "schemaVersion": "1",
-  "board": {
-    "id": 123,
-    "name": "Team Board"
-  },
+  "board": { "id": 123, "name": "Team Board" },
+  "pointsField": "customfield_10016",
   "sprints": [
-    {
-      "id": 10,
-      "name": "Sprint 10",
-      "committed": 21,
-      "completed": 18,
-      "delta": -3
-    }
+    { "id": 10, "name": "Sprint 10", "velocity": 18, "completedIssues": 9 },
+    { "id": 11, "name": "Sprint 11", "velocity": 20, "completedIssues": 11 }
   ],
-  "averageVelocity": 20.4,
-  "commitmentAccuracy": 0.91
+  "averageVelocity": 19,
+  "trend": 11.1,
+  "trendDescription": "+11.1% (improving)"
 }
 ```
 
-## Best Practices
+The trend compares the average of the newer half of the sprints with the older half; it needs at least 4 sprints.
 
-1. **Consistent estimation** - Use same story point scale across team
-2. **Regular analysis** - Review velocity trends weekly
-3. **Scope discipline** - Track scope changes to improve planning
-4. **Historical data** - Analyze at least 5 sprints for meaningful trends
+## Burndown
 
-## Related Topics
+```bash
+atlcli jira analyze burndown --sprint 456
+```
 
-- [Boards & Sprints](boards-sprints.md) - Sprint management
-- [Fields](fields.md) - Story points field configuration
-- [Time Tracking](time-tracking.md) - Worklog reports
+```json
+{
+  "schemaVersion": "1",
+  "sprint": { "id": 456, "name": "Sprint 14", "state": "active", "startDate": "2026-10-06T08:00:00.000Z", "endDate": "2026-10-17T16:00:00.000Z" },
+  "pointsField": "customfield_10016",
+  "totalPoints": 42,
+  "burndown": [
+    { "date": "2026-10-06", "remaining": 42, "ideal": 42, "completed": 0 },
+    { "date": "2026-10-07", "remaining": 38, "ideal": 37.8, "completed": 4 }
+  ]
+}
+```
+
+An issue counts as completed on the day of its last transition, if it is in a done status now.
+
+## Scope change
+
+```bash
+atlcli jira analyze scope-change --sprint 456
+```
+
+```json
+{
+  "schemaVersion": "1",
+  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed" },
+  "pointsField": "customfield_10016",
+  "scopeChange": {
+    "committedPoints": 40,
+    "addedPoints": 5,
+    "removedPoints": 3,
+    "scopeChangePercent": 20,
+    "stability": "moderate"
+  },
+  "issues": { "total": 22, "completed": 18, "incomplete": 4 }
+}
+```
+
+`scopeChangePercent` is (added + removed) / committed × 100. Stability is `stable` up to 10 %, `moderate` up to 25 % and `unstable` above.
+
+## Predictability
+
+```bash
+atlcli jira analyze predictability --board 123
+```
+
+```json
+{
+  "schemaVersion": "1",
+  "board": { "id": 123, "name": "Team Board" },
+  "pointsField": "customfield_10016",
+  "sprints": [
+    { "id": 10, "name": "Sprint 10", "committed": 21, "completed": 18, "sayDoRatio": 86, "bar": "[█████████████████───] 86%" }
+  ],
+  "averageSayDoRatio": 86,
+  "predictability": "high"
+}
+```
+
+Predictability is `high` from 80 %, `moderate` from 60 %, otherwise `low`.
+
+## Sprint report
+
+```bash
+atlcli jira sprint report 456
+```
+
+```json
+{
+  "schemaVersion": "1",
+  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed", "dates": "10/6/2026 - 10/17/2026" },
+  "pointsField": "customfield_10016",
+  "velocity": 34,
+  "sayDoRatio": 85,
+  "scopeChange": 20,
+  "issues": { "total": 22, "completed": 18, "incomplete": 4, "added": 5, "removed": 3 },
+  "progress": { "committed": 40, "completed": 34, "percent": 85, "bar": "[█████████████████───] 85%" }
+}
+```
+
+## Requests
+
+Burndown, scope change and the sprint report read the change history of all sprint issues in one request per 1000 issues on Jira Cloud (`changelog/bulkfetch`). On Data Center they read it per issue, five at a time.
+
+## Best practices
+
+1. **Consistent estimation**: use the same story point scale across the team.
+2. **Regular analysis**: review velocity trends every sprint.
+3. **Scope discipline**: track scope change to improve planning.
+4. **Enough history**: analyze at least 5 sprints for meaningful trends.
+
+## Related topics
+
+- [Flow Metrics](flow-metrics.md): cycle time, throughput, aging work, cumulative flow
+- [Jira Audit](audit.md): stuck, unassigned and stale work
+- [Boards & Sprints](boards-sprints.md): sprint management
+- [Fields](fields.md): story points field configuration
+- [Time Tracking](time-tracking.md): worklog reports

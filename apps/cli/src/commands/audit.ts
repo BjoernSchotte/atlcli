@@ -1,4 +1,5 @@
 import { ERROR_CODES, OutputOptions, fail, getFlagValue, output } from "@atlcli/core";
+import { handleAuditJira } from "./audit-jira.js";
 import { handleAuditWiki } from "./audit-wiki.js";
 
 export async function handleAudit(
@@ -28,7 +29,9 @@ export async function handleAudit(
     case "wiki":
       await handleAuditWiki(args.slice(1), flags, opts);
       return;
-    // Future: case "jira":
+    case "jira":
+      await handleAuditJira(args.slice(1), flags, opts);
+      return;
     default:
       output(auditHelp(), opts);
       return;
@@ -39,9 +42,10 @@ export function auditHelp(): string {
   return `Usage: atlcli audit <target> [options]
 
 Targets:
-  wiki                  Audit Confluence wiki content
+  wiki                  Audit Confluence wiki content (reads the sync database)
+  jira                  Audit Jira issues: stuck or unassigned work, stale issues, hygiene gaps
 
-Run 'atlcli audit wiki --help' for wiki-specific options.
+Run 'atlcli audit wiki --help' or 'atlcli audit jira --help' for target options.
 
 Setup:
   1. Enable the feature:  atlcli flag set audit true --global
@@ -55,5 +59,7 @@ Examples:
   atlcli audit wiki --single-contributor
   atlcli audit wiki --external-links
   atlcli audit wiki --all --json > report.json
-  atlcli audit wiki --all --markdown > AUDIT-REPORT.md`;
+  atlcli audit wiki --all --markdown > AUDIT-REPORT.md
+  atlcli audit jira --project ATLCLI
+  atlcli audit jira --board 123 --checks stuck-wip --json`;
 }

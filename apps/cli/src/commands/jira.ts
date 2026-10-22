@@ -59,6 +59,7 @@ import {
   calculateSprintMetrics,
   calculateVelocityTrend,
   calculateBurndown,
+  attachChangelogs,
   getStoryPoints,
   generateProgressBar as generateAnalyticsProgressBar,
   collectExportData,
@@ -1935,11 +1936,10 @@ async function handleSprintReport(
     fields: ["status", "summary", pointsField],
   });
 
-  // Fetch changelog for scope change analysis
-  const issuesWithChangelog = await Promise.all(
-    issuesResult.issues.map((issue) =>
-      client.getIssue(issue.key, { expand: "changelog" })
-    )
+  // One bulk changelog read instead of one request per issue.
+  const issuesWithChangelog = attachChangelogs(
+    issuesResult.issues,
+    await client.getChangelogs(issuesResult.issues)
   );
 
   // Calculate full metrics
@@ -3080,6 +3080,14 @@ async function handleAnalyze(
     case "predictability":
       await handleAnalyzePredictability(flags, opts);
       return;
+    case "flow":
+    case "aging":
+    case "cfd": {
+      const flow = await import("./jira-flow.js");
+      const handler = { flow: flow.handleAnalyzeFlow, aging: flow.handleAnalyzeAging, cfd: flow.handleAnalyzeCfd }[sub];
+      await handler(flags, opts);
+      return;
+    }
     default:
       unknownSubcommand(sub, analyzeHelp(), opts);
       return;
@@ -3229,11 +3237,10 @@ async function handleAnalyzeBurndown(
     fields: ["status", "summary", "resolutiondate", pointsField],
   });
 
-  // Fetch changelog for each issue (needed for accurate burndown)
-  const issuesWithChangelog = await Promise.all(
-    issuesResult.issues.map((issue) =>
-      client.getIssue(issue.key, { expand: "changelog" })
-    )
+  // One bulk changelog read instead of one request per issue.
+  const issuesWithChangelog = attachChangelogs(
+    issuesResult.issues,
+    await client.getChangelogs(issuesResult.issues)
   );
 
   // Calculate burndown
@@ -3298,11 +3305,10 @@ async function handleAnalyzeScopeChange(
     fields: ["status", "summary", pointsField],
   });
 
-  // Fetch changelog for scope change analysis
-  const issuesWithChangelog = await Promise.all(
-    issuesResult.issues.map((issue) =>
-      client.getIssue(issue.key, { expand: "changelog" })
-    )
+  // One bulk changelog read instead of one request per issue.
+  const issuesWithChangelog = attachChangelogs(
+    issuesResult.issues,
+    await client.getChangelogs(issuesResult.issues)
   );
 
   // Calculate metrics including scope change
@@ -3453,25 +3459,45 @@ Commands:
   predictability --board <id> [--sprints <n>] [--points-field <field>]
       Calculate say-do ratio (predictability) across sprints
 
+  flow  [--project <key> | --board <id> | --jql <jql>] [--since 90d]
+      Cycle time, lead time (P50/P85/P95) and weekly throughput
+
+  aging [same selection flags]
+      Issues in progress by age; ! marks items older than the cycle-time P85
+
+  cfd   [same selection flags] [--group-by status|category]
+      Cumulative flow: issues per status at the end of each UTC day
+
 Options:
   --profile <name>     Use a specific auth profile
   --json               JSON output
-  --board <id>         Board ID for velocity/predictability
+  --csv                CSV output (flow, aging, cfd)
+  --board <id>         Board ID for velocity/predictability; board filter for flow/aging/cfd
   --sprint <id>        Sprint ID for burndown/scope-change
   --sprints <n>        Number of sprints to analyze (default: 5)
   --points-field <id>  Story points field ID (auto-detected if not specified)
+  --project <key>      Project for flow/aging/cfd (default: defaults.project)
+  --jql <jql>          Any JQL for flow/aging/cfd; wins over --board and --project
+  --since <n>d|<n>w    Window for flow/aging/cfd (default: 90d)
+  --limit <n>          Max issues for flow/aging/cfd (default: 1000)
+  --status-map <map>   Override status categories, e.g. "Code Review=wip,Blocked=wip"
 
 Metrics:
   Velocity       Sum of completed story points per sprint
   Say-Do Ratio   Completed / Committed × 100 (predictability)
   Scope Change   (Added + Removed) / Committed × 100 (stability)
   Burndown       Daily remaining vs ideal work curve
+  Cycle Time     First entry into in-progress → done
+  Lead Time      Created → done
 
 Examples:
   jira analyze velocity --board 123 --sprints 5
   jira analyze burndown --sprint 456
   jira analyze scope-change --sprint 456
   jira analyze predictability --board 123
+  jira analyze flow --project ATLCLI --since 30d
+  jira analyze aging --board 123 --csv > aging.csv
+  jira analyze cfd --jql "project = ATLCLI AND type = Bug" --group-by category
 `;
 }
 
@@ -4535,31 +4561,33 @@ async function handleSearch(
   );
 }
 
+/**
+ * JQL predicate (no ORDER BY) for issues assigned to the current user;
+ * unresolved only unless `all` or a `status` is given. Shared by `jira my`
+ * and `digest`.
+ */
+export function buildMyIssuesJql(opts: { project?: string; status?: string; type?: string; all?: boolean }): string {
+  const parts = ["assignee = currentUser()"];
+  if (opts.project) parts.push(`project = ${opts.project}`);
+  if (opts.status) parts.push(`status = "${opts.status}"`);
+  if (opts.type) parts.push(`issuetype = "${opts.type}"`);
+  if (!opts.all && !opts.status) parts.push("resolution IS EMPTY");
+  return parts.join(" AND ");
+}
+
 async function handleMy(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
-  const parts: string[] = ["assignee = currentUser()"];
-
-  // Optional filters (use defaults if available)
-  const project = getFlag(flags, "project") ?? defaults.project;
-  const status = getFlag(flags, "status");
-  const type = getFlag(flags, "type");
-  const all = hasFlag(flags, "all");
-
-  if (project) parts.push(`project = ${project}`);
-  if (status) parts.push(`status = "${status}"`);
-  if (type) parts.push(`issuetype = "${type}"`);
-
-  // Default: exclude resolved unless --all
-  if (!all && !status) {
-    parts.push("resolution IS EMPTY");
-  }
-
-  // Order by updated
-  const jql = parts.join(" AND ") + " ORDER BY updated DESC";
+  const jql =
+    buildMyIssuesJql({
+      project: getFlag(flags, "project") ?? defaults.project,
+      status: getFlag(flags, "status"),
+      type: getFlag(flags, "type"),
+      all: hasFlag(flags, "all"),
+    }) + " ORDER BY updated DESC";
   const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
 
   output(

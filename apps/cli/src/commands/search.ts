@@ -433,6 +433,32 @@ CQL Reference:
 `;
 }
 
+/** `space = "A"` or `space IN ("A", "B")` for a comma-separated list. */
+function spaceClause(space: string): string {
+  const spaces = space.split(",").map((s) => s.trim()).filter(Boolean);
+  return spaces.length === 1 ? `space = "${spaces[0]}"` : `space IN (${spaces.map((s) => `"${s}"`).join(", ")})`;
+}
+
+/**
+ * CQL predicate (no ORDER BY) for pages modified since `since`, a `now()`
+ * offset such as `-7d` or `-90m`. Shared by `wiki recent` and `digest`.
+ */
+export function buildRecentPagesCql(opts: { space?: string; label?: string; since: string }): string {
+  const parts = ["type = page"];
+  if (opts.space) parts.push(spaceClause(opts.space));
+  if (opts.label) parts.push(`label = "${opts.label}"`);
+  parts.push(`lastModified >= now("${opts.since}")`);
+  return parts.join(" AND ");
+}
+
+/** CQL predicate (no ORDER BY) for the current user's pages. Shared by `wiki my` and `digest`. */
+export function buildMyPagesCql(opts: { contributed?: boolean; space?: string; label?: string }): string {
+  const parts = ["type = page", opts.contributed ? "contributor = currentUser()" : "creator = currentUser()"];
+  if (opts.space) parts.push(spaceClause(opts.space));
+  if (opts.label) parts.push(`label = "${opts.label}"`);
+  return parts.join(" AND ");
+}
+
 /**
  * Handle `wiki recent` command - show recently modified pages.
  */
@@ -442,31 +468,13 @@ export async function handleRecent(
   opts: OutputOptions
 ): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
-
-  const parts: string[] = ["type = page"];
-
-  // Optional filters (use defaults)
-  const space = getFlag(flags, "space") ?? defaults.space;
-  const label = getFlag(flags, "label");
   const days = getFlag(flags, "days") ?? "7";
-
-  if (space) {
-    const spaces = space.split(",").map((s) => s.trim());
-    if (spaces.length === 1) {
-      parts.push(`space = "${spaces[0]}"`);
-    } else {
-      parts.push(`space IN (${spaces.map((s) => `"${s}"`).join(", ")})`);
-    }
-  }
-
-  if (label) {
-    parts.push(`label = "${label}"`);
-  }
-
-  // Add lastModified filter
-  parts.push(`lastModified >= now("-${days}d")`);
-
-  const cql = parts.join(" AND ") + " ORDER BY lastModified DESC";
+  const cql =
+    buildRecentPagesCql({
+      space: getFlag(flags, "space") ?? defaults.space,
+      label: getFlag(flags, "label"),
+      since: `-${days}d`,
+    }) + " ORDER BY lastModified DESC";
   const limit = Number(getFlag(flags, "limit") ?? 25);
   const result = await client.search(cql, { limit: Number.isNaN(limit) ? 25 : limit });
 
@@ -491,34 +499,12 @@ export async function handleMy(
   opts: OutputOptions
 ): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
-
-  const parts: string[] = ["type = page"];
-
-  // Creator vs contributor
-  if (hasFlag(flags, "contributed")) {
-    parts.push("contributor = currentUser()");
-  } else {
-    parts.push("creator = currentUser()");
-  }
-
-  // Optional filters (use defaults)
-  const space = getFlag(flags, "space") ?? defaults.space;
-  const label = getFlag(flags, "label");
-
-  if (space) {
-    const spaces = space.split(",").map((s) => s.trim());
-    if (spaces.length === 1) {
-      parts.push(`space = "${spaces[0]}"`);
-    } else {
-      parts.push(`space IN (${spaces.map((s) => `"${s}"`).join(", ")})`);
-    }
-  }
-
-  if (label) {
-    parts.push(`label = "${label}"`);
-  }
-
-  const cql = parts.join(" AND ") + " ORDER BY lastModified DESC";
+  const cql =
+    buildMyPagesCql({
+      contributed: hasFlag(flags, "contributed"),
+      space: getFlag(flags, "space") ?? defaults.space,
+      label: getFlag(flags, "label"),
+    }) + " ORDER BY lastModified DESC";
   const limit = Number(getFlag(flags, "limit") ?? 25);
   const result = await client.search(cql, { limit: Number.isNaN(limit) ? 25 : limit });
 
