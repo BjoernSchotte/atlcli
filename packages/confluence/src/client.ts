@@ -284,6 +284,27 @@ export type SpaceIcon = {
   isDefault?: boolean;
 };
 
+/** The optional author, container and comment fields of a v1 content item. */
+function optionalSearchFields(item: any): Partial<ConfluenceSearchResult> {
+  const lastBy = item.history?.lastUpdated?.by ?? item.version?.by;
+  const fields: Partial<ConfluenceSearchResult> = {};
+  if (item.history?.createdBy?.accountId) fields.creatorId = item.history.createdBy.accountId;
+  if (lastBy?.displayName) fields.lastModifiedBy = lastBy.displayName;
+  if (lastBy?.accountId) fields.lastModifiedById = lastBy.accountId;
+  if (item.container?.id !== undefined) {
+    fields.container = {
+      id: String(item.container.id),
+      ...(item.container.title ? { title: item.container.title } : {}),
+      ...(item.container.type ? { type: item.container.type } : {}),
+    };
+  }
+  const resolution = item.extensions?.resolution;
+  const status = typeof resolution === "string" ? resolution : resolution?.status;
+  if (status) fields.resolutionStatus = status;
+  if (item.extensions?.location) fields.location = item.extensions.location;
+  return fields;
+}
+
 export type ConfluenceSearchResult = {
   id: string;
   title: string;
@@ -297,6 +318,18 @@ export type ConfluenceSearchResult = {
   labels?: string[];
   creator?: string;
   created?: string;
+  /** Account id of the creator (`history.createdBy`). */
+  creatorId?: string;
+  /** Display name of the last editor (`history.lastUpdated.by`, else `version.by`). */
+  lastModifiedBy?: string;
+  /** Account id of the last editor. */
+  lastModifiedById?: string;
+  /** Page or blog post a comment belongs to; needs the `container` expansion. */
+  container?: { id: string; title?: string; type?: string };
+  /** Inline-comment resolution (`open`, `resolved`, …); needs `extensions.resolution`. */
+  resolutionStatus?: string;
+  /** Comment location, `inline` or `footer`. */
+  location?: string;
 };
 
 /**
@@ -1640,6 +1673,8 @@ export class ConfluenceClient {
       excerpt?: boolean;
       /** Optimization: "minimal" only fetches id/title/space, "standard" adds version/dates/labels, "full" adds excerpt */
       detail?: "minimal" | "standard" | "full";
+      /** Extra expansions appended to the detail level, e.g. `container`, `extensions.resolution`. */
+      expand?: string[];
       signal?: AbortSignal;
     } = {}
   ): Promise<SearchResults> {
@@ -1660,6 +1695,7 @@ export class ConfluenceClient {
     if (detail === "standard" || detail === "full") {
       expandParts.push("history.lastUpdated", "history.createdBy", "history.createdDate", "metadata.labels");
     }
+    expandParts.push(...(options.expand ?? []));
 
     const data = (await this.request("/content/search", {
       query: {
@@ -1943,7 +1979,34 @@ export class ConfluenceClient {
       labels,
       creator: item.history?.createdBy?.displayName,
       created: item.history?.createdDate,
+      ...optionalSearchFields(item),
     };
+  }
+
+  /**
+   * Comments on a page through the v1 API, which returns author display names
+   * inline (the v2 comment parsers only carry account ids). Each result has
+   * `creator`, `creatorId`, `created`, `location` and, for inline comments,
+   * `resolutionStatus`.
+   *
+   * GET /content/{id}/child/comment?location=…&depth=all
+   */
+  async listPageCommentsV1(
+    pageId: string,
+    options: { location: "inline" | "footer"; limit?: number; signal?: AbortSignal }
+  ): Promise<ConfluenceSearchResult[]> {
+    const data = (await this.request(`/content/${pageId}/child/comment`, {
+      query: {
+        location: options.location,
+        depth: "all",
+        limit: options.limit ?? 50,
+        expand: "history,version,container,extensions.resolution",
+      },
+      signal: options.signal,
+      logBody: "meta-only",
+    })) as any;
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.map((item: any) => this.parseSearchResult(item));
   }
 
   async createPage(params: {

@@ -4561,31 +4561,33 @@ async function handleSearch(
   );
 }
 
+/**
+ * JQL predicate (no ORDER BY) for issues assigned to the current user;
+ * unresolved only unless `all` or a `status` is given. Shared by `jira my`
+ * and `digest`.
+ */
+export function buildMyIssuesJql(opts: { project?: string; status?: string; type?: string; all?: boolean }): string {
+  const parts = ["assignee = currentUser()"];
+  if (opts.project) parts.push(`project = ${opts.project}`);
+  if (opts.status) parts.push(`status = "${opts.status}"`);
+  if (opts.type) parts.push(`issuetype = "${opts.type}"`);
+  if (!opts.all && !opts.status) parts.push("resolution IS EMPTY");
+  return parts.join(" AND ");
+}
+
 async function handleMy(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
-  const parts: string[] = ["assignee = currentUser()"];
-
-  // Optional filters (use defaults if available)
-  const project = getFlag(flags, "project") ?? defaults.project;
-  const status = getFlag(flags, "status");
-  const type = getFlag(flags, "type");
-  const all = hasFlag(flags, "all");
-
-  if (project) parts.push(`project = ${project}`);
-  if (status) parts.push(`status = "${status}"`);
-  if (type) parts.push(`issuetype = "${type}"`);
-
-  // Default: exclude resolved unless --all
-  if (!all && !status) {
-    parts.push("resolution IS EMPTY");
-  }
-
-  // Order by updated
-  const jql = parts.join(" AND ") + " ORDER BY updated DESC";
+  const jql =
+    buildMyIssuesJql({
+      project: getFlag(flags, "project") ?? defaults.project,
+      status: getFlag(flags, "status"),
+      type: getFlag(flags, "type"),
+      all: hasFlag(flags, "all"),
+    }) + " ORDER BY updated DESC";
   const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
 
   output(
