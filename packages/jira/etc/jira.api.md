@@ -1356,6 +1356,7 @@ export interface BuildReportInput {
     baseUrl: string;
     pointsField?: string;
     sprintMetrics?: SprintMetrics;
+    resolve?: StatusCategoryResolver;
     now: Date;
 }
 
@@ -1401,10 +1402,10 @@ export interface BurndownDataPoint {
 }
 
 // export: calculateBurndown
-export declare function calculateBurndown(sprint: JiraSprint, issuesWithChangelog: JiraIssue[], pointsField: string): BurndownDataPoint[];
+export declare function calculateBurndown(sprint: JiraSprint, issuesWithChangelog: JiraIssue[], pointsField: string, resolve?: StatusCategoryResolver): BurndownDataPoint[];
 
 // export: calculateSprintMetrics
-export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraIssue[], pointsField: string, issuesWithChangelog?: JiraIssue[]): SprintMetrics;
+export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraIssue[], pointsField: string, issuesWithChangelog?: JiraIssue[], resolve?: StatusCategoryResolver): SprintMetrics;
 
 // export: calculateVelocityTrend
 export declare function calculateVelocityTrend(boardId: number, boardName: string, sprintMetrics: SprintMetrics[]): VelocityTrend;
@@ -1793,7 +1794,7 @@ export interface ImportResult {
 export declare function insertIdSuffix(filename: string, id: string): string;
 
 // export: isIssueComplete
-export declare function isIssueComplete(issue: JiraIssue): boolean;
+export declare function isIssueComplete(issue: JiraIssue, resolve?: StatusCategoryResolver): boolean;
 
 // export: isoWeek
 export declare function isoWeek(date: string | Date): string;
@@ -4705,6 +4706,7 @@ export interface BuildReportInput {
     baseUrl: string;
     pointsField?: string;
     sprintMetrics?: SprintMetrics;
+    resolve?: StatusCategoryResolver;
     now: Date;
 }
 
@@ -4750,10 +4752,10 @@ export interface BurndownDataPoint {
 }
 
 // export: calculateBurndown
-export declare function calculateBurndown(sprint: JiraSprint, issuesWithChangelog: JiraIssue[], pointsField: string): BurndownDataPoint[];
+export declare function calculateBurndown(sprint: JiraSprint, issuesWithChangelog: JiraIssue[], pointsField: string, resolve?: StatusCategoryResolver): BurndownDataPoint[];
 
 // export: calculateSprintMetrics
-export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraIssue[], pointsField: string, issuesWithChangelog?: JiraIssue[]): SprintMetrics;
+export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraIssue[], pointsField: string, issuesWithChangelog?: JiraIssue[], resolve?: StatusCategoryResolver): SprintMetrics;
 
 // export: calculateVelocityTrend
 export declare function calculateVelocityTrend(boardId: number, boardName: string, sprintMetrics: SprintMetrics[]): VelocityTrend;
@@ -5142,7 +5144,7 @@ export interface ImportResult {
 export declare function insertIdSuffix(filename: string, id: string): string;
 
 // export: isIssueComplete
-export declare function isIssueComplete(issue: JiraIssue): boolean;
+export declare function isIssueComplete(issue: JiraIssue, resolve?: StatusCategoryResolver): boolean;
 
 // export: isoWeek
 export declare function isoWeek(date: string | Date): string;

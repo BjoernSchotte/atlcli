@@ -50,6 +50,7 @@ The page shows the sprint goal, dates, issue and story-point counts, and done an
 | `--template` | template name | `release-notes`, `release-notes-by-epic`, `sprint-review` | Template to render (see below) |
 | `--var` | `name=value`, repeatable | none | Extra template variables |
 | `--points-field` | field ID | detected (sprint) | Story points field |
+| `--status-map` | `"<status>=todo\|wip\|done,…"` | `flow.statusMap` | Which statuses count as done (see [Status mapping](flow-metrics.md#status-mapping)) |
 | `--dry-run` | flag | off | Print the markdown and the planned action; write nothing |
 | `--force` | flag | off | Overwrite a same-title page atlcli did not create |
 | `--export` | path ending in `.pdf` or `.docx` | none | Export the page after writing it; an existing file is replaced |
@@ -169,6 +170,7 @@ Each issue has `key`, `url`, `link` (`[KEY](url)`), `summary`, `summaryMd`, `exc
 | `Several versions are named …` | Version names repeat across projects or archives | Pass the version id |
 | `A page "…" already exists … not created by atlcli` | Title clash with a hand-written page | `--title "…"` or `--force` |
 | Text like `&#x27;` on the page | A custom template used `{{field}}` for an `…Md` field | Use `{{{field}}}` |
+| Finished issues listed under "Not done" | The done status sits in Jira's In Progress category | `--status-map "Fertig=done"` or `flow.statusMap`; see [Completed work](analytics.md#completed-work) |
 | `--json` with `--export` prints two JSON documents | The page result, then the export report | Parse them one by one, for example with `jq -s` |
 
 ## Related Topics

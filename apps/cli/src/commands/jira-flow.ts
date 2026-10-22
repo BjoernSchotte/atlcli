@@ -136,7 +136,7 @@ export interface StatusScope {
 
 /** Status resolver from the site statuses plus global, profile and flag overrides. */
 export async function loadStatusResolver(
-  ctx: JiraContext,
+  ctx: Pick<JiraContext, "client" | "config" | "profile">,
   flags: Flags,
   opts: OutputOptions
 ): Promise<StatusScope> {

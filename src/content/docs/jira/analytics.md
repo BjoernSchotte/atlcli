@@ -34,6 +34,17 @@ All of them print JSON (`schemaVersion: "1"`), with or without `--json`.
 | `--sprint` | sprint id | required | burndown, scope-change |
 | `--sprints` | integer | `5` | velocity, predictability |
 | `--points-field` | field id | auto-detected | all |
+| `--status-map` | `"<status>=todo\|wip\|done,…"` | `flow.statusMap` | all: which statuses count as completed |
+
+### Completed work
+
+An issue counts as completed when its status is in Jira's **Done** category. Some workflows keep a finished status, such as "Fertig", in the **In Progress** category; then every sprint shows 0 % completed. Map that status to done, once in `flow.statusMap` (see [Status mapping](flow-metrics.md#status-mapping)) or per run:
+
+```bash
+atlcli jira sprint report 456 --status-map "Fertig=done"
+```
+
+[Jira Audit](audit.md) finds such statuses (`workflow/resolved-not-done`). The better fix is to move the status into the Done category in the workflow.
 
 ### Story points detection
 
@@ -85,7 +96,7 @@ atlcli jira analyze burndown --sprint 456
 }
 ```
 
-An issue counts as completed on the day of its last transition, if it is in a done status now.
+An issue counts as completed on the day of its last transition, if it is in a done status now (see [Completed work](#completed-work)). Work completed after the sprint's end date does not appear in the burndown, but counts in the sprint report.
 
 ## Scope change
 

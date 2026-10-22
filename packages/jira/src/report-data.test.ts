@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createStatusCategoryResolver } from "./flow.js";
 import { buildReportData, descriptionExcerpt, escapeMarkdown } from "./report-data.js";
 import type { JiraIssue } from "./types.js";
 
@@ -33,6 +34,25 @@ function build(issues: JiraIssue[], pointsField?: string) {
 }
 
 describe("buildReportData", () => {
+  test("a status map decides done, in progress and to do", () => {
+    // Regression: "Fertig" in the In Progress category listed done work under "Not done".
+    const fertig = issue("AB-1", "Story", "indeterminate");
+    const resolve = createStatusCategoryResolver([], { indeterminate: "done" });
+    const data = buildReportData({
+      kind: "release",
+      source: { id: "10", name: "1.0" },
+      issues: [fertig, issue("AB-2", "Story", "new")],
+      baseUrl: BASE,
+      resolve,
+      now: new Date("2026-10-21T00:00:00Z"),
+    });
+    expect(data.issues.map((i) => [i.key, i.statusCategory, i.done])).toEqual([
+      ["AB-1", "done", true],
+      ["AB-2", "todo", false],
+    ]);
+    expect(build([fertig]).issues[0]!.done).toBe(false);
+  });
+
   test("groups by type in a stable order and by epic with 'No epic' last", () => {
     const data = build([
       issue("AB-10", "Bug", "done", epic("AB-1", "Login")),
