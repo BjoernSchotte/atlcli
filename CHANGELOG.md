@@ -2,6 +2,15 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+The release binaries now embed Bun 1.4.4 instead of 1.4.2. Bun 1.4.3 and 1.4.4
+fix vulnerabilities in TLS, `fetch`, HTTP and WebSocket handling, which atlcli
+uses for every Atlassian request. Upgrade with `brew upgrade atlcli` or download
+the new archive.
+
 ## [2026.10.3] - 2026-10-22
 
 ### Bug Fixes
