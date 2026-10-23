@@ -75,4 +75,16 @@ describe("export-pdf-assets (T3.1 compile port under Bun)", () => {
     // direct static compiler import.
     expect(cmdSrc).not.toMatch(/from\s+["']@atlcli\/pdf-compiler-browser["']/);
   });
+
+  it("no CLI source resolves a package at runtime (regression #274)", async () => {
+    // Inside a `bun build --compile` binary there is no node_modules, so
+    // `import.meta.resolve` fails; embedded assets go through `with { type: "file" }`.
+    const offenders: string[] = [];
+    for await (const file of new Bun.Glob("**/*.ts").scan({ cwd: new URL("..", import.meta.url).pathname })) {
+      if (file.endsWith(".test.ts")) continue;
+      const src = await Bun.file(new URL(`../${file}`, import.meta.url)).text();
+      if (src.includes("import.meta.resolve(")) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
 });

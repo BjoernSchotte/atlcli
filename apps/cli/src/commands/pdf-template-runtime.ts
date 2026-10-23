@@ -4,22 +4,14 @@
  * The host-neutral package supplies the workflow. The CLI injects the current
  * PDF catalog/baseline source generator and the real pinned Typst-WASM gate.
  */
-import { fileURLToPath } from "node:url";
-import {
-  PDF_RUNTIME_ASSETS,
-  PdfGeneratedTemplateProofCompiler,
-} from "@atlcli/pdf";
+import { PdfGeneratedTemplateProofCompiler } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import type {
   TemplateGeneratedPackCompilerV1,
   TemplateGeneratedPackCompileInputV1,
   TemplateGeneratedPackCompileResultV1,
 } from "@atlcli/pdf-template-authoring";
-async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(
-    await Bun.file(fileURLToPath(import.meta.resolve(specifier))).arrayBuffer()
-  );
-}
+import { loadPdfCompilerAssets } from "./export-pdf-assets.js";
 
 export class CliGeneratedPdfTemplateCompiler
   implements TemplateGeneratedPackCompilerV1
@@ -28,13 +20,9 @@ export class CliGeneratedPdfTemplateCompiler
 
   async #getCompiler(): Promise<BrowserPdfCompiler> {
     if (this.#compiler) return this.#compiler;
-    const [wasm, ...fonts] = await Promise.all([
-      packageBytes("@atlcli/pdf-compiler-browser/wasm"),
-      ...PDF_RUNTIME_ASSETS.fonts.map((font) =>
-        packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)
-      ),
-    ]);
-    this.#compiler = new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
+    // The embedded assets: `import.meta.resolve` finds no node_modules inside a
+    // `bun build --compile` binary (#274).
+    this.#compiler = new BrowserPdfCompiler(await loadPdfCompilerAssets());
     return this.#compiler;
   }
 
