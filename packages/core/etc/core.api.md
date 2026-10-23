@@ -1194,6 +1194,9 @@ export type StorageConfig = {
     };
 };
 
+// export: stripControlChars
+export declare function stripControlChars(text: string): string;
+
 // export: SyncConfig
 export type SyncConfig = {
     userStatusTtlDays?: number;
@@ -2723,6 +2726,9 @@ export type StorageConfig = {
         poolSize?: number;
     };
 };
+
+// export: stripControlChars
+export declare function stripControlChars(text: string): string;
 
 // export: SyncConfig
 export type SyncConfig = {

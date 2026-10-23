@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseStaleDays } from "./audit-jira.js";
+import { auditRulesCandidates, parseStaleDays } from "./audit-jira.js";
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const DAY = 24 * 60 * 60 * 1000;
@@ -250,5 +250,13 @@ describe("flag parsers", () => {
     expect(parseStaleDays("10,20,30")).toEqual([10, 20, 30]);
     expect(parseStaleDays("30,20,90")).toContain("ascending");
     expect(parseStaleDays("30,60")).toContain("three");
+  });
+});
+
+describe("auditRulesCandidates", () => {
+  test("the project file comes first; cwd null (the digest) skips it", () => {
+    const withCwd = auditRulesCandidates("p", "/repo");
+    expect(withCwd[0]).toBe(join("/repo", ".atlcli", "audit-rules.yaml"));
+    expect(auditRulesCandidates("p", null)).toEqual(withCwd.slice(1));
   });
 });

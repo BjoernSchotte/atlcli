@@ -128,8 +128,10 @@ function jqlValue(value: string): string {
 
 /** New comments on the given pages (CQL scopes comments by `container`). */
 export function buildCommentsCql(pageIds: string[], minutes: number): string | undefined {
-  if (pageIds.length === 0) return undefined;
-  return `type = comment AND container IN (${pageIds.join(", ")}) AND created >= now("-${minutes}m") ORDER BY created DESC`;
+  // Page ids come from the server; only numeric ones may enter the CQL.
+  const ids = pageIds.filter((id) => /^\d+$/.test(id));
+  if (ids.length === 0) return undefined;
+  return `type = comment AND container IN (${ids.join(", ")}) AND created >= now("-${minutes}m") ORDER BY created DESC`;
 }
 
 // ── result model ─────────────────────────────────────────────────────────
@@ -660,7 +662,7 @@ function blocks(d: DigestV1, now: Date): Array<{ product: string; blocks: Block[
     const b: Block[] = [];
     const issueLine = (i: DigestIssue, extra = "") => ({
       text: `${i.key}  [${i.status}]  ${i.summary}${extra}`,
-      md: `[${i.key}](${i.url}) ${escapeMd(i.summary)} · *${i.status}*${extra}`,
+      md: `[${i.key}](${i.url}) ${escapeMd(i.summary)} · *${escapeMd(i.status)}*${escapeMd(extra)}`,
     });
     if (d.jira.waiting.length) {
       b.push({ heading: `${TITLES.waiting} (${d.jira.waiting.length})`, lines: d.jira.waiting.map((i) => issueLine(i, i.priority ? ` · ${i.priority}` : "")) });
@@ -681,7 +683,7 @@ function blocks(d: DigestV1, now: Date): Array<{ product: string; blocks: Block[
         heading: `${TITLES.audit} (${d.jira.audit.length})`,
         lines: d.jira.audit.map((f) => ({
           text: `${f.key}  [${f.status}]  ${f.summary} — ${f.rule}: ${f.detail}`,
-          md: `[${f.key}](${f.url}) ${escapeMd(f.summary)} · *${f.status}* — \`${f.rule}\`: ${escapeMd(f.detail)}`,
+          md: `[${f.key}](${f.url}) ${escapeMd(f.summary)} · *${escapeMd(f.status)}* — \`${f.rule}\`: ${escapeMd(f.detail)}`,
         })),
       });
     }

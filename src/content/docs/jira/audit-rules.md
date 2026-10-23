@@ -37,6 +37,8 @@ The first file found wins; files are not merged:
 
 Without a file, the built-in profile `default` applies. The report's `Rules:` line names the source.
 
+The [digest](../digest.md) skips the file in the current directory: it runs from wherever you start it, and a rules file's JQL runs as you. It uses the profile file, then the global one.
+
 ## Steps
 
 1. Start from a profile and change what does not fit:

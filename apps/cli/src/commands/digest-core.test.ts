@@ -72,6 +72,9 @@ describe("queries", () => {
     expect(buildDigestQueries({ minutes: 5 }).recent).toBeUndefined();
     expect(buildCommentsCql(["1", "2"], 30)).toBe('type = comment AND container IN (1, 2) AND created >= now("-30m") ORDER BY created DESC');
     expect(buildCommentsCql([], 30)).toBeUndefined();
+    // Server-provided ids: a non-numeric one cannot widen the CQL.
+    expect(buildCommentsCql(["1", "2) OR (type = page"], 30)).toBe('type = comment AND container IN (1) AND created >= now("-30m") ORDER BY created DESC');
+    expect(buildCommentsCql(["x"], 30)).toBeUndefined();
   });
 });
 
@@ -339,6 +342,15 @@ describe("project overview", () => {
     expect(succeededProducts(d, ["jira"])).toEqual(["jira"]);
     expect(renderDigestText(d, NOW)).toContain("  Audit errors (1)\n    GROW-1  [In Progress]  S GROW-1 — hygiene/stale: Not updated for 120 d.");
     expect(renderDigestMarkdown(d, NOW)).toContain("- [GROW-1](https://x/browse/GROW-1) S GROW-1 · *In Progress* — `hygiene/stale`: Not updated for 120 d.");
+  });
+
+  test("markdown escapes the status and the priority, which come from the server", () => {
+    const status = { id: "1", name: "[Done](https://evil)", statusCategory: { key: "indeterminate" } };
+    const d = buildDigest(
+      raw({ products: ["jira"], jira: { ...raw().jira!, waiting: [jiraIssue("A-1", { status, priority: { name: "*High*" } })], changed: [] } }),
+      { now: NOW, includeOwn: false, limit: 10 }
+    );
+    expect(renderDigestMarkdown(d, NOW)).toContain("· *\\[Done\\](https://evil)* · \\*High\\*");
   });
 
   test("the sprint counts follow the status map", () => {

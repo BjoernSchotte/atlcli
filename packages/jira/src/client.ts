@@ -984,7 +984,7 @@ export class JiraClient {
       query.expand = options.expand;
     }
 
-    return this.request<JiraIssue>(`/issue/${keyOrId}`, {
+    return this.request<JiraIssue>(`/issue/${encodeURIComponent(keyOrId)}`, {
       query,
       signal: options.signal,
       logBody: "meta-only",

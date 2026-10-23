@@ -114,7 +114,7 @@ The overview reads up to 200 changed issues across all projects in one search, p
 
 ### Audit errors
 
-With the audit feature enabled (`atlcli flag set audit true --global`), the digest also runs the [audit rules](jira/audit-rules.md) for its projects and lists what is still at `error` after the baseline. It uses the same rules file and baseline as `atlcli audit jira`. It runs only the rules that can reach `error`, and leaves out `flow/stuck-wip` and `flow/status-aging`, which read the done issues and their history, unless the rule sets `digest: true`.
+With the audit feature enabled (`atlcli flag set audit true --global`), the digest also runs the [audit rules](jira/audit-rules.md) for its projects and lists what is still at `error` after the baseline. It uses the same baseline as `atlcli audit jira` and the same rules file, except one in the current directory's `.atlcli/`: the digest reads only the profile and global rules files. It runs only the rules that can reach `error`, and leaves out `flow/stuck-wip` and `flow/status-aging`, which read the done issues and their history, unless the rule sets `digest: true`.
 
 The section reads up to 300 open issues across the projects; beyond that, a warning says the list is a lower bound. With the default rules, the section costs a few requests: one search for open issues, one for resolved issues outside Done, one bulk changelog request, and one field list for the Flagged field.
 
