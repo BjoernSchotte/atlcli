@@ -238,7 +238,7 @@ All milestones are implemented and live-tested (profile `mayflower`, writes in A
 
 ### Known limits
 
-- **Windows:** in a real console (ConPTY, `scripts/ci/tui-smoke-windows.py`, part of the release's `smoke-windows` job) the binary draws, `?` opens the help and `q` quits with 0 ([run 40036424857](https://github.com/BjoernSchotte/atlcli/actions/runs/40036424857)). Mouse and `$EDITOR` were not exercised on Windows.
+- **Windows:** in a real console (ConPTY, `scripts/ci/tui-smoke-windows.py`, part of the release's `smoke-windows` job) the binary draws, `?` opens the help, a mouse click on the Wiki tab switches the area and `q` quits with 0 ([run 40036683951](https://github.com/BjoernSchotte/atlcli/actions/runs/40036683951)). `$EDITOR` was not exercised there; the TUI uses the CLI's existing `--edit` helper for it.
 - **Linux:** both binaries ran in Docker under a TTY: they drew the shell and ended on SIGTERM.
   - **glibc:** Debian 12, arm64.
   - **musl:** Alpine 3.20, arm64. This build needs `libstdc++`, which is a Bun runtime requirement, and atlcli ships no musl build.
