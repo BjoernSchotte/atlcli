@@ -11313,7 +11313,7 @@ export declare class ConfluencePoller {
     on(handler: PollEventHandler): void;
     off(handler: PollEventHandler): void;
     private emit;
-    initialize(): Promise<void>;
+    initialize(synced?: ReadonlyMap<string, number>): Promise<void>;
     start(): void;
     stop(): void;
     poll(): Promise<PollChangeEvent[]>;
