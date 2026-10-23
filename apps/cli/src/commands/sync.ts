@@ -539,9 +539,9 @@ class SyncEngine {
       if (pageState) {
         // Check for changes
         if (pageInfo.version > pageState.version) {
-          // Remote has newer version - pull
-          const existingFile = join(this.opts.dir, pageState.path);
-          await this.pullPage(pageInfo.id, existingFile);
+          // Remote has a newer version. Same path as polling: a locally edited
+          // file is merged, never overwritten by the pull.
+          await this.handleRemoteChange(pageInfo.id, pageState.path);
         }
       } else {
         // New page - create local file
@@ -1713,6 +1713,11 @@ class SyncEngine {
     pageState: PageState
   ): Promise<void> {
     try {
+      // The merge works on bodies; the file keeps its frontmatter, which holds the page id.
+      // Without it push treats the file as a new page and resolve cannot find it.
+      const { frontmatter } = parseFrontmatter(await readTextFile(filePath));
+      const withFrontmatter = (body: string): string => (frontmatter ? addFrontmatter(body, frontmatter) : body);
+
       // Get remote content
       const remotePage = await this.client.getPage(pageId);
       const remoteContent = storageToMarkdown(remotePage.storage, await this.pageConversionOptions(remotePage.storage));
@@ -1745,7 +1750,7 @@ class SyncEngine {
           return;
         }
 
-        await writeTextFile(filePath, result.content);
+        await writeTextFile(filePath, withFrontmatter(result.content));
 
         // Push merged content
         const storage = markdownToStorage(result.content, this.conversionOptions);
@@ -1817,7 +1822,7 @@ class SyncEngine {
         } else {
           // Write conflict markers
           if (!this.opts.dryRun) {
-            await writeTextFile(filePath, result.content);
+            await writeTextFile(filePath, withFrontmatter(result.content));
 
             // Update state to conflict
             const relativePath = this.getRelativePath(filePath);

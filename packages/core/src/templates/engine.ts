@@ -151,10 +151,15 @@ export class TemplateEngine {
         },
       });
 
+      const undeclaredVariables = [...extractUsedVariables(template.content)].filter(
+        (name) => !(name in finalValues) && !BUILTIN_VARIABLE_NAMES.includes(name as never)
+      );
+
       return {
         content,
         usedVariables,
         missingVariables,
+        undeclaredVariables,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

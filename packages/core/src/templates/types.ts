@@ -74,7 +74,10 @@ export interface RenderContext {
 export interface RenderResult {
   content: string;
   usedVariables: string[];
+  /** Declared variables without a valid value: required and not given, or not of their type. */
   missingVariables: string[];
+  /** Variables the content uses that are neither declared, given, nor built in; they render empty. */
+  undeclaredVariables: string[];
 }
 
 /** Filter options for listing templates */

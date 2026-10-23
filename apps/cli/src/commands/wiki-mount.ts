@@ -33,6 +33,7 @@ import { ConfluenceVfsImpl, type VfsMode } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
 
 import { quote, findNfsHelper, nfsMountCommandFor, parseMountTransport, type MountTransport } from "../vfs/mount-transport.js";
+import { stderrVfsLogger } from "../vfs/stderr-logger.js";
 
 export const DAVFS_MOUNT_CONFIG = "delay_upload 0\n";
 
@@ -255,6 +256,7 @@ async function handleMount(
     ...(transport === "nfs" || hasFlag(flags, "sync-writes") ? { coalesceMs: 0 } : {}),
     cacheDir,
     offline: false,
+    logger: stderrVfsLogger,
   });
 
   const onSweep = (report: { reads: number; windowMs: number }) => {

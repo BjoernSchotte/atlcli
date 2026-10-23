@@ -45,6 +45,7 @@ import {
 } from "@atlcli/core";
 import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence/internal";
 import { unknownSubcommand } from "./unknown-subcommand.js";
+import { checkTemplateRender } from "./template-render-check.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -1063,6 +1064,7 @@ async function handleRender(
       variables,
       builtins,
     });
+    checkTemplateRender(result, opts);
 
     if (opts.json) {
       output({
