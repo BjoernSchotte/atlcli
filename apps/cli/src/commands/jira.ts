@@ -7,6 +7,23 @@ import {
 } from "./jira-confluence-link.js";
 import { basename, dirname } from "node:path";
 import {
+  DEFAULT_COLUMNS,
+  type TableFormat,
+  type UserRef,
+  buildSearchJql,
+  editInEditor,
+  issueCell,
+  jqlIn,
+  jqlSince,
+  needsFieldList,
+  parseReplacements,
+  renderTable,
+  replaceInBody,
+  replaceText,
+  resolveColumns,
+  resolveUser,
+} from "./jira-input.js";
+import {
   ERROR_CODES,
   OutputOptions,
   fail,
@@ -156,6 +173,9 @@ export async function handleJira(
     case "me":
       await handleMe(flags, opts);
       return;
+    case "open":
+      await handleOpen(rest, flags, opts);
+      return;
     case "my":
       await handleMy(rest, flags, opts);
       return;
@@ -298,6 +318,57 @@ function richText(client: JiraClient, markdown: string): AdfDocument | string {
   });
 }
 
+/** A user flag (`--assignee`, `--lead`, `--user`) as a field value; a usage error if unknown or ambiguous. */
+async function userFlag(client: JiraClient, value: string, opts: OutputOptions): Promise<UserRef | null> {
+  try {
+    return await resolveUser(client, value);
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.USAGE, err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** A user flag as a Cloud account id (component and project leads). */
+async function accountIdFlag(client: JiraClient, value: string | undefined, opts: OutputOptions): Promise<string | undefined> {
+  if (!value) return undefined;
+  const ref = await userFlag(client, value, opts);
+  return ref && "accountId" in ref ? ref.accountId : undefined;
+}
+
+/**
+ * Issue lists: `json` with --json, otherwise a table of `--columns` (field ids
+ * or names), as `--plain`/`--delimiter` text or `--csv`; `--no-headers` drops
+ * the header row.
+ */
+async function outputIssueList(
+  client: JiraClient,
+  issues: JiraIssue[],
+  json: unknown,
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  hasMore = false
+): Promise<void> {
+  if (opts.json) {
+    output(json, opts);
+    return;
+  }
+  const columns = (getFlag(flags, "columns") ?? DEFAULT_COLUMNS.join(",")).split(",").map((c) => c.trim()).filter(Boolean);
+  let fieldIds: string[] = [];
+  try {
+    fieldIds = resolveColumns(columns, needsFieldList(columns) ? await client.getFields() : undefined);
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.USAGE, err instanceof Error ? err.message : String(err));
+  }
+  const delimiter = getFlag(flags, "delimiter")?.replace(/\\t/g, "\t");
+  const format: TableFormat = hasFlag(flags, "csv")
+    ? { kind: "csv" }
+    : hasFlag(flags, "plain") || delimiter !== undefined
+      ? { kind: "plain", delimiter: delimiter ?? "\t" }
+      : { kind: "table" };
+  if (hasMore) process.stderr.write("More issues match; raise --limit or use --all-results.\n");
+  const rows = issues.map((issue) => fieldIds.map((id) => issueCell(issue, id)));
+  output(renderTable(columns, rows, format, !hasFlag(flags, "no-headers")), opts);
+}
+
 /**
  * Terminal handler for a subcommand this dispatcher does not know.
  *
@@ -330,6 +401,23 @@ async function handleMe(
   const client = await getClient(flags, opts);
   const user = await client.getCurrentUser();
   output({ schemaVersion: "1", user }, opts);
+}
+
+/** `jira open [KEY|PROJECT]`: an issue, a project (default: defaults.project) or the site. */
+async function handleOpen(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
+  const target = args[0] ?? defaults.project;
+  const url = target ? `${client.siteUrl}/browse/${target}` : client.siteUrl;
+  output(url, opts);
+  try {
+    await openUrl(url);
+  } catch {
+    // The URL is already printed.
+  }
 }
 
 // ============ Project Operations ============
@@ -411,7 +499,7 @@ async function handleProjectCreate(
     projectTypeKey: type ?? "software",
     projectTemplateKey: template,
     description,
-    leadAccountId: lead,
+    leadAccountId: await accountIdFlag(client, lead, opts),
   });
 
   output({ schemaVersion: "1", project }, opts);
@@ -437,7 +525,7 @@ function projectHelp(): string {
 Commands:
   list [--limit <n>] [--query <text>]
   get --key <key>
-  create --key <KEY> --name <name> [--type software|service_desk|business] [--template <key>] [--description <text>] [--lead <accountId>]
+  create --key <KEY> --name <name> [--type software|service_desk|business] [--template <key>] [--description <text>] [--lead <user>]
   types --key <key>                   List issue types for a project
 
 Options:
@@ -503,6 +591,9 @@ async function handleIssue(
       return;
     case "delete":
       await handleIssueDelete(flags, opts);
+      return;
+    case "clone":
+      await handleIssueClone(args.slice(1), flags, opts);
       return;
     case "transition":
       await handleIssueTransition(flags, opts);
@@ -609,9 +700,9 @@ async function handleIssueCreate(
   const project = getFlag(flags, "project") ?? defaults.project;
   const type = getFlag(flags, "type");
   const summary = getFlag(flags, "summary");
-  const description = await readRichTextFlag(flags, "description", opts);
+  let description = await readRichTextFlag(flags, "description", opts);
   const priority = getFlag(flags, "priority");
-  const assignee = getFlag(flags, "assignee");
+  const assigneeFlag = getFlag(flags, "assignee");
   const labels = getFlag(flags, "labels");
   const parent = getFlag(flags, "parent"); // For subtasks or epic children
   const customFields = parseCustomFields(getFlags(flags, "field"));
@@ -619,6 +710,8 @@ async function handleIssueCreate(
   if (!project || !type || !summary) {
     fail(opts, 1, ERROR_CODES.USAGE, "--project, --type, and --summary are required (or set defaults.project in config).");
   }
+  if (hasFlag(flags, "edit")) description = await editFlag(description ?? "", opts);
+  const assignee = assigneeFlag ? ((await userFlag(client, assigneeFlag, opts)) ?? undefined) : undefined;
   const issue = await client.createIssue({
     fields: {
       project: { key: project },
@@ -626,7 +719,7 @@ async function handleIssueCreate(
       summary,
       description: description ? richText(client, description) : undefined,
       priority: priority ? { name: priority } : undefined,
-      assignee: assignee ? { accountId: assignee } : undefined,
+      assignee,
       labels: labels ? labels.split(",").map((l) => l.trim()) : undefined,
       parent: parent ? { key: parent } : undefined,
       ...customFields,
@@ -646,7 +739,7 @@ async function handleIssueUpdate(
   }
 
   const summary = getFlag(flags, "summary");
-  const description = await readRichTextFlag(flags, "description", opts);
+  let description = await readRichTextFlag(flags, "description", opts);
   const priority = getFlag(flags, "priority");
   const assignee = getFlag(flags, "assignee");
   const addLabels = getFlag(flags, "add-labels");
@@ -655,11 +748,17 @@ async function handleIssueUpdate(
 
   const client = await getClient(flags, opts);
 
+  if (hasFlag(flags, "edit")) {
+    const current = adfToMarkdown((await client.getIssue(key, { fields: ["description"] })).fields.description, { baseUrl: client.siteUrl });
+    const edited = await editFlag(description ?? current, opts);
+    description = edited.trim() === current.trim() ? undefined : edited;
+  }
+
   const fields: Record<string, unknown> = { ...customFields };
   if (summary) fields.summary = summary;
   if (description !== undefined) fields.description = richText(client, description);
   if (priority) fields.priority = { name: priority };
-  if (assignee) fields.assignee = assignee === "none" ? null : { accountId: assignee };
+  if (assignee) fields.assignee = await userFlag(client, assignee, opts);
 
   const update: Record<string, Array<{ add?: string; remove?: string }>> = {};
   if (addLabels) {
@@ -672,10 +771,12 @@ async function handleIssueUpdate(
     ];
   }
 
-  await client.updateIssue(key, {
-    fields: Object.keys(fields).length > 0 ? fields : undefined,
-    update: Object.keys(update).length > 0 ? update : undefined,
-  });
+  if (Object.keys(fields).length > 0 || Object.keys(update).length > 0) {
+    await client.updateIssue(key, {
+      fields: Object.keys(fields).length > 0 ? fields : undefined,
+      update: Object.keys(update).length > 0 ? update : undefined,
+    });
+  }
 
   // Fetch updated issue
   const issue = await client.getIssue(key);
@@ -761,10 +862,11 @@ async function handleIssueAssign(
 
   const client = await getClient(flags, opts);
 
-  if (!assignee || assignee === "none") {
-    await client.assignIssue(key, null);
+  if (assignee === "default") {
+    // "-1": the project's default assignee.
+    await client.assignIssue(key, client.isCloudSite ? { accountId: "-1" } : { name: "-1" });
   } else {
-    await client.assignIssue(key, { accountId: assignee });
+    await client.assignIssue(key, assignee ? await userFlag(client, assignee, opts) : null);
   }
 
   const issue = await client.getIssue(key);
@@ -785,13 +887,14 @@ async function handleIssueCommentAdd(
   if (positional && (getFlag(flags, "body") !== undefined || getFlag(flags, "body-file") !== undefined)) {
     fail(opts, 1, ERROR_CODES.USAGE, "Give the comment as text, --body or --body-file, not several.");
   }
-  const body = positional || (await readRichTextFlag(flags, "body", opts));
-  if (!body) {
+  let body = positional || (await readRichTextFlag(flags, "body", opts));
+  if (hasFlag(flags, "edit")) body = await editFlag(body ?? "", opts);
+  if (!body?.trim()) {
     fail(opts, 1, ERROR_CODES.USAGE, "Comment body is required.");
   }
 
   const client = await getClient(flags, opts);
-  const comment = await client.addComment(key, richText(client, body));
+  const comment = await client.addComment(key, richText(client, body), { internal: hasFlag(flags, "internal") });
   output({ schemaVersion: "1", comment: formatComment(comment, client.siteUrl) }, opts);
 }
 
@@ -912,6 +1015,16 @@ async function handleIssueUnlink(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const remote = getFlag(flags, "remote");
+  if (remote) {
+    const key = getFlag(flags, "key");
+    if (!key) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--key is required with --remote.");
+    }
+    await (await getClient(flags, opts)).deleteRemoteLink(key, Number(remote));
+    output({ schemaVersion: "1", unlinked: { issueKey: key, remoteLinkId: Number(remote) } }, opts);
+    return;
+  }
   const linkId = getFlag(flags, "link");
   const from = getFlag(flags, "from");
   const to = getFlag(flags, "to");
@@ -953,12 +1066,25 @@ async function handleIssueLink(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const url = getFlag(flags, "url");
+  if (url) {
+    const key = getFlag(flags, "key");
+    if (!key) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--key is required with --url.");
+    }
+    const title = getFlag(flags, "title") ?? url;
+    const client = await getClient(flags, opts);
+    const link = await client.createRemoteLink(key, { object: { url, title } });
+    output({ schemaVersion: "1", linked: { issueKey: key, linkId: link.id, url, title } }, opts);
+    return;
+  }
+
   const from = getFlag(flags, "from");
   const to = getFlag(flags, "to");
   const type = getFlag(flags, "type");
 
   if (!from || !to || !type) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--from, --to, and --type are required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--from, --to, and --type are required (or --key and --url for a web link).");
   }
 
   const client = await getClient(flags, opts);
@@ -1371,6 +1497,65 @@ async function handleIssueOpen(
   }
 }
 
+/** `--edit`: the text after editing in $EDITOR; a usage error without a terminal. */
+async function editFlag(initial: string, opts: OutputOptions): Promise<string> {
+  try {
+    return await editInEditor(initial);
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.USAGE, err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * `issue clone <key>`: a new issue with the source's summary, description,
+ * type, labels and, in the same project, components and parent.
+ * `--replace find:replace` applies to summary and description. Priority is
+ * not copied: a priority outside the project's scheme fails the create.
+ */
+async function handleIssueClone(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const key = args[0] ?? getFlag(flags, "key");
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue key is required: jira issue clone <key>");
+  }
+  let pairs: Array<[string, string]> = [];
+  try {
+    pairs = parseReplacements(getFlags(flags, "replace"));
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.USAGE, err instanceof Error ? err.message : String(err));
+  }
+  const client = await getClient(flags, opts);
+  const source = await client.getIssue(key, {
+    fields: ["project", "summary", "description", "issuetype", "labels", "components", "parent"],
+  });
+  const f = source.fields;
+  const project = getFlag(flags, "project") ?? f.project.key;
+  const sameProject = project === f.project.key;
+  const assignee = getFlag(flags, "assignee");
+  const type = getFlag(flags, "type") ?? f.issuetype?.name;
+  const priority = getFlag(flags, "priority");
+  const parent = getFlag(flags, "parent") ?? (sameProject ? f.parent?.key : undefined);
+  const labels = getFlag(flags, "labels");
+
+  const created = await client.createIssue({
+    fields: {
+      project: { key: project },
+      issuetype: { name: type! },
+      summary: replaceText(getFlag(flags, "summary") ?? f.summary, pairs),
+      description: f.description ? replaceInBody(f.description, pairs) : undefined,
+      priority: priority ? { name: priority } : undefined,
+      labels: labels ? labels.split(",").map((l) => l.trim()) : f.labels,
+      components: sameProject && f.components?.length ? f.components.map((c) => ({ id: c.id })) : undefined,
+      parent: parent ? { key: parent } : undefined,
+      assignee: assignee ? ((await userFlag(client, assignee, opts)) ?? undefined) : undefined,
+    },
+  });
+  output({ schemaVersion: "1", cloned: { from: key, issue: formatIssue(await client.getIssue(created.key)) } }, opts);
+}
+
 async function openUrl(url: string): Promise<void> {
   const { spawn } = await import("node:child_process");
   const platform = process.platform;
@@ -1409,20 +1594,22 @@ function issueHelp(): string {
 
 Commands:
   get --key <key> [--expand <fields>] [--format json|markdown]
-  create --project <key> --type <name> --summary <text> [--description <md> | --description-file <path|->] [--priority <name>] [--assignee <accountId>] [--labels <a,b,c>] [--parent <key>] [--field <id>=<value> ...]
-  update --key <key> [--summary <text>] [--description <md> | --description-file <path|->] [--priority <name>] [--assignee <accountId>|none] [--add-labels <a,b>] [--remove-labels <c,d>] [--field <id>=<value> ...]
+  create --project <key> --type <name> --summary <text> [--description <md> | --description-file <path|-> | --edit] [--priority <name>] [--assignee <user>] [--labels <a,b,c>] [--parent <key>] [--field <id>=<value> ...]
+  update --key <key> [--summary <text>] [--description <md> | --description-file <path|-> | --edit] [--priority <name>] [--assignee <user>|none] [--add-labels <a,b>] [--remove-labels <c,d>] [--field <id>=<value> ...]
   delete --key <key> --confirm [--delete-subtasks]
+  clone <key> [--summary <text>] [--project <key>] [--type <name>] [--priority <name>] [--labels <a,b>] [--parent <key>] [--assignee <user>] [--replace <find:replace> ...]
   transition --key <key> --to <status>
   transitions --key <key>              List available transitions
-  assign --key <key> --assignee <accountId>|none
+  assign --key <key> --assignee <user>|none|default
   comment --key <key> <text>           Add a comment (same as comments add)
   comments list --key <key> [--limit <n>] [--format markdown]
-  comments add --key <key> (<text> | --body <md> | --body-file <path|->)
+  comments add --key <key> (<text> | --body <md> | --body-file <path|-> | --edit) [--internal]
   comments edit --key <key> --id <id> (--body <md> | --body-file <path|->)
   comments delete --key <key> --id <id> --confirm
   history --key <key> [--field <name>] [--limit <n>]   Change history, newest first
   link --from <key> --to <key> --type <name>
-  unlink (--link <id> | --from <key> --to <key> [--type <name>] --confirm)
+  link --key <key> --url <url> [--title <text>]   Add a web link
+  unlink (--link <id> | --from <key> --to <key> [--type <name>] --confirm | --key <key> --remote <id>)
   attach <key> <file> [file...] [--comment <text>]   Attach files to an issue
   attachments <key>                    List attachments on an issue
   attachment download <id>|<key> <filename> [-o <path>] [--overwrite]
@@ -1436,6 +1623,10 @@ Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
   --comment <text>   Post a comment (attach, link-page)
+  --edit             Write the description or comment in $VISUAL/$EDITOR (update starts from the current description)
+  --internal         Internal comment, hidden from customers (Jira Service Management)
+
+<user> is me, an email, a name or an account id; none (or x) unassigns.
 
 Descriptions and comments are markdown: **bold**, lists, - [ ] tasks, tables,
 \`\`\`code\`\`\`, @[Name](accountId), {jira:KEY}, {date:YYYY-MM-DD}, :::info panels.
@@ -1655,14 +1846,7 @@ async function handleBoardBacklog(
     jql,
   });
 
-  output(
-    {
-      schemaVersion: "1",
-      issues: result.issues.map(formatIssue),
-      total: result.total,
-    },
-    opts
-  );
+  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map(formatIssue), total: result.total }, flags, opts);
 }
 
 async function handleBoardIssues(
@@ -1683,14 +1867,7 @@ async function handleBoardIssues(
     jql,
   });
 
-  output(
-    {
-      schemaVersion: "1",
-      issues: result.issues.map(formatIssue),
-      total: result.total,
-    },
-    opts
-  );
+  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map(formatIssue), total: result.total }, flags, opts);
 }
 
 function boardHelp(): string {
@@ -1892,14 +2069,7 @@ async function handleSprintIssues(
     jql,
   });
 
-  output(
-    {
-      schemaVersion: "1",
-      issues: result.issues.map(formatIssue),
-      total: result.total,
-    },
-    opts
-  );
+  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map(formatIssue), total: result.total }, flags, opts);
 }
 
 async function handleSprintAdd(
@@ -2909,7 +3079,9 @@ async function handleEpicIssues(
     );
   }
 
-  output(
+  await outputIssueList(
+    client,
+    issues,
     {
       schemaVersion: "1",
       epic: epicKey,
@@ -2923,6 +3095,7 @@ async function handleEpicIssues(
       })),
       total: issues.length,
     },
+    flags,
     opts
   );
 }
@@ -3735,7 +3908,7 @@ function parseFieldAssignments(
         fields.priority = { name: value };
         break;
       case "assignee":
-        fields.assignee = value === "none" ? null : { accountId: value };
+        fields.assignee = value; // resolved to a user once a client exists
         break;
       case "labels":
         fields.labels = value.split(",").map((l) => l.trim());
@@ -3774,6 +3947,9 @@ async function handleBulkEdit(
   }
 
   const client = await getClient(flags, opts);
+  if (typeof fieldUpdates.assignee === "string") {
+    fieldUpdates.assignee = await userFlag(client, fieldUpdates.assignee, opts);
+  }
   const issues = await fetchAllIssues(client, jql, limit);
 
   if (issues.length === 0) {
@@ -4165,7 +4341,7 @@ Options:
 
 Supported --set fields:
   priority=High      Set priority by name
-  assignee=<id>      Set assignee by account ID (or "none")
+  assignee=<user>    Set assignee: me, an email, a name or an account id (or "none")
   labels=a,b,c       Replace all labels
 
 Examples:
@@ -4225,6 +4401,9 @@ async function handleFilter(
       return;
     case "share":
       await handleFilterShare(rest, flags, opts);
+      return;
+    case "run":
+      await handleFilterRun(rest, flags, opts);
       return;
     default:
       unknownSubcommand(sub, filterHelp(), opts);
@@ -4388,6 +4567,22 @@ async function handleFilterDelete(
   );
 }
 
+/** `filter run <id>`: the filter's issues, like `search`. */
+async function handleFilterRun(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Filter ID is required.");
+  }
+  const client = await getClient(flags, opts);
+  const { jql } = await client.getFilter(id);
+  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
+  await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
+}
+
 async function handleFilterShare(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -4395,15 +4590,21 @@ async function handleFilterShare(
 ): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
   const id = args[0] || getFlag(flags, "id");
-  const shareType = getFlag(flags, "type") as "global" | "project" | "group" | undefined;
-  const project = getFlag(flags, "project") ?? defaults.project;
+  const user = getFlag(flags, "user");
   const group = getFlag(flags, "group");
+  // --user, --group or --project alone imply the type.
+  const implied = user ? "user" : group ? "group" : getFlag(flags, "project") ? "project" : undefined;
+  const shareType = (getFlag(flags, "type") ?? implied) as "global" | "project" | "group" | "user" | undefined;
+  const project = getFlag(flags, "project") ?? defaults.project;
 
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "Filter ID is required.");
   }
   if (!shareType) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--type is required (global, project, or group).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--type is required (global, project, group or user).");
+  }
+  if (shareType === "user" && !user) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--user is required when type is 'user'.");
   }
 
   if (shareType === "project" && !project) {
@@ -4420,10 +4621,15 @@ async function handleFilterShare(
     projectId = projectData.id;
   }
 
+  const accountId = shareType === "user" ? await accountIdFlag(client, user, opts) : undefined;
+  if (shareType === "user" && !accountId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Sharing with a user needs a user on Jira Cloud.");
+  }
   const permission = await client.addFilterPermission(id, {
     type: shareType,
     projectId,
     groupname: group,
+    accountId,
   });
 
   output(
@@ -4436,6 +4642,7 @@ async function handleFilterShare(
           type: permission.type,
           project: permission.project,
           group: permission.group,
+          user: permission.user,
         },
       },
     },
@@ -4486,8 +4693,11 @@ Commands:
   delete <id> --confirm
       Delete a filter
 
-  share <id> --type <global|project|group> [--project <key>] [--group <name>]
-      Share a filter with others
+  share <id> --type <global|project|group|user> [--project <key>] [--group <name>] [--user <user>]
+      Share a filter with others (--user, --group or --project alone imply the type)
+
+  run <id> [--limit <n> | --all-results]
+      Run a filter: its issues, like search
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -4500,6 +4710,8 @@ Examples:
   jira filter create --name "My Open Issues" --jql "assignee = currentUser() AND resolution IS EMPTY"
   jira filter update 10000 --jql "assignee = currentUser() AND status != Done"
   jira filter share 10000 --type project --project PERSONAL
+  jira filter share 10000 --user alice@example.com
+  jira filter run 10000 --columns key,status,summary
   jira filter delete 10000 --confirm
 `;
 }
@@ -4513,51 +4725,52 @@ async function handleSearch(
 ): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
 
-  // JQL can be passed as args or --jql flag
-  let jql = args.join(" ") || getFlag(flags, "jql");
-
-  // Build JQL from convenience flags if no raw JQL
-  if (!jql) {
-    const parts: string[] = [];
-    const project = getFlag(flags, "project") ?? defaults.project;
-    const assignee = getFlag(flags, "assignee");
-    const status = getFlag(flags, "status");
-    const type = getFlag(flags, "type");
-    const label = getFlag(flags, "label");
-    const sprint = getFlag(flags, "sprint");
-
-    if (project) parts.push(`project = ${project}`);
-    if (assignee) {
-      parts.push(assignee === "me" ? "assignee = currentUser()" : `assignee = "${assignee}"`);
-    }
-    if (status) parts.push(`status = "${status}"`);
-    if (type) parts.push(`issuetype = "${type}"`);
-    if (label) parts.push(`labels = "${label}"`);
-    if (sprint) {
-      if (sprint === "current" || sprint === "active") {
-        parts.push("sprint IN openSprints()");
-      } else {
-        parts.push(`sprint = "${sprint}"`);
-      }
-    }
-
-    jql = parts.length > 0 ? parts.join(" AND ") : "ORDER BY created DESC";
+  // Raw JQL (args or --jql) and the filter flags are ANDed.
+  const raw = args.join(" ") || getFlag(flags, "jql");
+  const since = (field: string) => {
+    const value = getFlag(flags, field);
+    if (value === undefined) return undefined;
+    const clause = jqlSince(field, value);
+    if (!clause) fail(opts, 1, ERROR_CODES.USAGE, `--${field} takes -7d (h, m, w too), today, week, month, year or YYYY-MM-DD.`);
+    return clause;
+  };
+  const assigneeFlag = getFlag(flags, "assignee");
+  let assignee: string | undefined;
+  if (assigneeFlag === "me") assignee = "currentUser()";
+  else if (assigneeFlag) {
+    const ref = await userFlag(client, assigneeFlag, opts);
+    assignee = ref === null ? "EMPTY" : JSON.stringify("accountId" in ref ? ref.accountId : ref.name);
   }
+  const jql = buildSearchJql({
+    jql: raw,
+    // The default project only applies to a search built from flags.
+    project: getFlag(flags, "project") ?? (raw ? undefined : defaults.project),
+    assignee,
+    status: getFlag(flags, "status"),
+    type: getFlag(flags, "type"),
+    label: getFlag(flags, "label"),
+    sprint: getFlag(flags, "sprint"),
+    watching: hasFlag(flags, "watching"),
+    history: hasFlag(flags, "history"),
+    created: since("created"),
+    updated: since("updated"),
+  });
 
   const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
+  await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
+}
 
-  output(
-    {
-      schemaVersion: "1",
-      jql,
-      issues: result.issues.map((issue) => formatIssue(issue)),
-      // `/search/jql` reports no total: this is the number returned.
-      total: result.issues.length,
-      hasMore: result.hasMore,
-      nextPageToken: result.nextPageToken,
-    },
-    opts
-  );
+/** The JSON of `search`, `my` and `filter run`. */
+function issueListJson(jql: string, result: { issues: JiraIssue[]; hasMore: boolean; nextPageToken?: string }) {
+  return {
+    schemaVersion: "1",
+    jql,
+    issues: result.issues.map((issue) => formatIssue(issue)),
+    // `/search/jql` reports no total: this is the number returned.
+    total: result.issues.length,
+    hasMore: result.hasMore,
+    nextPageToken: result.nextPageToken,
+  };
 }
 
 /**
@@ -4568,8 +4781,8 @@ async function handleSearch(
 export function buildMyIssuesJql(opts: { project?: string; status?: string; type?: string; all?: boolean }): string {
   const parts = ["assignee = currentUser()"];
   if (opts.project) parts.push(`project = ${opts.project}`);
-  if (opts.status) parts.push(`status = "${opts.status}"`);
-  if (opts.type) parts.push(`issuetype = "${opts.type}"`);
+  if (opts.status) parts.push(jqlIn("status", opts.status));
+  if (opts.type) parts.push(jqlIn("issuetype", opts.type));
   if (!opts.all && !opts.status) parts.push("resolution IS EMPTY");
   return parts.join(" AND ");
 }
@@ -4588,18 +4801,7 @@ async function handleMy(
       all: hasFlag(flags, "all"),
     }) + " ORDER BY updated DESC";
   const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
-
-  output(
-    {
-      schemaVersion: "1",
-      jql,
-      issues: result.issues.map((issue) => formatIssue(issue)),
-      total: result.issues.length,
-      hasMore: result.hasMore,
-      nextPageToken: result.nextPageToken,
-    },
-    opts
-  );
+  await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
 }
 
 // ============ Helpers ============
@@ -5282,7 +5484,7 @@ async function handleSubtaskCreate(
       issuetype: { id: subtaskType.id },
       summary,
       description: description ? richText(client, description) : undefined,
-      assignee: assignee ? { accountId: assignee } : undefined,
+      assignee: assignee ? ((await userFlag(client, assignee, opts)) ?? undefined) : undefined,
       priority: priority ? { name: priority } : undefined,
       parent: { key: parentKey },
     },
@@ -5334,7 +5536,7 @@ function subtaskHelp(): string {
   return `atlcli jira subtask <command>
 
 Commands:
-  create <parent> --summary <text> [--description <text>] [--assignee <id>] [--priority <name>]
+  create <parent> --summary <text> [--description <text>] [--assignee <user>] [--priority <name>]
       Create a subtask under the specified parent issue
 
   list <parent>
@@ -5448,7 +5650,7 @@ async function handleComponentCreate(
     project,
     name,
     description,
-    leadAccountId: lead,
+    leadAccountId: await accountIdFlag(client, lead, opts),
   });
 
   output({
@@ -5482,7 +5684,7 @@ async function handleComponentUpdate(
   const component = await client.updateComponent(id, {
     name,
     description,
-    leadAccountId: lead,
+    leadAccountId: await accountIdFlag(client, lead, opts),
   });
 
   output({
@@ -5525,10 +5727,10 @@ Commands:
   get <id>
       Get component details
 
-  create --project <key> --name <name> [--description <text>] [--lead <accountId>]
+  create --project <key> --name <name> [--description <text>] [--lead <user>]
       Create a new component
 
-  update <id> [--name <name>] [--description <text>] [--lead <accountId>]
+  update <id> [--name <name>] [--description <text>] [--lead <user>]
       Update a component
 
   delete <id> --confirm
@@ -5829,7 +6031,11 @@ async function handleFieldList(
   opts: OutputOptions
 ): Promise<void> {
   const customOnly = hasFlag(flags, "custom");
+  const systemOnly = hasFlag(flags, "system");
   const typeFilter = getFlag(flags, "type");
+  if (customOnly && systemOnly) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Use either --custom or --system, not both.");
+  }
 
   const client = await getClient(flags, opts);
   const fields = await client.getFields();
@@ -5838,6 +6044,9 @@ async function handleFieldList(
 
   if (customOnly) {
     filtered = filtered.filter((f) => f.custom);
+  }
+  if (systemOnly) {
+    filtered = filtered.filter((f) => !f.custom);
   }
 
   if (typeFilter) {
@@ -6015,7 +6224,7 @@ function fieldHelp(): string {
   return `atlcli jira field <command>
 
 Commands:
-  list [--custom] [--type <type>]
+  list [--custom | --system] [--type <type>]
       List all fields (optionally filter by custom or type)
 
   get <id>
@@ -6428,7 +6637,7 @@ async function handleTemplateApply(
   const createInput = templateToCreateInput(template, projectKey, {
     summary: finalSummary,
     description,
-    assignee,
+    assignee: await accountIdFlag(client, assignee, opts),
   });
 
   const created = await client.createIssue(createInput as { fields: { project: { key: string }; issuetype: { name: string }; summary: string } });
@@ -6618,7 +6827,7 @@ Apply options:
   --project <key>       Target project (required)
   --summary <text>      Issue summary
   --description <text>  Issue description
-  --assignee <id>       Assignee account ID
+  --assignee <user>     Assignee: me, an email, a name or an account id
 
 Global options:
   --profile <name>      Use a specific auth profile
@@ -6658,17 +6867,18 @@ function jiraHelp(): string {
 
 Commands:
   project     Project operations (list, get, create, types)
-  issue       Issue operations (get, create, update, delete, transition, comment, link, attach)
+  issue       Issue operations (get, create, update, delete, clone, assign, transition, comments, link, attach, open)
   board       Board operations (list, get, backlog, issues)
-  sprint      Sprint operations (list, get, create, start, close, add, remove, report)
-  worklog     Time tracking (add, list, update, delete, timer)
+  sprint      Sprint operations (list, get, create, start, close, delete, issues, add, remove, report, review)
+  worklog     Time tracking (add, list, update, delete, report, timer)
   epic        Epic operations (list, get, create, issues, add, remove, progress)
-  analyze     Sprint analytics (velocity, burndown, scope-change, predictability)
-  bulk        Bulk operations (edit, transition, label, delete)
-  filter      Saved JQL filters (list, get, create, update, delete, share)
+  analyze     Analytics (velocity, burndown, scope-change, predictability, flow, aging, cfd)
+  bulk        Bulk operations (edit, transition, label, delete, move, link-page)
+  filter      Saved JQL filters (list, get, create, update, delete, share, run)
   export      Export issues to CSV/JSON with comments and attachments
   import      Import issues from CSV/JSON file
-  search      Search with JQL
+  search      Search with JQL or filter flags
+  open        Open an issue, a project or the site in the browser
   me          Get current user info
   my          My open issues (shortcut for search --assignee me)
   watch       Start watching an issue (receive notifications)
@@ -6677,13 +6887,19 @@ Commands:
   webhook     Webhook server (serve, list, register, delete, refresh)
   subtask     Subtask operations (create, list)
   component   Component operations (list, get, create, update, delete)
-  version     Version operations (list, get, create, update, release, delete)
+  version     Version operations (list, get, create, update, release, delete, notes)
   field       Field operations (list, get, options, search)
   template    Issue templates (list, save, get, apply, delete, export, import)
 
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
+
+Issue lists (search, my, filter run, board/sprint/epic issues) print a table:
+  --columns <a,b>    Field ids or names (default key,type,status,assignee,summary)
+  --plain            Tab-separated; --delimiter <text> for another separator
+  --csv              CSV (RFC 4180)
+  --no-headers       Leave out the header row
 
 Examples:
   atlcli jira project list
@@ -6695,6 +6911,7 @@ Examples:
   atlcli jira import --file issues.json --project PROJ --dry-run
   atlcli jira watch PROJ-123
   atlcli jira search --project PROJ --assignee me
+  atlcli jira search --watching --updated -7d --columns key,status,"Story Points"
   atlcli jira webhook serve --port 3000 --projects PROJ
   atlcli jira subtask create PROJ-123 --summary "My subtask"
   atlcli jira field search "story point"

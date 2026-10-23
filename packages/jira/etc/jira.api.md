@@ -280,6 +280,7 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
+    searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
         startAt?: number;
         maxResults?: number;
@@ -431,7 +432,9 @@ export declare class JiraClient {
         comments: JiraComment[];
         total: number;
     }>;
-    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    addComment(keyOrId: string, body: AdfDocument | string, options?: {
+        internal?: boolean;
+    }): Promise<JiraComment>;
     updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
     deleteComment(keyOrId: string, commentId: string): Promise<void>;
     getChangelog(keyOrId: string, options?: {
@@ -1980,6 +1983,7 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
+    searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
         startAt?: number;
         maxResults?: number;
@@ -2131,7 +2135,9 @@ export declare class JiraClient {
         comments: JiraComment[];
         total: number;
     }>;
-    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    addComment(keyOrId: string, body: AdfDocument | string, options?: {
+        internal?: boolean;
+    }): Promise<JiraComment>;
     updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
     deleteComment(keyOrId: string, commentId: string): Promise<void>;
     getChangelog(keyOrId: string, options?: {
@@ -3666,6 +3672,7 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
+    searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
         startAt?: number;
         maxResults?: number;
@@ -3817,7 +3824,9 @@ export declare class JiraClient {
         comments: JiraComment[];
         total: number;
     }>;
-    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    addComment(keyOrId: string, body: AdfDocument | string, options?: {
+        internal?: boolean;
+    }): Promise<JiraComment>;
     updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
     deleteComment(keyOrId: string, commentId: string): Promise<void>;
     getChangelog(keyOrId: string, options?: {
@@ -5366,6 +5375,7 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
+    searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
         startAt?: number;
         maxResults?: number;
@@ -5517,7 +5527,9 @@ export declare class JiraClient {
         comments: JiraComment[];
         total: number;
     }>;
-    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    addComment(keyOrId: string, body: AdfDocument | string, options?: {
+        internal?: boolean;
+    }): Promise<JiraComment>;
     updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
     deleteComment(keyOrId: string, commentId: string): Promise<void>;
     getChangelog(keyOrId: string, options?: {

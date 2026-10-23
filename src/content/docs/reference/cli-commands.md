@@ -539,7 +539,8 @@ atlcli jira issue get --key <key> --expand all
 atlcli jira issue get --key <key> --format markdown  # Description as markdown
 atlcli jira issue create --project <key> --type <type> --summary <text>
 atlcli jira issue create --project <key> --type <type> --summary <text> \
-  --description <markdown> --assignee <email> --labels <labels>
+  --description <markdown> --assignee <user> --labels <labels>
+atlcli jira issue create --project <key> --type <type> --summary <text> --edit  # Description in $EDITOR
 atlcli jira issue create --project <key> --type <type> --summary <text> \
   --description-file <path|->           # Markdown description from file or stdin
 atlcli jira issue update --key <key> --description-file <path|->
@@ -550,13 +551,18 @@ atlcli jira issue update --key <key> --field customfield_10028=8
 atlcli jira issue update --key <key> --priority <name>
 atlcli jira issue update --key <key> --add-labels <labels>
 atlcli jira issue update --key <key> --remove-labels <labels>
-atlcli jira issue update --key <key> --assignee <account-id>
+atlcli jira issue update --key <key> --assignee <user>  # me, email, name, account id, none
+atlcli jira issue update --key <key> --edit  # Edit the description in $EDITOR
 atlcli jira issue delete --key <key> --confirm
+atlcli jira issue clone <key> [--replace <find:replace>]... [--project <key>] [--summary <text>]
 atlcli jira issue transition --key <key> --to <status>
 atlcli jira issue transitions --key <key>  # List available transitions
-atlcli jira issue assign --key <key> --assignee <email>
+atlcli jira issue assign --key <key> --assignee <user>
+atlcli jira issue assign --key <key> --assignee default  # Project default assignee
 atlcli jira issue assign --key <key> --assignee none  # Unassign
 atlcli jira issue link --from <key> --to <key> --type <type>
+atlcli jira issue link --key <key> --url <url> [--title <text>]  # Web link
+atlcli jira issue unlink --key <key> --remote <id>  # Remove a web link
 atlcli jira issue unlink --link <id>    # Remove an issue link
 atlcli jira issue unlink --from <key> --to <key> [--type <type>] --confirm
 atlcli jira issue history --key <key> [--field <name>] [--limit <n>]  # Change history
@@ -567,6 +573,7 @@ atlcli jira issue attachment download <key> <filename> [-o <path>] [--overwrite]
 atlcli jira issue attachment delete <id> --confirm
 atlcli jira issue attachment delete <key> <filename> --confirm
 atlcli jira issue open <key>            # Open issue in browser
+atlcli jira open [<key>|<project>]      # Open an issue, a project or the site
 
 # Cross-product linking (Jira ↔ Confluence)
 atlcli jira issue link-page --key <key> --page <id>  # Link to Confluence page
@@ -582,17 +589,29 @@ atlcli jira watchers <key>              # List watchers
 ### Search
 
 ```bash
-atlcli jira search --jql <query>        # JQL search
+atlcli jira search --jql <query>        # JQL search; filter flags are ANDed onto it
 atlcli jira search --assignee me        # My issues
-atlcli jira search --assignee <email>
+atlcli jira search --assignee <user>    # Email, name or account id; x = unassigned
 atlcli jira search --status "In Progress"
 atlcli jira search --project <key>
 atlcli jira search --type Bug
 atlcli jira search --type Bug,Task      # Multiple types
 atlcli jira search --label <label>      # Filter by label
 atlcli jira search --sprint <id>        # Filter by sprint
+atlcli jira search --watching           # Issues I watch
+atlcli jira search --history            # Issues I viewed recently
+atlcli jira search --created -7d        # Also --updated; today, week, month, year, YYYY-MM-DD
 atlcli jira search --limit <n>          # Pages through results above 100
 atlcli jira search --all-results        # All matches, up to 5000
+```
+
+Issue lists (`search`, `my`, `filter run`, `board issues`, `board backlog`, `sprint issues`, `epic issues`) print a table; `--json` prints JSON:
+
+```bash
+atlcli jira search ... --columns key,status,"Story Points"  # Field ids or names
+atlcli jira search ... --plain [--delimiter <text>]  # Tab-separated (or another separator)
+atlcli jira search ... --csv            # CSV (RFC 4180)
+atlcli jira search ... --no-headers     # Without the header row
 ```
 
 ### Current User
@@ -618,6 +637,8 @@ atlcli jira my --limit <n>              # Limit results (default 25)
 atlcli jira issue comment --key <key> "Comment **markdown**"
 atlcli jira issue comments list --key <key> [--format markdown]
 atlcli jira issue comments add --key <key> --body-file <path|->
+atlcli jira issue comments add --key <key> --edit  # Write in $EDITOR
+atlcli jira issue comments add --key <key> <text> --internal  # JSM internal comment
 atlcli jira issue comments edit --key <key> --id <id> --body <markdown>
 atlcli jira issue comments delete --key <key> --id <id> --confirm
 ```
@@ -795,9 +816,11 @@ atlcli jira filter get --id <id>
 atlcli jira filter create --name <name> --jql <query>
 atlcli jira filter update --id <id> --jql <query>
 atlcli jira filter delete --id <id> --confirm
-atlcli jira filter run --id <id>        # Execute filter
-atlcli jira filter share --id <id> --user <email>
-atlcli jira filter share --id <id> --group <name>
+atlcli jira filter run <id>             # The filter's issues, like search
+atlcli jira filter share <id> --user <user>
+atlcli jira filter share <id> --group <name>
+atlcli jira filter share <id> --project <key>
+atlcli jira filter share <id> --type global
 ```
 
 ### Analytics

@@ -473,6 +473,17 @@ export class JiraClient {
     return this.request<JiraUser>("/myself");
   }
 
+  /**
+   * Find users by name or email (Cloud: `query`, Server/DC: `username`).
+   *
+   * GET /rest/api/3/user/search
+   */
+  async searchUsers(query: string, maxResults = 20): Promise<JiraUser[]> {
+    return this.request<JiraUser[]>("/user/search", {
+      query: this.isCloud ? { query, maxResults } : { username: query, maxResults },
+    });
+  }
+
   // ============ Project Operations ============
 
   /**
@@ -1210,11 +1221,14 @@ export class JiraClient {
    */
   async addComment(
     keyOrId: string,
-    body: AdfDocument | string
+    body: AdfDocument | string,
+    options: { internal?: boolean } = {}
   ): Promise<JiraComment> {
+    // Jira Service Management: an internal comment is hidden from customers.
+    const properties = options.internal ? [{ key: "sd.public.comment", value: { internal: true } }] : undefined;
     return this.request<JiraComment>(`/issue/${keyOrId}/comment`, {
       method: "POST",
-      body: { body: this.plainBody(body) },
+      body: { body: this.plainBody(body), properties },
     });
   }
 
