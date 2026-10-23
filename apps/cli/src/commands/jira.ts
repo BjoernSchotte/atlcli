@@ -1208,7 +1208,7 @@ async function handleIssueAttach(
   let comment: { id: string } | undefined;
   if (commentText && attached.length > 0) {
     try {
-      const posted = await client.addComment(issueKey, commentText);
+      const posted = await client.addComment(issueKey, richText(client, commentText));
       comment = { id: posted.id };
     } catch (error) {
       failed.push({
