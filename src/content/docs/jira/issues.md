@@ -23,7 +23,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--key` | Issue key (required) |
-| `--expand` | Expand: `changelog`, `comments`, `transitions` |
+| `--expand` | Comma-separated Jira expands, e.g. `changelog`, `renderedFields`, `names`, `transitions`. JSON output puts each one next to `issue` as Jira returns it (`changelog`, `renderedFields`, …); the text view adds `changelog` as a **History** section; the markdown view stays description-only and notes the rest on stderr |
 | `--format` | `text` (default): a readable view; `json`; or `markdown`: a YAML front block plus the description as markdown |
 
 Without `--json`, the issue prints as a readable view: fields, the description as markdown, links and the last three comments.

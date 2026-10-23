@@ -15,6 +15,7 @@ import {
   editInEditor,
   issueCell,
   renderDetails,
+  changelogRows,
   renderIssueView,
   jqlBefore,
   jqlIn,
@@ -690,16 +691,24 @@ async function handleIssueGet(
   }
   const client = await getClient(flags, opts);
   const issue = await client.getIssue(key, { expand });
+  // What --expand added (changelog, renderedFields, names, transitions, …), as Jira sent it.
+  const { id: _id, key: _key, self: _self, fields: _fields, expand: _expand, ...expanded } = issue as JiraIssue & { expand?: string };
 
-  if (format === "markdown" && !opts.json) {
-    output(formatIssueMarkdown(issue, client.siteUrl), opts);
+  if (format !== "json" && !opts.json) {
+    // The text view shows the changelog as History; the markdown view stays description-only so it can be written back.
+    const hidden = Object.keys(expanded).filter((name) => format === "markdown" || name !== "changelog");
+    if (hidden.length > 0) process.stderr.write(`Note: ${hidden.join(", ")} only shown with --format json.\n`);
+    output(format === "markdown" ? formatIssueMarkdown(issue, client.siteUrl) : renderIssueView(issue, client.siteUrl), opts);
     return;
   }
-  if (format === "text" && !opts.json) {
-    output(renderIssueView(issue, client.siteUrl), opts);
-    return;
-  }
-  output({ schemaVersion: "1", issue: { ...formatIssue(issue), descriptionMarkdown: adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl }) } }, opts);
+  output(
+    {
+      schemaVersion: "1",
+      issue: { ...formatIssue(issue), descriptionMarkdown: adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl }) },
+      ...expanded,
+    },
+    opts
+  );
 }
 
 /** YAML front block + description markdown, ready to edit and feed back via --description-file. */
@@ -1024,19 +1033,8 @@ async function handleIssueHistory(
     startAt += page.values.length;
     if (page.isLast || page.values.length === 0) break;
   }
-  const rows = entries
-    .flatMap((entry) =>
-      entry.items.map((item) => ({
-        id: entry.id,
-        created: entry.created,
-        author: entry.author?.displayName,
-        field: item.field,
-        from: Object.hasOwn(item, "fromString") ? item.fromString : item.from,
-        to: Object.hasOwn(item, "toString") ? item.toString : item.to,
-      }))
-    )
+  const rows = changelogRows(entries)
     .filter((row) => !field || row.field.toLowerCase() === field)
-    .sort((a, b) => b.created.localeCompare(a.created))
     .slice(0, Number.isNaN(limit) ? 100 : limit);
 
   output({ schemaVersion: "1", issueKey: key, history: rows, total: rows.length }, opts);
