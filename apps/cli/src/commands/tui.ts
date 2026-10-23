@@ -66,6 +66,13 @@ export async function handleTui(
     output(tuiHelp(), opts);
     return;
   }
+  // Hidden: CI proves a binary's native library loads, without a terminal or profile.
+  if (hasFlag(flags, "self-test")) {
+    const { selfTest } = await import("@atlcli/tui");
+    await selfTest();
+    output("tui self-test ok", opts);
+    return;
+  }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     fail(opts, 1, ERROR_CODES.USAGE, "atlcli tui needs an interactive terminal.");
   }

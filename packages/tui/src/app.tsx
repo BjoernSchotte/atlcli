@@ -158,3 +158,36 @@ export async function runTui(opts: TuiOptions): Promise<void> {
     syntax.destroy();
   }
 }
+
+/**
+ * Draws the shell once into OpenTUI's test renderer: no terminal, no network.
+ * It proves that a binary's embedded native library loads, which CI checks on
+ * Windows, where the cross-compiled build otherwise never runs.
+ */
+export async function selfTest(): Promise<string> {
+  const { createTestRenderer } = await import("@opentui/core/testing");
+  const screen = await createTestRenderer({ width: 100, height: 24 });
+  const theme = THEMES.dark;
+  const syntax = syntaxStyleFor(theme, screen.renderer.nativeScene);
+  const offline = {} as never;
+  const opts: TuiOptions = { profile: "self-test", siteUrl: "https://example.invalid", jira: offline, confluence: offline, openUrl: async () => {}, editText: async (text) => text };
+  const ctx = createCtx(createStore(initialState("jira")), opts, undefined, () => {});
+  try {
+    createRoot(screen.renderer).render(
+      <EnvProvider value={{ ctx, theme, syntax, commands: allCommands(), areas: AREAS, keymap: {} }}>
+        <Shell />
+      </EnvProvider>
+    );
+    // React commits asynchronously; draw until the shell shows (a few passes at most).
+    for (let pass = 0; pass < 20; pass++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await screen.renderOnce();
+      const frame = screen.captureCharFrame();
+      if (frame.includes("1 Jira") && frame.includes("self-test")) return frame;
+    }
+    throw new Error(`The TUI did not draw its shell:\n${screen.captureCharFrame()}`);
+  } finally {
+    screen.renderer.destroy();
+    syntax.destroy();
+  }
+}

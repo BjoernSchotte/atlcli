@@ -146,6 +146,31 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The Windows CLI is cross-compiled on Linux; run it on Windows before it ships.
+  # The TUI self-test draws without a terminal, proving its native library loads.
+  smoke-windows:
+    name: Run the Windows CLI natively
+    needs: build-cli
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download this run's Windows CLI
+        uses: actions/download-artifact@v8
+        with:
+          name: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-cli-windows-x64
+          path: release
+
+      - name: Version and TUI self-test
+        shell: pwsh
+        env:
+          ATLCLI_DISABLE_UPDATE_CHECK: "1"
+        run: |
+          Expand-Archive -LiteralPath release/atlcli-windows-x64.zip -DestinationPath cli
+          & .\cli\atlcli.exe --version
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & .\cli\atlcli.exe tui --self-test
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
   build-extension:
     name: Build Chrome MV3 extension
     runs-on: ubuntu-latest
@@ -207,7 +232,7 @@ jobs:
 
   bundle:
     name: Assemble and consume exact release bundle
-    needs: [build-cli, build-extension]
+    needs: [build-cli, smoke-windows, build-extension]
     runs-on: ubuntu-latest
     outputs:
       bundle_artifact: ${{ steps.contract.outputs.name }}

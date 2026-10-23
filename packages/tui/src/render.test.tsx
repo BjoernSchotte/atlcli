@@ -54,6 +54,11 @@ const jiraStub = () =>
     getIssue: (k: string) => issues.find((i) => i.key === k) ?? issue(k),
   });
 
+test("selfTest draws the shell without a terminal", async () => {
+  const { selfTest } = await import("./app.js");
+  expect(await selfTest()).toContain("1 Jira");
+});
+
 describe("shell", () => {
   test("header, navigator, list, detail and status bar", async () => {
     const s = await show(jiraStub());

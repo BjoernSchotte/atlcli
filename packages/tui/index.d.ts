@@ -49,3 +49,6 @@ export interface TuiOptions {
 
 /** Runs the TUI until the user quits, then restores the terminal. */
 export declare function runTui(options: TuiOptions): Promise<void>;
+
+/** Draws the shell once without a terminal or network and returns the frame; throws if it cannot. */
+export declare function selfTest(): Promise<string>;
