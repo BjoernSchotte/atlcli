@@ -1017,7 +1017,7 @@ describe("durable research session execution gate", () => {
     expect(recovered[0]).toMatchObject({
       sessionId,
       status: "paused",
-      lease: { epoch: 2, expiresAt: "2026-08-01T15:11:00.001Z" },
+      lease: { epoch: 2, heartbeatAt: "2026-08-01T15:10:59.999Z", expiresAt: "2026-08-01T15:11:00.000Z" },
       turns: [expect.objectContaining({
         retrievalAssessments: [expect.objectContaining({
           continuation: expect.objectContaining({ status: "issued" }),
@@ -1032,7 +1032,7 @@ describe("durable research session execution gate", () => {
       sessionId,
       ownerId: "owner:resumed",
       leaseExpiresAt: "2026-08-01T15:20:00.000Z",
-      at: "2026-08-01T15:11:01.000Z",
+      at: "2026-08-01T15:11:00.000Z", // the release instant itself
     })).resolves.toMatchObject({ status: "running", lease: { epoch: 3, ownerId: "owner:resumed" } });
   });
 
@@ -1109,7 +1109,7 @@ describe("durable research session execution gate", () => {
     expect(recovered[0]).toMatchObject({
       sessionId: initialized.sessionId,
       status: "running",
-      lease: { epoch: 2, expiresAt: "2026-08-01T15:11:00.001Z" },
+      lease: { epoch: 2, heartbeatAt: "2026-08-01T15:10:59.999Z", expiresAt: "2026-08-01T15:11:00.000Z" },
       turns: [expect.objectContaining({ tasks: [], acceptedPackets: [] })],
     });
     expect(recovered[0]!.turns[0]!.graphSelectionCommittedAt).toBeUndefined();

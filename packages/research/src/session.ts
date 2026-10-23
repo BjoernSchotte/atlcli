@@ -825,18 +825,21 @@ function withReleasedDurableWait(
   update: ResearchSessionFencedUpdateV1,
   patch: Parameters<typeof withNext>[2],
 ): ResearchSessionV1 {
-  const next = withNext(session, update, patch);
-  const releasedAt = Math.max(
-    Date.parse(update.at),
-    Date.parse(session.lease.heartbeatAt) + 1,
-  );
-  return {
-    ...next,
-    lease: {
-      ...session.lease,
-      expiresAt: new Date(releasedAt).toISOString(),
-    },
-  };
+  return { ...withNext(session, update, patch), lease: releasedLease(session, update.at) };
+}
+
+/**
+ * A lease released at `at` expires exactly then, so any host whose clock reads
+ * `at` or later can recover it. Expiry must follow the heartbeat; when the
+ * release shares the heartbeat's millisecond, the heartbeat moves back rather
+ * than the expiry forward (a future expiry would refuse the immediate resume).
+ */
+function releasedLease(session: ResearchSessionV1, at: string): ResearchSessionV1["lease"] {
+  const releasedAt = Date.parse(at);
+  const heartbeatAt = Date.parse(session.lease.heartbeatAt) < releasedAt
+    ? session.lease.heartbeatAt
+    : new Date(releasedAt - 1).toISOString();
+  return { ...session.lease, heartbeatAt, expiresAt: new Date(releasedAt).toISOString() };
 }
 
 function requireGraph(current: ResearchSessionTurnV1, graphRevision?: number): ResearchGraphV1 {
@@ -2352,13 +2355,9 @@ export function reduceResearchSessionV1(
     if (current.tasks.length > 0 || current.acceptedPackets.length > 0 || current.graphSelectionCommittedAt) {
       invalid("Only an undispatched research turn may release its lease.");
     }
-    const expiresAt = new Date(Math.max(
-      Date.parse(update.at),
-      Date.parse(session.lease.heartbeatAt) + 1,
-    )).toISOString();
     return {
       ...withNext(session, update, { status: "running" }),
-      lease: { ...session.lease, expiresAt },
+      lease: releasedLease(session, update.at),
     };
   }
 
