@@ -8,7 +8,7 @@ import { createTwoFilesPatch } from "diff";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import type { AreaModule } from "./commands.js";
 import { updateList, updateNav, expandNode } from "./commands.js";
-import { applies, keysFor, paletteCommands, type Command, type Ctx } from "./keymap.js";
+import { applies, keysFor, paletteCommands, runSafely, type Command, type Ctx } from "./keymap.js";
 import { pickerItems } from "./overlays.js";
 import { moveSelection, replaceTop, topOverlay, visibleNodes, type AppState, type Focus, type ListState, type Overlay } from "./state.js";
 import { useStore } from "./store.js";
@@ -74,9 +74,7 @@ export function runById(env: Env, id: string): void {
 }
 
 export function runCommand(ctx: Ctx, command: Command): void {
-  Promise.resolve()
-    .then(() => command.run(ctx))
-    .catch((err) => ctx.toast("error", err instanceof Error ? err.message : String(err)));
+  runSafely(ctx, () => command.run(ctx));
 }
 
 // ============ Panes ============
@@ -454,7 +452,7 @@ function Confirm({ overlay, width, height }: { overlay: Extract<Overlay, { kind:
       </scrollbox>
       <text
         fg={overlay.step === 1 ? theme.error : theme.status}
-        content={overlay.step === 1 ? `Press y again to apply all ${overlay.lines.length} changes · n cancels` : "y confirm · n cancel"}
+        content={overlay.step === 1 ? "This changes many issues. Press y again to apply · n cancels" : "y confirm · n cancel"}
       />
     </Dialog>
   );
@@ -472,6 +470,10 @@ function Prompt({ overlay, width, height }: { overlay: Extract<Overlay, { kind: 
 function Compose({ overlay, width, height }: { overlay: Extract<Overlay, { kind: "compose" }>; width: number; height: number }) {
   const { theme, ctx, syntax } = useEnv();
   const ref = useRef<TextareaRenderable>(null);
+  // Back from the preview the editor mounts anew: continue at the end of the text, not at its start.
+  useEffect(() => {
+    if (!overlay.preview) ref.current?.gotoBufferEnd();
+  }, [overlay.preview]);
   return (
     <Dialog title={`${overlay.title}${overlay.preview ? " · preview" : ""}`} width={width} height={height}>
       {overlay.preview ? (

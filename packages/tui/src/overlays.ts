@@ -4,7 +4,7 @@
  * handles navigation, submit and cancel.
  */
 import type { Command, Ctx } from "./keymap.js";
-import { paletteCommands } from "./keymap.js";
+import { paletteCommands, runSafely } from "./keymap.js";
 import { filterItems, popOverlay, pushOverlay, replaceTop, topOverlay, type Overlay, type PickerItem } from "./state.js";
 
 type Of<K extends Overlay["kind"]> = Extract<Overlay, { kind: K }>;
@@ -33,7 +33,7 @@ export function overlayKey(ctx: Ctx, key: string, commands: Command[]): boolean 
       else if (key === "return") {
         const command = found[o.selected];
         close(ctx);
-        if (command) void command.run(ctx);
+        if (command) runSafely(ctx, () => command.run(ctx));
       }
       return true;
     }
@@ -51,7 +51,7 @@ export function overlayKey(ctx: Ctx, key: string, commands: Command[]): boolean 
         const ids = o.multi ? (o.marked.length > 0 ? o.marked : current && !free ? [current.id] : []) : current && !free ? [current.id] : [];
         if (ids.length === 0 && !free) return true;
         close(ctx);
-        void o.onSubmit(ids, free);
+        runSafely(ctx, () => o.onSubmit(ids, free));
       }
       return true;
     }
@@ -60,7 +60,7 @@ export function overlayKey(ctx: Ctx, key: string, commands: Command[]): boolean 
         if (o.double && o.step === 0) update(ctx, { ...o, step: 1 });
         else {
           close(ctx);
-          void o.onConfirm();
+          runSafely(ctx, () => o.onConfirm());
         }
       } else if (key === "n" || key === "escape" || key === "q") close(ctx);
       return true;
@@ -68,14 +68,14 @@ export function overlayKey(ctx: Ctx, key: string, commands: Command[]): boolean 
       if (key === "escape") close(ctx);
       else if (key === "return") {
         close(ctx);
-        void o.onSubmit(o.value);
+        runSafely(ctx, () => o.onSubmit(o.value));
       }
       return true;
     case "compose":
       if (key === "ctrl+s") {
         if (!o.value.trim()) return true;
         close(ctx);
-        void o.onSubmit(o.value);
+        runSafely(ctx, () => o.onSubmit(o.value));
       } else if (key === "ctrl+p") update(ctx, { ...o, preview: !o.preview });
       else if (key === "escape") {
         // Text typed is not thrown away without asking.
@@ -96,7 +96,7 @@ export function overlayKey(ctx: Ctx, key: string, commands: Command[]): boolean 
     case "diff":
       if (o.onConfirm && (key === "y" || key === "return")) {
         close(ctx);
-        void o.onConfirm();
+        runSafely(ctx, () => o.onConfirm!());
       } else if (key === "n" || key === "escape" || key === "q") close(ctx);
       return true;
   }

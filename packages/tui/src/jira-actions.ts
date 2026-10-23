@@ -28,13 +28,16 @@ function prompt(ctx: Ctx, title: string, value: string, onSubmit: (value: string
   open(ctx, { kind: "prompt", title, value, placeholder, onSubmit });
 }
 
-/** Asks, then runs `apply` with a busy indicator; reloads `keys` afterwards. */
+/**
+ * Asks, then runs `apply` with a busy indicator; reloads `keys` afterwards.
+ * More than `BULK_CONFIRM` issues need a second `y`.
+ */
 export function confirmWrite(ctx: Ctx, title: string, lines: string[], keys: string[], apply: () => Promise<string>): void {
   open(ctx, {
     kind: "confirm",
     title,
     lines,
-    double: lines.length > BULK_CONFIRM,
+    double: keys.length > BULK_CONFIRM,
     step: 0,
     onConfirm: async () => {
       const done = await ctx.task("Saving…", apply);
@@ -331,7 +334,7 @@ function parent(ctx: Ctx): void {
         () =>
           each(issues, (issue) =>
             id === "none"
-              ? ctx.opts.jira.updateIssue(issue.key, { update: { parent: [{ set: { none: true } }] } })
+              ? ctx.opts.jira.updateIssue(issue.key, { fields: { parent: null } })
               : ctx.opts.jira.updateIssue(issue.key, { fields: { parent: { key: id! } } })
           )
       );
@@ -361,14 +364,18 @@ async function showNew(ctx: Ctx, key: string): Promise<void> {
 
 async function create(ctx: Ctx): Promise<void> {
   const client = ctx.opts.jira;
-  const projects = await ctx.task("Loading projects…", () => client.listProjects({ maxResults: 100, orderBy: "key" }));
-  if (!projects) return;
   const current = selectedIssue(ctx.store.get())?.key.split("-")[0];
   const preferred = ctx.opts.project ?? current;
-  const items = projects.values
-    .map((p) => ({ id: p.key, label: `${p.key}  ${p.name}` }))
-    .sort((a, b) => (a.id === preferred ? -1 : b.id === preferred ? 1 : 0));
-  picker(ctx, "New issue: project", items, async ([project]) => {
+  // Sites have hundreds of projects: the picker searches Jira as you type, the preferred one first.
+  const projectItems = async (query: string): Promise<PickerItem[]> => {
+    const { values } = await client.listProjects({ maxResults: 50, orderBy: "key", query: query.trim() || undefined });
+    const items = values.map((p) => ({ id: p.key, label: `${p.key}  ${p.name}` }));
+    if (!query.trim() && preferred && !items.some((i) => i.id === preferred)) items.unshift({ id: preferred, label: preferred });
+    return items.sort((a, b) => (a.id === preferred ? -1 : b.id === preferred ? 1 : 0));
+  };
+  const first = await ctx.task("Loading projects…", () => projectItems(""));
+  if (!first) return;
+  picker(ctx, "New issue: project", first, async ([project]) => {
     const types = await ctx.task("Loading issue types…", () => client.getProjectIssueTypes(project!));
     if (!types) return;
     picker(ctx, `New ${project} issue: type`, types.filter((t) => !t.subtask).map((t) => ({ id: t.name, label: t.name })), ([type]) =>
@@ -390,7 +397,7 @@ async function create(ctx: Ctx): Promise<void> {
         );
       })
     );
-  });
+  }, { search: projectItems });
 }
 
 async function clone(ctx: Ctx): Promise<void> {

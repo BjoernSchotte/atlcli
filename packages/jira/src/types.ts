@@ -397,7 +397,8 @@ export interface CreateIssueInput {
 
 /** Input for updating an issue */
 export interface UpdateIssueInput {
-  fields?: Partial<CreateIssueInput["fields"]>;
+  /** `parent: null` removes the parent (an `update` with `set: { none: true }` is silently ignored). */
+  fields?: Partial<Omit<CreateIssueInput["fields"], "parent">> & { parent?: CreateIssueInput["fields"]["parent"] | null };
   update?: Record<string, Array<{ set?: unknown; add?: unknown; remove?: unknown }>>;
 }
 

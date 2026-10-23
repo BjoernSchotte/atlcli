@@ -43,6 +43,11 @@ export {
 
 // ============ Editor ============
 
+/** `$VISUAL`, else `$EDITOR`, else `vi`; an empty variable counts as unset (`VISUAL=` would run nothing). */
+export function editorCommand(env: Record<string, string | undefined> = process.env): string {
+  return env.VISUAL?.trim() || env.EDITOR?.trim() || "vi";
+}
+
 /** Edit `initial` in `$VISUAL`/`$EDITOR` (default `vi`); needs a terminal. */
 export async function editInEditor(initial: string, name = "atlcli.md"): Promise<string> {
   if (!process.stdin.isTTY) throw new Error("--edit needs a terminal; use --description-file or --body-file in scripts.");
@@ -50,7 +55,7 @@ export async function editInEditor(initial: string, name = "atlcli.md"): Promise
   const file = join(dir, name);
   try {
     await writeFile(file, initial, "utf8");
-    const editor = process.env.VISUAL ?? process.env.EDITOR ?? "vi";
+    const editor = editorCommand();
     await new Promise<void>((resolve, reject) => {
       const child = spawn(`${editor} "${file}"`, { stdio: "inherit", shell: true });
       child.on("error", reject);

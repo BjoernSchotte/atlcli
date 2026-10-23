@@ -57,6 +57,20 @@ export interface Command {
   run: (ctx: Ctx) => void | Promise<void>;
 }
 
+/**
+ * Runs `work` now (not on a later tick: the next key of a batch must see its
+ * effect); a thrown or rejected error becomes an error toast.
+ */
+export function runSafely(ctx: Ctx, work: () => unknown): void {
+  const fail = (err: unknown) => ctx.toast("error", err instanceof Error ? err.message : String(err));
+  try {
+    const result = work();
+    if (result instanceof Promise) result.catch(fail);
+  } catch (err) {
+    fail(err);
+  }
+}
+
 /** A command's keys after the user's `tui.keymap` overrides. */
 export function keysFor(command: Command, keymap: Record<string, string[]> = {}): string[] {
   return keymap[command.id] ?? command.keys;
