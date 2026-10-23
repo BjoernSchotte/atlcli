@@ -2,6 +2,92 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.5] - 2026-10-23
+
+### Bug Fixes
+
+- **digest:** Harden output against server-provided text ([f27eda5](https://github.com/bjoernschotte/atlcli/commit/f27eda5fc10d968d8e43c0e0aa241f5c010d058f))
+- **mentions:** Keep mentions whose name contains brackets ([1468561](https://github.com/bjoernschotte/atlcli/commit/146856121d01c3aa47e1b6df0b85329d66f82a48))
+- **docs:** Docs diff reports no changes right after docs pull ([41272be](https://github.com/bjoernschotte/atlcli/commit/41272be459914a0e5e4c149c9b194c5213f361b9))
+- **jira:** Filter share returns the added permission ([30a40e9](https://github.com/bjoernschotte/atlcli/commit/30a40e95c14b146f87ae159b52b6bc4f775b4547))
+- **jira:** Page board and sprint lists, sprint report counts, docs match the code ([61821d6](https://github.com/bjoernschotte/atlcli/commit/61821d611ddc6fa6fd4b5126279225070ac13971))
+- **docs:** Push and watch no longer overwrite remote edits made since the last pull ([6671aaf](https://github.com/bjoernschotte/atlcli/commit/6671aaf1d5acb05c33a3c6f19f4730f81a719270))
+- **cli:** Load the PDF template compiler assets from the embedded files ([a4087b9](https://github.com/bjoernschotte/atlcli/commit/a4087b9e6e321ac5a0224e4de2413a937aca7481))
+- **cli:** --help on a verb prints help instead of running the verb ([6f9979f](https://github.com/bjoernschotte/atlcli/commit/6f9979f80ee4ff5f6d1d763c2bb55da899904ba9))
+- **core:** Keep the whole --flag=value and stop switches swallowing positionals ([41db052](https://github.com/bjoernschotte/atlcli/commit/41db052e8d6e2bcc4a443a5d96b200dc44991414))
+- **cli:** Failures exit 1, and --json prints exactly one document ([62f48b0](https://github.com/bjoernschotte/atlcli/commit/62f48b03d26fe9b13bca47e4397afab957ded222))
+- **confluence:** Wiki commands that silently did the wrong thing ([3ad5c94](https://github.com/bjoernschotte/atlcli/commit/3ad5c94126183d2a6542ad95861adfd467a3e2b6))
+- **jira:** Convert issue attach --comment Markdown like comments add (#276) ([63bb0b2](https://github.com/bjoernschotte/atlcli/commit/63bb0b27d00ea86044914bfac6c17bfe01bb2aea))
+- **jira:** Bulk link-page --comment matches issue link-page, dry run shows it (#290) ([5d6a6b8](https://github.com/bjoernschotte/atlcli/commit/5d6a6b8e8d2331f73a46f9ea89945d9467f679c8))
+- **jira:** Issue get --expand outputs the expanded sections (#292) ([8db1ecc](https://github.com/bjoernschotte/atlcli/commit/8db1ecc39bfde0dbc6bdbed265cec7b7dafe37d1))
+- **jira:** Keep underline, text colour and sub/superscript in Markdown (#284) ([db0b76a](https://github.com/bjoernschotte/atlcli/commit/db0b76a1acee0939932b409d2b8d549aa4dc1ab6))
+- **confluence:** Derive docs check macro validation from the converter rules ([b37a227](https://github.com/bjoernschotte/atlcli/commit/b37a22755da480917d1eadedcc59f2041ab54ad1))
+- **confluence:** Pass :::toc parameters and split :::expand titles from params ([64a7a4c](https://github.com/bjoernschotte/atlcli/commit/64a7a4c06cc1d3ef029895176813f625171d66d1))
+- **confluence:** Baseline the sync poller at the pulled versions ([fe8ee14](https://github.com/bjoernschotte/atlcli/commit/fe8ee147d3fdf5a7e76c6a5a8ab6c7f080860071))
+- **research:** A released lease expires at the release instant ([6677246](https://github.com/bjoernschotte/atlcli/commit/6677246df1e1ad2af782d6d6b862e7f35bac1922))
+- **confluence:** Docs check no longer reports user mentions as broken links ([f3c6d61](https://github.com/bjoernschotte/atlcli/commit/f3c6d61e3a5874b4b0361e2787d228c700d4ab72))
+- **cli:** Help, completion and docs say what the commands do ([37dd95a](https://github.com/bjoernschotte/atlcli/commit/37dd95ae7b67225b3c7a94e8085db98aa8d4b4d6))
+- **cli:** Make --list a switch and drop the --json ordering guard from atlcli skill ([0dc65f2](https://github.com/bjoernschotte/atlcli/commit/0dc65f2c0eed250197f6f292cb8ee1c6cd87d4fc))
+- **confluence:** Wiki my --help and wiki recent --help print help instead of searching ([0be71fd](https://github.com/bjoernschotte/atlcli/commit/0be71fdd7b52f5189bcf31c9739f6699722aa381))
+- **jira:** A positional key no longer lands in the comment body ([bce63b7](https://github.com/bjoernschotte/atlcli/commit/bce63b7538e907ccaf5e2e30cbf79efeae0c0b1b))
+- **cli:** Audit wiki check flags no longer swallow the directory ([9076a8e](https://github.com/bjoernschotte/atlcli/commit/9076a8ec56b5af3485dd55bed3cde4a595b24f9c))
+- **confluence:** A pulled status lozenge stays {status:…} instead of coloured text ([d262363](https://github.com/bjoernschotte/atlcli/commit/d262363970710ca6c7cfa36ac9f3a381bd348558))
+- **deps:** Update dependency astro to v7.4.2 ([8e82638](https://github.com/bjoernschotte/atlcli/commit/8e826389a5199b8985bbc14927f739d5357b878e))
+- **deps:** Update stable non-major dependencies ([d278779](https://github.com/bjoernschotte/atlcli/commit/d27877902ba2ccf80d3d5aef640629c8be450270))
+
+### Documentation
+
+- **skill:** Correct statements that no longer match the code ([1b751d6](https://github.com/bjoernschotte/atlcli/commit/1b751d658517ef7298f3f7b793670b77af13a52b))
+- **skill:** Describe atlcli digest ([932c32f](https://github.com/bjoernschotte/atlcli/commit/932c32f905844e51f6ffb8476c48e1d617f0c716))
+- **skill:** Describe audit jira and its rules file ([808c2bb](https://github.com/bjoernschotte/atlcli/commit/808c2bbfee49cd9567a7785be3ad0a3cea229ee5))
+- **skill:** Describe flow metrics, the status map and recent-sprint metrics ([4d31f8c](https://github.com/bjoernschotte/atlcli/commit/4d31f8cb75246dbf89582120ce8895c7deb4ba99))
+- **skill:** Describe atlcli skill and the new search result fields ([731e099](https://github.com/bjoernschotte/atlcli/commit/731e0991f72352e16603a0dd524d0791b4bc5e31))
+- **skill:** Describe the behaviour after the fixes for #270–#308 ([c0a31a4](https://github.com/bjoernschotte/atlcli/commit/c0a31a439c30bef6b2a6b8998fc1a1f2658dfba6))
+
+### Features
+
+- Add the atlcli agent skill under skills/atlcli ([1cc6d02](https://github.com/bjoernschotte/atlcli/commit/1cc6d02e23492a5ae8d02b80a875b099b3a03be9))
+- **cli:** Add atlcli skill to print and install the built-in agent skill ([a13dca1](https://github.com/bjoernschotte/atlcli/commit/a13dca1c6b3ebe777e99df47f569fc209dea994c))
+- **confluence:** Show display names for user mentions ([63fb22d](https://github.com/bjoernschotte/atlcli/commit/63fb22dcc3b576d8d719e8c7b92ac8bbd77b21a2))
+- **jira:** Users by name or email, search flags, table output, clone, web links ([2489bc8](https://github.com/bjoernschotte/atlcli/commit/2489bc81fe9c4d8056166fc2f4ff00c153a905cd))
+- **confluence:** Display names for mentions in template init, tasks-to-issues and the VFS ([ca55196](https://github.com/bjoernschotte/atlcli/commit/ca55196e717de3e8936a3737bb8d75c8806fb4c5))
+- **jira:** Search negation with ~, --created-before/--updated-before, localized status names ([a611c32](https://github.com/bjoernschotte/atlcli/commit/a611c32dddeb4e2b1179512e88f9214f8e6782e1))
+- **jira:** Sprint metrics include issues removed before the sprint ended ([7afbcb4](https://github.com/bjoernschotte/atlcli/commit/7afbcb4b4cd4818b32156908c3c7d1332b8ad40c))
+- **cli:** JSON errors, readable detail views, Data Center user flags, digest team ([1e65f46](https://github.com/bjoernschotte/atlcli/commit/1e65f460542ccf6ac78453447f9403b04411b7d3))
+- **jira:** Clone links back to the source; issue commands take the key positionally ([93c62dd](https://github.com/bjoernschotte/atlcli/commit/93c62dd00dd7b756a93ace4c49a48c6fb22fb638))
+
+### Miscellaneous
+
+- Drop stale Typst 0.7 patch and 0.14.2 references ([84b4ff5](https://github.com/bjoernschotte/atlcli/commit/84b4ff5458dabb410711860e45c8194b39eb81c8))
+- **confluence:** Record ConfluencePoller.initialize(synced) in the API report ([2ecf7c3](https://github.com/bjoernschotte/atlcli/commit/2ecf7c32d89919276706f20bb0354267d89a3650))
+- Mark the conflict-marker example in the skill as intentional ([9b2760b](https://github.com/bjoernschotte/atlcli/commit/9b2760bdee8360fac23a16705dfed3f425fbfe2b))
+- **deps:** Update dependency node to v22.23.4 ([b071794](https://github.com/bjoernschotte/atlcli/commit/b071794f104134487cdfb9d9df2682247d65ad31))
+- Set up Node in the Linux Bun test job ([c8aabd2](https://github.com/bjoernschotte/atlcli/commit/c8aabd2520150aaf5aedc0159b8cfb0b2fa584fe))
+
+### Testing
+
+- Run bun run test without real credentials or the real ~/.atlcli ([546f1b4](https://github.com/bjoernschotte/atlcli/commit/546f1b40414910316ec2ac4a77344f991d2b0778))
+- WIP diagnostics for WAL test (to be replaced) ([df92d8a](https://github.com/bjoernschotte/atlcli/commit/df92d8ad01d6f6f4243f0e4c46d26623a5773668))
+- **vfs:** Keep crash children's SQLite connections alive until SIGKILL ([7c54f9e](https://github.com/bjoernschotte/atlcli/commit/7c54f9e33a78bfebfbefde1f42765686d860dee2))
+- **docx:** Deflate the cumulative zip-bomb member once instead of three times ([dc51757](https://github.com/bjoernschotte/atlcli/commit/dc51757858936b498194e14568f1f16dd5319476))
+- **quality:** Give the PDF quality gate's import hook an explicit budget ([fb10c38](https://github.com/bjoernschotte/atlcli/commit/fb10c383130ca9b2f5cbd5b8dc9c4fdec7fe3bd9))
+- **sync:** Give the legacy dry-run fixture its real local hash ([501ab9d](https://github.com/bjoernschotte/atlcli/commit/501ab9d8ff101e469febd3927ca23e17b01b6152))
+
+### Build
+
+- Raise the Node engines floor to 22.23.4 for the October security release ([c76b58d](https://github.com/bjoernschotte/atlcli/commit/c76b58d511faec3695c6e95c5f86a645716c3720))
+- **release:** Thank issue reporters from every mention, one line per person, no bots ([86a2109](https://github.com/bjoernschotte/atlcli/commit/86a210915492dc1c46bb0b079af7cacb1080cf87))
+
+### New Contributors
+
+- [@jakobwesthoff](https://github.com/jakobwesthoff) (Jakob Westhoff) - feat: ship the agent skill in the repository and add atlcli skill (#309)
+
+### Thanks
+
+A big thank you to everyone who helped shape this release 🙏
+
+- [@jakobwesthoff](https://github.com/jakobwesthoff) — PR #309; reported issues #270, #271, #272, #273, #274, #275, #276, #278, #279, #282, #283, #284, #285, #286, #287, #288, #289, #290, #291, #292, #293, #294, #295, #296, #297, #298, #299, #300, #301, #302, #303, #304, #305, #306, #307, #308
+
 ## [2026.10.4] - 2026-10-22
 
 ### Security
