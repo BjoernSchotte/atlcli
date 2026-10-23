@@ -942,10 +942,20 @@ export class JiraClient {
       accountId?: string;
     }
   ): Promise<JiraFilterPermission> {
-    return this.request<JiraFilterPermission>(`/filter/${id}/permission`, {
+    // Jira answers with all of the filter's permissions; return the one added.
+    const result = await this.request<JiraFilterPermission | JiraFilterPermission[]>(`/filter/${id}/permission`, {
       method: "POST",
       body: permission,
     });
+    if (!Array.isArray(result)) return result;
+    const added = result.filter(
+      (p) =>
+        p.type === permission.type &&
+        (!permission.projectId || p.project?.id === permission.projectId) &&
+        (!permission.groupname || p.group?.name === permission.groupname) &&
+        (!permission.accountId || p.user?.accountId === permission.accountId)
+    );
+    return added.at(-1) ?? result.at(-1)!;
   }
 
   /**

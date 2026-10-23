@@ -53,7 +53,14 @@ beforeAll(async () => {
       if (path === "/rest/api/3/search/jql") return Response.json({ issues: [ISSUE] });
       if (path === "/rest/api/3/field") return Response.json([{ id: "customfield_10016", name: "Story Points", custom: true }, { id: "summary", name: "Summary", custom: false }]);
       if (path === "/rest/api/3/filter/7") return Response.json({ id: "7", name: "Mine", jql: "project = AB ORDER BY rank" });
-      if (path === "/rest/api/3/filter/7/permission") return Response.json({ id: 1, type: "user", user: { accountId: body.accountId } });
+      // Jira answers with all of the filter's permissions, the new one among them.
+      if (path === "/rest/api/3/filter/7/permission") {
+        return Response.json([
+          { id: 1, type: "group", group: { name: "devs" } },
+          { id: 2, type: "user", user: { accountId: body.accountId, displayName: "Anna Lee" } },
+          { id: 3, type: "global" },
+        ]);
+      }
       if (path === "/rest/api/3/issue" && req.method === "POST") return Response.json({ id: "2", key: "AB-2" });
       if (path === "/rest/api/3/issue/AB-1/assignee") return new Response(null, { status: 204 });
       if (path === "/rest/api/3/issue/AB-1/comment") return Response.json({ id: "9", body: body.body });
@@ -182,9 +189,11 @@ describe("issue", () => {
 
 describe("filters and fields (regressions: documented, missing)", () => {
   test("filter share --user shares with the resolved account", async () => {
-    const { exitCode } = await run(["filter", "share", "7", "--user", "anna@example.com", "--json"]);
+    const { exitCode, stdout } = await run(["filter", "share", "7", "--user", "anna@example.com", "--json"]);
     expect(exitCode).toBe(0);
     expect(sent("/rest/api/3/filter/7/permission")).toEqual({ type: "user", accountId: "acc-anna" });
+    // Regression (live): the answer is a list; the output showed an empty permission.
+    expect(JSON.parse(stdout).shared.permission).toMatchObject({ id: 2, type: "user", user: "Anna Lee" });
   });
 
   test("field list --system leaves out custom fields", async () => {

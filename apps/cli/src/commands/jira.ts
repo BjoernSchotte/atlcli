@@ -4642,7 +4642,7 @@ async function handleFilterShare(
           type: permission.type,
           project: permission.project,
           group: permission.group,
-          user: permission.user,
+          user: permission.user?.displayName ?? permission.user?.accountId,
         },
       },
     },
