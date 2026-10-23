@@ -8,7 +8,30 @@ import {
   type MarkdownLink,
 } from "./links.js";
 import { parseFrontmatter } from "./frontmatter.js";
-import { BLOCK_MACRO_RULES, SECTION_COLUMN_REGEX } from "./macro-syntax.js";
+import {
+  BLOCK_MACRO_RULES,
+  MACRO_REGEX,
+  SECTION_COLUMN_REGEX,
+  TOC_PARAMETERS,
+  parseMacroParams,
+  splitMacroTitle,
+} from "./macro-syntax.js";
+
+/**
+ * Parameters push drops for `:::toc` / `:::expand` / panels. `toc` keeps the
+ * Confluence toc parameters; expand and the panels only take a title (the
+ * Confluence expand macro has no "expanded" option).
+ */
+function unsupportedMacroParams(macro: string, raw: string | undefined): string[] {
+  if (macro === "toc") {
+    return parseMacroParams(raw)
+      .filter(([key]) => !TOC_PARAMETERS.has(key.toLowerCase()))
+      .map(([key]) => `Unsupported ":::toc" parameter "${key}" is ignored (supported: ${[...TOC_PARAMETERS.values()].join(", ")})`);
+  }
+  return parseMacroParams(splitMacroTitle(raw).params).map(
+    ([key]) => `Unsupported ":::${macro}" parameter "${key}" is ignored (only a quoted title is supported)`,
+  );
+}
 import type { AtlcliState } from "./atlcli-dir.js";
 import type { SyncDbAdapter } from "./sync-db/types.js";
 
@@ -280,6 +303,12 @@ export function validateMacros(
       const first = lineOf(offset);
       const last = first + match.split("\n").length - 1;
       for (let l = first; l <= last; l++) consumed.add(l);
+      if (rule.regex === MACRO_REGEX) {
+        const [macro, raw] = args as [string, string | undefined];
+        for (const message of unsupportedMacroParams(macro, raw)) {
+          issues.push({ severity: "warning", code: "MACRO_INVALID_PARAMS", message, file: filePath, line: first + 1 });
+        }
+      }
       const bodyStart = offset + match.indexOf("\n") + 1;
       if (rule.body !== undefined) {
         markRendered(bodyStart, String(args[rule.body - 1] ?? ""));
@@ -313,6 +342,8 @@ export function validateMacros(
     let message: string;
     if (rendered.has(i)) {
       message = `Nested macro line "${line.trim()}" is not supported here and is pushed as literal text`;
+    } else if (name === "" && line.trim() !== ":::") {
+      message = `Unsupported macro line "${line.trim()}": write ":::name" without a space (pushed as literal text)`;
     } else if (name === "") {
       message = `Unexpected macro close ":::" without matching open (pushed as literal text)`;
     } else if (name.endsWith("-end")) {

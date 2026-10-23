@@ -238,6 +238,11 @@ Left
     expect(issues.map((i) => i.line)).toEqual([1, 2, 4, 5]);
   });
 
+  test("explains '::: name' with a space, which push does not convert", () => {
+    const issues = validateMacros("::: info\nx\n:::", "test.md");
+    expect(issues[0].message).toContain('without a space');
+  });
+
   test("ignores ::: lines inside fenced code", () => {
     const content = "```markdown\n:::section\n:::\n```";
     expect(validateMacros(content, "test.md")).toEqual([]);
@@ -253,6 +258,27 @@ Hi
 :::section-end`;
     const issues = validateMacros(content, "test.md");
     expect(issues.map((i) => i.line)).toEqual([3, 5]);
+  });
+
+  // Regression #289: dropped parameters are reported, not silently lost.
+  test("warns about parameters push ignores on toc, expand and panels", () => {
+    const content = `:::toc minLevel=2 maxLevel=3 depth=4
+:::
+
+:::expand "Details" expanded=true
+Hidden.
+:::
+
+:::expand Plain title with = sign
+x
+:::`;
+    const issues = validateMacros(content, "test.md");
+    expect(issues.map((i) => [i.severity, i.code, i.line])).toEqual([
+      ["warning", "MACRO_INVALID_PARAMS", 1],
+      ["warning", "MACRO_INVALID_PARAMS", 4],
+    ]);
+    expect(issues[0].message).toContain('"depth"');
+    expect(issues[1].message).toContain('"expanded"');
   });
 
   test("agrees with markdownToStorage on which ::: lines survive as text", () => {
@@ -275,6 +301,7 @@ Hi
       ":::page-properties\n| a | b |\n|---|---|\n| 1 | 2 |\n:::",
       "text\n:::\n",
       ":::column-end",
+      "::: info\nx\n:::",
     ];
     for (const sample of samples) {
       const literal = /:::/.test(markdownToStorage(sample));

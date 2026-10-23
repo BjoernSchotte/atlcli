@@ -112,3 +112,43 @@ export const BLOCK_MACRO_RULES: readonly BlockMacroRule[] = [
   { regex: CONFLUENCE_MACRO_REGEX },
   { regex: MACRO_REGEX, body: 3 },
 ];
+
+/**
+ * Storage names of the Confluence `toc` macro parameters, keyed by lower case
+ * so `minlevel=2` and `minLevel=2` both reach `minLevel`.
+ */
+export const TOC_PARAMETERS: ReadonlyMap<string, string> = new Map(
+  [
+    "minLevel", "maxLevel", "type", "outline", "style", "indent",
+    "separator", "include", "exclude", "printable", "class", "absoluteUrl",
+  ].map((name) => [name.toLowerCase(), name]),
+);
+
+const PARAM_TOKEN = String.raw`[A-Za-z][\w-]*(?:=(?:"[^"]*"|'[^']*'|\S+))?`;
+const PARAM_TOKEN_REGEX = /([A-Za-z][\w-]*)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
+const QUOTED_TITLE_WITH_PARAMS = new RegExp(
+  String.raw`^(?:"([^"]*)"|'([^']*)')\s+(${PARAM_TOKEN}(?:\s+${PARAM_TOKEN})*)$`,
+);
+
+/** Parse `key=value key="v w" flag` into ordered pairs; a bare flag is "true". */
+export function parseMacroParams(params: string | undefined): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  for (const m of (params ?? "").matchAll(PARAM_TOKEN_REGEX)) {
+    pairs.push([m[1], m[2] ?? m[3] ?? m[4] ?? "true"]);
+  }
+  return pairs;
+}
+
+/**
+ * Split the text after `:::expand` / `:::info` into the title and trailing
+ * parameters: `"Details" expanded=true` → title `Details`, params
+ * `expanded=true`. Unquoted or fully quoted text is all title.
+ */
+export function splitMacroTitle(raw: string | undefined): { title: string | undefined; params: string } {
+  if (!raw) return { title: raw, params: "" };
+  const trimmed = raw.trim();
+  const split = trimmed.match(QUOTED_TITLE_WITH_PARAMS);
+  if (split) return { title: split[1] ?? split[2], params: split[3] };
+  const quoted = trimmed.match(/^["'](.*)["']$/);
+  return { title: quoted ? quoted[1] : trimmed, params: "" };
+}

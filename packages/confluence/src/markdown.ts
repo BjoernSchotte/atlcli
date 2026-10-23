@@ -36,6 +36,9 @@ import {
   CONTRIBUTORS_MACRO_REGEX,
   CHANGE_HISTORY_MACRO_REGEX,
   LOREMIPSUM_MACRO_REGEX,
+  TOC_PARAMETERS,
+  parseMacroParams,
+  splitMacroTitle,
 } from "./macro-syntax.js";
 export { KNOWN_MACROS } from "./known-macros.js";
 import { sha256HexOfUtf8 } from "./sha256.js";
@@ -1006,16 +1009,21 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
     let html: string;
 
-    // Helper to strip surrounding quotes from macro titles
-    const stripQuotes = (t: string | undefined): string | undefined => {
-      if (!t) return t;
-      const trimmed = t.trim();
-      const match = trimmed.match(/^["'](.*)["']$/);
-      return match ? match[1] : trimmed;
-    };
+    // A quoted title may be followed by parameters (`"Details" expanded=true`);
+    // only the quoted part is the title. Unsupported parameters are dropped and
+    // reported by `docs check`.
+    const stripQuotes = (t: string | undefined): string | undefined => splitMacroTitle(t).title;
 
     if (macro === "toc") {
-      html = `<ac:structured-macro ac:name="toc"/>`;
+      // For toc the capture holds parameters: `:::toc minLevel=2 maxLevel=3`
+      let tocParams = "";
+      for (const [key, value] of parseMacroParams(title)) {
+        const name = TOC_PARAMETERS.get(key.toLowerCase());
+        if (name) tocParams += `\n<ac:parameter ac:name="${name}">${escapeHtml(value)}</ac:parameter>`;
+      }
+      html = tocParams
+        ? `<ac:structured-macro ac:name="toc">${tocParams}\n</ac:structured-macro>`
+        : `<ac:structured-macro ac:name="toc"/>`;
     } else if (macro === "expand") {
       const expandTitle = stripQuotes(title) || "Click to expand";
       html = `<ac:structured-macro ac:name="expand">
@@ -1531,7 +1539,23 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   );
   storage = storage.replace(
     /<ac:structured-macro\s+ac:name="toc"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
-    () => `<div data-macro="toc">TOC</div>`
+    (_, inner: string) => {
+      // Keep the parameters as `:::toc` markdown (`minLevel=2 style=none`).
+      // Confluence reorders stored parameters, so emit them in the documented
+      // TOC_PARAMETERS order to keep pulls stable.
+      const order = [...TOC_PARAMETERS.values()];
+      const rank = (name: string) => {
+        const i = order.indexOf(name);
+        return i < 0 ? order.length : i;
+      };
+      const found = [...inner.matchAll(/<ac:parameter\s+ac:name="([^"]+)"[^>]*>([^<]*)<\/ac:parameter>/gi)];
+      let params = "";
+      for (const m of found.sort((a, b) => rank(a[1]) - rank(b[1]))) {
+        const value = decodeHTML(m[2]);
+        params += ` ${m[1]}=${/^[\w.,%-]+$/.test(value) ? value : `"${value}"`}`;
+      }
+      return `<div data-macro="toc" data-params="${escapeHtml(params)}">TOC</div>`;
+    }
   );
 
   // Convert status macro (inline lozenge)
@@ -2631,16 +2655,21 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const title = (node as any).getAttribute?.("data-title") || "";
 
       if (macroType === "toc") {
-        return "\n\n:::toc\n:::\n\n";
+        const params = (node as any).getAttribute?.("data-params") || "";
+        return `\n\n:::toc${params}\n:::\n\n`;
       }
 
+      // A title that starts with a quote is wrapped in quotes again, so it is
+      // not split into title + parameters on the next push.
+      const quotedTitle = /^["']/.test(title) ? `"${title}"` : title;
+
       if (macroType === "expand") {
-        return `\n\n:::expand ${title}\n${content.trim()}\n:::\n\n`;
+        return `\n\n:::expand ${quotedTitle}\n${content.trim()}\n:::\n\n`;
       }
 
       // Panel macros (info, note, warning, tip)
       if (PANEL_MACROS.includes(macroType)) {
-        const titlePart = title ? ` ${title}` : "";
+        const titlePart = title ? ` ${quotedTitle}` : "";
         return `\n\n:::${macroType}${titlePart}\n${content.trim()}\n:::\n\n`;
       }
 
