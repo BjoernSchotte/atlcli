@@ -1,0 +1,212 @@
+# Plan: `atlcli tui` MVP
+
+**Status:** plan; decisions made (see [Decisions](#decisions)), awaiting the go to implement. **Date:** 2026-10-23.
+**Builds on:** [the spike](tui-opentui-spike.md) (branch `spike/tui-opentui`). **Replaces:** `jira-tui-design.md` (too broad; kanban, dashboards and charts are out of scope here).
+
+## Goal
+
+A fullscreen tool for **working** in Jira and Confluence:
+- browse, read and triage issues;
+- change issues: status, assignee, comments, description, labels, sprint;
+- browse, read and edit wiki pages.
+
+It should feel like a first-class terminal app: alternate screen, no flicker, mouse, resizable panes, help on every screen.
+
+**The CLI stays untouched.** Flags, `--json` and exit codes do not change. `atlcli tui` is a separate entry point. It refuses to start without a TTY, and it loads OpenTUI only when called (the spike measured no startup cost for the other commands).
+
+## Non-goals (MVP)
+
+- Kanban board, dashboards, charts, burndown.
+- Attachments: upload, download, preview.
+- Creating spaces, page restrictions, Confluence comments.
+- Jira admin (fields, workflows, webhooks).
+- Offline mode or a local cache beyond the session.
+- Data Center-only features. The TUI uses the same clients as the CLI, so Data Center works as far as the CLI does.
+
+## User-facing design
+
+### Layout
+
+```
+┌ atlcli · Jira ▸ TCW · Sprint 42 ──────────────────────────── mayflower ┐
+│┌ Navigator ──────┐┌ Issues (23) · status != Done ┐┌ TCW-289 ────────────┐│
+││▾ Boards         ││▸TCW-289 In Arbeit  Ann  Ren…││ Rendering von …     ││
+││  ▾ TCW Board    ││ TCW-288 Fertig     –    Bes…││ Bug · In Arbeit · … ││
+││    ● Sprint 42  ││ …                           ││ [Details][Comments] ││
+││      Backlog    ││                             ││ [Links][History]    ││
+││▸ Epics          ││                             ││ Description …       ││
+││▸ Filters        ││                             ││                     ││
+│└─────────────────┘└─────────────────────────────┘└─────────────────────┘│
+│ t status  a assign  c comment  e edit  l labels  s sprint  ? help       │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Three panes:** navigator, list and detail. The navigator collapses (`[`); the detail pane can go fullscreen (`z`). Below about 100 columns, list and detail stack instead of sitting side by side.
+- **Two areas:** Jira and Wiki. `1` and `2` switch, and so does a click on the header.
+- **Overlays:** modals (pickers, forms, confirmations), toasts for results and errors, a help overlay (`?`) listing the keys of the current pane, and a command palette (`:` or `Ctrl+K`) that finds every action by name.
+- **Mouse:**
+  - click selects or focuses;
+  - double-click opens;
+  - the wheel scrolls;
+  - dragging a pane border resizes;
+  - a click on a tab or button triggers it.
+- **Keys:** vim-like and arrow keys side by side. The help overlay and the status bar always show the keys for the focused pane.
+
+### Jira
+
+| Pane | Content |
+|---|---|
+| Navigator | Boards → sprints (active, future, backlog); epics of the project; saved filters (`filter list`); "My open issues", "Watching", "Recent" |
+| List | Columns key, type, status, priority, assignee, summary (configurable as in `--columns`). `/` opens a filter bar that takes the `search` flags (`--assignee me --status ~Fertig`) or raw JQL. `o` sorts. Multi-select with `space`, `V` and shift+click |
+| Detail | Tabs: Details (fields and description as markdown), Comments, Links (`Enter` follows a link), History |
+
+**Actions.** Each one works on the selection or on the open issue:
+
+| Key | Action | UI |
+|---|---|---|
+| `t` | transition | picker of the valid transitions (localized names) |
+| `a` | assign | user picker with search (`searchUsers`), plus `me` and `none` |
+| `c` | comment | inline editor (`textarea`) with markdown preview |
+| `e` | edit summary and description | `$EDITOR` (the TUI suspends) |
+| `l` | labels | multi-select picker with free entry |
+| `s` | move to sprint | sprint picker |
+| `p` | set epic or parent | issue picker |
+| `n` | new issue, or clone with `N` | form: project, type, summary, then `$EDITOR` |
+| `y` / `Y` | copy key / URL | toast |
+| `O` | open in the browser | |
+
+**Writes.** Every write shows what it will change and asks first:
+- a single change asks with `y/n`;
+- bulk changes over 5 issues list them and need `y` twice.
+
+After a write, the issue is reloaded, and a toast reports the result. An error shows as a toast together with the exact Jira message (`jiraErrorText`).
+
+### Wiki
+
+| Pane | Content |
+|---|---|
+| Navigator | Spaces (favourites first), then the page tree, loading children on expand (`getPageDirectChildren`) |
+| List | Context: children of the selected page, search results (CQL from `/`), recently changed pages, or pages with a label |
+| Detail | The page as markdown (storage → markdown, as `docs pull` converts it), plus metadata: version, author, labels |
+
+**Actions:**
+
+| Key | Action |
+|---|---|
+| `e` | edit: see the flow below |
+| `n` | new child page (title, then `$EDITOR`) |
+| `l` | labels |
+| `m` | move: pick a parent in the tree |
+| `h` | history: versions, with a diff between any two (`<diff>`) |
+| `y` / `Y` / `O` | copy the id, copy the URL, open in the browser |
+
+**Edit flow:**
+1. The page is fetched, with its version, and converted to markdown.
+2. It opens in `$EDITOR`.
+3. A **diff** shows the result.
+4. A confirmation follows.
+5. The push uses `version + 1`, so a 409 means someone else changed the page. The TUI then offers to reload, open the diff against the new version, or cancel.
+
+**Safety:** the edit must use the same conversion and safeguards as `docs push`, not `wiki page update`, which has no guard. Pages with content markdown cannot round-trip (unknown macros) are flagged before editing, the same way `docs push` handles them. **Research task W0** settles which guard applies to a single-page edit.
+
+## Architecture
+
+```
+apps/cli/src/commands/tui.ts      entry: TTY guard, profile, clients, dynamic import of @atlcli/tui
+packages/tui/                     private package, own tsconfig (skipLibCheck only here)
+  src/app.tsx                     shell: header, panes, status bar, overlays
+  src/store.ts                    state, reduce(), dispatch via a ref (batched keys)
+  src/keymap.ts                   key → action per focus context (pure)
+  src/actions/jira.ts, wiki.ts    async effects: client calls → actions
+  src/views/…                     one component per pane, modal and picker
+  src/theme.ts                    colors and the markdown syntax style (dark and light)
+```
+
+**Package boundary:**
+- `@atlcli/tui` depends on `@atlcli/core`, `@atlcli/jira`, `@atlcli/confluence` and OpenTUI, never on `apps/cli`.
+- `apps/cli` passes in the clients and `openUrl`, and imports the package dynamically only in `atlcli tui`.
+- The package is `private` and not published. It is internal: it does not join the API-report gate as a public library, and M0 says so in the gate's config.
+- Its own `tsconfig.json` sets `skipLibCheck` and `jsxImportSource: @opentui/react`. The root `tsconfig.json` goes back to full lib checking, and the root typecheck excludes `packages/tui`; turbo typechecks the package on its own.
+
+1. **A pure core and a thin view.** State, `reduce()` and the key map are plain TypeScript and test without a terminal. Components only render state and dispatch.
+
+   The spike showed the store has to advance **synchronously** (a ref), because several keys can arrive in one batch.
+
+2. **Actions reuse the shared layers, not the command handlers.** The handlers in `jira.ts` and `page.ts` call `fail()` and `process.exit`, which must not happen inside the TUI. Actions call `JiraClient` and `ConfluenceClient` directly.
+
+   The pure helpers the TUI needs move from `apps/cli/src/commands/jira-input.ts` into `@atlcli/jira`, re-exported where the CLI imports them today:
+   - `buildSearchJql` and its JQL helpers;
+   - `resolveUser` and `pickUser`;
+   - `renderIssueView`.
+
+   Each move updates the API report, which is additive.
+
+   Where logic exists only inside a handler, it moves into a pure, exported function that the handler and the TUI share. This has to be done for at least:
+   - transition name matching, including localized names;
+   - the user picker's search;
+   - the wiki edit guard.
+
+   The CLI's behaviour does not change; its tests cover each move.
+
+3. **Async without races.** Each request carries the key it was made for. A response for an issue no longer selected is dropped. Requests whose result nobody waits for any more are cancelled (`AbortSignal`, which `search` already supports).
+
+4. **`$EDITOR`** suspends the renderer, runs the existing `editInEditor`, then resumes.
+
+5. **Configuration** lives in `~/.atlcli/config.json` under `tui`: `theme`, `keymap` overrides, `columns` and the start area. Only the values the MVP reads are added.
+
+## Testing
+
+| Level | What | How |
+|---|---|---|
+| Unit | `reduce`, keymap, actions (stub client), shared helpers | `bun run test`, as now |
+| Render | each view and modal: content, layout at 80 and 160 columns, key and mouse flows | `@opentui/react` `testRender` + `captureCharFrame`, `mockInput`, `mockMouse`; snapshots |
+| Live e2e | real site, real terminal | `scripts/tui-e2e.ts`: tmux driver (start, keys, SGR mouse, resize, capture) with scenarios against `mayflower` |
+
+- **Live scope:** writes go only to ATLCLI (Jira) and DOCSY (Confluence), and test resources are cleaned up.
+- **The PR template** lists the live scenarios run.
+- **CI** runs the unit and render tests. The live e2e runs locally.
+
+## Milestones
+
+Each milestone is one PR, live-tested and documented.
+
+| # | Content | Done when |
+|---|---|---|
+| **M0** Foundation | Shell (header, panes, status bar), store, keymap, theme, overlays (modal, toast, help, palette), render-test helpers, tmux e2e harness, `docs/tui.md` | Empty shell with help and palette; harness drives it |
+| **M1** Jira read | Navigator (boards, sprints, epics, filters, my/watching/recent), list with filter bar and sorting, detail with tabs, links followable | Live: TCW and ATLCLI browsable by keyboard and mouse |
+| **M2** Jira write | Transition, assign, comment, edit, labels, sprint, epic; multi-select bulk; create and clone | Live: every action on an ATLCLI test issue, cleaned up |
+| **M3** Wiki read | Spaces, page tree, page view, CQL search, recent, labels, history with diff | Live: DOCSY browsable |
+| **M4** Wiki write | W0 (edit guard), edit with diff and conflict handling, child page, labels, move | Live: edit and conflict scenario in DOCSY, cleaned up |
+| **M5** Polish | Light theme, keymap config, resizable panes, Linux and Windows binary smoke tests, release notes | Release candidate |
+
+**Merge order:** M0 → M1 → M2 → M3 → M4 → M5 (Jira first, as decided).
+
+**M0 also:**
+- creates `packages/tui` with its own `tsconfig`;
+- takes `skipLibCheck` out of the root `tsconfig`;
+- moves the spike's `state.ts` and `app.tsx` into the package.
+
+## Risks
+
+| Risk | Mitigation |
+|---|---|
+| OpenTUI is 0.x; the API changes | Pin the exact version; views stay thin; bump deliberately with the render tests as a guard |
+| Native library on some platform or libc | M5 smoke tests on Linux glibc and musl and on Windows; on failure the TUI says so, and the CLI is unaffected |
+| Lossy markdown round-trip of wiki pages | W0, diff before every push, refuse when the guard says so |
+| Lost updates | Jira: reload after each write. Confluence: the version check (409) |
+| Keys that terminals swallow (`Esc` + key, `Ctrl+…`) | Each action also reachable through the palette and the mouse |
+
+## Decisions
+
+Decided on 2026-10-23.
+
+1. **Editing text is mixed:**
+   - comments are written inline (`textarea`) with a markdown preview;
+   - descriptions and wiki pages are edited in `$EDITOR`.
+2. **Wiki editing is in the MVP:** edit existing pages and create child pages. Every push shows a diff first and checks the version.
+3. **Own package:** `packages/tui` with its own `tsconfig` (see [Architecture](#architecture)). `skipLibCheck` applies only there.
+4. **Order: Jira first.** M0 → M1 → M2 → M3 → M4 → M5, one after another.
+
+## No open questions
+
+None remain. Implementation starts with M0 after the go.
