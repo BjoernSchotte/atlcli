@@ -24,7 +24,7 @@
     "release": "bun scripts/release.ts",
     "build:cli": "bun run --cwd apps/cli build",
     "lint": "echo 'no lint configured'",
-    "test": "bun --conditions=development test --path-ignore-patterns='spikes/**'",
+    "test": "bun scripts/test-helpers/run-tests.ts",
     "typecheck": "turbo run typecheck typecheck:root --filter=// --filter=@atlcli/extension --filter=@atlcli/pdf-compiler-browser --filter=@atlcli/browser-export-harness --summarize",
     "typecheck:root": "bunx tsc --noEmit",
     "check:browser": "turbo run check:browser:internal --summarize",
