@@ -107,13 +107,22 @@ export function hasFlag(flags: Record<string, string | boolean | string[]>, key:
   return value === true || typeof value === "string" || (Array.isArray(value) && value.length > 0);
 }
 
+/**
+ * Drops C0/C1 control characters except tab, newline and SGR color sequences
+ * (`ESC[…m`, which renderers such as the page diff emit), so server-provided
+ * text cannot move the cursor, rewrite earlier lines or set the window title.
+ */
+export function stripControlChars(text: string): string {
+  return text.replace(/\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (match) => (match.length > 1 ? match : ""));
+}
+
 export function output(data: unknown, opts: OutputOptions): void {
   if (opts.json) {
     process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
     return;
   }
   if (typeof data === "string") {
-    process.stdout.write(`${data}\n`);
+    process.stdout.write(`${stripControlChars(data)}\n`);
     return;
   }
   process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
@@ -138,7 +147,7 @@ export function fail(
       opts
     );
   } else {
-    process.stderr.write(`${message}\n`);
+    process.stderr.write(`${stripControlChars(message)}\n`);
   }
   process.exit(code);
 }

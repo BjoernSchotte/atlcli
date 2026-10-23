@@ -49,10 +49,13 @@ const WORKFLOW_SAMPLE = 200;
 export const AUDIT_RULES_FILE = "audit-rules.yaml";
 const FAIL_ON = ["info", "warning", "error", "never"] as const;
 
-/** Where a rules file is looked up, first match wins: project, profile, global. */
-export function auditRulesCandidates(profile: string, cwd = process.cwd()): string[] {
+/**
+ * Where a rules file is looked up, first match wins: project, profile, global.
+ * `cwd: null` skips the project file.
+ */
+export function auditRulesCandidates(profile: string, cwd: string | null = process.cwd()): string[] {
   return [
-    join(cwd, ".atlcli", AUDIT_RULES_FILE),
+    ...(cwd === null ? [] : [join(cwd, ".atlcli", AUDIT_RULES_FILE)]),
     profileFilePath(profile, AUDIT_RULES_FILE),
     join(homedir(), ".atlcli", AUDIT_RULES_FILE),
   ];
@@ -67,8 +70,13 @@ export function auditBaselinePath(profile: string): string {
  * built-in default profile. Without a file, `audit.jira.staleDays` (profile,
  * then global) still sets the stale thresholds.
  */
-export async function loadAuditRules(profile: Profile, globalStaleDays: [number, number, number] | undefined, rulesFlag?: string): Promise<AuditRules> {
-  const path = rulesFlag ? resolvePath(rulesFlag) : auditRulesCandidates(profile.name).find((p) => existsSync(p));
+export async function loadAuditRules(
+  profile: Profile,
+  globalStaleDays: [number, number, number] | undefined,
+  rulesFlag?: string,
+  cwd: string | null = process.cwd()
+): Promise<AuditRules> {
+  const path = rulesFlag ? resolvePath(rulesFlag) : auditRulesCandidates(profile.name, cwd).find((p) => existsSync(p));
   if (!path) {
     const rules = defaultAuditRules();
     const stale = profile.audit?.jira?.staleDays ?? globalStaleDays;

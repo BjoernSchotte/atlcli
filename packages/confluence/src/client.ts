@@ -1995,7 +1995,7 @@ export class ConfluenceClient {
     pageId: string,
     options: { location: "inline" | "footer"; limit?: number; signal?: AbortSignal }
   ): Promise<ConfluenceSearchResult[]> {
-    const data = (await this.request(`/content/${pageId}/child/comment`, {
+    const data = (await this.request(`/content/${encodeURIComponent(pageId)}/child/comment`, {
       query: {
         location: options.location,
         depth: "all",

@@ -305,7 +305,8 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
   const auditErrors: DigestRawInput["errors"] = [];
   if (projects.length && products.includes("jira") && (await getFlagValue<boolean>("audit", false))) {
     try {
-      const rules = digestAuditRules(await loadAuditRules(profile, config.audit?.jira?.staleDays));
+      // Not the working directory's rules file: a digest runs from anywhere, and that file's JQL is trusted.
+      const rules = digestAuditRules(await loadAuditRules(profile, config.audit?.jira?.staleDays, undefined, null));
       let baseline: JiraAuditBaseline | undefined;
       try {
         baseline = parseAuditBaseline(JSON.parse(await readFile(auditBaselinePath(profile.name), "utf8")));
