@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Interactive smoke test of the Windows atlcli.exe's TUI in a ConPTY console
-(pywinpty): it draws its shell, `?` opens the help, Esc closes it, `q` quits
-with exit 0. Needs no network: the profile points at an unreachable site.
+(pywinpty): it draws its shell, `?` opens the help, Esc closes it, a mouse
+click switches to the Wiki, `q` quits with exit 0. Needs no network: the
+profile points at an unreachable site.
 
     pip install pywinpty==2.0.15
     python scripts/ci/tui-smoke-windows.py path\\to\\atlcli.exe
@@ -57,6 +58,10 @@ def main(binary: str) -> int:
         pos = wait_for("esc closes", pos, "? opened the help")
         proc.write("\x1b")
         time.sleep(1)
+        # Mouse: an SGR click on the header's " 2 Wiki " tab (row 1, columns 17-24) switches the area.
+        proc.write("\x1b[<0;20;1M\x1b[<0;20;1m")
+        pos = wait_for("Recently updated", pos, "a click on the Wiki tab switched the area")
+        time.sleep(0.5)
         proc.write("q")
         deadline = time.time() + 20
         while proc.isalive() and time.time() < deadline:
