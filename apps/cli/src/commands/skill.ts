@@ -28,12 +28,7 @@ export async function handleSkill(args: string[], flags: Flags, opts: OutputOpti
   // Arguments
   // =========================================================================
 
-  // The global parser gives a long flag the next word as its value, so a value
-  // on one of these flags is a positional it swallowed. `--json <path>` would
-  // otherwise print SKILL.md and exit 0 with the path silently dropped.
-  if (typeof flags.json === "string" || Array.isArray(flags.json)) {
-    usage(opts, "--json takes no value; put it after the path: atlcli skill <path> --json");
-  }
+  // `--list` is a switch, so only `--list=value` can give it a value.
   if (typeof flags.list === "string" || Array.isArray(flags.list)) {
     usage(opts, "--list takes no value");
   }
@@ -258,7 +253,7 @@ Usage:
 Options:
   --list               List the files
   --install <root>     Skills directory to install into, such as .claude/skills
-  --json               JSON output (put it after the path)
+  --json               JSON output
 
 Examples:
   atlcli skill references/safety.md

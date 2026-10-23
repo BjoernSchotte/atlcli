@@ -182,12 +182,6 @@ describe("atlcli skill: usage errors", () => {
       "Use only one of <path>, --list and --install",
     );
   });
-
-  it("rejects --json that swallowed the path", async () => {
-    expect(await usageError([], { json: "references/safety.md" })).toBe(
-      "--json takes no value; put it after the path: atlcli skill <path> --json",
-    );
-  });
 });
 
 describe("atlcli skill: help", () => {

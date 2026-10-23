@@ -47,7 +47,7 @@ export function describeError(err: unknown): { code: string; message: string; de
  */
 const SWITCHES = new Set([
   "all", "all-projects", "all-results", "confirm", "csv", "debug", "delete-folders", "details", "dry-run", "edit",
-  "force", "help", "history", "internal", "json", "markdown", "no-color", "no-headers", "no-log", "plain", "quiet",
+  "force", "help", "history", "internal", "json", "list", "markdown", "no-color", "no-headers", "no-log", "plain", "quiet",
   "refresh-users", "skip-user-check", "system", "validate", "verbose", "watching", "yes",
 ]);
 

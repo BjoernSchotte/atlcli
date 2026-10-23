@@ -54,6 +54,16 @@ describe("atlcli skill from the command line", () => {
     expect(result.stdout).toContain("\n  skill        Print or install the agent skill\n");
   }, 30_000);
 
+  test("--json and --list are switches, so they never swallow the path", async () => {
+    const json = await runCli(["skill", "--json", "references/safety.md"]);
+    expect(json.exitCode).toBe(0);
+    expect(JSON.parse(json.stdout).path).toBe("references/safety.md");
+
+    const list = await runCli(["skill", "--list", "references/safety.md"]);
+    expect(list.exitCode).toBe(1);
+    expect(list.stderr).toContain("Use only one of <path>, --list and --install");
+  }, 30_000);
+
   test("fails with a structured usage error for an unknown file", async () => {
     const result = await runCli(["skill", "references/nope.md", "--json"]);
     expect(result.exitCode).toBe(1);
