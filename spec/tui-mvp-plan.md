@@ -233,12 +233,13 @@ All milestones are implemented and live-tested (profile `mayflower`, writes in A
 - **SIGTERM / SIGHUP:** these end the TUI and restore the terminal. Before, the process kept running after `kill` or a closed terminal.
 - **Release build:** `windows-x64` is cross-compiled on Linux, where `bun install` leaves out OpenTUI's Windows library. The job now installs every platform's optional packages (`--os='*' --cpu='*'`).
 - **Release smoke test:** `scripts/ci/tui-smoke.py` starts each native archive's TUI in a pseudo-terminal and quits it with `q` and with SIGTERM.
+- **Data Center page tree:** root pages came from the Cloud-only v2 listing and children from v2 `direct-children`, so the tree failed on Data Center. There it now uses v1 (`/space/{key}/content/page?depth=root`, `/content/{id}/child/page`). Tested against a stub server; no Data Center instance was available.
+- **Windows:** the release runs the cross-compiled `atlcli.exe` on `windows-latest` before bundling: `--version` and the hidden `tui --self-test`, which draws the shell into OpenTUI's test renderer and needs no terminal. A one-off run of this job on the branch passed ([run 40033687743](https://github.com/BjoernSchotte/atlcli/actions/runs/40033687743)).
 
 ### Known limits
 
-- **Data Center:** the Wiki's space tree uses the Cloud v2 root-page listing. On Data Center the tree shows the error, while search and lists from CQL work.
-- **Windows:** the binary is built and embeds the library but was not run (no Windows machine).
+- **Windows:** the self-test proves the binary starts and draws; interactive use in a Windows terminal (keys, mouse, `$EDITOR`) is untested.
 - **Linux:** both binaries ran in Docker under a TTY: they drew the shell and ended on SIGTERM.
   - **glibc:** Debian 12, arm64.
   - **musl:** Alpine 3.20, arm64. This build needs `libstdc++`, which is a Bun runtime requirement, and atlcli ships no musl build.
-- **Sprint moves:** tested with stubs only. The writable test project ATLCLI has no scrum board.
+- **Sprint moves:** tested live on a temporary scrum board in ATLCLI (into a sprint, back to the backlog); board, sprint, filter and issue were deleted afterwards.
