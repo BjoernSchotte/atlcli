@@ -6,6 +6,9 @@ import {
   assertSuccessfulExit,
   ciProvedCommit,
   createTag,
+  formatThanksEntries,
+  isBotLogin,
+  mentionedNumbers,
   RELEASE_TEST_COMMAND,
   parseArgs,
   pushRelease,
@@ -353,5 +356,33 @@ describe("stable release completion", () => {
       expect(stableReleasePublicationReady("0.17.2", release, { ...run, ...partial }, sourceSha)).toBe(false);
     }
     expect(stableReleasePublicationReady("0.17.2", release, undefined, sourceSha)).toBe(false);
+  });
+});
+
+describe("release thanks", () => {
+  test("bots are never thanked", () => {
+    expect(isBotLogin("app/renovate")).toBe(true);
+    expect(isBotLogin("dependabot[bot]")).toBe(true);
+    expect(isBotLogin("jakobwesthoff")).toBe(false);
+  });
+
+  test("finds issues listed in tables and lists, not only after a closing keyword", () => {
+    const body = "Closes #273, #291.\n| #302 | fix |\n- **#275** resolve\nsee owner/repo#9 and a#1";
+    expect(mentionedNumbers(body).sort((a, b) => a - b)).toEqual([273, 275, 291, 302]);
+  });
+
+  test("one line per person for PRs and reported issues", () => {
+    expect(
+      formatThanksEntries({
+        prContributors: [{ login: "jakob", numbers: [309] }],
+        issueReporters: [
+          { login: "jakob", numbers: [270, 271] },
+          { login: "anna", numbers: [12] },
+        ],
+      }),
+    ).toEqual([
+      "- [@anna](https://github.com/anna) — reported issue #12",
+      "- [@jakob](https://github.com/jakob) — PR #309; reported issues #270, #271",
+    ]);
   });
 });
