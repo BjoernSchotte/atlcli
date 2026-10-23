@@ -14,6 +14,7 @@ import {
   saveUpdateState,
   shouldCheckForUpdates,
   getFlagValue,
+  describeError,
 } from "@atlcli/core";
 import type { CommandContext } from "@atlcli/plugin-api";
 import { handleAuth, authHelp } from "./commands/auth.js";
@@ -459,7 +460,9 @@ await main().catch((err) => {
     process.exitCode = err.exitCode;
     return;
   }
-  const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`${message}\n`);
+  const error = describeError(err);
+  // --json: the error object on stdout, like `fail()`, so scripts parse one shape.
+  if (process.argv.slice(2).includes("--json")) process.stdout.write(`${JSON.stringify({ error }, null, 2)}\n`);
+  else process.stderr.write(`${error.message}\n`);
   process.exitCode = 1;
 });

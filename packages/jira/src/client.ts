@@ -93,6 +93,31 @@ const retrySchedulerHook = Symbol.for("atlcli.jira.retry-scheduler.test-hook");
 /** Issues per `changelog/bulkfetch` request; Jira Cloud rejects more. */
 const BULK_CHANGELOG_CHUNK = 1000;
 
+/** Status texts for responses without one (HTTP/2). */
+const HTTP_STATUS_TEXT: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found (or no permission to see it)",
+  409: "Conflict",
+  429: "Too Many Requests",
+};
+
+/**
+ * A Jira error body as one line: `errorMessages` and field `errors`
+ * ("Only Connect and OAuth 2.0 apps…; priority: invalid"), else the raw text.
+ */
+export function jiraErrorText(data: unknown): string {
+  if (typeof data === "string") return data;
+  const body = (data ?? {}) as { errorMessages?: unknown; errors?: unknown; message?: unknown };
+  const parts = [
+    ...(Array.isArray(body.errorMessages) ? body.errorMessages.map(String) : []),
+    ...(body.errors && typeof body.errors === "object" ? Object.entries(body.errors).map(([field, text]) => `${field}: ${String(text)}`) : []),
+    ...(typeof body.message === "string" ? [body.message] : []),
+  ];
+  return parts.length ? parts.join("; ") : JSON.stringify(data);
+}
+
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
  *
@@ -408,12 +433,11 @@ export class JiraClient {
       }
 
       if (!res.ok) {
+        // A body kept out of logs stays out of the error too; the status text still says what happened.
         const message = suppressBody
-          ? "[response body omitted: logBody policy]"
-          : typeof data === "string"
-            ? data
-            : JSON.stringify(data);
-        lastError = new Error(`Jira API error (${res.status}): ${message}`);
+          ? `${res.statusText || HTTP_STATUS_TEXT[res.status] || "request failed"} (response body omitted: logBody policy)`
+          : jiraErrorText(data);
+        lastError = Object.assign(new Error(`Jira API error (${res.status}): ${message}`), { status: res.status });
 
         // Retry on server errors (5xx)
         if (res.status >= 500 && attempt < this.maxRetries) {

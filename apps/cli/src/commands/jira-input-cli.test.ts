@@ -66,6 +66,7 @@ beforeAll(async () => {
       if (path === "/rest/api/3/issue/AB-1/comment") return Response.json({ id: "9", body: body.body });
       if (path === "/rest/api/3/issue/AB-1/remotelink" && req.method === "POST") return Response.json({ id: 77, self: "" });
       if (path === "/rest/api/3/issue/AB-1/remotelink/77") return new Response(null, { status: 204 });
+      if (path === "/rest/api/3/issue/NOPE-1") return Response.json({ errorMessages: ["Issue does not exist or you do not have permission to see it."], errors: {} }, { status: 404 });
       if (path.startsWith("/rest/api/3/issue/")) return Response.json(ISSUE);
       if (path === "/rest/api/3/project/AB") return Response.json({ id: "1", key: "AB", name: "Alpha" });
       if (path === "/rest/api/3/project/AB/statuses" || path === "/rest/api/3/issue/createmeta/AB/issuetypes") return Response.json({ issueTypes: [], values: [] });
@@ -89,7 +90,10 @@ beforeAll(async () => {
     JSON.stringify({
       currentProfile: "p",
       global: { board: 9 },
-      profiles: { p: { name: "p", baseUrl: server.url.origin, deploymentType: "cloud", auth: { type: "bearer" } } },
+      profiles: {
+        p: { name: "p", baseUrl: server.url.origin, deploymentType: "cloud", auth: { type: "bearer" } },
+        dc: { name: "dc", baseUrl: server.url.origin, deploymentType: "data-center", auth: { type: "bearer" } },
+      },
     })
   );
 });
@@ -227,6 +231,39 @@ describe("paging and fixes from the docs audit", () => {
     await run(["epic", "list", "--project", "AB", "--json"]);
     expect(requests.some((r) => r.path === "/rest/api/3/search/jql")).toBe(true);
     expect(requests.some((r) => r.path.endsWith("/epic"))).toBe(false);
+  });
+});
+
+describe("errors, detail views, Data Center", () => {
+  test("--json: an API error is the error object on stdout, coded by status (regression: plain text)", async () => {
+    const { stdout, exitCode } = await run(["issue", "get", "--key", "NOPE-1", "--json"]);
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout).error).toEqual({
+      code: "ATLCLI_ERR_NOT_FOUND",
+      message: expect.stringContaining("Jira API error (404)"),
+      details: { status: 404 },
+    });
+  });
+
+  test("issue get prints a text view; --format json keeps the JSON", async () => {
+    const text = await run(["issue", "get", "--key", "AB-1"]);
+    expect(text.stdout).toStartWith("AB-1  Fix it, v1\n\nStatus");
+    expect(text.stdout).toContain("Assignee    (unassigned)");
+    expect(text.stdout).toContain("Description\n  see v1");
+    const json = await run(["issue", "get", "--key", "AB-1", "--format", "json"]);
+    expect(JSON.parse(json.stdout).issue.key).toBe("AB-1");
+  });
+
+  test("Data Center: --lead fails clearly instead of being dropped (regression: silently ignored)", async () => {
+    const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "jira", "component", "create", "--project", "AB", "--name", "X", "--lead", "me", "--profile", "dc", "--json"], {
+      cwd: home,
+      env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "t", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
+      stdout: "pipe",
+    });
+    const out = await new Response(proc.stdout).text();
+    expect(await proc.exited).toBe(1);
+    expect(JSON.parse(out).error.message).toBe("--lead needs Jira Cloud; on Data Center set it in Jira.");
+    expect(requests.some((r) => r.path.includes("component"))).toBe(false);
   });
 });
 

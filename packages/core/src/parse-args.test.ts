@@ -29,6 +29,15 @@ describe("parseArgs", () => {
     expect(parseArgs(["page", "delete", "--confirm", "123", "--dry-run", "456"])._).toEqual(["page", "delete", "123", "456"]);
   });
 
+  test("the jira list and output switches never swallow a positional either", () => {
+    expect(parseArgs(["jira", "search", "--watching", "project = AB", "--csv"])).toEqual({
+      _: ["jira", "search", "project = AB"],
+      flags: { watching: true, csv: true },
+    });
+    expect(parseArgs(["jira", "issue", "clone", "--edit", "AB-1"])._).toEqual(["jira", "issue", "clone", "AB-1"]);
+    expect(parseArgs(["--updated", "-7d"]).flags.updated).toBe("-7d");
+  });
+
   test("a value starting with '-' that is not a flag is the value (#272)", () => {
     expect(parseArgs(["--description", "- first item"]).flags.description).toBe("- first item");
     expect(parseArgs(["--offset", "-5"]).flags.offset).toBe("-5");

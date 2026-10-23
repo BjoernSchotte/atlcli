@@ -32,6 +32,8 @@ Options:
 atlcli jira filter get 12345
 ```
 
+Prints the filter's name, JQL, owner and who it is shared with. `--json` gives the JSON.
+
 ## Run Filter
 
 List the filter's issues, like [search](search.md): a table by default, with `--columns`, `--plain`, `--csv`, `--no-headers`, `--limit`, `--all-results` and `--json`.

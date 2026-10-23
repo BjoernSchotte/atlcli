@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { adfToMarkdown, escapeCsvValue, type JiraClient, type JiraField, type JiraIssue, type JiraStatus, type JiraUser } from "@atlcli/jira";
+import { adfToMarkdown, calendarDay, escapeCsvValue, type JiraClient, type JiraField, type JiraIssue, type JiraStatus, type JiraUser } from "@atlcli/jira";
 import { stripOrderBy } from "./jira-flow.js";
 
 // ============ Users ============
@@ -247,4 +247,70 @@ export function renderTable(header: string[], rows: string[][], format: TableFor
   if (format.kind === "plain") return all.map((row) => row.map((c) => c.replace(/[\t\r\n]+/g, " ")).join(format.delimiter)).join("\n");
   const widths = header.map((_, i) => Math.max(...all.map((row) => row[i]!.length)));
   return all.map((row) => row.map((c, i) => (i === row.length - 1 ? c : c.padEnd(widths[i]!))).join("  ").trimEnd()).join("\n");
+}
+
+// ============ Detail views ============
+
+/**
+ * A detail view: a title line, aligned `label  value` rows (empty values
+ * left out) and titled sections (description, links, comments).
+ */
+export function renderDetails(
+  title: string,
+  rows: Array<[string, unknown]>,
+  sections: Array<[string, string | undefined]> = []
+): string {
+  const shown = rows
+    .map(([label, value]) => [label, Array.isArray(value) ? value.join(", ") : value == null ? "" : String(value)] as const)
+    .filter(([, value]) => value !== "");
+  const width = Math.max(0, ...shown.map(([label]) => label.length));
+  const lines = [title, "", ...shown.map(([label, value]) => `${label.padEnd(width)}  ${value}`)];
+  for (const [heading, body] of sections) {
+    if (body?.trim()) lines.push("", heading, ...body.trimEnd().split("\n").map((line) => (line ? `  ${line}` : "")));
+  }
+  return lines.join("\n");
+}
+
+/** Markdown for reading: ADF kept only for round trips (`<!--adf:…-->`) shows as `[…]`. */
+const readable = (markdown: string) => markdown.replace(/<!--adf:[\s\S]*?-->/g, "[…]");
+
+/** `issue get` as text: fields, description, links and the last comments. */
+export function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount = 3): string {
+  const f = issue.fields;
+  const day = (iso?: string) => (iso ? calendarDay(iso) : "");
+  const links = (f.issuelinks ?? []).map((link) => {
+    const other = link.outwardIssue ?? link.inwardIssue;
+    const verb = link.outwardIssue ? link.type.outward : link.type.inward;
+    const status = other?.fields?.status?.name;
+    return `${verb} ${other?.key ?? "?"}${status ? `  [${status}]` : ""}${other?.fields?.summary ? `  ${other.fields.summary}` : ""}`;
+  });
+  const comments = f.comment?.comments ?? [];
+  const recent = comments.slice(-commentCount);
+  const commentText = recent
+    .map((c) => `${c.author?.displayName ?? "?"} · ${day(c.created)}\n${readable(adfToMarkdown(c.body, { baseUrl })).trim()}`)
+    .join("\n\n");
+  const total = f.comment?.total ?? comments.length;
+  return renderDetails(
+    `${issue.key}  ${f.summary ?? ""}`,
+    [
+      ["Status", f.status?.name],
+      ["Type", f.issuetype?.name],
+      ["Priority", f.priority?.name],
+      ["Assignee", f.assignee?.displayName ?? "(unassigned)"],
+      ["Reporter", f.reporter?.displayName],
+      ["Labels", f.labels],
+      ["Components", (f.components ?? []).map((c) => c.name)],
+      ["Fix versions", (f.fixVersions ?? []).map((v) => v.name)],
+      ["Parent", f.parent ? `${f.parent.key}${f.parent.fields?.summary ? `  ${f.parent.fields.summary}` : ""}` : undefined],
+      ["Due", f.duedate],
+      ["Created", day(f.created)],
+      ["Updated", day(f.updated)],
+      ["URL", `${baseUrl}/browse/${issue.key}`],
+    ],
+    [
+      ["Description", readable(adfToMarkdown(f.description, { baseUrl }))],
+      [`Links (${links.length})`, links.join("\n")],
+      [`Comments (${recent.length < total ? `last ${recent.length} of ${total}` : total})`, commentText],
+    ]
+  );
 }

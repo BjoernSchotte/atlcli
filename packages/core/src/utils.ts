@@ -17,15 +17,38 @@ export const ERROR_CODES = {
   IO: "ATLCLI_ERR_IO",
   CONFIG: "ATLCLI_ERR_CONFIG",
   VALIDATION: "ATLCLI_ERR_VALIDATION",
+  FORBIDDEN: "ATLCLI_ERR_FORBIDDEN",
+  NOT_FOUND: "ATLCLI_ERR_NOT_FOUND",
+  RATE_LIMIT: "ATLCLI_ERR_RATE_LIMIT",
 } as const;
+
+const HTTP_ERROR_CODES: Record<number, string> = {
+  401: ERROR_CODES.AUTH,
+  403: ERROR_CODES.FORBIDDEN,
+  404: ERROR_CODES.NOT_FOUND,
+  429: ERROR_CODES.RATE_LIMIT,
+};
+
+/**
+ * An uncaught error as the `--json` error object: an API error's HTTP status
+ * (its `status`, or "API error (403)" in the message) picks the code.
+ */
+export function describeError(err: unknown): { code: string; message: string; details: Record<string, unknown> } {
+  const message = err instanceof Error ? err.message : String(err);
+  const own = (err as { status?: unknown } | null)?.status;
+  const status = typeof own === "number" ? own : Number(/API error \((\d{3})\)/.exec(message)?.[1]) || undefined;
+  if (status === undefined) return { code: ERROR_CODES.API, message, details: {} };
+  return { code: HTTP_ERROR_CODES[status] ?? ERROR_CODES.API, message, details: { status } };
+}
 
 /**
  * Long flags that never take a value, so `--json PROJ-1` keeps `PROJ-1` as a
  * positional. Only flags that every command reads as a switch belong here.
  */
 const SWITCHES = new Set([
-  "all", "confirm", "debug", "delete-folders", "details", "dry-run", "force", "help", "json",
-  "markdown", "no-color", "no-log", "quiet", "refresh-users", "skip-user-check", "validate", "verbose", "yes",
+  "all", "all-projects", "all-results", "confirm", "csv", "debug", "delete-folders", "details", "dry-run", "edit",
+  "force", "help", "history", "internal", "json", "markdown", "no-color", "no-headers", "no-log", "plain", "quiet",
+  "refresh-users", "skip-user-check", "system", "validate", "verbose", "watching", "yes",
 ]);
 
 /** A token that starts a new flag; anything else after a flag is its value ("- item", "-5", "-"). */

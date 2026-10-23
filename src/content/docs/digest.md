@@ -55,6 +55,7 @@ description: "atlcli digest: what changed since your last look and what waits on
 | Jira | Sprint | Each active sprint of the board: progress bar, to do / in progress / done counts, your open issues, days left |
 | Jira project | Completed · Created · Changed | Per project from `--project` or `digest.projects`: issues moved into a done status, issues created, and issues changed in the window, by anyone, with assignee and change lines |
 | Jira | Audit errors | Error-level findings of the [audit rules](jira/audit-rules.md) for those projects; only when the audit feature is enabled |
+| Jira | Team | Per person in those projects: open issues, in progress, overdue, no update for N days, and the oldest issue in progress. Not limited to the window |
 | Confluence | Mentions | Pages and comments that mention you |
 | Confluence | Comments on your pages | New comments on your 50 most recently modified pages |
 | Confluence | Open inline comments | Unresolved inline comments on your 10 most recently modified pages (`--max-pages`), oldest first. These are not limited to the window: they wait on you. |
@@ -124,6 +125,28 @@ Jira
     GROW-60  [In Progress]  HR marketing — hygiene/overdue: Due 2025-12-31, 294 d overdue.
     GROW-1343  [In Progress]  Meetups — hygiene/stale: Not updated for 157 d.
 ```
+
+### Team
+
+With projects (`--project` or `digest.projects`), the digest lists everyone with open issues in them, busiest first, and the unassigned issues last:
+
+```
+Jira
+  Team (3)
+    Thomas Schindler  open 4 · in progress 4 · no update 30d+ 4 · oldest in progress 469d
+    Roman Binshtok  open 2 · in progress 0 · no update 30d+ 2
+    (unassigned)  open 56 · in progress 7 · no update 30d+ 55 · oldest in progress 486d
+```
+
+| Figure | Meaning |
+|---|---|
+| open | Issues not in a done status, after `flow.statusMap` |
+| in progress | In an In Progress status, after the map |
+| overdue | Due date before today |
+| no update Nd+ | Not updated for N days or more: the first value of `audit.jira.staleDays` (default 30) |
+| oldest in progress | Days since the longest-waiting issue in progress was last updated |
+
+The section costs one search (up to 300 open issues across the projects; beyond that, a warning says the counts are a lower bound). `--summarize` sends these names and counts too.
 
 ## The last-run marker
 
