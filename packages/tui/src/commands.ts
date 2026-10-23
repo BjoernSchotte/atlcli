@@ -113,6 +113,8 @@ export function coreCommands(areas: Record<TuiArea, AreaModule>): Command[] {
       keys: ["z"],
       run: (ctx) => ctx.store.set((s) => ({ ...s, zoom: !s.zoom, focus: s.zoom ? s.focus : "detail" })),
     },
+    { id: "app.pane.narrower", title: "Narrower pane (the focused one, or the list)", keys: ["<"], run: (ctx) => resizePane(ctx, -4) },
+    { id: "app.pane.wider", title: "Wider pane (the focused one, or the list)", keys: [">"], run: (ctx) => resizePane(ctx, 4) },
     { id: "app.refresh", title: "Reload", keys: ["r", "f5"], bar: "reload", run: (ctx) => current(ctx).refresh(ctx) },
     {
       id: "app.open",
@@ -199,6 +201,17 @@ export function coreCommands(areas: Record<TuiArea, AreaModule>): Command[] {
       },
     },
     {
+      id: "list.mark.all",
+      title: "Mark all (again: none)",
+      keys: ["V"],
+      focus: ["list"],
+      run: (ctx) => {
+        const s = ctx.store.get();
+        const ids = slices(s).list.items.map((_, i) => current(ctx).itemId(s, i)!).filter(Boolean);
+        updateList(ctx, (l) => ({ ...l, marked: l.marked.length === ids.length ? [] : ids }), current(ctx));
+      },
+    },
+    {
       id: "list.mark.clear",
       title: "Clear the marks",
       keys: ["U"],
@@ -220,6 +233,18 @@ export function coreCommands(areas: Record<TuiArea, AreaModule>): Command[] {
       run: (ctx) => ctx.store.set((s) => ({ ...s, focus: "list", zoom: false })),
     },
   ];
+}
+
+/** Pane width limits; the detail keeps at least `MIN_DETAIL` columns. */
+export const MIN_PANE = 16;
+
+/** Grows or shrinks the nav (when focused) or the list pane by `by` columns. */
+export function resizePane(ctx: Ctx, by: number): void {
+  ctx.store.set((s) => {
+    const which = s.focus === "nav" ? "navWidth" : "listWidth";
+    const base = s[which] ?? (which === "navWidth" ? 32 : 60);
+    return { ...s, [which]: Math.max(MIN_PANE, base + by) };
+  });
 }
 
 function copied(ctx: Ctx, text: string): void {

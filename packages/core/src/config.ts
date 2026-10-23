@@ -130,6 +130,8 @@ export type TuiSettings = {
   theme?: string;
   /** Keys per command id, replacing its defaults: `{ "jira.transition": ["t", "ctrl+t"] }`. */
   keymap?: Record<string, string[]>;
+  /** Issue list columns before the summary: key, type, status, priority, assignee, updated. */
+  columns?: string[];
 };
 
 /**

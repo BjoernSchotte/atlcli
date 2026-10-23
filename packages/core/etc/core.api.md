@@ -584,6 +584,7 @@ export type Config = {
     vfs?: VfsConfig;
     flow?: FlowConfig;
     digest?: DigestConfig;
+    tui?: TuiSettings;
     projects?: ProjectConfig[];
     defaults?: DefaultsConfig;
 };
@@ -1396,6 +1397,14 @@ export type TlsOptions = {
 
 // export: TokenResolver
 export type TokenResolver = (profile: Profile) => string | null;
+
+// export: TuiSettings
+export type TuiSettings = {
+    area?: string;
+    theme?: string;
+    keymap?: Record<string, string[]>;
+    columns?: string[];
+};
 
 // export: unsetFlag
 export declare function unsetFlag(name: string, scope: "global" | "project"): Promise<boolean>;
@@ -2128,6 +2137,7 @@ export type Config = {
     vfs?: VfsConfig;
     flow?: FlowConfig;
     digest?: DigestConfig;
+    tui?: TuiSettings;
     projects?: ProjectConfig[];
     defaults?: DefaultsConfig;
 };
@@ -2940,6 +2950,14 @@ export type TlsOptions = {
 
 // export: TokenResolver
 export type TokenResolver = (profile: Profile) => string | null;
+
+// export: TuiSettings
+export type TuiSettings = {
+    area?: string;
+    theme?: string;
+    keymap?: Record<string, string[]>;
+    columns?: string[];
+};
 
 // export: unsetFlag
 export declare function unsetFlag(name: string, scope: "global" | "project"): Promise<boolean>;

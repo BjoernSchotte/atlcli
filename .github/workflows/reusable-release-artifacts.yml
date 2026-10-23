@@ -83,6 +83,13 @@ jobs:
       - name: Install frozen dependencies
         run: bash scripts/ci/install-frozen-dependencies.sh
 
+      # windows-x64 is cross-compiled here: OpenTUI's Windows library is an
+      # optional dependency that a Linux install leaves out, so the build
+      # could not embed it. Install every platform's optional packages.
+      - name: Install the cross-compiled target's native packages
+        if: matrix.target == 'windows-x64'
+        run: bun install --frozen-lockfile --os='*' --cpu='*'
+
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
 
@@ -119,6 +126,8 @@ jobs:
           test "$("$RUNNER_TEMP/nfs-installed/atlcli" skill | shasum -a 256)" = "$(shasum -a 256 < skills/atlcli/SKILL.md)"
           "$RUNNER_TEMP/nfs-installed/atlcli-confluence-nfs" --version
           test -s "$RUNNER_TEMP/nfs-installed/THIRD-PARTY-nfs.html"
+          # The TUI's native library is embedded too: it draws in a pseudo-terminal and quits.
+          python3 scripts/ci/tui-smoke.py "$RUNNER_TEMP/nfs-installed/atlcli"
 
       - name: Assert requested build identity
         env:

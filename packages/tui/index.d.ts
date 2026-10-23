@@ -17,7 +17,11 @@ export interface TuiConfig {
   theme?: "dark" | "light";
   /** Extra or replacement keys per command id, e.g. `{ "jira.transition": ["t", "ctrl+t"] }`. */
   keymap?: Record<string, string[]>;
+  /** Issue list columns, in order; the summary always comes last. Default: key, status, assignee. */
+  columns?: TuiColumn[];
 }
+
+export type TuiColumn = "key" | "type" | "status" | "priority" | "assignee" | "updated";
 
 export interface TuiOptions {
   /** Profile name, shown in the header. */

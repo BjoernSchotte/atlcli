@@ -1,6 +1,6 @@
 # Plan: `atlcli tui` MVP
 
-**Status:** plan; decisions made (see [Decisions](#decisions)), awaiting the go to implement. **Date:** 2026-10-23.
+**Status:** implemented on `feat/tui` (draft PR #327), M0–M5; see [Outcome](#outcome). **Date:** 2026-10-23.
 **Builds on:** [the spike](tui-opentui-spike.md) (branch `spike/tui-opentui`). **Replaces:** `jira-tui-design.md` (too broad; kanban, dashboards and charts are out of scope here).
 
 ## Goal
@@ -207,6 +207,35 @@ Decided on 2026-10-23.
 3. **Own package:** `packages/tui` with its own `tsconfig` (see [Architecture](#architecture)). `skipLibCheck` applies only there.
 4. **Order: Jira first.** M0 → M1 → M2 → M3 → M4 → M5, one after another.
 
-## No open questions
+## Outcome
 
-None remain. Implementation starts with M0 after the go.
+All milestones are implemented and live-tested (profile `mayflower`, writes in ATLCLI and DOCSY only, everything created was deleted). The user guide is `src/content/docs/tui.md`.
+
+### Deviations from the plan
+
+| Plan | Built | Why |
+|---|---|---|
+| Labels on `l` | `L` | `l` is "right/open" in the vim keys |
+| Wiki history on `h` | Versions on `v`; the wiki detail has the tabs page and info | `h` is "left/back" |
+| Columns "as `--columns`" | `tui.columns` with a fixed set (key, type, status, priority, assignee, updated) | No field lookup per row; the summary always comes last |
+| Spaces "favourites first" | The default space first, then by name | Favourites would cost a request per space |
+| `skipLibCheck` only in the package | Yes, plus a hand-written type facade (`packages/tui/index.d.ts`) | The CLI's typecheck follows `import("@atlcli/tui")` into OpenTUI's declarations otherwise; `facade.test.ts` checks the facade |
+| — | `<` / `>` resize the focused pane | A keyboard way for what the mouse does by dragging |
+
+### Found and fixed along the way
+
+- **Batched keys:** commands start on the key press, not a tick later. In a batch (fast typing, paste), the next key sees the picker the previous one opened.
+- **Done statuses:** `flow.statusMap` names are translated for JQL (`Fertig` → `Done`), as the CLI's `--status` does. Otherwise "My open issues" listed done work.
+- **Parent removal:** sends `parent: null`. Jira silently ignores an `update` with `set: { none: true }`. `UpdateIssueInput` now allows `null`.
+- **Switching lists:** a switch no longer keeps the old selection when the old item is also in the new list.
+- **Wiki edits:** conflicts are detected twice, before the write (version check) and by Confluence (409).
+- **`VISUAL=`:** an empty value falls back to `$EDITOR`. It ran an empty command (exit 126), in the CLI's `--edit` too.
+- **SIGTERM / SIGHUP:** these end the TUI and restore the terminal. Before, the process kept running after `kill` or a closed terminal.
+- **Release build:** `windows-x64` is cross-compiled on Linux, where `bun install` leaves out OpenTUI's Windows library. The job now installs every platform's optional packages (`--os='*' --cpu='*'`).
+- **Release smoke test:** `scripts/ci/tui-smoke.py` starts each native archive's TUI in a pseudo-terminal and quits it with `q` and with SIGTERM.
+
+### Known limits
+
+- **Data Center:** the Wiki's space tree uses the Cloud v2 root-page listing. On Data Center the tree shows the error, while search and lists from CQL work.
+- **Windows:** the binary is built and embeds the library but was not run (no Windows machine). Linux glibc and musl binaries ran in Docker.
+- **Sprint moves:** tested with stubs only. The writable test project ATLCLI has no scrum board.

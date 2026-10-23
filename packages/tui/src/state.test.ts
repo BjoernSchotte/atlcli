@@ -62,6 +62,16 @@ describe("trees", () => {
   });
 });
 
+describe("pane widths", () => {
+  test("user widths apply but always leave the detail room", async () => {
+    const { paneWidths } = await import("./app.js");
+    expect(paneWidths(160)).toEqual({ nav: 35, list: 60 });
+    expect(paneWidths(160, 50, 70)).toEqual({ nav: 50, list: 70 });
+    expect(paneWidths(160, 50, 500).list).toBe(160 - 50 - 16);
+    expect(paneWidths(100, 5, 5)).toEqual({ nav: 16, list: 16 });
+  });
+});
+
 describe("focus and pickers", () => {
   test("tab cycles the visible panes", () => {
     const s = initialState();

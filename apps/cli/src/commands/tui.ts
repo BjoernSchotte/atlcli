@@ -1,7 +1,9 @@
 import { ERROR_CODES, fail, getActiveProfile, getFlag, hasFlag, loadConfig, output, resolveDefaults, type OutputOptions, type TuiSettings } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { JiraClient, resolveStatusMap } from "@atlcli/jira";
-import type { TuiConfig } from "@atlcli/tui";
+import type { TuiColumn, TuiConfig } from "@atlcli/tui";
+
+const COLUMNS: TuiColumn[] = ["key", "type", "status", "priority", "assignee", "updated"];
 import { openUrl } from "./jira.js";
 import { editInEditor } from "./jira-input.js";
 import { assertCliAuthSupported } from "./session-guard.js";
@@ -24,7 +26,8 @@ Keys: ? shows the keys of the focused pane, : (or ctrl+k) finds every command
 by name, 1/2 switch between Jira and Wiki, q quits.
 
 Config (~/.atlcli/config.json, optional):
-  "tui": { "area": "wiki", "theme": "light", "keymap": { "jira.transition": ["t", "T"] } }
+  "tui": { "area": "wiki", "theme": "light", "columns": ["key", "type", "status", "assignee"],
+           "keymap": { "jira.transition": ["t", "T"] } }
 
 Needs an interactive terminal; in CI or a pipe it fails instead of waiting for input.`;
 }
@@ -45,6 +48,11 @@ export function tuiConfig(settings: TuiSettings | undefined): TuiConfig {
     const ok = typeof settings.keymap === "object" && Object.values(settings.keymap).every((keys) => Array.isArray(keys) && keys.every((k) => typeof k === "string"));
     if (!ok) throw new Error('tui.keymap maps command ids to key lists: { "jira.transition": ["t"] }.');
     config.keymap = settings.keymap;
+  }
+  if (settings.columns !== undefined) {
+    const bad = Array.isArray(settings.columns) ? settings.columns.filter((c) => !COLUMNS.includes(c as TuiColumn)) : ["(not a list)"];
+    if (bad.length) throw new Error(`tui.columns takes ${COLUMNS.join(", ")}; not ${bad.join(", ")}.`);
+    config.columns = settings.columns as TuiColumn[];
   }
   return config;
 }

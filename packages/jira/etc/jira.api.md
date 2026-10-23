@@ -1109,7 +1109,9 @@ export interface UpdateFilterInput {
 
 // export: UpdateIssueInput
 export interface UpdateIssueInput {
-    fields?: Partial<CreateIssueInput["fields"]>;
+    fields?: Partial<Omit<CreateIssueInput["fields"], "parent">> & {
+        parent?: CreateIssueInput["fields"]["parent"] | null;
+    };
     update?: Record<string, Array<{
         set?: unknown;
         add?: unknown;
@@ -1385,6 +1387,9 @@ export interface BuildReportInput {
     now: Date;
 }
 
+// export: buildSearchJql
+export declare function buildSearchJql(f: SearchFilters): string;
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -1440,6 +1445,19 @@ export declare function calendarDay(value: string): string;
 
 // export: cancelTimer
 export declare function cancelTimer(): TimerState;
+
+// export: cellValue
+export declare function cellValue(value: unknown): string;
+
+// export: changelogRows
+export declare function changelogRows(entries: JiraChangelogEntry[]): {
+    id: string;
+    created: string;
+    author: string;
+    field: string;
+    from: string | null;
+    to: string | null;
+}[];
 
 // export: clearTimer
 export declare function clearTimer(): void;
@@ -1562,6 +1580,9 @@ export interface CumulativeFlowV1 {
     }>;
 }
 
+// export: DEFAULT_COLUMNS
+export declare const DEFAULT_COLUMNS: string[];
+
 // export: DEFAULT_JIRA_STALE_DAYS
 export declare const DEFAULT_JIRA_STALE_DAYS: [
     number,
@@ -1649,6 +1670,12 @@ export declare function extractStatusTransitions(issue: JiraIssue): StatusTransi
 
 // export: findFlaggedField
 export declare function findFlaggedField(fields: JiraField[]): string | undefined;
+
+// export: findTransition
+export declare function findTransition<T extends {
+    id: string;
+    name: string;
+}>(transitions: T[], to: string): T | undefined;
 
 // export: FLOW_MIN_PERCENTILE_SAMPLES
 export declare const FLOW_MIN_PERCENTILE_SAMPLES = 5;
@@ -1843,6 +1870,9 @@ export declare function isRuleOff(config: AuditRuleConfig | undefined, ruleId: s
 
 // export: issueAt
 export declare function issueAt(issue: JiraIssue, sprintId: number, at: Date, pointsField: string, resolve?: StatusCategoryResolver): SprintIssueSnapshot;
+
+// export: issueCell
+export declare function issueCell(issue: JiraIssue, fieldId: string): string;
 
 // export: IssueFlowTimeline
 export interface IssueFlowTimeline {
@@ -2949,6 +2979,21 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: jqlAssignee
+export declare function jqlAssignee(user: string, negate: boolean): string;
+
+// export: jqlBefore
+export declare function jqlBefore(field: string, value: string): string | undefined;
+
+// export: jqlIn
+export declare function jqlIn(field: string, raw: string, nullable?: boolean): string;
+
+// export: jqlSince
+export declare function jqlSince(field: string, value: string): string | undefined;
+
+// export: jqlStatusNames
+export declare function jqlStatusNames(raw: string, statuses: Array<Pick<JiraStatus, "name" | "untranslatedName">>): string;
+
 // export: latestSprints
 export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "endDate" | "completeDate">>(sprints: T[], count: number): T[];
 
@@ -2986,11 +3031,24 @@ export declare function migrateTemplates(): Promise<{
     errors: string[];
 }>;
 
+// export: needsFieldList
+export declare function needsFieldList(columns: string[]): boolean;
+
 // export: outputIsDirectory
 export declare function outputIsDirectory(output: string | undefined, opts: {
     existsAsDirectory: boolean;
     fileCount: number;
 }): boolean;
+
+// export: pageAgile
+export declare function pageAgile<T>(fetchPage: (startAt: number, maxResults: number) => Promise<{
+    values: T[];
+    total?: number;
+    isLast?: boolean;
+}>, limit?: number): Promise<{
+    values: T[];
+    total?: number;
+}>;
 
 // export: parseAttachmentTarget
 export declare function parseAttachmentTarget(args: string[]): AttachmentTargetResult;
@@ -3019,6 +3077,12 @@ export declare function parseJson(content: string): ImportIssue[];
 // export: parseRelativeDuration
 export declare function parseRelativeDuration(input: string): Date;
 
+// export: parseReplacements
+export declare function parseReplacements(values: string[]): Array<[
+    string,
+    string
+]>;
+
 // export: parseRoundingInterval
 export declare function parseRoundingInterval(input: string): number;
 
@@ -3039,6 +3103,9 @@ export declare function peekTimer(): {
 
 // export: percentile
 export declare function percentile(sortedValues: number[], p: number): number | undefined;
+
+// export: pickUser
+export declare function pickUser(users: JiraUser[], query: string): JiraUser;
 
 // export: planDownloads
 export declare function planDownloads<T extends {
@@ -3087,8 +3154,20 @@ export declare function renderAgingText(metrics: FlowMetricsV1): string;
 // export: renderCfdText
 export declare function renderCfdText(cfd: CumulativeFlowV1): string;
 
+// export: renderDetails
+export declare function renderDetails(title: string, rows: Array<[
+    string,
+    unknown
+]>, sections?: Array<[
+    string,
+    string | undefined
+]>): string;
+
 // export: renderFlowText
 export declare function renderFlowText(metrics: FlowMetricsV1, query: string): string;
+
+// export: renderIssueView
+export declare function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount?: number): string;
 
 // export: renderJiraAuditMarkdown
 export declare function renderJiraAuditMarkdown(report: JiraAuditReportV2, query: string, baseUrl?: string, titles?: (rule: string) => string): string;
@@ -3098,6 +3177,21 @@ export declare function renderJiraAuditText(report: JiraAuditReportV2, query: st
 
 // export: renderSparkline
 export declare function renderSparkline(values: number[]): string;
+
+// export: renderTable
+export declare function renderTable(header: string[], rows: string[][], format: TableFormat, headers?: boolean): string;
+
+// export: replaceInBody
+export declare function replaceInBody<T>(body: T, pairs: Array<[
+    string,
+    string
+]>): T;
+
+// export: replaceText
+export declare function replaceText(text: string, pairs: Array<[
+    string,
+    string
+]>): string;
 
 // export: ReportData
 export interface ReportData {
@@ -3184,6 +3278,9 @@ export type ReportStatusCategory = "todo" | "inprogress" | "done";
 // export: resolveAuditChecks
 export declare function resolveAuditChecks(value: string, customIds?: string[]): Set<string> | string;
 
+// export: resolveColumns
+export declare function resolveColumns(columns: string[], fields?: JiraField[]): string[];
+
 // export: resolveDownloadPath
 export declare function resolveDownloadPath(output: string | undefined, filename: string, opts: {
     isDirectory: boolean;
@@ -3191,6 +3288,9 @@ export declare function resolveDownloadPath(output: string | undefined, filename
 
 // export: resolveStatusMap
 export declare function resolveStatusMap(...maps: Array<Record<string, FlowCategory> | undefined>): Record<string, FlowCategory>;
+
+// export: resolveUser
+export declare function resolveUser(client: JiraClient, value: string): Promise<UserRef | null>;
 
 // export: restrictAuditRules
 export declare function restrictAuditRules(rules: AuditRules, keep: Set<string>): AuditRules;
@@ -3216,6 +3316,48 @@ export declare function saveTemplate(template: JiraTemplate, options?: {
 // export: saveTimer
 export declare function saveTimer(state: TimerState): void;
 
+// export: SearchFilters
+export interface SearchFilters {
+    jql?: string;
+    project?: string;
+    assignee?: string;
+    notAssignee?: boolean;
+    status?: string;
+    type?: string;
+    label?: string;
+    sprint?: string;
+    watching?: boolean;
+    history?: boolean;
+    dates?: string[];
+}
+
+// export: SearchInput
+export interface SearchInput {
+    jql?: string;
+    project?: string;
+    assignee?: string;
+    status?: string;
+    type?: string;
+    label?: string;
+    sprint?: string;
+    watching?: boolean;
+    history?: boolean;
+    created?: string;
+    updated?: string;
+    createdBefore?: string;
+    updatedBefore?: string;
+}
+
+// export: SearchInputError
+export declare class SearchInputError extends Error {
+}
+
+// export: searchInputFromFlags
+export declare function searchInputFromFlags(flags: Record<string, string | boolean | string[]>, raw?: string): SearchInput;
+
+// export: searchJql
+export declare function searchJql(client: JiraClient, input: SearchInput, defaultProject?: string): Promise<string>;
+
 // export: secondsToHuman
 export declare function secondsToHuman(seconds: number): string;
 
@@ -3233,6 +3375,12 @@ export declare function severityForValue(config: AuditRuleConfig, kind: AuditRul
     threshold: AuditThreshold;
     limit: number;
 } | undefined;
+
+// export: splitNegation
+export declare function splitNegation(value: string): {
+    negate: boolean;
+    value: string;
+};
 
 // export: sprintEnd
 export declare function sprintEnd(sprint: Pick<JiraSprint, "completeDate">, now?: Date): Date;
@@ -3314,6 +3462,19 @@ export declare function stopTimer(): {
     elapsedSeconds: number;
 };
 
+// export: stripOrderBy
+export declare function stripOrderBy(jql: string): string;
+
+// export: TableFormat
+export type TableFormat = {
+    kind: "table";
+} | {
+    kind: "plain";
+    delimiter: string;
+} | {
+    kind: "csv";
+};
+
 // export: templateExists
 // @deprecated templateExists — Use JiraTemplateStorage.exists() instead
 export declare function templateExists(name: string): Promise<boolean>;
@@ -3378,13 +3539,22 @@ export interface UpdateFilterInput {
 
 // export: UpdateIssueInput
 export interface UpdateIssueInput {
-    fields?: Partial<CreateIssueInput["fields"]>;
+    fields?: Partial<Omit<CreateIssueInput["fields"], "parent">> & {
+        parent?: CreateIssueInput["fields"]["parent"] | null;
+    };
     update?: Record<string, Array<{
         set?: unknown;
         add?: unknown;
         remove?: unknown;
     }>>;
 }
+
+// export: UserRef
+export type UserRef = {
+    accountId: string;
+} | {
+    name: string;
+};
 
 // export: VelocityTrend
 export interface VelocityTrend {
@@ -4542,7 +4712,9 @@ export interface UpdateFilterInput {
 
 // export: UpdateIssueInput
 export interface UpdateIssueInput {
-    fields?: Partial<CreateIssueInput["fields"]>;
+    fields?: Partial<Omit<CreateIssueInput["fields"], "parent">> & {
+        parent?: CreateIssueInput["fields"]["parent"] | null;
+    };
     update?: Record<string, Array<{
         set?: unknown;
         add?: unknown;
@@ -4818,6 +4990,9 @@ export interface BuildReportInput {
     now: Date;
 }
 
+// export: buildSearchJql
+export declare function buildSearchJql(f: SearchFilters): string;
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -4873,6 +5048,19 @@ export declare function calendarDay(value: string): string;
 
 // export: cancelTimer
 export declare function cancelTimer(): TimerState;
+
+// export: cellValue
+export declare function cellValue(value: unknown): string;
+
+// export: changelogRows
+export declare function changelogRows(entries: JiraChangelogEntry[]): {
+    id: string;
+    created: string;
+    author: string;
+    field: string;
+    from: string | null;
+    to: string | null;
+}[];
 
 // export: clearTimer
 export declare function clearTimer(): void;
@@ -4995,6 +5183,9 @@ export interface CumulativeFlowV1 {
     }>;
 }
 
+// export: DEFAULT_COLUMNS
+export declare const DEFAULT_COLUMNS: string[];
+
 // export: DEFAULT_JIRA_STALE_DAYS
 export declare const DEFAULT_JIRA_STALE_DAYS: [
     number,
@@ -5082,6 +5273,12 @@ export declare function extractStatusTransitions(issue: JiraIssue): StatusTransi
 
 // export: findFlaggedField
 export declare function findFlaggedField(fields: JiraField[]): string | undefined;
+
+// export: findTransition
+export declare function findTransition<T extends {
+    id: string;
+    name: string;
+}>(transitions: T[], to: string): T | undefined;
 
 // export: FLOW_MIN_PERCENTILE_SAMPLES
 export declare const FLOW_MIN_PERCENTILE_SAMPLES = 5;
@@ -5276,6 +5473,9 @@ export declare function isRuleOff(config: AuditRuleConfig | undefined, ruleId: s
 
 // export: issueAt
 export declare function issueAt(issue: JiraIssue, sprintId: number, at: Date, pointsField: string, resolve?: StatusCategoryResolver): SprintIssueSnapshot;
+
+// export: issueCell
+export declare function issueCell(issue: JiraIssue, fieldId: string): string;
 
 // export: IssueFlowTimeline
 export interface IssueFlowTimeline {
@@ -6382,6 +6582,21 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: jqlAssignee
+export declare function jqlAssignee(user: string, negate: boolean): string;
+
+// export: jqlBefore
+export declare function jqlBefore(field: string, value: string): string | undefined;
+
+// export: jqlIn
+export declare function jqlIn(field: string, raw: string, nullable?: boolean): string;
+
+// export: jqlSince
+export declare function jqlSince(field: string, value: string): string | undefined;
+
+// export: jqlStatusNames
+export declare function jqlStatusNames(raw: string, statuses: Array<Pick<JiraStatus, "name" | "untranslatedName">>): string;
+
 // export: latestSprints
 export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "endDate" | "completeDate">>(sprints: T[], count: number): T[];
 
@@ -6419,11 +6634,24 @@ export declare function migrateTemplates(): Promise<{
     errors: string[];
 }>;
 
+// export: needsFieldList
+export declare function needsFieldList(columns: string[]): boolean;
+
 // export: outputIsDirectory
 export declare function outputIsDirectory(output: string | undefined, opts: {
     existsAsDirectory: boolean;
     fileCount: number;
 }): boolean;
+
+// export: pageAgile
+export declare function pageAgile<T>(fetchPage: (startAt: number, maxResults: number) => Promise<{
+    values: T[];
+    total?: number;
+    isLast?: boolean;
+}>, limit?: number): Promise<{
+    values: T[];
+    total?: number;
+}>;
 
 // export: parseAttachmentTarget
 export declare function parseAttachmentTarget(args: string[]): AttachmentTargetResult;
@@ -6452,6 +6680,12 @@ export declare function parseJson(content: string): ImportIssue[];
 // export: parseRelativeDuration
 export declare function parseRelativeDuration(input: string): Date;
 
+// export: parseReplacements
+export declare function parseReplacements(values: string[]): Array<[
+    string,
+    string
+]>;
+
 // export: parseRoundingInterval
 export declare function parseRoundingInterval(input: string): number;
 
@@ -6472,6 +6706,9 @@ export declare function peekTimer(): {
 
 // export: percentile
 export declare function percentile(sortedValues: number[], p: number): number | undefined;
+
+// export: pickUser
+export declare function pickUser(users: JiraUser[], query: string): JiraUser;
 
 // export: planDownloads
 export declare function planDownloads<T extends {
@@ -6520,8 +6757,20 @@ export declare function renderAgingText(metrics: FlowMetricsV1): string;
 // export: renderCfdText
 export declare function renderCfdText(cfd: CumulativeFlowV1): string;
 
+// export: renderDetails
+export declare function renderDetails(title: string, rows: Array<[
+    string,
+    unknown
+]>, sections?: Array<[
+    string,
+    string | undefined
+]>): string;
+
 // export: renderFlowText
 export declare function renderFlowText(metrics: FlowMetricsV1, query: string): string;
+
+// export: renderIssueView
+export declare function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount?: number): string;
 
 // export: renderJiraAuditMarkdown
 export declare function renderJiraAuditMarkdown(report: JiraAuditReportV2, query: string, baseUrl?: string, titles?: (rule: string) => string): string;
@@ -6531,6 +6780,21 @@ export declare function renderJiraAuditText(report: JiraAuditReportV2, query: st
 
 // export: renderSparkline
 export declare function renderSparkline(values: number[]): string;
+
+// export: renderTable
+export declare function renderTable(header: string[], rows: string[][], format: TableFormat, headers?: boolean): string;
+
+// export: replaceInBody
+export declare function replaceInBody<T>(body: T, pairs: Array<[
+    string,
+    string
+]>): T;
+
+// export: replaceText
+export declare function replaceText(text: string, pairs: Array<[
+    string,
+    string
+]>): string;
 
 // export: ReportData
 export interface ReportData {
@@ -6617,6 +6881,9 @@ export type ReportStatusCategory = "todo" | "inprogress" | "done";
 // export: resolveAuditChecks
 export declare function resolveAuditChecks(value: string, customIds?: string[]): Set<string> | string;
 
+// export: resolveColumns
+export declare function resolveColumns(columns: string[], fields?: JiraField[]): string[];
+
 // export: resolveDownloadPath
 export declare function resolveDownloadPath(output: string | undefined, filename: string, opts: {
     isDirectory: boolean;
@@ -6624,6 +6891,9 @@ export declare function resolveDownloadPath(output: string | undefined, filename
 
 // export: resolveStatusMap
 export declare function resolveStatusMap(...maps: Array<Record<string, FlowCategory> | undefined>): Record<string, FlowCategory>;
+
+// export: resolveUser
+export declare function resolveUser(client: JiraClient, value: string): Promise<UserRef | null>;
 
 // export: restrictAuditRules
 export declare function restrictAuditRules(rules: AuditRules, keep: Set<string>): AuditRules;
@@ -6649,6 +6919,48 @@ export declare function saveTemplate(template: JiraTemplate, options?: {
 // export: saveTimer
 export declare function saveTimer(state: TimerState): void;
 
+// export: SearchFilters
+export interface SearchFilters {
+    jql?: string;
+    project?: string;
+    assignee?: string;
+    notAssignee?: boolean;
+    status?: string;
+    type?: string;
+    label?: string;
+    sprint?: string;
+    watching?: boolean;
+    history?: boolean;
+    dates?: string[];
+}
+
+// export: SearchInput
+export interface SearchInput {
+    jql?: string;
+    project?: string;
+    assignee?: string;
+    status?: string;
+    type?: string;
+    label?: string;
+    sprint?: string;
+    watching?: boolean;
+    history?: boolean;
+    created?: string;
+    updated?: string;
+    createdBefore?: string;
+    updatedBefore?: string;
+}
+
+// export: SearchInputError
+export declare class SearchInputError extends Error {
+}
+
+// export: searchInputFromFlags
+export declare function searchInputFromFlags(flags: Record<string, string | boolean | string[]>, raw?: string): SearchInput;
+
+// export: searchJql
+export declare function searchJql(client: JiraClient, input: SearchInput, defaultProject?: string): Promise<string>;
+
 // export: secondsToHuman
 export declare function secondsToHuman(seconds: number): string;
 
@@ -6666,6 +6978,12 @@ export declare function severityForValue(config: AuditRuleConfig, kind: AuditRul
     threshold: AuditThreshold;
     limit: number;
 } | undefined;
+
+// export: splitNegation
+export declare function splitNegation(value: string): {
+    negate: boolean;
+    value: string;
+};
 
 // export: sprintEnd
 export declare function sprintEnd(sprint: Pick<JiraSprint, "completeDate">, now?: Date): Date;
@@ -6747,6 +7065,19 @@ export declare function stopTimer(): {
     elapsedSeconds: number;
 };
 
+// export: stripOrderBy
+export declare function stripOrderBy(jql: string): string;
+
+// export: TableFormat
+export type TableFormat = {
+    kind: "table";
+} | {
+    kind: "plain";
+    delimiter: string;
+} | {
+    kind: "csv";
+};
+
 // export: templateExists
 // @deprecated templateExists — Use JiraTemplateStorage.exists() instead
 export declare function templateExists(name: string): Promise<boolean>;
@@ -6811,13 +7142,22 @@ export interface UpdateFilterInput {
 
 // export: UpdateIssueInput
 export interface UpdateIssueInput {
-    fields?: Partial<CreateIssueInput["fields"]>;
+    fields?: Partial<Omit<CreateIssueInput["fields"], "parent">> & {
+        parent?: CreateIssueInput["fields"]["parent"] | null;
+    };
     update?: Record<string, Array<{
         set?: unknown;
         add?: unknown;
         remove?: unknown;
     }>>;
 }
+
+// export: UserRef
+export type UserRef = {
+    accountId: string;
+} | {
+    name: string;
+};
 
 // export: VelocityTrend
 export interface VelocityTrend {

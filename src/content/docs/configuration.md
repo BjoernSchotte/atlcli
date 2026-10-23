@@ -252,6 +252,25 @@ Projects for the digest's project overview, whoever changed the issues:
 
 See [Daily Digest](digest.md#project-overview).
 
+### Terminal UI
+
+Settings for `atlcli tui`, all optional:
+
+```json
+{
+  "tui": { "theme": "light", "columns": ["key", "type", "status", "assignee"], "keymap": { "jira.transition": ["t", "T"] } }
+}
+```
+
+| Option | Type | Default | Constraints |
+|--------|------|---------|-------------|
+| `tui.area` | string | `"jira"` | `jira` or `wiki` |
+| `tui.theme` | string | `"dark"` | `dark` or `light` |
+| `tui.columns` | string[] | `["key", "status", "assignee"]` | `key`, `type`, `status`, `priority`, `assignee`, `updated`; the summary always comes last |
+| `tui.keymap` | object | none | Command id → list of keys; replaces that command's keys |
+
+An invalid value stops `atlcli tui` with a message naming it. See [Terminal UI](tui.md#configuration).
+
 ### Digest state
 
 `atlcli digest` keeps one last-run marker per product in `~/.atlcli/profiles/<profile>/digest-state.json`:

@@ -241,6 +241,9 @@ export interface AppState {
   navOpen: boolean;
   /** The detail pane fills the body. */
   zoom: boolean;
+  /** Widths the user set by dragging a border or with < and >; unset = automatic. */
+  navWidth?: number;
+  listWidth?: number;
   overlays: Overlay[];
   toasts: Toast[];
   /** Busy indicator text, e.g. "Saving…". */

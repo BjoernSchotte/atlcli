@@ -1,24 +1,55 @@
 import { adfToMarkdown, calendarDay, changelogRows, type JiraIssue } from "@atlcli/jira";
+import type { TuiColumn } from "../index.js";
 import { readable } from "./jira.js";
 import type { JiraTab } from "./state.js";
 import { clip, DetailFrame, useApp, useEnv, type RowProps } from "./views.js";
 
 const day = (iso?: string) => (iso ? calendarDay(iso) : "");
 
+export const DEFAULT_COLUMNS: TuiColumn[] = ["key", "status", "assignee"];
+
+/** A column's width and text; `key` fits the longest key in the list (SALESMARKETING-13662). */
+function cell(column: TuiColumn, issue: JiraIssue, keyWidth: number): { width: number; text: string } {
+  const f = issue.fields;
+  switch (column) {
+    case "key":
+      return { width: keyWidth, text: issue.key };
+    case "type":
+      return { width: 10, text: f.issuetype?.name ?? "" };
+    case "status":
+      return { width: 13, text: f.status?.name ?? "" };
+    case "priority":
+      return { width: 10, text: f.priority?.name ?? "" };
+    case "assignee":
+      return { width: 15, text: f.assignee?.displayName ?? "–" };
+    case "updated":
+      return { width: 11, text: day(f.updated) };
+  }
+}
+
+const COLUMN_COLOR: Record<TuiColumn, "key" | "status" | "dim" | "fg"> = { key: "key", type: "dim", status: "status", priority: "dim", assignee: "dim", updated: "dim" };
+
 export function JiraRow({ item, width, marked }: RowProps<JiraIssue>) {
-  const { theme } = useEnv();
-  // As wide as the longest key in the list (SALESMARKETING-13662), so columns line up.
+  const { theme, ctx } = useEnv();
   const keyWidth = useApp((s) => Math.min(24, Math.max(8, ...s.jira.list.items.map((i) => i.key.length)))) + 2;
-  const f = item.fields;
-  const assignee = f.assignee?.displayName ?? "–";
-  const wide = width >= 70;
+  const configured = ctx.opts.config?.columns ?? DEFAULT_COLUMNS;
+  // Narrow lists drop columns from the right until the summary keeps 20 characters.
+  const columns: TuiColumn[] = [];
+  let used = 2;
+  for (const column of configured) {
+    const w = cell(column, item, keyWidth).width;
+    if (column !== "key" && used + w > width - 20) break;
+    columns.push(column);
+    used += w;
+  }
   return (
     <>
       <text fg={theme.markedFg} content={marked ? "● " : "  "} style={{ flexShrink: 0 }} />
-      <text fg={theme.key} content={item.key.padEnd(keyWidth)} wrapMode="none" style={{ flexShrink: 0 }} />
-      <text fg={theme.status} content={clip(f.status?.name ?? "", 12).padEnd(13)} wrapMode="none" style={{ flexShrink: 0 }} />
-      {wide ? <text fg={theme.dim} content={clip(assignee, 14).padEnd(15)} wrapMode="none" style={{ flexShrink: 0 }} /> : null}
-      <text fg={theme.fg} content={f.summary ?? ""} wrapMode="none" style={{ flexShrink: 1 }} />
+      {columns.map((column) => {
+        const { width: w, text } = cell(column, item, keyWidth);
+        return <text key={column} fg={theme[COLUMN_COLOR[column]]} content={clip(text, w - 1).padEnd(w)} wrapMode="none" style={{ flexShrink: 0 }} />;
+      })}
+      <text fg={theme.fg} content={item.fields.summary ?? ""} wrapMode="none" style={{ flexShrink: 1 }} />
     </>
   );
 }

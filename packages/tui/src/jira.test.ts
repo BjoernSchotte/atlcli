@@ -33,6 +33,18 @@ describe("filter bar", () => {
     expect(await filterJql(ctx, "  project = X  ")).toBe("project = X");
   });
 
+  test("submitting the filter shows the result: the list gets the focus", async () => {
+    const { ctx, settle } = setup({ search: () => ({ issues: [issue("AB-1")] }), getIssue: (k: string) => issue(k) });
+    ctx.store.set((s) => ({ ...s, focus: "nav" }));
+    handleKey({ ctx, commands: commands(), keymap: {} }, { name: "/", sequence: "/" });
+    ctx.store.set((s) => ({ ...s, overlays: s.overlays.map((o) => (o.kind === "prompt" ? { ...o, value: "project = AB" } : o)) }));
+    handleKey({ ctx, commands: commands(), keymap: {} }, { name: "return" });
+    await settle();
+    // Regression: in a narrow terminal the focused navigator covered the result.
+    expect(ctx.store.get().focus).toBe("list");
+    expect(ctx.store.get().jira.list.query).toBe("project = AB");
+  });
+
   test("search flags become JQL, with users and localized statuses resolved", async () => {
     const { ctx } = setup(
       {

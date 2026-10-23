@@ -103,6 +103,46 @@ describe("shell", () => {
     expect(t.ctx.store.get().jira.list.selected).toBe(1);
   });
 
+  test("shift+click marks a row; a double click opens its detail", async () => {
+    const t = jiraStub();
+    const s = await show(t);
+    const lines = s.captureCharFrame().split("\n");
+    const y = lines.findIndex((l) => l.includes("AB-2"));
+    const x = lines[y]!.indexOf("AB-2");
+    await s.mockMouse.click(x, y, 0, { modifiers: { shift: true } });
+    await t.settle();
+    expect(t.ctx.store.get().jira.list.marked).toEqual(["AB-2"]);
+    await s.mockMouse.doubleClick(x, y);
+    await t.settle();
+    expect(t.ctx.store.get().focus).toBe("detail");
+    expect(t.ctx.store.get().jira.list.selected).toBe(1);
+  });
+
+  test("dragging the list's right border resizes it", async () => {
+    const t = jiraStub();
+    const s = await show(t);
+    const header = s.captureCharFrame().split("\n")[1]!;
+    // The list's right border: the "┐" closing the second pane's top line.
+    const border = header.indexOf("┐", header.indexOf("┐") + 1);
+    await s.mockMouse.drag(border, 5, border + 10, 5);
+    await t.settle();
+    expect(t.ctx.store.get().listWidth).toBeGreaterThan(0);
+    await s.renderOnce();
+    const moved = s.captureCharFrame().split("\n")[1]!;
+    expect(moved.indexOf("┐", moved.indexOf("┐") + 1)).toBe(border + 10);
+  });
+
+  test("configured columns show in order; the summary comes last", async () => {
+    const t = setup(
+      { search: () => ({ issues }), getIssue: (k: string) => issues.find((i) => i.key === k) ?? issue(k) },
+      { config: { columns: ["type", "key", "status"] } }
+    );
+    const s = await show(t);
+    const row = s.captureCharFrame().split("\n").find((l) => l.includes("Fix the login"))!;
+    expect(row.indexOf("Task")).toBeLessThan(row.indexOf("AB-1"));
+    expect(row.indexOf("To Do")).toBeLessThan(row.indexOf("Fix the login"));
+  });
+
   test("narrow terminals stack list and detail and hide the navigator", async () => {
     const s = await show(jiraStub(), 80, 30);
     const frame = s.captureCharFrame();

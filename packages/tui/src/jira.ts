@@ -158,7 +158,9 @@ const readCommands: Command[] = [
           onSubmit: async (line) => {
             if (!line.trim()) return;
             const jql = await ctx.task("Building the query…", () => filterJql(ctx, line));
-            if (jql) await loadIssues(ctx, "Search", jql);
+            if (!jql) return;
+            ctx.store.set((s) => ({ ...s, focus: "list" }));
+            await loadIssues(ctx, "Search", jql);
           },
         })
       ),

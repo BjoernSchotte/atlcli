@@ -7,10 +7,10 @@ import type { ScrollBoxRenderable, SyntaxStyle, TextareaRenderable } from "@open
 import { createTwoFilesPatch } from "diff";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import type { AreaModule } from "./commands.js";
-import { updateList, updateNav, expandNode } from "./commands.js";
+import { MIN_PANE, updateList, updateNav, expandNode } from "./commands.js";
 import { applies, keysFor, paletteCommands, runSafely, type Command, type Ctx } from "./keymap.js";
 import { pickerItems } from "./overlays.js";
-import { moveSelection, replaceTop, topOverlay, visibleNodes, type AppState, type Focus, type ListState, type Overlay } from "./state.js";
+import { moveSelection, replaceTop, toggleMark, topOverlay, visibleNodes, type AppState, type Focus, type ListState, type Overlay } from "./state.js";
 import { useStore } from "./store.js";
 import type { Theme } from "./theme.js";
 
@@ -79,24 +79,36 @@ export function runCommand(ctx: Ctx, command: Command): void {
 
 // ============ Panes ============
 
-function Pane({ focus, title, children, style, onClick, scrollRef }: {
+function Pane({ focus, title, children, style, onClick, scrollRef, resize }: {
   focus: Focus;
   title: string;
   children: ReactNode;
   style?: Record<string, unknown>;
   onClick?: () => void;
   scrollRef?: React.Ref<ScrollBoxRenderable>;
+  /** Dragging the right border sets this width. */
+  resize?: "navWidth" | "listWidth";
 }) {
   const { theme, ctx } = useEnv();
   const focused = useApp((s) => s.focus === focus && s.overlays.length === 0);
+  const dragging = useRef(false);
   return (
     <scrollbox
       ref={scrollRef}
       title={` ${title} `}
       style={{ border: true, borderColor: focused ? theme.focus : theme.border, ...style }}
-      onMouseDown={() => {
+      onMouseDown={function (this: ScrollBoxRenderable, event) {
+        dragging.current = Boolean(resize) && event.x === this.x + this.width - 1;
         if (ctx.store.get().focus !== focus) ctx.store.set((s) => ({ ...s, focus }));
-        onClick?.();
+        if (!dragging.current) onClick?.();
+      }}
+      onMouseDrag={function (this: ScrollBoxRenderable, event) {
+        if (!dragging.current || !resize) return;
+        const width = Math.max(MIN_PANE, event.x - this.x + 1);
+        ctx.store.set((s) => (s[resize] === width ? s : { ...s, [resize]: width }));
+      }}
+      onMouseUp={() => {
+        dragging.current = false;
       }}
     >
       {children}
@@ -115,7 +127,7 @@ export function NavPane({ width }: { width: number }) {
     if (nav.selected) ref.current?.scrollChildIntoView(`nav-${nav.selected}`);
   }, [nav.selected]);
   return (
-    <Pane focus="nav" title="Navigator" style={{ width, flexShrink: 0 }} scrollRef={ref}>
+    <Pane focus="nav" title="Navigator" style={{ width, flexShrink: 0 }} scrollRef={ref} resize="navWidth">
       {nodes.length === 0 ? <text fg={theme.dim} content=" Loading…" /> : null}
       {nodes.map((node) => {
         const open = nav.expanded.includes(node.id);
@@ -126,7 +138,9 @@ export function NavPane({ width }: { width: number }) {
             key={node.id}
             id={`nav-${node.id}`}
             style={{ height: 1, flexDirection: "row", backgroundColor: selected ? theme.selectedBg : undefined }}
-            onMouseDown={() => {
+            onMouseDown={(event) => {
+              event.stopPropagation();
+              if (ctx.store.get().focus !== "nav") ctx.store.set((s) => ({ ...s, focus: "nav" }));
               updateNav(ctx, (t) => ({ ...t, selected: node.id }));
               const module = env.areas[area];
               const opening = node.expandable && !open ? expandNode(ctx, module, node) : Promise.resolve();
@@ -165,12 +179,14 @@ export function ListPane<T>({ width, height, idOf, Row }: { width?: number; heig
   const count = list.loading && list.items.length === 0 ? "loading…" : `${list.items.length}${list.hasMore ? "+" : ""}`;
   const marks = list.marked.length ? ` · ${list.marked.length} marked` : "";
   const inner = (width ?? 80) - 2;
+  const lastClick = useRef({ id: "", at: 0 });
   return (
     <Pane
       focus="list"
-      title={`${list.title} (${count})${marks}${list.loading && list.items.length > 0 ? " · loading…" : ""}`}
+      title={clip(`${list.title} (${count})${marks}${list.loading && list.items.length > 0 ? " · loading…" : ""}`, inner - 4)}
       style={{ ...(width ? { width, flexShrink: 0 } : { flexGrow: 1 }), ...(height ? { height, flexShrink: 0 } : {}) }}
       scrollRef={ref}
+      resize={width ? "listWidth" : undefined}
     >
       {list.error ? <text fg={theme.error} content={` ${list.error}`} /> : null}
       {!list.error && !list.loading && list.items.length === 0 ? <text fg={theme.dim} content=" Nothing here." /> : null}
@@ -181,9 +197,17 @@ export function ListPane<T>({ width, height, idOf, Row }: { width?: number; heig
             key={id}
             id={`row-${id}`}
             style={{ height: 1, flexDirection: "row", backgroundColor: i === list.selected ? theme.selectedBg : undefined }}
-            onMouseDown={() => {
-              ctx.store.set((s) => ({ ...s, focus: "list" }));
-              updateList(ctx, (l) => moveSelection(l, i), env.areas[area]);
+            onMouseDown={(event) => {
+              // The row decides focus; the pane around it must not reset it.
+              event.stopPropagation();
+              const module = env.areas[area];
+              // Shift+click marks for a bulk change; a double click opens the detail.
+              if (event.modifiers.shift) return updateList(ctx, (l) => toggleMark(l, id), module);
+              const now = Date.now();
+              const double = lastClick.current.id === id && now - lastClick.current.at < 400;
+              lastClick.current = { id, at: now };
+              ctx.store.set((s) => ({ ...s, focus: double ? "detail" : "list" }));
+              updateList(ctx, (l) => moveSelection(l, i), module);
             }}
           >
             <Row item={item} width={inner} selected={i === list.selected} marked={list.marked.includes(id)} />
@@ -287,7 +311,8 @@ function Dialog({ title, width, height, children }: { title: string; width: numb
   const { theme } = useEnv();
   return (
     <box
-      title={` ${title} `}
+      // A title wider than the border is not drawn at all: clip it.
+      title={` ${clip(title, width - 6)} `}
       style={{
         border: true,
         borderStyle: "rounded",

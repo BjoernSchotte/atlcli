@@ -359,7 +359,11 @@ const wikiCommands: Command[] = [
         title: `Search pages${ctx.opts.space ? ` (words search ${ctx.opts.space}; CQL searches all)` : " (words or CQL)"}`,
         value: "",
         placeholder: 'release notes   or   type = page AND label = "howto"',
-        onSubmit: (q) => (q.trim() ? loadSearch(ctx, `Search: ${q.trim()}`, searchCql(q, ctx.opts.space)) : undefined),
+        onSubmit: (q) => {
+          if (!q.trim()) return;
+          ctx.store.set((s) => ({ ...s, focus: "list" }));
+          return loadSearch(ctx, `Search: ${q.trim()}`, searchCql(q, ctx.opts.space));
+        },
       }),
   },
   { id: "wiki.edit", title: "Edit the page ($EDITOR, diff, then save)", keys: ["e"], area: "wiki", focus: onPage, bar: "edit", run: edit },

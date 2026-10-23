@@ -7,7 +7,7 @@ import { createCliRenderer, type CliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import type { TuiOptions } from "../index.js";
-import { coreCommands, type AreaModule } from "./commands.js";
+import { coreCommands, MIN_PANE, type AreaModule } from "./commands.js";
 import { jira } from "./jira.js";
 import { JiraDetail, JiraRow } from "./jira-view.js";
 import { keyString, resolveCommand, type Command, type Ctx, type KeyLike } from "./keymap.js";
@@ -36,7 +36,9 @@ export function createCtx(store: Store<AppState>, opts: TuiOptions, renderer: Cl
     toast(kind, text) {
       const id = ++toastSeq;
       store.set((s) => ({ ...s, toasts: [...s.toasts.slice(-4), { id, kind, text }] }));
-      setTimeout(() => store.set((s) => (s.toasts.some((t) => t.id === id) ? { ...s, toasts: s.toasts.filter((t) => t.id !== id) } : s)), kind === "error" ? 10_000 : 5_000);
+      const timer = setTimeout(() => store.set((s) => (s.toasts.some((t) => t.id === id) ? { ...s, toasts: s.toasts.filter((t) => t.id !== id) } : s)), kind === "error" ? 10_000 : 5_000);
+      // A pending toast must not keep the process alive after quitting.
+      timer.unref?.();
     },
     async task(label, work) {
       store.set((s) => ({ ...s, busy: label }));
@@ -85,6 +87,14 @@ const ROWS: Record<AppState["area"], AreaView> = {
   wiki: { idOf: (i: WikiPageRow) => i.id, Row: WikiRow, Detail: WikiDetail } as unknown as AreaView,
 };
 
+/** Nav and list widths: the user's (dragged or < >) within limits that leave the detail `MIN_PANE` columns. */
+export function paneWidths(width: number, userNav?: number, userList?: number, showNav = true): { nav: number; list: number } {
+  const nav = Math.min(userNav ?? Math.min(40, Math.max(24, Math.floor(width * 0.22))), width - 2 * MIN_PANE);
+  const rest = width - (showNav ? nav : 0);
+  const list = Math.min(userList ?? Math.floor(rest * 0.48), rest - MIN_PANE);
+  return { nav: Math.max(MIN_PANE, nav), list: Math.max(MIN_PANE, list) };
+}
+
 export function Shell() {
   const env = useEnv();
   const { width, height } = useTerminalDimensions();
@@ -94,11 +104,13 @@ export function Shell() {
   const focus = useApp((s) => s.focus);
   useKeyboard((event) => handleKey(env, event));
 
+  const userNav = useApp((s) => s.navWidth);
+  const userList = useApp((s) => s.listWidth);
   const view = ROWS[area];
   const compact = width < 100;
-  const navWidth = Math.min(40, Math.max(24, Math.floor(width * 0.22)));
+  const navWidth = paneWidths(width, userNav, userList).nav;
   const showNav = !zoom && navOpen && (!compact || focus === "nav");
-  const listWidth = compact ? undefined : Math.floor((width - (showNav ? navWidth : 0)) * 0.48);
+  const listWidth = compact ? undefined : paneWidths(width, userNav, userList, showNav).list;
   const bodyHeight = height - 2;
 
   return (
@@ -127,6 +139,10 @@ export async function runTui(opts: TuiOptions): Promise<void> {
   const done = new Promise<void>((resolve) => (quit = resolve));
   const ctx = createCtx(store, opts, renderer, () => quit());
   const env: Env = { ctx, theme, syntax, commands: allCommands(), areas: AREAS, keymap: opts.config?.keymap ?? {} };
+  // `kill` or a closed terminal ends the TUI and restores the terminal, instead of leaving it running.
+  const onSignal = () => quit();
+  const signals = ["SIGTERM", "SIGHUP", "SIGINT"] as const;
+  for (const signal of signals) process.on(signal, onSignal);
   try {
     createRoot(renderer).render(
       <EnvProvider value={env}>
@@ -136,6 +152,7 @@ export async function runTui(opts: TuiOptions): Promise<void> {
     void AREAS[store.get().area].init(ctx).catch((err) => ctx.toast("error", err instanceof Error ? err.message : String(err)));
     await done;
   } finally {
+    for (const signal of signals) process.off(signal, onSignal);
     renderer.destroy();
     await renderer.closed;
     syntax.destroy();
