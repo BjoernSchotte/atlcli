@@ -178,7 +178,7 @@ export function calculateSprintMetrics(
     }
   }
 
-  return metricsOf(sprint, { committedPoints, completedPoints, totalIssues: issues.length, completedIssues, addedPoints: 0, removedPoints: 0 });
+  return metricsOf(sprint, { committedPoints, completedPoints, totalIssues: issues.length, completedIssues, addedPoints: 0, removedPoints: 0, addedIssues: 0, removedIssues: 0 });
 }
 
 /** The end of a sprint for its metrics: when it was completed, else now. */
@@ -198,24 +198,41 @@ function sprintMetricsAsOfSprint(
   let completedIssues = 0;
   let addedPoints = 0;
   let removedPoints = 0;
+  let addedIssues = 0;
+  let removedIssues = 0;
   for (const issue of issues) {
     const { start: atStart, end: atEnd } = sprintIssueAt(issue, sprint, pointsField, resolve);
     if (atStart.inSprint) committedPoints += atStart.points;
-    if (atStart.inSprint && !atEnd.inSprint) removedPoints += atStart.points;
+    if (atStart.inSprint && !atEnd.inSprint) {
+      removedPoints += atStart.points;
+      removedIssues++;
+    }
     if (!atEnd.inSprint) continue;
     totalIssues++;
-    if (!atStart.inSprint) addedPoints += atEnd.points;
+    if (!atStart.inSprint) {
+      addedPoints += atEnd.points;
+      addedIssues++;
+    }
     if (atEnd.done) {
       completedIssues++;
       completedPoints += atEnd.points;
     }
   }
-  return metricsOf(sprint, { committedPoints, completedPoints, totalIssues, completedIssues, addedPoints, removedPoints });
+  return metricsOf(sprint, { committedPoints, completedPoints, totalIssues, completedIssues, addedPoints, removedPoints, addedIssues, removedIssues });
 }
 
 function metricsOf(
   sprint: JiraSprint,
-  m: { committedPoints: number; completedPoints: number; totalIssues: number; completedIssues: number; addedPoints: number; removedPoints: number }
+  m: {
+    committedPoints: number;
+    completedPoints: number;
+    totalIssues: number;
+    completedIssues: number;
+    addedPoints: number;
+    removedPoints: number;
+    addedIssues: number;
+    removedIssues: number;
+  }
 ): SprintMetrics {
   const percentOfCommitted = (points: number) =>
     m.committedPoints > 0 ? Math.round((points / m.committedPoints) * 100) : 0;
@@ -233,6 +250,8 @@ function metricsOf(
     incompleteIssues: m.totalIssues - m.completedIssues,
     addedDuringSprint: m.addedPoints,
     removedDuringSprint: m.removedPoints,
+    addedIssues: m.addedIssues,
+    removedIssues: m.removedIssues,
     scopeChangePercent: percentOfCommitted(m.addedPoints + m.removedPoints),
     sayDoRatio: percentOfCommitted(m.completedPoints),
   };
@@ -413,8 +432,8 @@ export function formatSprintMetrics(metrics: SprintMetrics): string {
   if (metrics.addedDuringSprint > 0 || metrics.removedDuringSprint > 0) {
     lines.push("");
     lines.push("Scope Change:");
-    lines.push(`  Added: ${metrics.addedDuringSprint} points`);
-    lines.push(`  Removed: ${metrics.removedDuringSprint} points`);
+    lines.push(`  Added: ${metrics.addedDuringSprint} points (${metrics.addedIssues} issues)`);
+    lines.push(`  Removed: ${metrics.removedDuringSprint} points (${metrics.removedIssues} issues)`);
     lines.push(`  Change: ${metrics.scopeChangePercent}%`);
   }
 

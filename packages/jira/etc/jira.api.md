@@ -1058,6 +1058,8 @@ export interface SprintMetrics {
     incompleteIssues: number;
     addedDuringSprint: number;
     removedDuringSprint: number;
+    addedIssues: number;
+    removedIssues: number;
     scopeChangePercent: number;
     sayDoRatio: number;
 }
@@ -3232,6 +3234,8 @@ export interface SprintMetrics {
     incompleteIssues: number;
     addedDuringSprint: number;
     removedDuringSprint: number;
+    addedIssues: number;
+    removedIssues: number;
     scopeChangePercent: number;
     sayDoRatio: number;
 }
@@ -4450,6 +4454,8 @@ export interface SprintMetrics {
     incompleteIssues: number;
     addedDuringSprint: number;
     removedDuringSprint: number;
+    addedIssues: number;
+    removedIssues: number;
     scopeChangePercent: number;
     sayDoRatio: number;
 }
@@ -6624,6 +6630,8 @@ export interface SprintMetrics {
     incompleteIssues: number;
     addedDuringSprint: number;
     removedDuringSprint: number;
+    addedIssues: number;
+    removedIssues: number;
     scopeChangePercent: number;
     sayDoRatio: number;
 }

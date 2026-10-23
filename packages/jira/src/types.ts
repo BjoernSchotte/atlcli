@@ -478,9 +478,13 @@ export interface SprintMetrics {
   completedIssues: number;
   incompleteIssues: number;
 
-  // Scope change
+  // Scope change, in points
   addedDuringSprint: number;
   removedDuringSprint: number;
+  /** Issues added after the start and still in the sprint at the end. */
+  addedIssues: number;
+  /** Issues in the sprint at the start and out of it at the end. */
+  removedIssues: number;
   scopeChangePercent: number;
 
   // Say-do ratio (percentage)

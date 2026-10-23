@@ -30,7 +30,7 @@ All of them print JSON (`schemaVersion: "1"`), with or without `--json`.
 
 | Flag | Type | Default | Used by |
 |---|---|---|---|
-| `--board` | board id | `defaults.board` (predictability) | velocity, predictability |
+| `--board` | board id | `defaults.board` | velocity, predictability |
 | `--sprint` | sprint id | required | burndown, scope-change |
 | `--sprints` | integer | `5` | velocity, predictability: the most recently closed sprints, listed oldest first |
 | `--points-field` | field id | auto-detected | all |
@@ -127,12 +127,14 @@ atlcli jira analyze scope-change --sprint 456
 ```json
 {
   "schemaVersion": "1",
-  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed" },
+  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed", "startDate": "2026-10-06T08:00:00.000Z", "endDate": "2026-10-17T16:00:00.000Z" },
   "pointsField": "customfield_10016",
   "scopeChange": {
     "committedPoints": 40,
     "addedPoints": 5,
     "removedPoints": 3,
+    "addedIssues": 2,
+    "removedIssues": 1,
     "scopeChangePercent": 20,
     "stability": "moderate"
   },
@@ -140,7 +142,7 @@ atlcli jira analyze scope-change --sprint 456
 }
 ```
 
-`scopeChangePercent` is (added + removed) / committed × 100. Stability is `stable` up to 10 %, `moderate` up to 25 % and `unstable` above.
+`addedPoints`/`removedPoints` are points, `addedIssues`/`removedIssues` issue counts. `scopeChangePercent` is (added + removed points) / committed points × 100. Stability is `stable` up to 10 %, `moderate` up to 25 % and `unstable` above.
 
 ## Predictability
 
@@ -177,10 +179,22 @@ atlcli jira sprint report 456
   "velocity": 34,
   "sayDoRatio": 85,
   "scopeChange": 20,
-  "issues": { "total": 22, "completed": 18, "incomplete": 4, "added": 5, "removed": 3 },
-  "progress": { "committed": 40, "completed": 34, "percent": 85, "bar": "[█████████████████───] 85%" }
+  "issues": { "total": 22, "completed": 18, "incomplete": 4, "added": 2, "removed": 1 },
+  "progress": { "committed": 40, "completed": 34, "added": 5, "removed": 3, "percent": 85, "bar": "[█████████████████───] 85%" }
 }
 ```
+
+| Field | Unit | Meaning |
+|---|---|---|
+| `issues.total`, `completed`, `incomplete` | issues | In the sprint at its end; done or not (see [As of the sprint](#as-of-the-sprint)) |
+| `issues.added`, `issues.removed` | issues | Joined after the start / left before the end |
+| `progress.committed`, `progress.completed` | points | At the start / done at the end |
+| `progress.added`, `progress.removed` | points | Points of the added / removed issues |
+| `scopeChange` | percent | (added + removed points) / committed points |
+
+:::caution[Changed in this release]
+`issues.added` and `issues.removed` used to hold points. They now count issues; the points moved to `progress.added` and `progress.removed`.
+:::
 
 ## Requests
 
