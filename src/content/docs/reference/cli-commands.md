@@ -831,7 +831,7 @@ atlcli jira bulk label add <label> --jql <query>
 atlcli jira bulk label remove <label> --jql <query>
 atlcli jira bulk delete --jql <query> --confirm
 atlcli jira bulk move --jql <query> --sprint <id>   # Or --backlog
-atlcli jira bulk link-page --jql <query> --page <id> [--comment] [--dry-run]
+atlcli jira bulk link-page --jql <query> --page <id> [--comment [text]] [--dry-run]
 atlcli jira bulk edit --issues <K1,K2> --set "labels=a,b"  # --issues instead of --jql
 ```
 

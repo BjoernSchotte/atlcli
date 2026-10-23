@@ -36,6 +36,26 @@ const ISSUE = {
   },
 };
 
+/** ISSUE as Jira returns it for `?expand=changelog,renderedFields` (plus the `expand` list Jira always sends). */
+const EXPANDED = {
+  ...ISSUE,
+  expand: "renderedFields,names,schema,changelog",
+  renderedFields: { description: "<p>see v1</p>" },
+  changelog: {
+    startAt: 0,
+    maxResults: 1,
+    total: 1,
+    histories: [
+      {
+        id: "100",
+        author: { accountId: "acc-ann", displayName: "Ann Lee" },
+        created: "2026-10-01T10:00:00.000+0000",
+        items: [{ field: "status", fieldtype: "jira", from: "1", fromString: "To Do", to: "3", toString: "In Progress" }],
+      },
+    ],
+  },
+};
+
 beforeAll(async () => {
   server = Bun.serve({
     port: 0,
@@ -67,6 +87,7 @@ beforeAll(async () => {
       if (path === "/rest/api/3/issue/AB-1/remotelink" && req.method === "POST") return Response.json({ id: 77, self: "" });
       if (path === "/rest/api/3/issue/AB-1/remotelink/77") return new Response(null, { status: 204 });
       if (path === "/rest/api/3/issue/NOPE-1") return Response.json({ errorMessages: ["Issue does not exist or you do not have permission to see it."], errors: {} }, { status: 404 });
+      if (path.startsWith("/rest/api/3/issue/") && url.searchParams.get("expand")) return Response.json(EXPANDED);
       if (path.startsWith("/rest/api/3/issue/")) return Response.json(ISSUE);
       if (path === "/rest/api/3/project/AB") return Response.json({ id: "1", key: "AB", name: "Alpha" });
       if (path === "/rest/api/3/project/AB/statuses" || path === "/rest/api/3/issue/createmeta/AB/issuetypes") return Response.json({ issueTypes: [], values: [] });
@@ -227,6 +248,36 @@ describe("paging and fixes from the docs audit", () => {
     expect(requests.some((r) => r.method === "POST" && r.path === "/rest/api/3/issue/AB-1/comment")).toBe(true);
   });
 
+  test("bulk link-page --comment posts the same link comment as issue link-page (#290)", async () => {
+    await run(["issue", "link-page", "--key", "AB-1", "--page", "55", "--comment", "--json"]);
+    const single = sent("/rest/api/3/issue/AB-1/comment");
+    requests = [];
+    await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--comment", "--json"]);
+    expect(sent("/rest/api/3/issue/AB-1/comment")).toEqual(single);
+    expect(JSON.stringify(single)).toContain("Linked to Confluence page: ");
+  });
+
+  test("link-page --comment <text> posts that text as Markdown, not the fixed text (#290)", async () => {
+    for (const args of [["issue", "link-page", "--key", "AB-1"], ["bulk", "link-page", "--issues", "AB-1"]]) {
+      requests = [];
+      await run([...args, "--page", "55", "--comment", "See **spec**", "--json"]);
+      expect(sent("/rest/api/3/issue/AB-1/comment").body.content[0].content).toEqual([
+        { type: "text", text: "See " },
+        { type: "text", text: "spec", marks: [{ type: "strong" }] },
+      ]);
+    }
+  });
+
+  test("bulk link-page --dry-run says which comment would be added (#290)", async () => {
+    const without = JSON.parse((await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--dry-run", "--json"])).stdout);
+    expect(without.comment).toBeNull();
+    const bare = JSON.parse((await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--comment", "--dry-run", "--json"])).stdout);
+    expect(bare.comment).toStartWith("Linked to Confluence page: [Spec](");
+    const text = JSON.parse((await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--comment", "hi", "--dry-run", "--json"])).stdout);
+    expect(text.comment).toBe("hi");
+    expect(requests.some((r) => r.path.endsWith("/comment"))).toBe(false);
+  });
+
   test("epic list --project wins over defaults.board (regression: board path taken)", async () => {
     await run(["epic", "list", "--project", "AB", "--json"]);
     expect(requests.some((r) => r.path === "/rest/api/3/search/jql")).toBe(true);
@@ -252,6 +303,29 @@ describe("errors, detail views, Data Center", () => {
     expect(text.stdout).toContain("Description\n  see v1");
     const json = await run(["issue", "get", "--key", "AB-1", "--format", "json"]);
     expect(JSON.parse(json.stdout).issue.key).toBe("AB-1");
+  });
+
+  test("issue get --expand keeps the expanded sections next to issue (#292)", async () => {
+    const { stdout } = await run(["issue", "get", "--key", "AB-1", "--expand", "changelog,renderedFields", "--json"]);
+    const out = JSON.parse(stdout);
+    expect(requests.find((r) => r.path === "/rest/api/3/issue/AB-1")?.query.get("expand")).toBe("changelog,renderedFields");
+    expect(out.issue.key).toBe("AB-1");
+    expect(out.changelog).toEqual(EXPANDED.changelog);
+    expect(out.renderedFields).toEqual(EXPANDED.renderedFields);
+    // Jira's list of available expands is noise, not data.
+    expect(out.expand).toBeUndefined();
+    const plain = JSON.parse((await run(["issue", "get", "--key", "AB-1", "--json"])).stdout);
+    expect(Object.keys(plain)).toEqual(["schemaVersion", "issue"]);
+  });
+
+  test("issue get --expand changelog shows History in the text view; markdown stays writable (#292)", async () => {
+    const text = await run(["issue", "get", "--key", "AB-1", "--expand", "changelog,renderedFields"]);
+    expect(text.stdout).toContain("History\n  2026-10-01  Ann Lee  status: To Do → In Progress");
+    expect(text.stderr).toContain("Note: renderedFields only shown with --format json.");
+    const md = await run(["issue", "get", "--key", "AB-1", "--expand", "changelog", "--format", "markdown"]);
+    expect(md.stdout).not.toContain("In Progress");
+    // The stub always answers with both sections.
+    expect(md.stderr).toContain("Note: renderedFields, changelog only shown with --format json.");
   });
 
   test("Data Center: --lead fails clearly instead of being dropped (regression: silently ignored)", async () => {

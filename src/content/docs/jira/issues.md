@@ -23,7 +23,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--key` | Issue key (required) |
-| `--expand` | Expand: `changelog`, `comments`, `transitions` |
+| `--expand` | Comma-separated Jira expands, e.g. `changelog`, `renderedFields`, `names`, `transitions`. JSON output puts each one next to `issue` as Jira returns it (`changelog`, `renderedFields`, …); the text view adds `changelog` as a **History** section; the markdown view stays description-only and notes the rest on stderr |
 | `--format` | `text` (default): a readable view; `json`; or `markdown`: a YAML front block plus the description as markdown |
 
 Without `--json`, the issue prints as a readable view: fields, the description as markdown, links and the last three comments.
@@ -87,6 +87,8 @@ Descriptions, comments and worklog comments are written and read as markdown. at
 |----------|-------------|
 | `# Heading` … `######` | Heading 1–6 |
 | `**bold**`, `*italic*`, `~~strike~~`, `` `code` `` | Text formatting |
+| `<u>under</u>`, `H<sub>2</sub>O`, `x<sup>2</sup>` | Underline, subscript, superscript |
+| `<span style="color: #ff5630">red</span>` | Text colour (hex colour, exactly this form) |
 | `[text](https://…)` | Link |
 | `-` / `1.` lists, nested by indentation | Bullet / numbered list |
 | `- [ ] open` / `- [x] done` | Action items (task list) |
@@ -107,7 +109,7 @@ Descriptions, comments and worklog comments are written and read as markdown. at
 | Jira content | In markdown | Written back |
 |--------------|-------------|--------------|
 | Images and attachments, macros/extensions, layouts, tables without a header row or with merged cells | An invisible `<!--adf:…-->` marker | Unchanged. Leave the marker in place when editing. |
-| Text colour, underline, sub/superscript | Text only | The formatting is lost |
+| Background colour and other marks without a markdown form | Text only | The formatting is lost |
 | Card or embed appearance of a smart link | `<url>` | Becomes an inline smart link |
 | Local images such as `![shot](./a.png)` | — | Kept as a link, with a warning. Upload the file with `jira issue attach`. |
 
@@ -499,7 +501,7 @@ Options:
 |------|-------------|
 | `--key` | Issue key (required) |
 | `--page` | Confluence page ID (required) |
-| `--comment` | Also post a comment on the issue that links the page (switch) |
+| `--comment [text]` | Also post a comment on the issue: bare, "Linked to Confluence page: <link>"; with text, that text as Markdown |
 
 ### List Linked Pages
 

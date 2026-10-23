@@ -3,7 +3,8 @@ import { assertCliAuthSupported } from "./session-guard.js";
 import {
   buildConfluencePageRemoteLink,
   confluencePageGlobalId,
-  linkedPageComment,
+  linkPageComment,
+  linkPageCommentText,
 } from "./jira-confluence-link.js";
 import { basename, dirname } from "node:path";
 import {
@@ -14,6 +15,7 @@ import {
   editInEditor,
   issueCell,
   renderDetails,
+  changelogRows,
   renderIssueView,
   jqlBefore,
   jqlIn,
@@ -689,16 +691,24 @@ async function handleIssueGet(
   }
   const client = await getClient(flags, opts);
   const issue = await client.getIssue(key, { expand });
+  // What --expand added (changelog, renderedFields, names, transitions, …), as Jira sent it.
+  const { id: _id, key: _key, self: _self, fields: _fields, expand: _expand, ...expanded } = issue as JiraIssue & { expand?: string };
 
-  if (format === "markdown" && !opts.json) {
-    output(formatIssueMarkdown(issue, client.siteUrl), opts);
+  if (format !== "json" && !opts.json) {
+    // The text view shows the changelog as History; the markdown view stays description-only so it can be written back.
+    const hidden = Object.keys(expanded).filter((name) => format === "markdown" || name !== "changelog");
+    if (hidden.length > 0) process.stderr.write(`Note: ${hidden.join(", ")} only shown with --format json.\n`);
+    output(format === "markdown" ? formatIssueMarkdown(issue, client.siteUrl) : renderIssueView(issue, client.siteUrl), opts);
     return;
   }
-  if (format === "text" && !opts.json) {
-    output(renderIssueView(issue, client.siteUrl), opts);
-    return;
-  }
-  output({ schemaVersion: "1", issue: { ...formatIssue(issue), descriptionMarkdown: adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl }) } }, opts);
+  output(
+    {
+      schemaVersion: "1",
+      issue: { ...formatIssue(issue), descriptionMarkdown: adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl }) },
+      ...expanded,
+    },
+    opts
+  );
 }
 
 /** YAML front block + description markdown, ready to edit and feed back via --description-file. */
@@ -1023,19 +1033,8 @@ async function handleIssueHistory(
     startAt += page.values.length;
     if (page.isLast || page.values.length === 0) break;
   }
-  const rows = entries
-    .flatMap((entry) =>
-      entry.items.map((item) => ({
-        id: entry.id,
-        created: entry.created,
-        author: entry.author?.displayName,
-        field: item.field,
-        from: Object.hasOwn(item, "fromString") ? item.fromString : item.from,
-        to: Object.hasOwn(item, "toString") ? item.toString : item.to,
-      }))
-    )
+  const rows = changelogRows(entries)
     .filter((row) => !field || row.field.toLowerCase() === field)
-    .sort((a, b) => b.created.localeCompare(a.created))
     .slice(0, Number.isNaN(limit) ? 100 : limit);
 
   output({ schemaVersion: "1", issueKey: key, history: rows, total: rows.length }, opts);
@@ -1208,7 +1207,7 @@ async function handleIssueAttach(
   let comment: { id: string } | undefined;
   if (commentText && attached.length > 0) {
     try {
-      const posted = await client.addComment(issueKey, commentText);
+      const posted = await client.addComment(issueKey, richText(client, commentText));
       comment = { id: posted.id };
     } catch (error) {
       failed.push({
@@ -1653,7 +1652,7 @@ Commands:
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
-  --comment <text>   Post a comment (attach, link-page)
+  --comment <text>   Post a comment (attach; link-page: bare posts the page link)
   --edit             Write the description or comment in $VISUAL/$EDITOR (update starts from the current description)
   --internal         Internal comment, hidden from customers (Jira Service Management)
 
@@ -1677,7 +1676,6 @@ async function handleIssueLinkPage(
 ): Promise<void> {
   const key = getFlag(flags, "key");
   const pageId = getFlag(flags, "page");
-  const addComment = hasFlag(flags, "comment");
 
   if (!key || !pageId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--key and --page are required.");
@@ -1712,10 +1710,8 @@ async function handleIssueLinkPage(
   const linkedPage = { id: page.id, title: page.title, url: pageUrl, spaceKey: page.spaceKey };
   const linkResult = await jiraClient.createRemoteLink(key, buildConfluencePageRemoteLink(profile, linkedPage));
 
-  // Optionally add a comment
-  if (addComment) {
-    await jiraClient.addComment(key, linkedPageComment(jiraClient, linkedPage));
-  }
+  const comment = linkPageComment(jiraClient, flags.comment, linkedPage);
+  if (comment) await jiraClient.addComment(key, comment);
 
   output({
     schemaVersion: "1",
@@ -4280,7 +4276,6 @@ async function handleBulkLinkPage(
   const pageId = getFlag(flags, "page");
   const dryRun = hasFlag(flags, "dry-run");
   const limit = Number(getFlag(flags, "limit") ?? 1000);
-  const comment = hasFlag(flags, "comment");
 
   if (!pageId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--page is required.");
@@ -4310,7 +4305,7 @@ async function handleBulkLinkPage(
   const confluenceClient = new ConfluenceClient(profile);
 
   // Fetch page details
-  let page: { id: string; title: string; url?: string };
+  let page: { id: string; title: string; url?: string; spaceKey?: string };
   try {
     page = await confluenceClient.getPage(pageId);
   } catch (err) {
@@ -4319,8 +4314,9 @@ async function handleBulkLinkPage(
     return;
   }
 
-  const pageUrl = page.url ?? buildConfluenceUrl(profile, `/pages/${page.id}`);
-  const linkedPage = { id: page.id, title: page.title, url: pageUrl };
+  // Same link (URL, space summary) and comment as `jira issue link-page`.
+  const pageUrl = page.url ?? buildConfluenceUrl(profile, `/spaces/${page.spaceKey}/pages/${page.id}`);
+  const linkedPage = { id: page.id, title: page.title, url: pageUrl, spaceKey: page.spaceKey };
 
   // Dry run - show preview
   if (dryRun) {
@@ -4333,6 +4329,8 @@ async function handleBulkLinkPage(
         pageId: page.id,
         pageTitle: page.title,
         pageUrl,
+        // The Markdown each issue would get as a comment; null when none is posted.
+        comment: linkPageCommentText(flags.comment, linkedPage) ?? null,
         affectedIssues: issues.map((i) => ({ key: i.key, summary: i.fields.summary })),
         count: issues.length,
       },
@@ -4342,13 +4340,10 @@ async function handleBulkLinkPage(
   }
 
   // Execute bulk link
+  const comment = linkPageComment(jiraClient, flags.comment, linkedPage);
   const summary = await executeInBatches(issues, async (issue) => {
     await jiraClient.createRemoteLink(issue.key, buildConfluencePageRemoteLink(profile, linkedPage));
-
-    // Add comment if requested
-    if (comment) {
-      await jiraClient.addComment(issue.key, linkedPageComment(jiraClient, linkedPage));
-    }
+    if (comment) await jiraClient.addComment(issue.key, comment);
   });
 
   output(
@@ -4384,7 +4379,7 @@ Commands:
   delete --jql <query> --confirm [--dry-run] [--limit <n>]
       Delete all matching issues (destructive!)
 
-  link-page --jql <query> --page <id> [--comment] [--dry-run] [--limit <n>]
+  link-page --jql <query> --page <id> [--comment [text]] [--dry-run] [--limit <n>]
       Link a Confluence page to all matching issues
 
   move --jql <query> (--sprint <id> | --backlog) [--dry-run] [--limit <n>]
@@ -4401,7 +4396,7 @@ Options:
   --limit <n>        Max issues to process (default: 1000)
   --confirm          Required for delete operations
   --page <id>        Confluence page ID (for link-page)
-  --comment          Add comment to issues when linking
+  --comment [text]   Comment on each issue: the link, or this text (Markdown)
 
 Supported --set fields:
   priority=High      Set priority by name

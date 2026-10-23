@@ -1940,7 +1940,6 @@ async function handleLinkIssue(
 ): Promise<void> {
   const pageId = getFlag(flags, "id");
   const issueKey = getFlag(flags, "issue");
-  const comment = hasFlag(flags, "comment");
 
   if (!pageId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -1974,17 +1973,15 @@ async function handleLinkIssue(
 
   // Get Jira client and create remote link (lazy: wiki commands stay Jira-free)
   const { JiraClient } = await import("@atlcli/jira");
-  const { buildConfluencePageRemoteLink, linkedPageComment } = await import("./jira-confluence-link.js");
+  const { buildConfluencePageRemoteLink, linkPageComment } = await import("./jira-confluence-link.js");
   assertCliAuthSupported(profile, opts);
   const jiraClient = new JiraClient(profile);
 
   try {
     const result = await jiraClient.createRemoteLink(issueKey, buildConfluencePageRemoteLink(profile, linkedPage));
 
-    // Add comment to issue if requested
-    if (comment) {
-      await jiraClient.addComment(issueKey, linkedPageComment(jiraClient, linkedPage));
-    }
+    const comment = linkPageComment(jiraClient, flags.comment, linkedPage);
+    if (comment) await jiraClient.addComment(issueKey, comment);
 
     output(
       {

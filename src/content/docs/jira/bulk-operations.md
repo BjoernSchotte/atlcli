@@ -146,7 +146,7 @@ Options:
 | `--jql` | JQL query |
 | `--issues` | Comma-separated keys (instead of `--jql`) |
 | `--page` | Confluence page ID (required) |
-| `--comment` | Also post a comment on each issue that links the page (switch) |
+| `--comment [text]` | Also post a comment on each issue: bare, "Linked to Confluence page: <link>" (as `jira issue link-page` posts); with text, that text as Markdown. `--dry-run` shows it as `comment` (`null` when none) |
 | `--dry-run` | Show the page and the matching issues without linking |
 | `--limit` | Maximum issues to link (default 1000) |
 
