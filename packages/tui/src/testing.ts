@@ -16,6 +16,7 @@ export function stubClient<T>(impl: Record<string, (...args: never[]) => unknown
     {
       get(_target, prop: string) {
         if (prop === "isCloudSite") return impl.isCloudSite === undefined ? true : (impl.isCloudSite as unknown as () => boolean)();
+        if (prop === "deploymentType") return impl.deploymentType ? (impl.deploymentType as unknown as () => string)() : "cloud";
         if (prop === "siteUrl") return "https://example.atlassian.net";
         if (prop === "then") return undefined;
         return async (...args: unknown[]) => {

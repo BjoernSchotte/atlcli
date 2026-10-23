@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { handleKey } from "./app.js";
+import { expandNode } from "./commands.js";
 import { topOverlay } from "./state.js";
 import { commands, setup, type TestSetup } from "./testing.js";
 import { editBlockReason, loadPage, loadSearch, parentSearchCql, readablePage, searchCql, wiki } from "./wiki.js";
@@ -71,6 +72,20 @@ describe("reading", () => {
     expect(nav.nodes["g:spaces"]!.children).toEqual(["sp:DOC", "sp:ABC"]);
     expect(nav.expanded).toContain("sp:DOC");
     expect(nav.nodes["sp:DOC"]!.children).toEqual(["p:10"]);
+  });
+
+  test("Data Center: child pages come from the v1 API (no v2, no folders)", async () => {
+    const { t } = wikiSetup({
+      deploymentType: () => "data-center",
+      listSpaces: () => [{ id: "2", key: "DOC", name: "Docs", type: "global" }],
+      getSpaceRootPages: () => [{ id: "10", title: "Home" }],
+      getChildrenWithPosition: () => [{ id: "11", title: "Child", position: 0 }],
+    });
+    await wiki.init(t.ctx);
+    await t.settle();
+    await expandNode(t.ctx, wiki, t.ctx.store.get().wiki.nav.nodes["p:10"]!);
+    expect(t.ctx.store.get().wiki.nav.nodes["p:10"]!.children).toEqual(["p:11"]);
+    expect(t.calls.map((c) => c.method)).not.toContain("getPageDirectChildren");
   });
 
   test("a failed page load shows its error", async () => {

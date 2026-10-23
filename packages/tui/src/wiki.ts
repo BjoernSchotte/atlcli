@@ -464,6 +464,11 @@ async function childNodes(ctx: Ctx, node: TreeNode): Promise<Omit<TreeNode, "dep
     const pages = await client.getSpaceRootPages({ id: String(node.data?.id), key: String(node.data?.key) });
     return pages.map((p) => ({ id: `p:${p.id}`, label: p.title, kind: "page", expandable: true, data: { id: p.id, spaceKey: node.data?.key } }));
   }
+  if (node.kind === "page" && client.deploymentType !== "cloud") {
+    // Data Center has no v2 API and no folders.
+    const pages = await client.getChildrenWithPosition(String(node.data?.id));
+    return pages.map((p) => ({ id: `p:${p.id}`, label: p.title, kind: "page", expandable: true, data: { id: p.id, spaceKey: node.data?.spaceKey } }));
+  }
   if (node.kind === "page" || node.kind === "folder") {
     const children = await client.getPageDirectChildren(String(node.data?.id));
     return children
