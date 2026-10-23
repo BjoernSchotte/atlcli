@@ -46,7 +46,7 @@ An enabled plugin changes what other commands do:
   which runs `atlcli wiki docs push <dir> --quiet` after every `git commit` in
   that repository. That push writes to Confluence, and the hook file keeps working after the plugin is disabled. `atlcli git hook status` and
   `atlcli git hook remove` inspect and remove it. `--force` overwrites a foreign
-  hook. The plugin has no `wiki docs commit` command.
+  hook.
 - `drawio`: before every `wiki docs push` it renders stale Draw.io previews to
   PNG with a Draw.io executable and aborts the push if one fails.
   `atlcli drawio preview [dir] [--check] [--force] [--executable <path>]` runs the
@@ -141,8 +141,6 @@ atlcli skill --install ~/.claude/skills          # writes ~/.claude/skills/atlcl
   name that is not found at the skill root is looked up under `references/`.
   An unknown path fails with `ATLCLI_ERR_USAGE` and lists the files (in JSON
   under `details.available`).
-- Put `--json` after the path. `atlcli skill --json <path>` fails with
-  `--json takes no value`, since the parser would take the path as the value.
 - `<path>`, `--list` and `--install` exclude each other. `--help` prints the
   command help.
 - `--install <skills-root>` writes the skill to `<skills-root>/atlcli/`,

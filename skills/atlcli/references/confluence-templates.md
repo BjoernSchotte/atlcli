@@ -9,9 +9,8 @@ metadata:
 
 Templates are Markdown stored locally. A name is resolved most-specific first:
 **space > profile > global**, so a space template shadows a global one of the
-same name. (`atlcli wiki template` prints the levels in the opposite order; the
-resolver checks space first.) These are page templates. Word and PDF export
-templates are a separate feature, see [confluence-export.md](confluence-export.md).
+same name. These are page templates. Word and PDF export templates are a
+separate feature, see [confluence-export.md](confluence-export.md).
 
 ## Contents
 
@@ -85,7 +84,10 @@ atlcli wiki template render meeting-notes --var title='Planning' > ./out.md
 ```
 
 `--var key=value` is repeatable. `@title` comes from `render --title`, not
-from `--var title=`. Create the page from the same template:
+from `--var title=`. A required variable without a valid value stops the
+render with exit 1 and names it (`Missing or invalid template variables:
+owner`); a `{{name}}` the template uses without declaring it renders empty,
+with a warning on stderr. Create the page from the same template:
 
 ```bash
 atlcli wiki page create --space TEAM --template meeting-notes \
@@ -96,14 +98,15 @@ atlcli wiki page create --space TEAM --template meeting-notes \
 
 `--title` is required in template mode, and so is a space (`--space`, a default
 space, or the template's target). `--parent` overrides the template's target
-parent. `--dry-run` prints the rendered Markdown and the labels that would be
-applied without creating the page. Run it first and show the user.
+parent. Missing required variables stop it the same way as `render`.
+`--dry-run` prints the rendered Markdown and the labels that would be applied
+without creating the page. Run it first and show the user.
 
 ## Anti-patterns
 
 - Publishing a template-created page without a `--dry-run` review. An
-  unresolved `{{variable}}` renders as an empty string, and
-  `wiki page create --template` does not enforce required variables.
+  optional or undeclared `{{variable}}` without a value renders as an empty
+  string.
 - Running `--interactive` or `wiki template edit` unattended. Both wait for a
   human.
 

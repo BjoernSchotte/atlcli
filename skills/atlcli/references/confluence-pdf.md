@@ -137,8 +137,6 @@ digests in text output.
   `.wiki-pdf-template` pack or `report`.
 - Expecting `--page-size`, `--watermark` or `--accent-color`. They do not exist.
   Settings come from a pack.
-- Retrying a build that fails with `Cannot find package
-  '@atlcli/pdf-compiler-browser'`. The installed build has no PDF compiler.
 
 Related: [confluence-export.md](confluence-export.md),
 [confluence-templates.md](confluence-templates.md).

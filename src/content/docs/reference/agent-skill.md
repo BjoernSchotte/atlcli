@@ -61,7 +61,7 @@ treats `#` as a pattern.
 | `<path>` | string | `SKILL.md` | optional | A path from `--list`, or a link as written; not with `--list` or `--install` |
 | `--list` | flag | off | optional | Takes no value; not with `<path>` or `--install` |
 | `--install <skills-root>` | path | none | optional | One non-empty directory; `<skills-root>/atlcli`, its `references/` and the skill's files in it must not be symbolic links; not with `<path>` or `--list` |
-| `--json` | flag | off | optional | Takes no value; put it after the path |
+| `--json` | flag | off | optional | Takes no value |
 
 ## JSON output
 
@@ -84,10 +84,6 @@ paths relative to it.
 **`Unknown skill file: ...`.** The path names no file of this version's skill.
 The message lists the available files, and `atlcli skill --list` prints them.
 In JSON mode the error is `ATLCLI_ERR_USAGE` with `details.available`.
-
-**`--json takes no value`.** A flag takes the next word as its value, so
-`atlcli skill --json references/safety.md` would read the path as the value of
-`--json`. Put the path first: `atlcli skill references/safety.md --json`.
 
 **`... is a symbolic link`, `... is not a directory` or `... is not a regular
 file` from `--install`.** The skill directory, its `references/` directory or

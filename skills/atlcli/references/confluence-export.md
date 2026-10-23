@@ -123,10 +123,6 @@ to apply only the changes it rates ready. `build` never overwrites an existing
 output file. `pdf-template` is not `wiki template`. The full PDF options and
 the template pack workflow are in [confluence-pdf.md](confluence-pdf.md).
 
-If PDF export or `pdf-template build`/`validate` fails with `Cannot find package
-'@atlcli/pdf-compiler-browser'`, the installed build cannot compile PDFs.
-Report that instead of retrying.
-
 ## Report and exit codes
 
 With `--json` (or `--report json`) stdout carries exactly one
@@ -207,7 +203,6 @@ removes terminal history and needs `--confirm`.
 
 - Overwriting a DOCX the user did not name. DOCX replaces silently, PDF needs
   `--force`.
-- Promising a PDF without checking it works. Run a PDF export of one page first.
 - Treating exit 0 as proof that nothing is missing. Under `--completeness
   partial` read `complete` and `notesByCode`.
 - Mixing `--profile` with `--base-url`/`--email`. It fails.

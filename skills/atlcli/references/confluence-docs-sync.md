@@ -49,24 +49,28 @@ object in the report). `watch` and `sync` print one JSON object per line.
 
 ## What protects a push, and what does not
 
-`docs push` and `docs watch` do not compare the page's current Confluence
-version with the version you pulled. For a tracked file they read the page's
-current version number and write the local content as the next version. A
-change someone made in Confluence after your pull is overwritten without a
-warning. Only `docs sync` runs a three-way merge.
+`docs push` and `docs watch` compare the page's current Confluence version
+with the version of your last pull. When the page changed in Confluence since
+then, the file is not pushed: `push` names it (`changed in Confluence since
+your last pull (vN → vM); not pushed`), pushes the other files and exits 1
+(with `--json`, under `error.details.conflicts`); `watch` reports it and
+keeps watching. A file you did not edit locally is skipped without a message
+in that case. `--force` overwrites the Confluence edit. Only `docs sync` runs a
+three-way merge.
 
 `docs status` makes no network call. Its `remote-modified` and `conflict`
 counts only show what an earlier `sync` recorded, so a clean `status` says
 nothing about the remote side.
 
-Before pushing pages other people may have touched:
-
-1. Run `atlcli wiki docs diff <file>`. It diffs the current remote page against
-   the local file, so the diff must contain only your intended edits. Anything
-   else is a remote change you would overwrite.
-2. Pull again for files you did not edit. `pull` skips a locally modified file
-   (`Skipping <path> (local modifications, use --force)`) and counts it under
-   `skipped`.
+When a push is refused, the Confluence edit has to get into the file first.
+`pull` does not do that: it skips a locally modified file (`Skipping <path>
+(local modifications, use --force)`) and counts it under `skipped`. Either the
+user runs `atlcli wiki docs sync <dir>`, which merges or writes conflict
+markers (see [Conflicts](#conflicts)) and keeps running until stopped, or you
+work from `atlcli wiki docs diff <file>`, which diffs the current remote page
+against the local file: carry the remote changes into the file until the diff
+contains only your intended edits, show it to the user, then push that file
+with `--force`.
 
 `push` also has no dry run. It re-uploads every tracked file in the target, so
 push the single file you edited (`push ./docs/api.md`) instead of the whole
@@ -84,8 +88,8 @@ atlcli wiki docs init ./team-docs --page-id 67890     # a single page
 `sync` need a scope: `--space <key>`, `--ancestor <pageId>`, or `--page-id
 <id>`. Passing more than one is not an error: `--page-id` wins over
 `--ancestor`, which wins over `--space`, silently. `init` without a scope flag
-falls back to `defaults.space` from the config. After `init` the
-scope is stored, so `pull` needs no scope flag unless overriding it for one
+falls back to the configured default space (`atlcli config set global.space
+<key>`, or `profiles.<name>.space`). After `init` the scope is stored, so `pull` needs no scope flag unless overriding it for one
 run. A `pull` into an uninitialised directory initialises it.
 
 Pull options worth knowing:
@@ -180,10 +184,9 @@ separate `attachmentStats` block and lists them in `modified`.
 
 Confluence macros are written as fenced `:::` blocks and converted on push. The
 macro name follows the colons with **no space**: `:::info` converts, `::: info`
-does not. The mistake is reported, but misleadingly: the spaced opener is not
-recognised as an open at all, so validation flags the block's closing `:::` as
-an unexpected close with no matching open, pointing at the wrong line. That is
-the same error code and message as the hyphenated-macro case below:
+does not. `wiki docs check` reports the spaced opener on its own line
+(`write ":::name" without a space`) and the block's closing `:::` as an
+unexpected close:
 
 `````markdown
 :::info
@@ -198,31 +201,31 @@ Text of the panel.
 Hidden content.
 :::
 
-:::toc
+:::toc minLevel=2 maxLevel=3
 :::
 `````
 
 Common blocks: `info`, `note`, `warning`, `tip`, `panel` (with `title=`,
 `bgColor=`, `borderColor=`), `expand`, `toc`, `toc-zone`, `children`,
-`pagetree`, `recently-updated`, `content-by-label`. An unclosed `:::` block is
-reported by `wiki docs check` as a validation error, with the exceptions
-below.
+`pagetree`, `recently-updated`, `content-by-label`. `wiki docs check` follows
+the converter: a block it reports as unclosed or unexpected (`MACRO_UNCLOSED`)
+would reach Confluence as literal `:::` text.
 
-**The validator does not understand hyphenated macro names.** It tracks open
-blocks with a pattern that stops at the hyphen, so `:::toc-zone`,
-`:::recently-updated`, and `:::content-by-label` are never registered as open.
-These convert correctly on push, but validation misreports them in both
-directions: a correctly closed block is flagged `MACRO_UNCLOSED` ("unexpected
-close without matching open"), and a genuinely unclosed one passes. Treat
-validator errors naming those three as unreliable, and confirm by reading the
-pushed page back.
+Multi-column layouts use `section` and `column`, which close with their own
+end markers rather than a bare `:::`:
 
-`section` is worse and is best avoided. It closes with `:::section-end` rather
-than a bare `:::`, which the validator recognizes as neither an open nor a
-close: a correctly closed section is reported as unclosed, while a section
-closed with a bare `:::` passes validation and then reaches Confluence as
-literal `:::section` text. Build multi-column layouts in the Confluence editor
-instead.
+`````markdown
+:::section
+:::column
+Left column.
+:::column-end
+:::column
+Right column.
+:::column-end
+:::section-end
+`````
+
+A section or column closed with a bare `:::` fails `check`.
 
 ### Linking between pages
 
@@ -258,8 +261,9 @@ A pulled file can contain syntax the sections above never ask you to write:
   `<!-- atlcli: <name> macro content lost -->` comment and the macro disappears
   from the page. The `*[<name> macro]*` line is a label, not content.
 - Some constructs round-trip as inline syntax rather than `:::` blocks:
-  `{status:green}Done{status}`, `{date:2026-01-15}`, `{#anchor-name}`,
-  `@[Display Name](accountId)`, `{color:red}…{color}`, and `{bg:yellow}…{bg}`.
+  `{date:2026-01-15}`, `{#anchor-name}`, `@[Display Name](accountId)` (pull
+  writes the user's display name), `{color:red}…{color}`, and
+  `{bg:yellow}…{bg}`, and `{status:green}Done{status}` for a status lozenge.
   Jira issue macros come back as ordinary Markdown links
   (`[PROJ-101](…/browse/PROJ-101)`); the legacy `{jira:PROJ-101}` form is
   deprecated on push, do not write it.
@@ -267,17 +271,17 @@ A pulled file can contain syntax the sections above never ask you to write:
 Authoring a `:::confluence` block by hand only works if you supply the storage
 XML inside a `<!--raw … -->` comment.
 
-Parameters are only honoured where the converter reads them, and unread ones
-are dropped without warning. `toc` takes none: use `:::toc-zone minLevel=2
-maxLevel=4` around a region for a levelled table of contents. `expand` takes
-only a title: `:::expand "Details" expanded=true` produces the title
-`"Details" expanded=true`, quotes included.
+`toc` and `toc-zone` pass their parameters (`minLevel=2 maxLevel=3`) through.
+`expand` takes only a quoted title: `:::expand "Details" expanded=true` gets
+the title `Details`, and `check` warns that `expanded` is ignored
+(`MACRO_INVALID_PARAMS`). `panel` values are quoted: `:::panel title="Note"
+bgColor="#eef" borderColor="#99c"`.
 
 ## Validation
 
 `check` validates broken links (error), links to untracked pages (warning),
-unclosed macros (error), and pages over 500KB (warning), and warns about folder
-problems. `--strict` promotes warnings to errors, which is what CI should use.
+unclosed macros (error), ignored macro parameters (warning), and pages over
+500KB (warning), and warns about folder problems. `--strict` promotes warnings to errors, which is what CI should use.
 `check` fails when it finds no Markdown files, so a wrong directory cannot pass.
 `push --validate` validates exactly the files the push will send and aborts on
 errors (and on warnings with `--strict`).
@@ -311,8 +315,9 @@ for directories that lack an `index.md`. Pages are created in the new editor
 
 ## Conflicts
 
-Only `sync` produces page conflicts (`pull` can record attachment conflicts,
-writing a `*-conflict.*` copy next to the attachment). When both sides changed a
+Only `sync` writes conflict markers into pages (`push` refuses instead, and
+`pull` can record attachment conflicts, writing a `*-conflict.*` copy next to
+the attachment). When both sides changed a
 page, its three-way merge either succeeds or writes conflict markers into the
 file:
 
@@ -324,13 +329,20 @@ the Confluence text
 >>>>>>> REMOTE
 ```
 
-`status` then lists the file under `conflicts`. Resolve it by editing the file
-so that no markers remain, then run `atlcli wiki docs diff <file>` and push the
-file. `atlcli wiki docs resolve <file> --accept local|remote` picks one side of
-every marker, but it requires a legacy `<file>.meta.json` sidecar and otherwise
-stops with `File is not tracked (no metadata)`; `--accept merged` always stops
-with an instruction to edit the file. Do not rely on `resolve` in a workspace
-created by `init`.
+`status` then lists the file under `conflicts`. Two ways out:
+
+- `atlcli wiki docs resolve <file> --accept local|remote` picks one side of
+  every marker. When the page in Confluence still matches the `REMOTE` side,
+  the file can be pushed as it is.
+- Edit the file so that no markers remain, then run
+  `atlcli wiki docs resolve <file> --accept merged` to clear the conflict.
+  `--accept merged` refuses while markers are left.
+
+`resolve` ends by naming the next step. After `--accept merged`, or when the
+page has moved on in Confluence, the push base is still the version from
+before the conflict, so a plain `push` is refused: run `sync` again, or
+`push --force` once `atlcli wiki docs diff <file>` shows that the file already
+holds the remote edit.
 
 Show the diff to the user and let them choose; do not pick a side to make the
 push succeed. Choosing `local` overwrites the Confluence edit.
@@ -344,7 +356,8 @@ atlcli wiki docs sync ./docs --space TEAM --dry-run --json
 ```
 
 `watch` pushes a file each time it changes (default directory `./docs`,
-`--debounce` in ms, default 500) and has no remote checks. `sync` is the
+`--debounce` in ms, default 500) and, like `push`, skips a page that changed in
+Confluence since the last pull unless `--force` is given. `sync` is the
 bidirectional daemon: it pulls remote changes by polling, pushes local changes
 by file watching, and merges when both changed. Options:
 
@@ -373,15 +386,14 @@ enable it or install its hook unless the user asks.
 - `atlcli git hook install [dir]` writes a `.git/hooks/post-commit` script that
   runs `atlcli wiki docs push <dir> --quiet` after every git commit in that
   repository.
-  A commit then writes to Confluence, with the unchecked push behaviour
-  described above. The script skips the push when a `sync` daemon holds the
-  lock, and a failed push does not block the commit.
+  A commit then writes to Confluence. The script skips the push when a `sync`
+  daemon holds the lock, and a failed push, such as one refused because a page
+  changed in Confluence, does not block the commit.
 - `atlcli plugin disable git` does not remove the hook. The script is a plain
   file that calls `atlcli`, so it keeps pushing until `atlcli git hook remove`
   runs (or the file is deleted). `atlcli git hook status` shows whether it is
   installed. The `git` command itself only exists while the plugin is enabled.
-- The plugin provides no `wiki docs commit` command, although the user docs
-  show one. Commit with git.
+- The plugin provides no `wiki docs commit` command. Commit with git.
 
 ## Editor conversion
 
@@ -400,8 +412,8 @@ equivalent against the API is `wiki page convert` in
 
 ## Anti-patterns
 
-- Editing files without pulling first. A later push silently replaces the
-  newer Confluence version.
+- Passing `--force` to `push` or `watch` to get past a refused page. It
+  overwrites the newer Confluence version; `sync` merges it instead.
 - Pushing a whole directory to publish one edit. Every tracked file is sent.
 - Treating a clean `status` as proof the remote has not changed. `status` is
   local only.

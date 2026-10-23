@@ -33,9 +33,9 @@ space; other recursive commands have no such cap. For a complete local copy use 
 | Keep a folder open in an editor | `wiki mount` (user's own terminal) |
 
 `wiki sh` writes through a versioned compare-and-swap with a three-way merge
-(`atlcli wiki vfs conflicts` lists merges that failed). `wiki docs push` has
-no such check, so the shell is the safer way to change a page that other people
-edit. Treat every `--mode rw` call as a Confluence write: the confirmation
+(`atlcli wiki vfs conflicts` lists merges that failed). `wiki docs push`
+refuses a page that changed in Confluence since the last pull instead of
+merging. Treat every `--mode rw` call as a Confluence write: the confirmation
 rules in [safety.md](safety.md) apply.
 
 ## The shell
@@ -108,11 +108,12 @@ atlcli wiki sh --space DOCS --mode rw -c '
   renames, `mv a dir/` reparents.
 - A conflicting concurrent edit makes the write fail with `EBUSY` and keeps your
   content: `atlcli wiki vfs conflicts list`, `show <id>`, `discard <id>`.
-- A page that does not survive the Markdown round trip (for example
-  multi-column layouts and inline colour spans) is saved without any warning:
-  `wiki sh` and `wiki mount` pass no logger, so the loss warning is never
-  printed. Do not save such a page through the shell. Use the Confluence
-  editor.
+- A page that does not survive the Markdown round trip (typically one with a
+  macro the converter cannot express) is still saved. The first write to it
+  prints `atlcli: warning: <path>: this page does not round-trip through
+  Markdown` on stderr (outside the `--json` document), so the loss is already
+  done when the warning appears. Do not save such a page through the shell.
+  Use the Confluence editor.
 - `sed -i` reports every write failure as `No such file or directory`. Repeat
   the write as `echo … > file` to see the real error (`EROFS` means read-only
   mode; `EACCES` is a denial of your own credentials, or a delete without

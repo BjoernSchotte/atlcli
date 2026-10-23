@@ -10,9 +10,9 @@ metadata:
 `atlcli audit wiki` reports content health for pages in a local `wiki docs`
 directory: stale pages, orphans, broken internal links, single or inactive
 contributors, restricted, draft and archived pages. The command needs its
-feature flag, and the root `atlcli` help never lists it. `atlcli audit wiki
---help` prints the root help, not the audit help; with the flag on, the bare
-`atlcli audit` lists the targets with examples.
+feature flag. `atlcli audit wiki --help` lists every check and option, also
+with the flag off; with the flag on, the bare `atlcli audit` lists the targets
+with examples.
 
 ## Contents
 
@@ -35,14 +35,15 @@ feature flag, and the root `atlcli` help never lists it. `atlcli audit wiki
 
 ```bash
 atlcli audit wiki --all --stale-high 12 --json
-atlcli audit wiki --stale-high 12 --stale-medium 6 --orphans --broken-links ./docs --json
+atlcli audit wiki ./docs --stale-high 12 --stale-medium 6 --orphans --broken-links --json
 atlcli audit wiki --all --label documentation --exclude-label archived --json
 atlcli audit wiki --all --markdown > audit-report.md
 atlcli audit wiki --export-graph > graph.json
 ```
 
-The directory is the positional argument or `--dir`, default `.`. At least one
-check is required: `--all`, or individual flags (`--stale-high|medium|low <months>`,
+The directory is the positional argument or `--dir`, default `.`. At least
+one check is required: `--all`, or individual flags
+(`--stale-high|medium|low <months>`,
 `--orphans`, `--broken-links`, `--single-contributor`,
 `--inactive-contributors`, `--external-links`, `--check-external`,
 `--missing-label <label>`, `--restricted`, `--drafts`, `--archived`,

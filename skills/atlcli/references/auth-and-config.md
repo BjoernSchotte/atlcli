@@ -51,15 +51,15 @@ A Server/Data Center profile (`authType` `bearer`) reports `username`,
 set) and `hasEnvToken` instead. `tlsCaFile` and `tlsSkipVerify` appear when the
 profile sets them. A profile of type `session` is rejected with `auth type
 "session" is only supported in browser contexts` by the commands that talk to
-Jira or Confluence (`wiki publish` skips that check); `config`, `auth status`,
-`flag` and `log` still work.
+Jira or Confluence; `config`, `auth status`, `flag` and `log` still work.
 
 Target a different site per command with `--profile <name>`; it is a global
-flag and works on every command. The only other way to pick a profile is
-`atlcli auth switch <name>`, which changes the stored active profile and is a
-user decision. The environment variables `ATLCLI_PROFILE`, `ATLCLI_CONFIG` and
-`ATLCLI_LOG_LEVEL` that the documentation site lists are not read by the
-source; use `--profile` and `atlcli config`.
+flag and works on every command. `ATLCLI_PROFILE=<name>` does the same for
+every command in that environment, and `--profile` wins over it.
+`atlcli auth switch <name>` changes the stored active profile and is a user
+decision. `ATLCLI_CONFIG=<path>` makes atlcli read and write that file
+instead of `~/.atlcli/config.json`, and `ATLCLI_LOG_LEVEL` (`off`, `error`,
+`warn`, `info`, `debug`) overrides `logging.level`.
 
 ## Credential resolution
 
@@ -111,13 +111,12 @@ user's stored credentials and profiles. Leave them to the user.
 | `logging.global`, `logging.project` | whether logs are written |
 
 These are the only keys `config set` accepts. Resolution: CLI flag > profile
-config > global config. Help texts of newer commands call these
-`defaults.project`, `defaults.space` and `defaults.board`; they mean the same
-values.
+config > global config.
 
-`config set` with any other key prints `Invalid key` and the valid keys, and
-still exits 0, also with `--json`: read the output. Three settings exist only
-as JSON in `~/.atlcli/config.json`, globally or under `profiles.<name>`:
+`config set` with any other key fails with `ATLCLI_ERR_USAGE` (`Invalid key`,
+the valid keys in `details.validKeys`) and writes nothing. Three settings
+exist only as JSON in `~/.atlcli/config.json`, globally or under
+`profiles.<name>`:
 
 | Key | Used by |
 | --- | --- |
@@ -150,10 +149,10 @@ it and turning dots into underscores (`uno.service` is `FLAG_UNO_SERVICE`).
 `atlcli flag set <name> <value>` writes project-level config unless `--global`
 is passed, and `flag unset <name>` removes one; both are user decisions.
 
-Two commands are gated by a flag and never listed in the root help, set or
-not: `audit` (flag `audit`; without it `atlcli audit` prints `Audit feature is
-not enabled`) and `helloworld`. Check `atlcli flag list` when a documented
-capability seems missing.
+Two commands are gated by a flag: `audit` (flag `audit`; without it
+`atlcli audit` fails with `Audit feature is not enabled`, although the root
+help lists it) and `helloworld`, which the root help never lists. Check
+`atlcli flag list` when a documented capability seems missing.
 
 ## Logs
 

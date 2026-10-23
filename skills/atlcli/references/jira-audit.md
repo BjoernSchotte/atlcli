@@ -24,14 +24,12 @@ flags write a local baseline file (see [Baseline](#baseline)).
 ## Enabling and help
 
 The command needs the `audit` feature flag. Without it, every `atlcli audit`
-call, help included, exits 1 with `Audit feature is not enabled`.
-`FLAG_AUDIT=true atlcli audit jira help` reads the help for one process
-without changing any config. Enabling the flag for good
+run exits 1 with `Audit feature is not enabled`. `FLAG_AUDIT=true` enables it
+for one process without changing any config. Enabling the flag for good
 (`atlcli flag set audit true --global`) edits `~/.atlcli/config.json`, so ask
 first.
 
-Read the help with `atlcli audit jira help`. `atlcli audit jira --help` prints
-the root help instead.
+Read the help with `atlcli audit jira --help`, which works without the flag.
 
 ## Running it
 
@@ -119,8 +117,7 @@ Independently of the baseline file, a finding on an issue not updated for the
 legacy cutoff is counted per rule as legacy instead of listed: 180 days in the
 `minimal` and `default` profiles, off in `strict`, and set by
 `baseline.olderThan` in the rules file. Workflow findings are never legacy.
-`--no-baseline` ignores both the file and the cutoff. The help says the cutoff
-applies only without a baseline file; the code applies it either way.
+`--no-baseline` ignores both the file and the cutoff.
 
 ## Exit codes and JSON
 
@@ -142,8 +139,6 @@ Markdown report.
 
 ## Anti-patterns
 
-- `atlcli audit jira --help`: it prints the root help. Use
-  `atlcli audit jira help`.
 - Treating exit 2 as a failed run, or exit 0 as a complete one without
   reading `partial`.
 - Running `--update-baseline` or `--prune-baseline` with a narrower

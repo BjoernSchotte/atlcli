@@ -42,8 +42,9 @@ Filters: `--space` (comma-separated), `--type page|blogpost|comment|all`
 which is the quickest way to debug an unexpected result set. A configured
 default space applies when `--space` is absent.
 
-Repeating a flag does not combine values. `--label a --label b` uses only `a`;
-write `--label a,b`.
+`--label a --label b` and `--label a,b` mean the same: every label must match.
+Other filters do not combine when repeated: a second `--space` is ignored, so
+write `--space DEV,DOCS`.
 
 Date expressions: `7d`, `30d`, `1w`, `1m`, `today`, `yesterday`, `thisWeek`,
 `thisMonth`, `2026-01-15`.
@@ -85,7 +86,9 @@ edit around it. Every page verb identifies its target with `--id`. Page IDs come
 `wiki search`, `wiki page list`, or the `atlcli.id` frontmatter of a synced
 Markdown file.
 
-`wiki page list --label` takes one label and ignores `--cql` when it is set.
+`wiki page list --label` adds its labels (repeated or comma-separated, all
+must match) to `--cql` or `--space`: `--label api --cql 'space = DOCS'` asks
+for `(space = DOCS) AND label = "api"`. `--cql` replaces `--space`.
 
 ## Creating and updating
 
@@ -278,8 +281,8 @@ site-level act, only on an explicit request.
   Jira issues and edits the page.
 - Running the `--cql` form of `delete`, `archive`, or `label` without
   `--dry-run` first, because the query decides how many pages are touched.
-- Repeating `--label` on `wiki search`, `wiki page list` or `wiki my`. Only the
-  first value is used; `wiki search` takes a comma list.
+- Giving `wiki my` or `wiki recent` more than one label. They take one: a
+  second `--label` is ignored, and `a,b` is read as one label name.
 - Using `--id` for `comments resolve` or `comments delete`. Those take
   `--comment`.
 

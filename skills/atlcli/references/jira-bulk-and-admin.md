@@ -46,20 +46,22 @@ atlcli jira bulk move --issues PROJ-101,PROJ-102 --backlog --json
 ```
 
 `bulk edit --set` is repeatable, and one value may hold several assignments
-(`priority=High,assignee=none`). `priority=<name>`, `assignee=<accountId>` (or
-`none`) and `labels=a,b,c` are mapped to the Jira field shapes. Any other
-`name=value` is sent as a plain string under that field key, so it only works
-for fields that accept a string. Note that `labels` **replaces** the whole
-label set, unlike `jira issue update --add-labels`.
+(`priority=High,assignee=none`). `priority=<name>`, `assignee=<user>` (`me`,
+an email, a name or an account ID, or `none`) and `labels=a,b,c` are mapped to
+the Jira field shapes. Any other `name=value` is sent as a plain string under
+that field key, so it only works for fields that accept a string. Note that
+`labels` **replaces** the whole label set, unlike
+`jira issue update --add-labels`.
 
 `bulk move` puts the matches into the sprint given by `--sprint <numeric id>`
 or back into the backlog with `--backlog`. Exactly one of the two is required.
 It moves in chunks of 50 and reports per-issue failures in the result.
 
 `bulk link-page` adds a Confluence remote link to every match. `--page` is
-required. `--comment` is read as a string value, so a bare
-`--comment` at the end of the command, or followed by another flag, adds no
-comment. Do not rely on it.
+required. A bare `--comment` also posts a comment with the page link on each
+issue, as `jira issue link-page --comment` does; `--comment '<md>'` posts that
+Markdown instead. The `--dry-run` result shows the comment as `comment`
+(`null` when none would be posted).
 
 `jira bulk delete --jql … --confirm` deletes every match. Treat it as the most
 dangerous command in the tool: run the identical query through `--dry-run`,
@@ -79,17 +81,17 @@ available transitions, and the other issues still proceed. The result reports
 ```bash
 atlcli jira project list --json
 atlcli jira project list --query platform --limit 50 --json
-atlcli jira project get --key PROJ --json
-atlcli jira project types --key PROJ --json
+atlcli jira project get PROJ --json
+atlcli jira project types PROJ --json
 ```
 
-`project get` and `project types` take `--key`, not `--project` and not a
-positional. Run `project types` before every `issue create` against an
+`project get` and `project types` take the key positionally or as `--key`,
+not as `--project`. Run `project types` before every `issue create` against an
 unfamiliar project: issue type names are site-specific (`Spike` and `Change
 Request` exist on some projects and not others).
 
 `jira project create --key <KEY> --name <name> [--type software|service_desk|business]
-[--template <key>] [--description <text>] [--lead <accountId>]` creates a
+[--template <key>] [--description <text>] [--lead <user>]` creates a
 project (type defaults to `software`). That is an administrative act with
 site-wide visibility. Do not run it unless the user asked for exactly that.
 
@@ -135,9 +137,9 @@ atlcli jira version notes 10001 --space DOCS --export notes.pdf --json
 ```
 
 - A numeric argument is a version id. Anything else is a version name and
-  needs `--project` (or `defaults.project`). Two versions with the same name
-  fail; pass the id.
-- `--space` is required unless `defaults.space` is set.
+  needs `--project` (or the default project, `global.project`). Two versions
+  with the same name fail; pass the id.
+- `--space` is required unless a default space (`global.space`) is set.
 - `--group-by type` (default) or `epic` picks the bundled template
   `release-notes` or `release-notes-by-epic`. `--template <name>` overrides
   it; a template at global, profile or space level is found before a bundled
@@ -151,8 +153,7 @@ atlcli jira version notes 10001 --space DOCS --export notes.pdf --json
 - `--dry-run` reads Confluence and Jira, writes nothing, and returns the
   rendered markdown and the planned `action`. Always run it first.
 - Each issue's status category follows the status map, including
-  `--status-map <map>`, which the command's help does not list (see
-  [jira-agile.md](jira-agile.md#status-map)).
+  `--status-map <map>` (see [jira-agile.md](jira-agile.md#status-map)).
 - `--export <file>` also exports the page after the write: `.pdf` gives a PDF,
   any other extension a DOCX. `--export-template <name>` picks the export
   template.
@@ -169,8 +170,10 @@ atlcli jira field options customfield_10001 --json
 
 `field search` takes the query positionally and matches field name, id and JQL
 clause names. `field options` lists the allowed values for a custom select or
-multiselect field. It fails for system fields and returns an empty list with a
-message when the field has no options or the account lacks admin permission.
+multiselect field. It fails for system fields, returns an empty list with a
+`message` when the field has no options, and fails with `ATLCLI_ERR_FORBIDDEN`
+(exit 1) when the account lacks admin permission, so an empty `options` list
+means the field has none.
 Read it before setting one through `--field customfield_10077='{"value":"Bug"}'`,
 because an invalid option is rejected by the API, not by the CLI.
 
@@ -203,9 +206,9 @@ atlcli jira template delete bug-report --confirm --json
 `save --level project --project PROJ --profile work` stores under `PROJ`. An
 unknown `--level` value is a usage error. `--level profile` and `--level
 project` take the profile or project from `--profile` / `--project`, falling
-back to the active profile and `defaults.project`. Give `delete` the same level
-flags the template was saved with, otherwise it looks in global storage and
-reports not found.
+back to the active profile and the default project (`global.project`). Give
+`delete` the same level flags the template was saved with, otherwise it looks
+in global storage and reports not found.
 
 `save` and `import` refuse to overwrite an existing template at the target
 level unless `--force` is given. `list` shows the highest-precedence template
@@ -215,8 +218,8 @@ way. `import` requires `name`, `fields.issuetype` and `fields.summary` in the
 file.
 
 `template apply` creates a real issue and needs `--project` (or
-`defaults.project`) and a summary, either `--summary` or one stored in the
-template. It also takes `--description` and `--assignee <accountId>`. `save`
+`global.project`) and a summary, either `--summary` or one stored in the
+template. It also takes `--description` and `--assignee <user>`. `save`
 reads the source issue from Jira and writes the template locally. `import`,
 `export`, and `delete` never touch the API.
 
@@ -259,14 +262,8 @@ the user first.
   matching issue; `jira bulk label add <label>` is the additive form.
 - Passing both `--jql` and `--issues`, or `--sprint` together with
   `--backlog`. Both are usage errors.
-- Calling `jira project get PROJ` or `jira project types --project PROJ`. The
-  flag is `--key`.
-- Appending `--help` after a verb that takes a positional argument. The global
-  `--help` handler re-dispatches the command with the positionals and without
-  the other flags, and no `jira` verb checks for it: `jira watchers
-  PROJ-101 --help` returns the watchers, and `jira version release 10001
-  --help` would release the version. Run the group bare (`atlcli jira version`)
-  to see its help.
+- Calling `jira project types --project PROJ`. The key is positional or
+  `--key`.
 
 Related: [safety.md](safety.md), [jira-search.md](jira-search.md),
 [jira-issues.md](jira-issues.md).

@@ -28,10 +28,10 @@ metadata:
 # atlcli
 
 `atlcli` is installed and authenticated against the user's Atlassian site.
-This skill was checked against the atlcli source at commit 54a116ce plus
-`atlcli skill`, after release v2026.10.3. v2026.10.3 does not have
-`atlcli digest`, `atlcli audit jira`, `atlcli skill`,
-`jira analyze flow|aging|cfd` or `--status-map`. On any version other than
+This skill was checked against the atlcli source at commit f3ccf080 plus
+`atlcli skill`, after release v2026.10.4. v2026.10.4 does not have
+`atlcli skill`, and it still has argument-parsing, `--help` and exit-code
+behaviour that this skill no longer warns about. On any version other than
 that source, follow rule 7 before relying on a detail here. The skill ships
 with atlcli: `atlcli skill` prints the copy built from the same source as the
 installed binary. A copy installed with `atlcli skill --install` or from the
@@ -50,32 +50,20 @@ path as linked, for example `atlcli skill references/safety.md`.
    export over an existing file. Never enable the git plugin or install its
    hook unless the user asks: the hook runs `wiki docs push` on every
    `git commit`. See [references/safety.md](references/safety.md).
-2. **Always pass `--json`.** Some commands print tables without it. Errors
-   from atlcli's own checks (usage, validation, auth, config) come back as
-   `{"error":{"code":"ATLCLI_ERR_…"}}`. An HTTP error from Jira or Confluence
-   mostly does not: stdout stays empty, stderr gets one line such as
-   `Jira API error (403): …`, and the exit code is 1. A few commands wrap it
-   as `ATLCLI_ERR_API` instead. Check the exit code, not only stdout.
-   `atlcli audit jira` exits 2 when it lists findings at `--fail-on`, which
-   is a result, not a failure.
-3. **Mind the flag parser.** `--flag=value` keeps only the text before a
-   second `=`, so `--jql='project = PROJ'` silently becomes `project `. Use the
-   space form, `--jql 'project = PROJ'`. In the space form a value starting
-   with `-` is dropped, so use `=` for those. Every long flag, booleans
-   included, takes the next token that does not start with `-` as its value:
-   `--confirm 10001` swallows the ID. Put `--confirm` and `--dry-run` after
-   the positionals. See
+2. **Always pass `--json`.** Some commands print tables without it. With
+   `--json`, stdout carries only JSON, and every error comes back on stdout
+   as `{"error":{"code":"ATLCLI_ERR_…"}}` with exit code 1, including an HTTP
+   error from Jira or Confluence (`details.status` holds the HTTP status).
+   Help and progress text go to stderr. `atlcli audit jira` exits 2 when it
+   lists findings at `--fail-on`, which is a result, not a failure.
+3. **Quote values with spaces as one argument.** `--jql 'project = PROJ'` and
+   `--jql='project = PROJ'` mean the same. Switches such as `--json`,
+   `--confirm` and `--dry-run` never take a value, so they can stand anywhere.
+   A value that looks like a flag, such as `-foo`, needs the `=` form. See
    [references/invocation.md](references/invocation.md#flag-grammar).
-4. **Discover with the bare group, never `--help` on a verb.**
-   `atlcli jira issue` prints the group help and makes no API call. Under
-   `jira`, `auth`, `config`, `flag`, `log` and `plugin`, `--help` on a verb
-   drops the named flags but keeps the positionals and runs the verb:
-   `atlcli jira watch PROJ-101 --help` adds a watcher, and
-   `atlcli jira issue attach PROJ-101 ./f.txt --help` uploads the file. The
-   `wiki` commands, `digest`, `skill`, `doctor`, `update`, `models` and
-   `completion` print help for `--help`, except `wiki my` and `wiki recent`, which run
-   their search. `atlcli audit jira --help` prints the root help; use
-   `atlcli audit jira help`.
+4. **Discover with the bare group or `--help`.** `atlcli jira issue` prints
+   the group help and makes no API call, and `--help` on a verb prints help
+   without running it.
 5. **Resolve names before using them.** Transition names are workflow actions
    (`Start Progress`), not statuses (`In Progress`). Issue types, account
    IDs, custom field IDs, board and page IDs all get looked up, never guessed.
@@ -84,22 +72,21 @@ path as linked, for example `atlcli skill references/safety.md`.
    `--body-file` convert Markdown to ADF. Reading with `--format markdown`
    turns content without a Markdown form into `<!--adf:…-->` markers that
    convert back exactly; leave them in place. Underline, text colour,
-   subscript and superscript are dropped silently on read and lost on the
-   rewrite. `attach --comment` posts its text literally, unconverted. Details
-   in [references/jira-issues.md](references/jira-issues.md).
+   subscript and superscript read as `<u>`, `<span style="color: …">`,
+   `<sub>` and `<sup>`, and convert back as well. Details in
+   [references/jira-issues.md](references/jira-issues.md).
 7. **Verify the installed surface before promising a capability.** Run the
    bare group and read what that build actually offers. The atlcli
-   documentation site describes things the release does not have, such as
-   the `ATLCLI_PROFILE` and `ATLCLI_CONFIG` environment variables and a
-   `wiki docs commit` command.
+   documentation site follows the source and can describe things the
+   installed release does not have yet.
 8. **`jira issue comment` posts its positional text.** It is an alias of
    `comments add`, so `atlcli jira issue comment --key PROJ-101 list` posts
    "list". Read, edit and delete comments with
    `jira issue comments list|edit|delete`.
-9. **`wiki docs push` overwrites the page.** It does not check whether the
-   page changed in Confluence since the pull. Run `wiki docs diff` first and
-   push single files, or edit through `wiki sh`, whose writes check the page
-   version. Only `wiki docs sync` merges. See
+9. **Never push with `--force` unasked.** `wiki docs push` refuses a page
+   that changed in Confluence since the last pull and fails with
+   `ATLCLI_ERR_VALIDATION`, listing those pages; `--force` overwrites them.
+   Run `wiki docs pull` or `wiki docs sync` to merge instead. See
    [references/confluence-docs-sync.md](references/confluence-docs-sync.md).
 
 ## Routing
@@ -140,12 +127,12 @@ jira  project issue board sprint worklog epic analyze bulk filter export
 wiki  page space docs search my recent template export import publish
       sh mount vfs
 top   auth completion config doctor flag log models plugin update version
-      release-info research chat pdf-template digest skill
+      release-info research chat pdf-template digest audit skill
 ```
 
-Some commands are gated behind feature flags and never listed in the root
-help, enabled or not: without its flag `atlcli audit` prints `Audit feature is
-not enabled`. Enabling one
+Some commands are gated behind feature flags: without its flag
+`atlcli audit` fails with `Audit feature is not enabled`, although the root
+help lists it. Enabling one
 with `atlcli flag set <name> true --global` edits `~/.atlcli/config.json`, so
 ask first. Enabled plugins add their own top-level commands (`atlcli git`,
 `atlcli drawio`). Check `atlcli flag list` and `atlcli plugin list --json` when

@@ -42,10 +42,9 @@ clamped to 30 days with a warning; a start in the future is a usage error.
 caps each section (default 10). `--markdown` prints Markdown for a standup
 note, and `--verbose` prints every query and the request count on stderr.
 
-The help names its defaults `defaults.space`, `defaults.board` and
-`defaults.project`. Those are the profile's values, else `global.space`,
-`global.board` and `global.project` (see
-[auth-and-config.md](auth-and-config.md)).
+`--space` and `--board` default to the profile's values, else `global.space`
+and `global.board` (see [auth-and-config.md](auth-and-config.md)). `--project`
+defaults to `digest.projects` only, never to `global.project`.
 
 ## Sections
 
@@ -56,6 +55,9 @@ The help names its defaults `defaults.space`, `defaults.board` and
   changed by anyone in the window. "Completed" follows the status map (see
   [jira-agile.md](jira-agile.md#status-map)); so do the waiting list and the
   sprint counts. At most 200 changed issues are read for the overview.
+- Team, for the same projects: per person, the open, in-progress and overdue
+  issues, those without an update for `audit.jira.staleDays` (first value,
+  default 30) days, and the oldest in progress.
 - Audit, when the `audit` feature flag is on (from `FLAG_AUDIT`, the project
   `.atlcli/config.json` or the global config) and projects are given: the
   error-level findings of the audit rules for those projects (see
@@ -88,18 +90,18 @@ for the same window and a higher `--limit`, which does not move the marker.
 ## Output and failures
 
 `--json` prints `schemaVersion: "1"` with `generatedAt`, `since`, `profile`,
-`me`, `jira` (`waiting`, `changed`, `sprints`, and `projects` and `audit` when
-they ran), `confluence` (`mentions`, `myPagesEdited`, `comments`,
+`me`, `jira` (`waiting`, `changed`, `sprints`, and `projects`, `team` and
+`audit` when they ran), `confluence` (`mentions`, `myPagesEdited`, `comments`,
 `openInline`, `watched`, `recent`), `warnings`, `truncated`, `queries` and,
 with `--summarize`, `summary`. With `--only`, the other product's key is
 absent.
 
 A section that fails is listed in `warnings` with its section name, the rest
-still prints, and the exit code stays 0. The exit code is 1 only when no
-section came back, and even then the digest is printed first. With projects
-configured, the run exits 0 even when every section failed. Exit 0 therefore
-does not mean every section succeeded: read `warnings` before saying a section
-is empty. Argument and authentication errors print the usual
+still prints, and the exit code stays 0. A failed project overview is left out
+rather than shown as empty lists. The exit code is 1 only when no section came
+back, and even then the digest is printed first. Exit 0 therefore does not
+mean every section succeeded: read `warnings` before saying a section is
+empty. Argument and authentication errors print the usual
 `{"error":{"code":"ATLCLI_ERR_…"}}` instead.
 
 ## Summaries

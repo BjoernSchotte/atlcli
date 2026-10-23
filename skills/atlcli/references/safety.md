@@ -126,9 +126,9 @@ until `--confirm` is added, so the plain run is the preview.
 
 - `wiki import <file>` and the batch and `--update-page` forms. `--confirm` and
   `--dry-run` together fail with `ATLCLI_ERR_VALIDATION`. `--update-page` with
-  `--confirm` checks `--expect-version <n>` only when it is given, although the
-  help calls it required; without it, the `target-diverged` check against the
-  import baseline still refuses a page edited since the import.
+  `--confirm` checks `--expect-version <n>` only when it is given; without it,
+  the `target-diverged` check against the import baseline still refuses a page
+  edited since the import.
 - `wiki page tasks-to-issues --id <id> --project <key>` and `--sync`: without
   `--confirm` the output has `dryRun: true` plus the plan.
 
@@ -173,6 +173,7 @@ wiki page restore --id <id> --version <n> --confirm   # reversible: history is k
 wiki page label add|remove <label> --cql <query> --confirm   # every match
 wiki docs convert <dir> --to-new-editor|--to-legacy-editor --confirm   # whole tree
 wiki docs push --delete-folders                   # deletes remote folders, no --confirm
+wiki docs push --force                            # overwrites pages changed in Confluence
 wiki template delete <name> --force               # local template
 wiki export template delete <name> --confirm      # local Word template
 wiki export jobs clear --before <duration> --confirm
@@ -224,10 +225,11 @@ safeguard.
   reach Confluence. `rm` additionally needs `--allow-delete` and only moves
   pages to the trash. `--confirm` on `wiki sh` skips the terminal prompts for
   `rm` and cross-space `mv`; it does not unlock anything by itself.
-- `wiki docs push` has no remote-change check: for each file it reads the
-  current page and writes the local content as the next version, replacing
-  whatever is there. Only `wiki docs sync` merges. Run `wiki docs diff <file>`
-  first.
+- `wiki docs push` writes each changed file as the next version of its page.
+  A page that changed in Confluence since the last pull is not pushed: the
+  command fails with `ATLCLI_ERR_VALIDATION` and lists it under
+  `details.conflicts`. `wiki docs pull` or `wiki docs sync` merges it;
+  `--force` overwrites it. Run `wiki docs diff <file>` first.
 - `wiki docs pull --force` overwrites local modifications. `wiki docs sync`
   writes both ways unless `--dry-run`, and resolves conflicts per
   `--on-conflict` (`merge` by default, `local` overwrites the remote page).
@@ -281,8 +283,5 @@ takes, `transitions[].to.name` is the status it lands in.
   user's decision, expressed to you, not a flag to satisfy the parser.
 - Skipping `--dry-run` on a JQL- or CQL-scoped bulk operation. The query is
   the blast radius and it is easy to widen by one clause.
-- Writing `--confirm` or `--dry-run` directly before a positional
-  (`jira filter delete --confirm 10001`). The parser reads the next token as the
-  flag's value and the id goes missing. Put the boolean flag last.
 - Retrying a failed multi-step sequence from the top. Re-check state first;
   the earlier steps already applied.

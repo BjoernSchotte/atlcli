@@ -141,8 +141,8 @@ atlcli wiki import spec-v2.docx --update-page 123456 --confirm --expect-version 
 - If anyone edited the page since, the update stops with `target-diverged` and
   shows a diff. There is no force flag.
 - Pages with inline comments need `--accept-anchor-loss`.
-- Pass `--expect-version` with `--confirm`. The help text calls it required,
-  the code checks it only when given.
+- `--expect-version <n>` is optional. Given, the update also stops unless the
+  page is at version n.
 - `--update-page` cannot be combined with `--split` or `--parent`.
 
 ## Batch import

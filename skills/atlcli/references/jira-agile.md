@@ -48,9 +48,8 @@ atlcli jira sprint report 456 --json
 `--state` is `future`, `active`, or `closed`; `list` and `issues` take `--limit`
 (default 50). `sprint report <sprintId>` takes the sprint ID positionally
 (`--id` also works). It reads at most 200 sprint issues and their changelogs
-(a bulk read on Cloud, one request per issue on Data Center; v2026.10.3
-makes one request per issue everywhere), and it needs the story-points field
-(auto-detected, or `--points-field <id>`).
+(a bulk read on Cloud, one request per issue on Data Center), and it needs
+the story-points field (auto-detected, or `--points-field <id>`).
 
 Writes:
 
@@ -138,11 +137,10 @@ atlcli jira analyze scope-change --sprint 456 --json
 ```
 
 `velocity` and `predictability` take `--board` (or the default board) and look
-at the most recent closed sprints, oldest first (v2026.10.3 reads the oldest
-closed sprints instead); `burndown` and `scope-change` take `--sprint`.
-`--sprints` defaults to 5. The story-points field is auto-detected; override it
-with `--points-field customfield_10028` when the site uses a non-standard field
-(find the ID with `jira field search`).
+at the most recent closed sprints, oldest first; `burndown` and
+`scope-change` take `--sprint`. `--sprints` defaults to 5. The story-points
+field is auto-detected; override it with `--points-field customfield_10028`
+when the site uses a non-standard field (find the ID with `jira field search`).
 
 Metrics as defined by the tool: velocity is completed points per sprint;
 say-do ratio is completed ÷ committed × 100; scope change is
@@ -185,8 +183,8 @@ Status changes come from the changelogs: on Cloud in a bulk read, on Data
 Center one request per issue, five at a time. On Data Center, narrow the
 selection or lower `--limit` on large projects.
 
-Discover these with the bare `atlcli jira analyze`. `--help` on a verb runs it
-(see [invocation.md](invocation.md#why---help-on-a-verb-is-unsafe)).
+Discover these with the bare `atlcli jira analyze`. `--help` on a verb prints
+the same group help and runs nothing.
 
 ### Status map
 
@@ -208,8 +206,7 @@ atlcli jira analyze flow --project PROJ --status-map 'Code Review=wip,Fertig=don
 - A key is a status name in any case, or a status id. An entry can move a
   status into done or out of it, and the searches follow the map.
 - The map applies to `jira analyze` (all seven), `sprint report`,
-  `sprint review`, `version notes`, `audit jira` and `atlcli digest`. In
-  v2026.10.3 there is no status map, and "done" is Jira's Done category.
+  `sprint review`, `version notes`, `audit jira` and `atlcli digest`.
 
 ## Time tracking
 
