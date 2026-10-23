@@ -607,7 +607,11 @@ async function handleIssue(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const [sub] = args;
+  const [sub, positional] = args;
+  // `issue get PROJ-1` works like `--key PROJ-1` for the handlers that read only the flag.
+  if (positional && /^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(positional) && getFlag(flags, "key") === undefined) {
+    flags = { ...flags, key: positional };
+  }
   switch (sub) {
     case "get":
       await handleIssueGet(flags, opts);
@@ -1541,6 +1545,8 @@ async function editFlag(initial: string, opts: OutputOptions): Promise<string> {
  * type, labels and, in the same project, components and parent.
  * `--replace find:replace` applies to summary and description. Priority is
  * not copied: a priority outside the project's scheme fails the create.
+ * Like Jira's own clone, the new issue gets a "Cloners" link to the source;
+ * a site without that link type keeps the clone and gets a warning.
  */
 async function handleIssueClone(
   args: string[],
@@ -1583,7 +1589,14 @@ async function handleIssueClone(
       assignee: assignee ? ((await userFlag(client, assignee, opts)) ?? undefined) : undefined,
     },
   });
-  output({ schemaVersion: "1", cloned: { from: key, issue: formatIssue(await client.getIssue(created.key)) } }, opts);
+  let warning: string | undefined;
+  try {
+    await client.createIssueLink({ type: { name: "Cloners" }, inwardIssue: { key: created.key }, outwardIssue: { key } });
+  } catch (err) {
+    warning = `Cloned, but not linked to ${key}: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  const result = { from: key, issue: formatIssue(await client.getIssue(created.key)), ...(warning ? { warning } : {}) };
+  output({ schemaVersion: "1", cloned: result }, opts);
 }
 
 async function openUrl(url: string): Promise<void> {
@@ -1657,6 +1670,7 @@ Options:
   --internal         Internal comment, hidden from customers (Jira Service Management)
 
 <user> is me, an email, a name or an account id; none (or x) unassigns.
+--key <key> can also be the first argument: issue get PROJ-1.
 
 Descriptions and comments are markdown: **bold**, lists, - [ ] tasks, tables,
 \`\`\`code\`\`\`, @[Name](accountId), {jira:KEY}, {date:YYYY-MM-DD}, :::info panels.

@@ -15,6 +15,8 @@ type Req = { method: string; path: string; query: URLSearchParams; body: any };
 let requests: Req[] = [];
 let server: ReturnType<typeof Bun.serve>;
 let home: string;
+/** Whether the stub site lacks the "Cloners" link type. */
+let noCloners = false;
 
 const USERS = [
   { accountId: "acc-ann", displayName: "Ann Lee", emailAddress: "ann@example.com", active: true },
@@ -82,11 +84,16 @@ beforeAll(async () => {
         ]);
       }
       if (path === "/rest/api/3/issue" && req.method === "POST") return Response.json({ id: "2", key: "AB-2" });
+      if (path === "/rest/api/3/issueLink") {
+        if (noCloners) return Response.json({ errorMessages: ["No issue link type with name 'Cloners' found."], errors: {} }, { status: 404 });
+        return new Response(null, { status: 201 });
+      }
       if (path === "/rest/api/3/issue/AB-1/assignee") return new Response(null, { status: 204 });
       if (path === "/rest/api/3/issue/AB-1/comment") return Response.json({ id: "9", body: body.body });
       if (path === "/rest/api/3/issue/AB-1/remotelink" && req.method === "POST") return Response.json({ id: 77, self: "" });
       if (path === "/rest/api/3/issue/AB-1/remotelink/77") return new Response(null, { status: 204 });
       if (path === "/rest/api/3/issue/NOPE-1") return Response.json({ errorMessages: ["Issue does not exist or you do not have permission to see it."], errors: {} }, { status: 404 });
+      if (path === "/rest/api/3/issue/AB-2") return Response.json({ ...ISSUE, id: "2", key: "AB-2" });
       if (path.startsWith("/rest/api/3/issue/") && url.searchParams.get("expand")) return Response.json(EXPANDED);
       if (path.startsWith("/rest/api/3/issue/")) return Response.json(ISSUE);
       if (path === "/rest/api/3/project/AB") return Response.json({ id: "1", key: "AB", name: "Alpha" });
@@ -203,6 +210,19 @@ describe("issue", () => {
     expect(fields.description.content[0].content[0].text).toBe("see v2");
     // Not copied: the source's priority may be outside the target's scheme (live: 400).
     expect(fields.priority).toBeUndefined();
+    // Like Jira's own clone: AB-2 "clones" AB-1.
+    expect(sent("/rest/api/3/issueLink")).toEqual({ type: { name: "Cloners" }, inwardIssue: { key: "AB-2" }, outwardIssue: { key: "AB-1" } });
+  });
+
+  test("clone without a Cloners link type keeps the clone and warns", async () => {
+    noCloners = true;
+    try {
+      const { exitCode, stdout } = await run(["issue", "clone", "AB-1", "--json"]);
+      expect(exitCode).toBe(0);
+      expect(JSON.parse(stdout).cloned.warning).toContain("not linked to AB-1");
+    } finally {
+      noCloners = false;
+    }
   });
 
   test("web link add and remove", async () => {
@@ -303,6 +323,10 @@ describe("errors, detail views, Data Center", () => {
     expect(text.stdout).toContain("Description\n  see v1");
     const json = await run(["issue", "get", "--key", "AB-1", "--format", "json"]);
     expect(JSON.parse(json.stdout).issue.key).toBe("AB-1");
+    // The key also works positionally (it used to fail with "--key is required.").
+    const positional = await run(["issue", "get", "AB-1", "--json"]);
+    expect(positional.exitCode).toBe(0);
+    expect(JSON.parse(positional.stdout).issue.key).toBe("AB-1");
   });
 
   test("issue get --expand keeps the expanded sections next to issue (#292)", async () => {
