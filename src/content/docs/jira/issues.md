@@ -499,7 +499,7 @@ Options:
 |------|-------------|
 | `--key` | Issue key (required) |
 | `--page` | Confluence page ID (required) |
-| `--comment` | Also post a comment on the issue that links the page (switch) |
+| `--comment [text]` | Also post a comment on the issue: bare, "Linked to Confluence page: <link>"; with text, that text as Markdown |
 
 ### List Linked Pages
 

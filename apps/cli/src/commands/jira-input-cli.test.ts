@@ -227,6 +227,36 @@ describe("paging and fixes from the docs audit", () => {
     expect(requests.some((r) => r.method === "POST" && r.path === "/rest/api/3/issue/AB-1/comment")).toBe(true);
   });
 
+  test("bulk link-page --comment posts the same link comment as issue link-page (#290)", async () => {
+    await run(["issue", "link-page", "--key", "AB-1", "--page", "55", "--comment", "--json"]);
+    const single = sent("/rest/api/3/issue/AB-1/comment");
+    requests = [];
+    await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--comment", "--json"]);
+    expect(sent("/rest/api/3/issue/AB-1/comment")).toEqual(single);
+    expect(JSON.stringify(single)).toContain("Linked to Confluence page: ");
+  });
+
+  test("link-page --comment <text> posts that text as Markdown, not the fixed text (#290)", async () => {
+    for (const args of [["issue", "link-page", "--key", "AB-1"], ["bulk", "link-page", "--issues", "AB-1"]]) {
+      requests = [];
+      await run([...args, "--page", "55", "--comment", "See **spec**", "--json"]);
+      expect(sent("/rest/api/3/issue/AB-1/comment").body.content[0].content).toEqual([
+        { type: "text", text: "See " },
+        { type: "text", text: "spec", marks: [{ type: "strong" }] },
+      ]);
+    }
+  });
+
+  test("bulk link-page --dry-run says which comment would be added (#290)", async () => {
+    const without = JSON.parse((await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--dry-run", "--json"])).stdout);
+    expect(without.comment).toBeNull();
+    const bare = JSON.parse((await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--comment", "--dry-run", "--json"])).stdout);
+    expect(bare.comment).toStartWith("Linked to Confluence page: [Spec](");
+    const text = JSON.parse((await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--comment", "hi", "--dry-run", "--json"])).stdout);
+    expect(text.comment).toBe("hi");
+    expect(requests.some((r) => r.path.endsWith("/comment"))).toBe(false);
+  });
+
   test("epic list --project wins over defaults.board (regression: board path taken)", async () => {
     await run(["epic", "list", "--project", "AB", "--json"]);
     expect(requests.some((r) => r.path === "/rest/api/3/search/jql")).toBe(true);
