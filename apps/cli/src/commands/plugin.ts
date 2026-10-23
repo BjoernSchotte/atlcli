@@ -29,6 +29,7 @@ import {
   getBuiltinPlugins,
 } from "../plugins/loader.js";
 import type { PluginMetadata } from "@atlcli/plugin-api";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handlePlugin(
   args: string[],
@@ -60,7 +61,7 @@ export async function handlePlugin(
       await handleDisable(args.slice(1), opts);
       return;
     default:
-      output(pluginHelp(), opts);
+      unknownSubcommand(sub, pluginHelp(), opts);
   }
 }
 
@@ -91,7 +92,7 @@ async function handleList(opts: OutputOptions): Promise<void> {
       enabled: p.metadata.enabled,
       commands: p.plugin.commands?.map((c) => c.name) ?? [],
     }));
-    output(JSON.stringify(serialized, null, 2), opts);
+    output({ schemaVersion: "1", plugins: serialized }, opts);
     return;
   }
 
@@ -188,7 +189,7 @@ async function handleInstall(
   registry.register(plugin, metadata);
 
   if (opts.json) {
-    output(JSON.stringify({ installed: plugin.name, version: plugin.version }), opts);
+    output({ schemaVersion: "1", installed: plugin.name, version: plugin.version }, opts);
   } else {
     output(`Installed plugin: ${plugin.name}@${plugin.version}`, opts);
     if (plugin.commands?.length) {
@@ -235,7 +236,7 @@ async function handleRemove(args: string[], opts: OutputOptions): Promise<void> 
   registry.unregister(name);
 
   if (opts.json) {
-    output(JSON.stringify({ removed: name }), opts);
+    output({ schemaVersion: "1", removed: name }, opts);
   } else {
     output(`Removed plugin: ${name}`, opts);
   }
@@ -264,7 +265,7 @@ async function handleEnable(args: string[], opts: OutputOptions): Promise<void> 
   }
 
   if (plugin.enabled) {
-    output(`Plugin "${name}" is already enabled`, opts);
+    output(opts.json ? { schemaVersion: "1", enabled: name, changed: false } : `Plugin "${name}" is already enabled`, opts);
     return;
   }
 
@@ -272,6 +273,7 @@ async function handleEnable(args: string[], opts: OutputOptions): Promise<void> 
   await savePluginConfig(config);
 
   // Load into current session
+  let loadWarning: string | undefined;
   try {
     const loadedPlugin =
       plugin.source === "builtin"
@@ -285,12 +287,14 @@ async function handleEnable(args: string[], opts: OutputOptions): Promise<void> 
     }
     getPluginRegistry().register(loadedPlugin, plugin);
   } catch (err) {
-    output(`Warning: Plugin enabled but failed to load: ${err}`, opts);
+    loadWarning = `Plugin enabled but failed to load: ${err}`;
   }
 
+  // One JSON document: the load warning goes into it, not before it (#301).
   if (opts.json) {
-    output(JSON.stringify({ enabled: name }), opts);
+    output({ schemaVersion: "1", enabled: name, ...(loadWarning ? { warning: loadWarning } : {}) }, opts);
   } else {
+    if (loadWarning) output(`Warning: ${loadWarning}`, opts);
     output(`Enabled plugin: ${name}`, opts);
   }
 }
@@ -307,14 +311,14 @@ async function handleDisable(args: string[], opts: OutputOptions): Promise<void>
 
   if (!plugin) {
     if (getBuiltinPlugin(name)) {
-      output(`Plugin "${name}" is already disabled`, opts);
+      output(opts.json ? { schemaVersion: "1", disabled: name, changed: false } : `Plugin "${name}" is already disabled`, opts);
       return;
     }
     fail(opts, 1, ERROR_CODES.CONFIG, `Plugin "${name}" is not installed`);
   }
 
   if (!plugin.enabled) {
-    output(`Plugin "${name}" is already disabled`, opts);
+    output(opts.json ? { schemaVersion: "1", disabled: name, changed: false } : `Plugin "${name}" is already disabled`, opts);
     return;
   }
 
@@ -330,13 +334,13 @@ async function handleDisable(args: string[], opts: OutputOptions): Promise<void>
   registry.unregister(name);
 
   if (opts.json) {
-    output(JSON.stringify({ disabled: name }), opts);
+    output({ schemaVersion: "1", disabled: name }, opts);
   } else {
     output(`Disabled plugin: ${name}`, opts);
   }
 }
 
-function pluginHelp(): string {
+export function pluginHelp(): string {
   return `atlcli plugin <command>
 
 Manage CLI plugins to extend functionality.

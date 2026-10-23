@@ -15,6 +15,7 @@ import {
   resolveDigestSince,
   sinceMinutes,
   succeededProducts,
+  teamMembers,
 } from "./digest-core.js";
 
 const NOW = new Date("2026-10-22T12:00:00.000Z");
@@ -72,6 +73,9 @@ describe("queries", () => {
     expect(buildDigestQueries({ minutes: 5 }).recent).toBeUndefined();
     expect(buildCommentsCql(["1", "2"], 30)).toBe('type = comment AND container IN (1, 2) AND created >= now("-30m") ORDER BY created DESC');
     expect(buildCommentsCql([], 30)).toBeUndefined();
+    // Server-provided ids: a non-numeric one cannot widen the CQL.
+    expect(buildCommentsCql(["1", "2) OR (type = page"], 30)).toBe('type = comment AND container IN (1) AND created >= now("-30m") ORDER BY created DESC');
+    expect(buildCommentsCql(["x"], 30)).toBeUndefined();
   });
 });
 
@@ -198,6 +202,17 @@ describe("buildDigest", () => {
     expect(d.jira!.changed[0].changes).toEqual([{ at: ago(5), author: "Ann", you: false, field: "assignee", from: null, to: "acc-1" }]);
   });
 
+  test("rank changes are not change lines; a rank-only issue drops out", () => {
+    const history = (id: string, field: string, to: string) =>
+      ({ id, author: { accountId: "ann", displayName: "Ann" }, created: ago(5), items: [{ field, fieldtype: "custom", from: "", fromString: "", to: "", toString: to }] }) as unknown as JiraChangelogEntry;
+    const changelogs = new Map([
+      ["A-7", [history("1", "Rang", "Ranked higher"), history("2", "status", "Done")]],
+      ["A-8", [history("3", "Rank", "Ranked lower")]],
+    ]);
+    const d = buildDigest(raw({ jira: { changed: [jiraIssue("A-7"), jiraIssue("A-8")], changelogs } }), { now: NOW, includeOwn: false, limit: 10 });
+    expect(d.jira!.changed.map((c) => [c.key, c.changes.map((x) => x.field)])).toEqual([["A-7", ["status"]]]);
+  });
+
   test("Data Center: changed issues without change details are still listed", () => {
     const d = buildDigest(raw({ jira: { changed: [jiraIssue("A-5")], changelogs: undefined } }), { now: NOW, includeOwn: false, limit: 10 });
     expect(d.jira!.changed).toMatchObject([{ key: "A-5", changes: [] }]);
@@ -223,6 +238,13 @@ describe("buildDigest", () => {
     // A skipped section (no board, no space) does not count as a success.
     expect(anySectionSucceeded({ jira: { waiting: undefined, sprints: undefined }, confluence: { recent: undefined } })).toBe(false);
     expect(anySectionSucceeded({ jira: {}, confluence: { comments: [] } })).toBe(true);
+  });
+
+  test("configured projects are not a fetched section; a failed project fetch shows no empty lists (#306)", () => {
+    const failed = { jira: { projectKeys: ["PROJ"], staleDays: 30, waiting: undefined, projectIssues: undefined }, confluence: { recent: undefined } };
+    expect(anySectionSucceeded(failed)).toBe(false);
+    const d = buildDigest(raw({ jira: { ...raw().jira, projectKeys: ["PROJ"], projectIssues: undefined } }), { now: NOW, includeOwn: false, limit: 10 });
+    expect(d.jira?.projects).toBeUndefined();
   });
 
   test("text and Markdown snapshots are deterministic", () => {
@@ -330,6 +352,15 @@ describe("project overview", () => {
     expect(renderDigestMarkdown(d, NOW)).toContain("- [GROW-1](https://x/browse/GROW-1) S GROW-1 · *In Progress* — `hygiene/stale`: Not updated for 120 d.");
   });
 
+  test("markdown escapes the status and the priority, which come from the server", () => {
+    const status = { id: "1", name: "[Done](https://evil)", statusCategory: { key: "indeterminate" } };
+    const d = buildDigest(
+      raw({ products: ["jira"], jira: { ...raw().jira!, waiting: [jiraIssue("A-1", { status, priority: { name: "*High*" } })], changed: [] } }),
+      { now: NOW, includeOwn: false, limit: 10 }
+    );
+    expect(renderDigestMarkdown(d, NOW)).toContain("· *\\[Done\\](https://evil)* · \\*High\\*");
+  });
+
   test("the sprint counts follow the status map", () => {
     const d = buildDigest(
       raw({
@@ -340,5 +371,52 @@ describe("project overview", () => {
     );
     expect(d.jira!.sprints[0].counts).toEqual({ todo: 0, wip: 1, done: 1 });
     expect(d.jira!.projects).toBeUndefined();
+  });
+});
+
+describe("team", () => {
+  const status = (key: "new" | "indeterminate" | "done", name: string = key) => ({ id: name, name, statusCategory: { key } });
+  const open = (assignee: string | undefined, key: "new" | "indeterminate", updatedDaysAgo: number, duedate?: string) =>
+    ({
+      key: "T",
+      fields: {
+        status: status(key),
+        assignee: assignee ? { displayName: assignee } : null,
+        updated: new Date(NOW.getTime() - updatedDaysAgo * 86_400_000).toISOString(),
+        ...(duedate ? { duedate } : {}),
+      },
+    }) as unknown as JiraIssue;
+
+  test("per person: open, in progress, overdue, stale, oldest in progress; unassigned last", () => {
+    const issues = [
+      open("Ann", "indeterminate", 2),
+      open("Ann", "indeterminate", 12, "2026-10-01"),
+      open("Ann", "new", 40),
+      open("Bob", "new", 1, "2026-12-01"),
+      open(undefined, "indeterminate", 3),
+      { key: "D", fields: { status: status("done"), assignee: { displayName: "Bob" } } } as unknown as JiraIssue,
+    ];
+    expect(teamMembers(issues, { now: NOW, staleDays: 30 })).toEqual([
+      { name: "Ann", open: 3, wip: 2, overdue: 1, stale: 1, oldestWipDays: 12 },
+      { name: "Bob", open: 1, wip: 0, overdue: 0, stale: 0, oldestWipDays: null },
+      { name: "(unassigned)", open: 1, wip: 1, overdue: 0, stale: 0, oldestWipDays: 3 },
+    ]);
+  });
+
+  test("the status map decides what is done and what is in progress", () => {
+    const resolve = createStatusCategoryResolver([{ id: "Fertig", name: "Fertig", statusCategory: { id: 4, key: "indeterminate", name: "x" } }], { Fertig: "done" });
+    const fertig = { key: "F", fields: { status: status("indeterminate", "Fertig"), assignee: { displayName: "Ann" } } } as unknown as JiraIssue;
+    expect(teamMembers([fertig], { resolve, now: NOW, staleDays: 30 })).toEqual([]);
+  });
+
+  test("rendered in the Jira block, text and markdown", () => {
+    const d = buildDigest(raw({ products: ["jira"], jira: { ...raw().jira, teamIssues: [open("Ann", "indeterminate", 35, "2026-10-01")], staleDays: 30 } }), {
+      now: NOW,
+      includeOwn: false,
+      limit: 10,
+    });
+    expect(d.jira?.team?.members).toHaveLength(1);
+    expect(renderDigestText(d, NOW)).toContain("Ann  open 1 · in progress 1 · overdue 1 · no update 30d+ 1 · oldest in progress 35d");
+    expect(renderDigestMarkdown(d, NOW)).toContain("### Team (1)");
   });
 });

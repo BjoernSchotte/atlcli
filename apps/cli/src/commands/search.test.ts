@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import { buildCql as realBuildCql } from "./search.js";
 
 // Since the functions are not exported, we'll test the CQL building logic
 // by importing and testing a mock module that exposes the internal functions
@@ -313,5 +314,13 @@ describe("shared query builders", () => {
       'assignee = currentUser() AND project = ATLCLI AND issuetype = "Bug"'
     );
     expect(buildMyIssuesJql({ status: "Open" })).toBe('assignee = currentUser() AND status = "Open"');
+  });
+});
+
+describe("buildCql (the real one)", () => {
+  test("a repeated --label requires every label, like the comma list (#295)", () => {
+    expect(realBuildCql("", { label: ["api", "documentation"] })).toContain('label = "api" AND label = "documentation"');
+    expect(realBuildCql("", { label: "api,documentation" })).toContain('label = "api" AND label = "documentation"');
+    expect(realBuildCql("", { label: 'a"b' })).toContain('label = "a\\"b"');
   });
 });

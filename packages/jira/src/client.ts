@@ -93,6 +93,31 @@ const retrySchedulerHook = Symbol.for("atlcli.jira.retry-scheduler.test-hook");
 /** Issues per `changelog/bulkfetch` request; Jira Cloud rejects more. */
 const BULK_CHANGELOG_CHUNK = 1000;
 
+/** Status texts for responses without one (HTTP/2). */
+const HTTP_STATUS_TEXT: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found (or no permission to see it)",
+  409: "Conflict",
+  429: "Too Many Requests",
+};
+
+/**
+ * A Jira error body as one line: `errorMessages` and field `errors`
+ * ("Only Connect and OAuth 2.0 apps…; priority: invalid"), else the raw text.
+ */
+export function jiraErrorText(data: unknown): string {
+  if (typeof data === "string") return data;
+  const body = (data ?? {}) as { errorMessages?: unknown; errors?: unknown; message?: unknown };
+  const parts = [
+    ...(Array.isArray(body.errorMessages) ? body.errorMessages.map(String) : []),
+    ...(body.errors && typeof body.errors === "object" ? Object.entries(body.errors).map(([field, text]) => `${field}: ${String(text)}`) : []),
+    ...(typeof body.message === "string" ? [body.message] : []),
+  ];
+  return parts.length ? parts.join("; ") : JSON.stringify(data);
+}
+
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
  *
@@ -408,12 +433,11 @@ export class JiraClient {
       }
 
       if (!res.ok) {
+        // A body kept out of logs stays out of the error too; the status text still says what happened.
         const message = suppressBody
-          ? "[response body omitted: logBody policy]"
-          : typeof data === "string"
-            ? data
-            : JSON.stringify(data);
-        lastError = new Error(`Jira API error (${res.status}): ${message}`);
+          ? `${res.statusText || HTTP_STATUS_TEXT[res.status] || "request failed"} (response body omitted: logBody policy)`
+          : jiraErrorText(data);
+        lastError = Object.assign(new Error(`Jira API error (${res.status}): ${message}`), { status: res.status });
 
         // Retry on server errors (5xx)
         if (res.status >= 500 && attempt < this.maxRetries) {
@@ -471,6 +495,17 @@ export class JiraClient {
    */
   async getCurrentUser(): Promise<JiraUser> {
     return this.request<JiraUser>("/myself");
+  }
+
+  /**
+   * Find users by name or email (Cloud: `query`, Server/DC: `username`).
+   *
+   * GET /rest/api/3/user/search
+   */
+  async searchUsers(query: string, maxResults = 20): Promise<JiraUser[]> {
+    return this.request<JiraUser[]>("/user/search", {
+      query: this.isCloud ? { query, maxResults } : { username: query, maxResults },
+    });
   }
 
   // ============ Project Operations ============
@@ -931,10 +966,20 @@ export class JiraClient {
       accountId?: string;
     }
   ): Promise<JiraFilterPermission> {
-    return this.request<JiraFilterPermission>(`/filter/${id}/permission`, {
+    // Jira answers with all of the filter's permissions; return the one added.
+    const result = await this.request<JiraFilterPermission | JiraFilterPermission[]>(`/filter/${id}/permission`, {
       method: "POST",
       body: permission,
     });
+    if (!Array.isArray(result)) return result;
+    const added = result.filter(
+      (p) =>
+        p.type === permission.type &&
+        (!permission.projectId || p.project?.id === permission.projectId) &&
+        (!permission.groupname || p.group?.name === permission.groupname) &&
+        (!permission.accountId || p.user?.accountId === permission.accountId)
+    );
+    return added.at(-1) ?? result.at(-1)!;
   }
 
   /**
@@ -984,7 +1029,7 @@ export class JiraClient {
       query.expand = options.expand;
     }
 
-    return this.request<JiraIssue>(`/issue/${keyOrId}`, {
+    return this.request<JiraIssue>(`/issue/${encodeURIComponent(keyOrId)}`, {
       query,
       signal: options.signal,
       logBody: "meta-only",
@@ -1210,11 +1255,14 @@ export class JiraClient {
    */
   async addComment(
     keyOrId: string,
-    body: AdfDocument | string
+    body: AdfDocument | string,
+    options: { internal?: boolean } = {}
   ): Promise<JiraComment> {
+    // Jira Service Management: an internal comment is hidden from customers.
+    const properties = options.internal ? [{ key: "sd.public.comment", value: { internal: true } }] : undefined;
     return this.request<JiraComment>(`/issue/${keyOrId}/comment`, {
       method: "POST",
-      body: { body: this.plainBody(body) },
+      body: { body: this.plainBody(body), properties },
     });
   }
 
@@ -1852,6 +1900,37 @@ export class JiraClient {
         fields: options.fields?.join(","),
       },
     });
+  }
+
+  /**
+   * Every issue in a sprint: pages through `getSprintIssues`.
+   */
+  async getAllSprintIssues(
+    sprintId: number,
+    options: { jql?: string; fields?: string[] } = {}
+  ): Promise<JiraIssue[]> {
+    const issues: JiraIssue[] = [];
+    for (let startAt = 0; ; ) {
+      const page = await this.getSprintIssues(sprintId, { ...options, startAt, maxResults: 100 });
+      issues.push(...page.issues);
+      startAt += page.issues.length;
+      if (page.issues.length === 0 || startAt >= page.total) return issues;
+    }
+  }
+
+  /**
+   * Keys of the issues removed from a sprint before it ended. The sprint's
+   * issue list no longer has them; Jira's own sprint report does
+   * (`puntedIssues`). Internal GreenHopper API, the one the report page uses.
+   *
+   * GET /rest/greenhopper/1.0/rapid/charts/sprintreport
+   */
+  async getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]> {
+    const report = await this.request<{ contents?: { puntedIssues?: Array<{ key: string }> } }>("/rapid/charts/sprintreport", {
+      apiBase: "/rest/greenhopper/1.0",
+      query: { rapidViewId: boardId, sprintId },
+    });
+    return (report.contents?.puntedIssues ?? []).map((issue) => issue.key);
   }
 
   /**

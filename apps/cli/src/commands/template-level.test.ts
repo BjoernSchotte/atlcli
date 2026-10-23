@@ -466,3 +466,38 @@ describe("wiki template help", () => {
     expect(res.stdout).not.toContain("Re-track source for templates");
   }, 30_000);
 });
+
+describe("wiki template render enforces required variables (#298)", () => {
+  const MEETING = [
+    "---",
+    "name: meeting-notes",
+    "variables:",
+    "  - name: title",
+    "    type: string",
+    "  - name: owner",
+    "    type: string",
+    "    required: true",
+    "---",
+    "# {{title}}",
+    "",
+    "Owner: {{owner}}",
+    "Typo: {{ownr}}",
+  ].join("\n");
+
+  test("a missing required variable is a usage error naming it", async () => {
+    await writeFile(templatePath("global", "meeting-notes"), MEETING, "utf8");
+    const res = await runCli("wiki", "template", "render", "meeting-notes", "--var", "title=Sprint Planning", "--json");
+    expect(res.exitCode).toBe(1);
+    const error = JSON.parse(res.stdout).error;
+    expect(error.code).toBe("ATLCLI_ERR_USAGE");
+    expect(error.details.missingVariables).toEqual(["owner"]);
+  });
+
+  test("with the required variable it renders, and warns about the undeclared one", async () => {
+    await writeFile(templatePath("global", "meeting-notes"), MEETING, "utf8");
+    const res = await runCli("wiki", "template", "render", "meeting-notes", "--var", "title=Sprint Planning", "--var", "owner=Ann");
+    expect(res.exitCode, res.stderr).toBe(0);
+    expect(res.stdout).toContain("Owner: Ann");
+    expect(res.stderr).toContain("{{ownr}}");
+  });
+});

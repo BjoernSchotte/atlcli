@@ -12,6 +12,8 @@ Manage Scrum and Kanban boards, sprints, and backlogs.
 - Authenticated profile (`atlcli auth login`)
 - **Jira permission**: Browse Projects (read), Manage Sprints (sprint operations)
 
+Issue lists (`board issues`, `board backlog`, `sprint issues`) print a table without `--json`; the other commands print JSON, pretty-printed even without `--json`.
+
 ## Boards
 
 ### List Boards
@@ -24,10 +26,13 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--project` | Filter by project key |
-| `--type` | Filter by type: `scrum`, `kanban` |
+| `--project` | Filter by project key. Default: `global.project` of the profile |
+| `--all-projects` | Ignore `--project` and `global.project`; list the boards of every project |
+| `--type` | Filter by type: `scrum`, `kanban`, `simple` |
 | `--name` | Filter by name pattern |
-| `--limit` | Maximum results |
+| `--limit` | Maximum results (default 50) |
+
+`board list` pages through Jira's results until it has `--limit` boards. If more exist, it prints `Showing N of M boards; raise --limit for more.` on stderr.
 
 ### Examples
 
@@ -37,6 +42,9 @@ atlcli jira board list --project PROJ
 
 # Only Scrum boards
 atlcli jira board list --type scrum
+
+# Every Scrum board, whatever the profile's default project
+atlcli jira board list --all-projects --type scrum
 
 # Search by name
 atlcli jira board list --name "Team"
@@ -48,19 +56,18 @@ atlcli jira board list --name "Team"
 atlcli jira board get --id 123
 ```
 
-Output:
+Prints the board's name, ID, type and project. With `--json`:
 
-```
-Board: Team Scrum Board
-ID:    123
-Type:  scrum
-Project: PROJ (Project Name)
-Filter: 10001
-
-Columns:
-  - To Do
-  - In Progress
-  - Done
+```json
+{
+  "schemaVersion": "1",
+  "board": {
+    "id": 123,
+    "name": "Team Scrum Board",
+    "type": "scrum",
+    "location": { "projectId": 10000, "projectKey": "PROJ", "projectName": "Main Project" }
+  }
+}
 ```
 
 ### Board Issues
@@ -77,7 +84,9 @@ Options:
 |------|-------------|
 | `--id` | Board ID (required) |
 | `--jql` | Filter with JQL query |
-| `--limit` | Maximum results |
+| `--limit` | Maximum results (default 50) |
+
+The table takes the same `--columns`, `--plain`, `--delimiter`, `--csv` and `--no-headers` flags as [search](search.md).
 
 ### Backlog
 
@@ -85,6 +94,7 @@ View the backlog for a board:
 
 ```bash
 atlcli jira board backlog --id 123
+atlcli jira board backlog --id 123 --jql "type = Bug"
 ```
 
 Options:
@@ -92,9 +102,14 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--id` | Board ID (required) |
-| `--limit` | Maximum results |
+| `--jql` | Filter with JQL query |
+| `--limit` | Maximum results (default 50) |
+
+Table flags as for `board issues`.
 
 ## Sprints
+
+`--board` on `sprint list` and `sprint create` falls back to `global.board` from your config.
 
 ### List Sprints
 
@@ -106,9 +121,11 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--board` | Board ID (required) |
+| `--board` | Board ID (required, or `global.board`) |
 | `--state` | Filter: `active`, `future`, `closed` |
-| `--limit` | Maximum results |
+| `--limit` | Maximum results (default 50) |
+
+Like `board list`, `sprint list` pages through all results up to `--limit` and prints `Showing N of M sprints; raise --limit for more.` on stderr when more exist.
 
 ### Examples
 
@@ -126,20 +143,41 @@ atlcli jira sprint list --board 123 --state future
 atlcli jira sprint get --id 456
 ```
 
-Output:
+Prints the sprint's name, state, dates, board and goal. With `--json`:
 
+```json
+{
+  "schemaVersion": "1",
+  "sprint": {
+    "id": 456,
+    "name": "Sprint 14",
+    "state": "active",
+    "startDate": "2025-01-06T09:00:00.000Z",
+    "endDate": "2025-01-17T17:00:00.000Z",
+    "goal": "Complete API refactoring",
+    "boardId": 123
+  }
+}
 ```
-Sprint: Sprint 14
-ID:     456
-State:  active
-Board:  123 (Team Scrum Board)
-Start:  2025-01-06
-End:    2025-01-17
-Goal:   Complete API refactoring
 
-Issues: 24 (18 done, 4 in progress, 2 to do)
-Points: 21 committed, 16 completed
+For issue counts and points, use [`sprint report`](#sprint-report).
+
+### Sprint Issues
+
+```bash
+atlcli jira sprint issues --id 456
+atlcli jira sprint issues --id 456 --jql "statusCategory != Done" --limit 100
 ```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--id` | Sprint ID (required) |
+| `--jql` | Filter with JQL query |
+| `--limit` | Maximum results (default 50) |
+
+Prints a table; it takes the same `--columns`, `--plain`, `--delimiter`, `--csv` and `--no-headers` flags as [search](search.md). Use `--json` for `{schemaVersion, issues, total}`.
 
 ### Create Sprint
 
@@ -151,7 +189,7 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--board` | Board ID (required) |
+| `--board` | Board ID (required, or `global.board`) |
 | `--name` | Sprint name (required) |
 | `--start` | Start date (YYYY-MM-DD) |
 | `--end` | End date (YYYY-MM-DD) |
@@ -175,7 +213,17 @@ Start a planned sprint:
 
 ```bash
 atlcli jira sprint start --id 456
+atlcli jira sprint start --id 456 --start 2025-01-20 --end 2025-02-03 --goal "Ship login"
 ```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--id` | Sprint ID (required) |
+| `--start` | Start date (YYYY-MM-DD) |
+| `--end` | End date (YYYY-MM-DD) |
+| `--goal` | Sprint goal |
 
 ### Close Sprint
 
@@ -185,12 +233,15 @@ Close an active sprint:
 atlcli jira sprint close --id 456
 ```
 
-Options:
+`--id` is the only option; the sprint closes without a prompt.
 
-| Flag | Description |
-|------|-------------|
-| `--id` | Sprint ID (required) |
-| `--confirm` | Skip confirmation prompt |
+### Delete Sprint
+
+```bash
+atlcli jira sprint delete --id 456 --confirm
+```
+
+`--confirm` is required. Prints `{schemaVersion, deleted}`.
 
 ### Add Issues to Sprint
 
@@ -204,6 +255,8 @@ Options:
 |------|-------------|
 | `--sprint` | Sprint ID (required) |
 | `--issues` | Comma-separated issue keys (alternative to positional args) |
+
+For many issues, use [`bulk move`](bulk-operations.md#bulk-move).
 
 ### Remove Issues from Sprint
 
@@ -221,59 +274,37 @@ Options:
 
 ### Sprint Report
 
-Get comprehensive sprint metrics:
+Get sprint metrics:
 
 ```bash
-atlcli jira sprint report --id 456
+atlcli jira sprint report 456
+atlcli jira sprint report 456 --status-map "Fertig=done"
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--id` | Sprint ID (required) |
-| `--points-field` | Custom story points field ID |
-| `--json` | JSON output |
+| `<id>` | Sprint ID (positional, or `--id`) |
+| `--points-field` | Story points field ID (default: auto-detected) |
+| `--status-map` | `"<status>=todo\|wip\|done,…"`: which statuses count as completed (default: `flow.statusMap`) |
 
 Output:
 
-```
-Sprint 14 Report
-================
-Duration: Jan 6 - Jan 17, 2025 (10 days)
-Status: Active
-
-SUMMARY
--------
-Total Issues:     24
-Completed:        18 (75%)
-In Progress:       4 (17%)
-Not Started:       2 (8%)
-
-STORY POINTS
-------------
-Committed:        21
-Completed:        16
-Remaining:         5
-
-SCOPE CHANGES
--------------
-Added:            3 issues
-Removed:          1 issue
-
-TOP CONTRIBUTORS
-----------------
-Alice:            8 issues completed
-Bob:              6 issues completed
-Carol:            4 issues completed
+```json
+{
+  "schemaVersion": "1",
+  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed", "dates": "2026-10-06 - 2026-10-17" },
+  "pointsField": "customfield_10016",
+  "velocity": 34,
+  "sayDoRatio": 85,
+  "scopeChange": 20,
+  "issues": { "total": 22, "completed": 18, "incomplete": 4, "added": 2, "removed": 1 },
+  "progress": { "committed": 40, "completed": 34, "added": 5, "removed": 3, "percent": 85, "bar": "[█████████████████───] 85%" }
+}
 ```
 
-### Export Sprint Report
-
-```bash
-# JSON for automation or documentation
-atlcli jira sprint report --id 456 --json > sprint-report.json
-```
+`issues.added` and `issues.removed` count issues; the points are in `progress.added` and `progress.removed`. See [Analytics: Sprint report](analytics.md#sprint-report) for how each value is calculated.
 
 ### Sprint Review Page
 
@@ -287,8 +318,6 @@ See [Release Notes and Sprint Review Pages](report-pages.md) for options and tem
 
 ## JSON Output
 
-All commands support `--json`:
-
 ```bash
 atlcli jira sprint list --board 123 --json
 ```
@@ -301,12 +330,13 @@ atlcli jira sprint list --board 123 --json
       "id": 456,
       "name": "Sprint 14",
       "state": "active",
-      "startDate": "2025-01-06",
-      "endDate": "2025-01-17",
+      "startDate": "2025-01-06T09:00:00.000Z",
+      "endDate": "2025-01-17T17:00:00.000Z",
       "goal": "Complete API refactoring",
       "boardId": 123
     }
-  ]
+  ],
+  "total": 1
 }
 ```
 

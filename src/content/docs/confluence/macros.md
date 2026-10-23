@@ -55,7 +55,7 @@ ordinary Word code paragraph.
 ### Info Panel
 
 ```markdown
-::: info
+:::info
 This is an informational message.
 :::
 ```
@@ -63,7 +63,7 @@ This is an informational message.
 With title:
 
 ```markdown
-::: info "Important Information"
+:::info "Important Information"
 This is an info panel with a title.
 :::
 ```
@@ -71,7 +71,7 @@ This is an info panel with a title.
 ### Note Panel
 
 ```markdown
-::: note
+:::note
 This is a note for the reader.
 :::
 ```
@@ -79,7 +79,7 @@ This is a note for the reader.
 ### Warning Panel
 
 ```markdown
-::: warning
+:::warning
 This action cannot be undone!
 :::
 ```
@@ -87,7 +87,7 @@ This action cannot be undone!
 ### Tip Panel
 
 ```markdown
-::: tip
+:::tip
 Pro tip: Use keyboard shortcuts for faster navigation.
 :::
 ```
@@ -97,7 +97,7 @@ Pro tip: Use keyboard shortcuts for faster navigation.
 Full control over panel styling:
 
 ```markdown
-::: panel title="Custom Panel" bgColor="#f0f0f0" borderColor="#ccc" borderStyle="solid"
+:::panel title="Custom Panel" bgColor="#f0f0f0" borderColor="#ccc" borderStyle="solid"
 Custom styled panel content.
 :::
 ```
@@ -116,39 +116,49 @@ Options:
 ### Basic Expand
 
 ```markdown
-::: expand "Click to expand"
+:::expand "Click to expand"
 This content is hidden by default.
 :::
 ```
 
-### Expanded by Default
-
-```markdown
-::: expand "Details" expanded=true
-This content is visible by default.
-:::
-```
+The title is the quoted text (or the whole rest of the line when unquoted).
+The Confluence expand macro has no "expanded by default" option, so
+parameters after a quoted title (for example `expanded=true`) are dropped on
+push, and `atlcli wiki docs check` warns about them (`MACRO_INVALID_PARAMS`).
 
 ## Table of Contents
 
 ```markdown
+:::toc
 :::
 ```
 
 With options:
 
 ```markdown
-::: toc minLevel=2 maxLevel=4
+:::toc minLevel=2 maxLevel=4 style=none
 :::
 ```
 
-Options:
+Options (passed to the Confluence `toc` macro and preserved on pull):
 
 | Option | Description |
 |--------|-------------|
 | `minLevel` | Minimum heading level (default: 1) |
-| `maxLevel` | Maximum heading level (default: 6) |
-| `style` | none, disc, circle, square |
+| `maxLevel` | Maximum heading level (default: 7) |
+| `type` | `list` or `flat` |
+| `outline` | `true` to number headings |
+| `style` | List bullet style: none, disc, circle, square |
+| `indent` | Indent per level, for example `10px` |
+| `separator` | Separator for `type=flat`: brackets, braces, parens, pipe, or custom text |
+| `include` | Regex of headings to include, for example `include="^Intro.*"` |
+| `exclude` | Regex of headings to exclude |
+| `printable` | `false` hides the TOC when printing |
+| `class` | CSS class for the TOC |
+| `absoluteUrl` | `true` to use absolute links |
+
+Values with spaces or special characters need quotes. Unknown options are
+dropped on push and reported as warnings by `atlcli wiki docs check`.
 
 ## Code Blocks
 
@@ -329,6 +339,20 @@ Mention users by account ID:
 
 The account ID can be found in Confluence user profiles or via the API.
 
+Escape square brackets in a name with a backslash. atlcli writes names that way when it pulls:
+
+```markdown
+@[Max Muster \[extern\]](557058:abcd-efgh-ijkl)
+```
+
+On Server and Data Center, mentions point at a user key. atlcli writes it with a `userkey:` prefix:
+
+```markdown
+@[Jane Roe](userkey:8a7f808a8b1c2d3e)
+```
+
+When you pull or diff a page, atlcli fills in the display name of each mentioned user. Confluence often stores a mention without one, so atlcli looks the user up once per run. If the lookup fails, for example for a deleted user, the mention keeps its ID as the name: `@[557058:abcd-efgh-ijkl](557058:abcd-efgh-ijkl)`. When you push such a mention, atlcli writes it without link text, so Confluence shows the user's current name.
+
 ## Status Macro
 
 Inline status labels:
@@ -443,14 +467,14 @@ Options:
 List child pages:
 
 ```markdown
-::: children
+:::children
 :::
 ```
 
 With options:
 
 ```markdown
-::: children depth=2 sort=title
+:::children depth=2 sort=title
 :::
 ```
 
@@ -468,21 +492,21 @@ Options:
 Display page tree navigation:
 
 ```markdown
-::: pagetree root=12345 depth=3
+:::pagetree root=12345 depth=3
 :::
 ```
 
 ### Recently Updated
 
 ```markdown
-::: recently-updated spaces=TEAM,DOCS max=10
+:::recently-updated spaces=TEAM,DOCS max=10
 :::
 ```
 
 ### Content by Label
 
 ```markdown
-::: content-by-label labels=api,documentation
+:::content-by-label labels=api,documentation
 :::
 ```
 
@@ -491,22 +515,25 @@ Display page tree navigation:
 ### Section and Column
 
 ```markdown
-::: section
-::: column width=50%
+:::section
+:::column width="50%"
 Left column content.
-:::
-::: column width=50%
+:::column-end
+:::column width="50%"
 Right column content.
-:::
-:::
+:::column-end
+:::section-end
 ```
+
+Sections and columns close with `:::section-end` and `:::column-end`, not a
+bare `:::`. Only columns are kept inside a section.
 
 ### Excerpt
 
 Mark content for reuse:
 
 ```markdown
-::: excerpt
+:::excerpt
 This content can be included in other pages.
 :::
 ```
@@ -516,7 +543,7 @@ This content can be included in other pages.
 Include excerpt from another page:
 
 ```markdown
-::: excerpt-include page="Page Title" nopanel=true
+:::excerpt-include page="Page Title" nopanel=true
 :::
 ```
 
@@ -527,7 +554,7 @@ Include excerpt from another page:
 Display attached images as gallery:
 
 ```markdown
-::: gallery columns=3
+:::gallery columns=3
 :::
 ```
 
@@ -536,7 +563,7 @@ Display attached images as gallery:
 List page attachments:
 
 ```markdown
-::: attachments patterns=*.pdf,*.docx
+:::attachments patterns=*.pdf,*.docx
 :::
 ```
 
@@ -545,7 +572,7 @@ List page attachments:
 Embed video or audio:
 
 ```markdown
-::: multimedia url="https://youtube.com/watch?v=..." width=640 height=480
+:::multimedia url="https://youtube.com/watch?v=..." width=640 height=480
 :::
 ```
 
@@ -554,7 +581,7 @@ Embed video or audio:
 Embed external content:
 
 ```markdown
-::: widget url="https://example.com/embed" width=100%
+:::widget url="https://example.com/embed" width=100%
 :::
 ```
 
@@ -563,7 +590,7 @@ Embed external content:
 Create a table of contents for a specific section:
 
 ```markdown
-::: toc-zone minLevel=2 maxLevel=4
+:::toc-zone minLevel=2 maxLevel=4
 ## Section 1
 Content...
 ## Section 2
@@ -580,7 +607,7 @@ Only headings within the zone are included in the TOC.
 Display page metadata in a panel:
 
 ```markdown
-::: details
+:::details
 | Property | Value |
 |----------|-------|
 | Status | Active |
@@ -593,7 +620,7 @@ Display page metadata in a panel:
 Store metadata without displaying:
 
 ```markdown
-::: detailssummary hidden=true
+:::detailssummary hidden=true
 | Key | Value |
 |-----|-------|
 | internal-id | 12345 |
@@ -738,7 +765,7 @@ For compatibility, Confluence wiki attachment syntax is also supported:
 **atlcli preserves unrecognized macros as-is.** This ensures no information loss during sync:
 
 ```markdown
-::: unknown-macro param1=value1 param2=value2
+:::unknown-macro param1=value1 param2=value2
 Content inside the unknown macro.
 :::
 ```
@@ -766,7 +793,7 @@ Some complex macros render to placeholder text with a note:
 
 ```markdown
 <!-- Confluence macro: roadmap - not fully supported, preserved as-is -->
-::: roadmap
+:::roadmap
 ...
 :::
 ```
@@ -786,7 +813,7 @@ Some complex macros render to placeholder text with a note:
 
 **Cause**: Unclosed macro block or incorrect syntax.
 
-**Fix**: Ensure every `:::macro` has a matching `:::` closing tag. Validate with:
+**Fix**: Ensure every `:::macro` has a matching `:::` closing tag (`:::section` and `:::column` close with `:::section-end` and `:::column-end`). Macros cannot be nested inside another macro body. Validate with:
 ```bash
 atlcli wiki docs check ./docs/page.md
 ```

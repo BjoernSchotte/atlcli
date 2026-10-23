@@ -200,9 +200,38 @@ describe("lossy-case policy", () => {
   test("unsupported marks keep their text", () => {
     const original = doc({
       type: "paragraph",
-      content: [{ type: "text", text: "red", marks: [{ type: "textColor", attrs: { color: "#ff0000" } }, { type: "strong" }] }],
+      content: [{ type: "text", text: "red", marks: [{ type: "backgroundColor", attrs: { color: "#ff0000" } }, { type: "strong" }] }],
     });
     expect(adfToMarkdown(original)).toBe("**red**");
+  });
+
+  // #284: these marks were dropped, so H₂O read back as H2O and a write-back lost them.
+  test("underline, text colour and sub/superscript survive the round trip", () => {
+    const original = doc({
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Must", marks: [{ type: "underline" }] },
+        { type: "text", text: " use " },
+        { type: "text", text: "red", marks: [{ type: "textColor", attrs: { color: "#ff5630" } }] },
+        { type: "text", text: " label, H" },
+        { type: "text", text: "2", marks: [{ type: "subsup", attrs: { type: "sub" } }] },
+        { type: "text", text: "O, x" },
+        { type: "text", text: "2", marks: [{ type: "subsup", attrs: { type: "sup" } }] },
+        { type: "text", text: ", " },
+        { type: "text", text: "all", marks: [{ type: "textColor", attrs: { color: "#36b37e" } }, { type: "underline" }, { type: "strong" }] },
+      ],
+    });
+    const markdown = adfToMarkdown(original);
+    expect(markdown).toBe(
+      '<u>Must</u> use <span style="color: #ff5630">red</span> label, H<sub>2</sub>O, x<sup>2</sup>, <span style="color: #36b37e"><u>**all**</u></span>',
+    );
+    expect(markdownToAdf(markdown)).toEqual(original);
+    expect(() => validateAdf(markdownToAdf(markdown))).not.toThrow();
+  });
+
+  test("other inline HTML stays literal text", () => {
+    const back = markdownToAdf('a <span style="background: red">b</span> </u>');
+    expect(adfToMarkdown(back)).toBe('a \\<span style="background: red">b\\</span> \\</u>');
   });
 
   test("text that looks like markdown is escaped", () => {
@@ -222,6 +251,14 @@ describe("adfToMarkdown", () => {
     expect(adfToMarkdown(null)).toBe("");
     expect(adfToMarkdown(undefined)).toBe("");
     expect(adfToMarkdown("plain DC text")).toBe("plain DC text");
+  });
+
+  test("a mention whose name has brackets survives the round trip", () => {
+    const adf = doc({ type: "paragraph", content: [{ type: "mention", attrs: { id: "acc-1", text: "@Max Muster [extern]" } }] });
+    const md = adfToMarkdown(adf);
+    expect(md).toBe("@[Max Muster \\[extern\\]](acc-1)");
+    expect(markdownToAdf(md).content[0]).toEqual({ type: "paragraph", content: [{ type: "mention", attrs: { id: "acc-1", text: "@Max Muster [extern]" } }] });
+    expect(markdownToAdf("@[](acc-1)").content[0]).toEqual({ type: "paragraph", content: [{ type: "mention", attrs: { id: "acc-1", text: "@acc-1" } }] });
   });
 
   test("mention without text falls back to the id", () => {

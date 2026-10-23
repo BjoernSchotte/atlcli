@@ -34,6 +34,7 @@ import {
   resolveCachePaths,
 } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -57,7 +58,7 @@ export async function handleWikiVfs(
       await handleConflicts(action, rest, flags, opts);
       return;
     default:
-      output(wikiVfsHelp(), opts);
+      unknownSubcommand(group, wikiVfsHelp(), opts);
       return;
   }
 }

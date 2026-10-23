@@ -51,7 +51,7 @@ describe("atlcli skill from the command line", () => {
 
   test("lists the command in the root help", async () => {
     const result = await runCli(["--help"]);
-    expect(result.stdout).toContain("\n  skill       Print or install the agent skill\n");
+    expect(result.stdout).toContain("\n  skill        Print or install the agent skill\n");
   }, 30_000);
 
   test("fails with a structured usage error for an unknown file", async () => {

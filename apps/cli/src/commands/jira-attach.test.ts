@@ -38,7 +38,7 @@ beforeAll(async () => {
       const { pathname } = new URL(req.url);
 
       // Non-cloud base URL ⇒ the client talks v2.
-      if (req.method === "POST" && pathname === `/rest/api/2/issue/${ISSUE}/attachments`) {
+      if (req.method === "POST" && pathname.match(/^\/rest\/api\/[23]\/issue\/ATLCLI-1\/attachments$/)) {
         const form = await req.formData();
         const file = form.get("file");
         if (!(file instanceof Blob)) return new Response("no file", { status: 400 });
@@ -60,6 +60,13 @@ beforeAll(async () => {
             content: `${server.url.origin}/rest/api/2/attachment/content/${id}`,
           },
         ]);
+      }
+
+      if (req.method === "POST" && pathname === `/rest/api/3/issue/${ISSUE}/comment`) {
+        // Cloud (API v3) takes ADF; record it as JSON so a test can inspect the marks.
+        const body = (await req.json()) as { body?: unknown };
+        comments.push(JSON.stringify(body.body));
+        return Response.json({ id: "30002", body: body.body });
       }
 
       if (req.method === "POST" && pathname === `/rest/api/2/issue/${ISSUE}/comment`) {
@@ -88,6 +95,12 @@ beforeAll(async () => {
             name: PROFILE,
             baseUrl: server.url.origin,
             deploymentType: "data-center",
+            auth: { type: "bearer" },
+          },
+          cloud: {
+            name: "cloud",
+            baseUrl: server.url.origin,
+            deploymentType: "cloud",
             auth: { type: "bearer" },
           },
         },
@@ -223,6 +236,29 @@ describe("jira issue attach", () => {
     // The bug: the flag was never read, so the comment never appeared.
     expect(comments).toEqual(["Error logs from production"]);
     expect(JSON.parse(stdout).comment).toEqual({ id: "30001" });
+  }, 30_000);
+
+  it("converts --comment Markdown like `comments add` does (#276)", async () => {
+    const { exitCode } = await runCli([
+      "jira",
+      "issue",
+      "attach",
+      ISSUE,
+      "a.png",
+      "--comment",
+      "**bold** text",
+      "--profile",
+      "cloud",
+      "--json",
+    ]);
+
+    expect(exitCode).toBe(0);
+    // The bug posted the Markdown as one literal text node: `**bold** text`.
+    const adf = JSON.parse(comments[0]!);
+    expect(adf.content[0].content).toEqual([
+      { type: "text", text: "bold", marks: [{ type: "strong" }] },
+      { type: "text", text: " text" },
+    ]);
   }, 30_000);
 
   it("rejects --comment without text rather than ignoring it", async () => {

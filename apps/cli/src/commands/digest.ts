@@ -22,7 +22,6 @@ import {
   type AuditRules,
   JiraClient,
   type JiraAuditBaseline,
-  type JiraIssue,
   digestAuditRules,
   isRuleActive,
   type StatusCategoryResolver,
@@ -113,6 +112,8 @@ async function fetchJira(
     statusMap: Record<string, "todo" | "wip" | "done">;
     /** Rules for the "Audit" section, already cut to the digest (`digestAuditRules`). */
     audit?: { rules: AuditRules; baseline?: JiraAuditBaseline };
+    /** Days without an update that make an open issue stale, for the team section. */
+    staleDays: number;
   },
   raw: DigestRawInput
 ): Promise<{ projectsTruncated: boolean }> {
@@ -135,8 +136,11 @@ async function fetchJira(
     });
   }
   let projectsTruncated = false;
+  let teamTruncated = false;
   const audit = opts.audit;
-  const [me, waiting, changed, sprints, project, auditResult] = await Promise.all([
+  const teamJql = scope && opts.projects.length ? `${projectsJql(opts.projects)} AND ${scope.open}` : undefined;
+  if (teamJql && raw.queries) raw.queries["jira.team"] = teamJql;
+  const [me, waiting, changed, sprints, project, auditResult, team] = await Promise.all([
     run("me", () => client.getCurrentUser()),
     run("waiting", async () => (await client.search(q.waiting, { fields: ["summary", "status", "priority"], maxResults: opts.fetchLimit })).issues),
     run("changed", async () => {
@@ -156,8 +160,8 @@ async function fetchJira(
           const active = await client.listSprints(opts.board!, { state: "active" });
           return Promise.all(
             active.values.map(async (sprint): Promise<DigestRawSprint> => {
-              const result = await client.getSprintIssues(sprint.id, { fields: ["status", "assignee"], maxResults: 200 });
-              return { id: sprint.id, name: sprint.name, endDate: sprint.endDate, issues: result.issues as JiraIssue[] };
+              const issues = await client.getAllSprintIssues(sprint.id, { fields: ["status", "assignee"] });
+              return { id: sprint.id, name: sprint.name, endDate: sprint.endDate, issues };
             })
           );
         }),
@@ -180,7 +184,15 @@ async function fetchJira(
           return report;
         })
       : Promise.resolve(undefined),
+    teamJql
+      ? run("team", async () => {
+          const result = await searchAll(client, teamJql, ["status", "assignee", "duedate", "updated"], DIGEST_AUDIT_LIMIT);
+          teamTruncated = result.truncated;
+          return result.issues;
+        })
+      : Promise.resolve(undefined),
   ]);
+  if (teamTruncated) raw.errors.push({ section: "team", message: `more than ${DIGEST_AUDIT_LIMIT} open issues; the team counts are a lower bound.` });
   raw.me.jiraAccountId = me?.accountId;
   raw.me.displayName ??= me?.displayName;
   raw.jira = {
@@ -193,6 +205,7 @@ async function fetchJira(
       : {}),
     ...(scope ? { resolve: scope.resolve } : {}),
     ...(auditResult ? { audit: { findings: auditResult.findings, partial: auditResult.partial } } : {}),
+    ...(team ? { teamIssues: team, staleDays: opts.staleDays } : {}),
   };
   return { projectsTruncated };
 }
@@ -306,7 +319,8 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
   const auditErrors: DigestRawInput["errors"] = [];
   if (projects.length && products.includes("jira") && (await getFlagValue<boolean>("audit", false))) {
     try {
-      const rules = digestAuditRules(await loadAuditRules(profile, config.audit?.jira?.staleDays));
+      // Not the working directory's rules file: a digest runs from anywhere, and that file's JQL is trusted.
+      const rules = digestAuditRules(await loadAuditRules(profile, config.audit?.jira?.staleDays, undefined, null));
       let baseline: JiraAuditBaseline | undefined;
       try {
         baseline = parseAuditBaseline(JSON.parse(await readFile(auditBaselinePath(profile.name), "utf8")));
@@ -356,8 +370,9 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
   if (products.includes("jira")) {
     const jira = new JiraClient(profile, { observeTransport: count });
     raw.jiraBaseUrl = jira.siteUrl;
+    const staleDays = profile.audit?.jira?.staleDays?.[0] ?? config.audit?.jira?.staleDays?.[0] ?? 30;
     tasks.push(
-      fetchJira(jira, sinceMinutes(since.jira!, runStartedAt), { board, fetchLimit, projects, statusMap, audit }, raw).then((r) => {
+      fetchJira(jira, sinceMinutes(since.jira!, runStartedAt), { board, fetchLimit, projects, statusMap, audit, staleDays }, raw).then((r) => {
         projectsTruncated = r.projectsTruncated;
       })
     );
@@ -424,6 +439,8 @@ Sections:
   Jira         Waiting on you · Changed (your issues and watched ones) · Active sprint
   Projects     Per project: completed · created · changed, by anyone (--project, digest.projects)
   Audit        Error findings of the audit rules for those projects (when audit is enabled)
+  Team         Per person in those projects: open · in progress · overdue · no update for
+               N days (audit.jira.staleDays, first value; default 30) · oldest in progress
   Confluence   Mentions · Comments on your pages · Open inline comments ·
                Your pages edited · Watched pages changed · Recently changed in space
 
@@ -431,8 +448,8 @@ Options:
   --since <when>       lastrun (default), 24h, 7d, 90m, today, yesterday, or an ISO date.
                        m means minutes. Without a previous run: 24h. At most 30 days.
   --only <product>     jira or confluence
-  --space <keys>       Space(s) for "Recently changed in space" (default: defaults.space)
-  --board <id>         Board for the active sprint (default: defaults.board; kanban boards
+  --space <keys>       Space(s) for "Recently changed in space" (default: global.space or profiles.<name>.space)
+  --board <id>         Board for the active sprint (default: global.board or profiles.<name>.board; kanban boards
                        have no sprint and are skipped)
   --project <keys>     Projects for the overview, comma-separated (default: digest.projects)
   --status-map <map>   Override status categories, e.g. "Fertig=done" (config flow.statusMap)

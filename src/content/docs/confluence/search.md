@@ -108,8 +108,9 @@ atlcli wiki search "query" --type attachment
 # Single label
 atlcli wiki search --label api
 
-# Multiple labels (AND)
+# Multiple labels (AND): a comma list or a repeated --label
 atlcli wiki search --label "api,v2"
+atlcli wiki search --label api --label v2
 ```
 
 ### By Creator

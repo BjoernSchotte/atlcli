@@ -27,8 +27,10 @@ import {
 import { ConfluenceClient, hashContent, markdownToStorage } from "@atlcli/confluence";
 import {
   JiraClient,
+  loadSprintHistory,
   buildReportData,
   calculateSprintMetrics,
+  sprintIssueAt,
   type JiraIssue,
   type ReportData,
 } from "@atlcli/jira";
@@ -108,21 +110,12 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
   // Points are optional on a review page: use the flag, else detect, else none.
   const pointsField = getFlag(flags, "points-field") ?? (await jira.detectStoryPointsField().catch(() => null)) ?? undefined;
   const sprint = await jira.getSprint(sprintId);
-  const issues: JiraIssue[] = [];
-  for (let startAt = 0; ; ) {
-    const page = await jira.getSprintIssues(sprintId, {
-      startAt,
-      maxResults: 100,
-      fields: [...REPORT_FIELDS, ...(pointsField ? [pointsField] : [])],
-    });
-    issues.push(...page.issues);
-    startAt += page.issues.length;
-    if (page.issues.length === 0 || startAt >= page.total) break;
-  }
-  // ponytail: no scope change on the page; it needs one changelog request per
-  // issue until spec digest-flow-metrics T1 adds bulk changelogs.
+  // As of its end, removed issues included: one bulk changelog read.
+  const history = await loadSprintHistory(jira, sprint, [...REPORT_FIELDS, ...(pointsField ? [pointsField] : [])]);
+  const issues = history;
   const resolve = await reportStatusResolver(jira, flags, opts);
-  const metrics = pointsField ? calculateSprintMetrics(sprint, issues, pointsField, undefined, resolve) : undefined;
+  const asOf = new Map(history.map((issue) => [issue.key, sprintIssueAt(issue, sprint, pointsField ?? "", resolve).end]));
+  const metrics = pointsField ? calculateSprintMetrics(sprint, history, pointsField, history, resolve) : undefined;
   const data = buildReportData({
     kind: "sprint",
     source: {
@@ -137,6 +130,7 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
     baseUrl: jira.siteUrl,
     pointsField,
     sprintMetrics: metrics,
+    asOf,
     resolve,
     now: new Date(),
   });
@@ -223,7 +217,7 @@ async function publishReport(
   options: { defaultTemplate: string; defaultTitle: string }
 ): Promise<void> {
   const space = getFlag(flags, "space") ?? ctx.defaults.space;
-  if (!space) fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or set defaults.space in config).");
+  if (!space) fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or set a default: atlcli config set global.space <value>).");
   const title = getFlag(flags, "title") ?? options.defaultTitle;
   const templateName = getFlag(flags, "template") ?? options.defaultTemplate;
 

@@ -40,13 +40,139 @@ export function isIssueComplete(issue: JiraIssue, resolve?: StatusCategoryResolv
   return resolve ? resolve(status) === "done" : status.statusCategory?.key === "done";
 }
 
+type ChangelogItem = JiraChangelogEntry["items"][number];
+
+/** An issue as it was at one moment of a sprint, replayed from its changelog. */
+export interface SprintIssueSnapshot {
+  /** In the sprint at that moment. */
+  inSprint: boolean;
+  /** Story points at that moment. */
+  points: number;
+  /** Done at that moment, under the resolver. */
+  done: boolean;
+}
+
+/**
+ * Replay an issue's changelog to `at`: sprint membership, estimate and status.
+ * Needs `fields.created` and `fields.issuetype`: an issue created later is not
+ * in the sprint, and a sub-task never is (it follows its parent, as in Jira's
+ * sprint report). Without
+ * `resolve`, a status the issue no longer has counts as not done (its category
+ * is unknown).
+ */
+export function issueAt(
+  issue: JiraIssue,
+  sprintId: number,
+  at: Date,
+  pointsField: string,
+  resolve?: StatusCategoryResolver
+): SprintIssueSnapshot {
+  const created = issue.fields.created ? Date.parse(issue.fields.created) : NaN;
+  if (created > at.getTime() || issue.fields.issuetype?.subtask) return { inSprint: false, points: 0, done: false };
+  const histories = [...(issue.changelog?.histories ?? [])].sort(
+    (a, b) => Date.parse(a.created) - Date.parse(b.created)
+  );
+  const isSprint = (item: ChangelogItem) => item.field === "Sprint";
+  const isPoints = (item: ChangelogItem) =>
+    item.fieldId !== undefined ? item.fieldId === pointsField : /^story points?$/i.test(item.field);
+
+  const sprint = valueAt(histories, at, isSprint);
+  const points = valueAt(histories, at, isPoints);
+  const status = valueAt(histories, at, (item) => item.field === "status");
+
+  const pointsThen = points ? Number.parseFloat(points.text ?? points.id ?? "") : getStoryPoints(issue, pointsField);
+  let done: boolean;
+  if (!status) done = isIssueComplete(issue, resolve);
+  else if (resolve) done = resolve({ id: status.id, name: status.text }) === "done";
+  else done = status.id !== null && status.id === issue.fields.status?.id && isIssueComplete(issue);
+
+  return {
+    // An issue listed for the sprint is in it unless its changelog says otherwise.
+    inSprint: sprint ? (sprint.id ?? "").split(",").map((id) => id.trim()).includes(String(sprintId)) : true,
+    points: Number.isNaN(pointsThen) ? 0 : pointsThen,
+    done,
+  };
+}
+
+/**
+ * When an issue joined and left a sprint between `start` and `end`, from its
+ * Sprint changelog: the first join and the last leave in that window.
+ */
+export function sprintMoves(
+  issue: JiraIssue,
+  sprintId: number,
+  start: Date,
+  end: Date
+): { joinedAt?: Date; leftAt?: Date } {
+  const has = (value: string | null | undefined) => (value ?? "").split(",").map((id) => id.trim()).includes(String(sprintId));
+  let joinedAt: Date | undefined;
+  let leftAt: Date | undefined;
+  for (const history of issue.changelog?.histories ?? []) {
+    const at = Date.parse(history.created);
+    if (at <= start.getTime() || at > end.getTime()) continue;
+    for (const item of history.items) {
+      if (item.field !== "Sprint") continue;
+      if (!has(item.from) && has(item.to) && (!joinedAt || at < joinedAt.getTime())) joinedAt = new Date(at);
+      if (has(item.from) && !has(item.to) && (!leftAt || at > leftAt.getTime())) leftAt = new Date(at);
+    }
+  }
+  return { joinedAt, leftAt };
+}
+
+/**
+ * An issue at a sprint's start and end (`sprintEnd`). An issue already done at
+ * the start is out of the sprint at both: it was finished before, and Jira's
+ * sprint report lists it apart ("completed outside this sprint").
+ */
+export function sprintIssueAt(
+  issue: JiraIssue,
+  sprint: Pick<JiraSprint, "id" | "startDate" | "completeDate">,
+  pointsField: string,
+  resolve?: StatusCategoryResolver,
+  end: Date = sprintEnd(sprint)
+): { start: SprintIssueSnapshot; end: SprintIssueSnapshot } {
+  const start = issueAt(issue, sprint.id, new Date(sprint.startDate!), pointsField, resolve);
+  const atEnd = issueAt(issue, sprint.id, end, pointsField, resolve);
+  if (start.inSprint && start.done) return { start: { ...start, inSprint: false }, end: { ...atEnd, inSprint: false } };
+  return { start, end: atEnd };
+}
+
+/**
+ * A field's value at `at`: the `to` of the last change up to `at`, else the
+ * `from` of the first change after it. Undefined when the field never changed
+ * (the current value holds). Bulk changelogs omit empty strings, so own
+ * properties only.
+ */
+function valueAt(
+  histories: JiraChangelogEntry[],
+  at: Date,
+  match: (item: ChangelogItem) => boolean
+): { id: string | null; text: string | null } | undefined {
+  const own = (item: ChangelogItem, key: "from" | "fromString" | "to" | "toString") =>
+    Object.hasOwn(item, key) ? (item[key] ?? null) : null;
+  let before: ChangelogItem | undefined;
+  let after: ChangelogItem | undefined;
+  for (const history of histories) {
+    const items = history.items.filter(match);
+    if (items.length === 0) continue;
+    if (Date.parse(history.created) <= at.getTime()) before = items[items.length - 1];
+    else after ??= items[0];
+  }
+  if (before) return { id: own(before, "to"), text: own(before, "toString") };
+  if (after) return { id: own(after, "from"), text: own(after, "fromString") };
+  return undefined;
+}
+
 /**
  * Calculate metrics for a single sprint.
  *
  * @param sprint - The sprint to analyze
  * @param issues - All issues that are/were in the sprint
  * @param pointsField - Custom field ID for story points (e.g., "customfield_10016")
- * @param issuesWithChangelog - Optional issues with changelog for scope change calculation
+ * @param issuesWithChangelog - The same issues with changelogs and `fields.created`.
+ *   With them and a start date, the metrics are as of the sprint (see `issueAt`):
+ *   committed at the start, completed at the end (`completeDate`, else now).
+ *   Without them, the issues' current state counts.
  * @param resolve - Optional status resolver; without it, done means the Done category
  */
 export function calculateSprintMetrics(
@@ -56,6 +182,9 @@ export function calculateSprintMetrics(
   issuesWithChangelog?: JiraIssue[],
   resolve?: StatusCategoryResolver
 ): SprintMetrics {
+  if (issuesWithChangelog && sprint.startDate) {
+    return sprintMetricsAsOfSprint(sprint, issuesWithChangelog, pointsField, resolve);
+  }
   // Calculate points and issue counts
   let committedPoints = 0;
   let completedPoints = 0;
@@ -74,38 +203,72 @@ export function calculateSprintMetrics(
     }
   }
 
-  // Calculate scope change if changelog is available
-  let addedDuringSprint = 0;
-  let removedDuringSprint = 0;
+  return metricsOf(sprint, { committedPoints, completedPoints, totalIssues: issues.length, completedIssues, addedPoints: 0, removedPoints: 0, addedIssues: 0, removedIssues: 0 });
+}
 
-  if (issuesWithChangelog && sprint.startDate) {
-    const sprintStart = new Date(sprint.startDate);
-    const sprintEnd = sprint.endDate ? new Date(sprint.endDate) : new Date();
+/** The end of a sprint for its metrics: when it was completed, else now. */
+export function sprintEnd(sprint: Pick<JiraSprint, "completeDate">, now = new Date()): Date {
+  return sprint.completeDate ? new Date(sprint.completeDate) : now;
+}
 
-    for (const issue of issuesWithChangelog) {
-      const scopeChange = analyzeSprintScopeChange(
-        issue,
-        sprint.id,
-        sprintStart,
-        sprintEnd,
-        pointsField
-      );
-      addedDuringSprint += scopeChange.added;
-      removedDuringSprint += scopeChange.removed;
+function sprintMetricsAsOfSprint(
+  sprint: JiraSprint,
+  issues: JiraIssue[],
+  pointsField: string,
+  resolve?: StatusCategoryResolver
+): SprintMetrics {
+  let committedPoints = 0;
+  let completedPoints = 0;
+  let totalIssues = 0;
+  let completedIssues = 0;
+  let addedPoints = 0;
+  let removedPoints = 0;
+  let addedIssues = 0;
+  let removedIssues = 0;
+  const start = new Date(sprint.startDate!);
+  const end = sprintEnd(sprint);
+  for (const issue of issues) {
+    const { start: atStart, end: atEnd } = sprintIssueAt(issue, sprint, pointsField, resolve);
+    if (atStart.inSprint) committedPoints += atStart.points;
+    // As in Jira's sprint report: added = joined after the start, removed =
+    // in the sprint at some point and out at the end. An issue added and
+    // removed again during the sprint is both.
+    const { joinedAt, leftAt } = issue.fields.issuetype?.subtask ? {} : sprintMoves(issue, sprint.id, start, end);
+    // Created in the sprint has no Sprint change: in at the end, out at the start.
+    const joined = !atStart.inSprint && (atEnd.inSprint || joinedAt !== undefined);
+    if (joined) {
+      addedIssues++;
+      addedPoints += atEnd.inSprint ? atEnd.points : issueAt(issue, sprint.id, joinedAt!, pointsField, resolve).points;
+    }
+    if (!atEnd.inSprint && (atStart.inSprint || joined)) {
+      removedIssues++;
+      removedPoints += atStart.inSprint ? atStart.points : issueAt(issue, sprint.id, leftAt ?? end, pointsField, resolve).points;
+    }
+    if (!atEnd.inSprint) continue;
+    totalIssues++;
+    if (atEnd.done) {
+      completedIssues++;
+      completedPoints += atEnd.points;
     }
   }
+  return metricsOf(sprint, { committedPoints, completedPoints, totalIssues, completedIssues, addedPoints, removedPoints, addedIssues, removedIssues });
+}
 
-  // Calculate derived metrics
-  const scopeChangePercent =
-    committedPoints > 0
-      ? Math.round(((addedDuringSprint + removedDuringSprint) / committedPoints) * 100)
-      : 0;
-
-  const sayDoRatio =
-    committedPoints > 0
-      ? Math.round((completedPoints / committedPoints) * 100)
-      : 0;
-
+function metricsOf(
+  sprint: JiraSprint,
+  m: {
+    committedPoints: number;
+    completedPoints: number;
+    totalIssues: number;
+    completedIssues: number;
+    addedPoints: number;
+    removedPoints: number;
+    addedIssues: number;
+    removedIssues: number;
+  }
+): SprintMetrics {
+  const percentOfCommitted = (points: number) =>
+    m.committedPoints > 0 ? Math.round((points / m.committedPoints) * 100) : 0;
   return {
     sprintId: sprint.id,
     sprintName: sprint.name,
@@ -113,83 +276,18 @@ export function calculateSprintMetrics(
     startDate: sprint.startDate,
     endDate: sprint.endDate,
     completeDate: sprint.completeDate,
-    committedPoints,
-    completedPoints,
-    totalIssues: issues.length,
-    completedIssues,
-    incompleteIssues,
-    addedDuringSprint,
-    removedDuringSprint,
-    scopeChangePercent,
-    sayDoRatio,
+    committedPoints: m.committedPoints,
+    completedPoints: m.completedPoints,
+    totalIssues: m.totalIssues,
+    completedIssues: m.completedIssues,
+    incompleteIssues: m.totalIssues - m.completedIssues,
+    addedDuringSprint: m.addedPoints,
+    removedDuringSprint: m.removedPoints,
+    addedIssues: m.addedIssues,
+    removedIssues: m.removedIssues,
+    scopeChangePercent: percentOfCommitted(m.addedPoints + m.removedPoints),
+    sayDoRatio: percentOfCommitted(m.completedPoints),
   };
-}
-
-/**
- * Analyze changelog to detect scope changes during a sprint.
- */
-function analyzeSprintScopeChange(
-  issue: JiraIssue,
-  sprintId: number,
-  sprintStart: Date,
-  sprintEnd: Date,
-  pointsField: string
-): { added: number; removed: number } {
-  const changelog = issue.changelog?.histories;
-  if (!changelog) return { added: 0, removed: 0 };
-
-  let added = 0;
-  let removed = 0;
-  const points = getStoryPoints(issue, pointsField);
-
-  for (const entry of changelog) {
-    const changeDate = new Date(entry.created);
-
-    // Only consider changes during the sprint
-    if (changeDate < sprintStart || changeDate > sprintEnd) continue;
-
-    for (const item of entry.items) {
-      // Check for Sprint field changes
-      if (item.field === "Sprint") {
-        const fromSprints = parseSprintIds(item.fromString);
-        const toSprints = parseSprintIds(item.toString);
-
-        const wasInSprint = fromSprints.includes(sprintId);
-        const isInSprint = toSprints.includes(sprintId);
-
-        if (!wasInSprint && isInSprint) {
-          // Added to sprint during sprint
-          added += points;
-        } else if (wasInSprint && !isInSprint) {
-          // Removed from sprint during sprint
-          removed += points;
-        }
-      }
-    }
-  }
-
-  return { added, removed };
-}
-
-/**
- * Parse sprint IDs from a sprint field string value.
- * Format varies: "Sprint 1, Sprint 2" or just sprint names/IDs.
- */
-function parseSprintIds(value: string | null): number[] {
-  if (!value) return [];
-
-  // Try to extract sprint IDs from the string
-  // Common formats: "com.atlassian.greenhopper.service.sprint.Sprint@...[id=123,...]"
-  // or just "Sprint 1, Sprint 2"
-  const ids: number[] = [];
-
-  // Match id=<number> pattern
-  const idMatches = value.matchAll(/id=(\d+)/g);
-  for (const match of idMatches) {
-    ids.push(parseInt(match[1], 10));
-  }
-
-  return ids;
 }
 
 /**
@@ -257,7 +355,10 @@ export function calculateVelocityTrend(
 /**
  * Calculate burndown data for a sprint.
  *
- * Requires issues with changelog expanded to track when work was completed.
+ * Burns down the committed scope: the issues in the sprint at its start, at
+ * their estimate then (see `issueAt`). An issue counts on the day it last
+ * moved into its status, if it is in the sprint and done at the sprint's end.
+ * Requires issues with changelog and `fields.created`.
  *
  * @param sprint - The sprint to analyze
  * @param issuesWithChangelog - Issues with changelog.histories populated
@@ -279,18 +380,19 @@ export function calculateBurndown(
     ? new Date(sprint.completeDate)
     : new Date(sprint.endDate);
 
-  // Calculate total committed points at sprint start
-  const totalPoints = issuesWithChangelog.reduce(
-    (sum, issue) => sum + getStoryPoints(issue, pointsField),
-    0
-  );
-
-  // Build a map of completion dates
-  const completionEvents = buildCompletionTimeline(
-    issuesWithChangelog,
-    pointsField,
-    resolve
-  );
+  const snapshotEnd = sprintEnd(sprint);
+  let totalPoints = 0;
+  const completionEvents = new Map<string, number>();
+  for (const issue of issuesWithChangelog) {
+    const { start: atStart, end: atEnd } = sprintIssueAt(issue, sprint, pointsField, resolve, snapshotEnd);
+    if (!atStart.inSprint) continue;
+    totalPoints += atStart.points;
+    const doneAt = atEnd.inSprint && atEnd.done ? lastStatusChange(issue, snapshotEnd) : null;
+    if (doneAt && atStart.points > 0) {
+      const dateStr = doneAt.toISOString().split("T")[0];
+      completionEvents.set(dateStr, (completionEvents.get(dateStr) || 0) + atStart.points);
+    }
+  }
 
   // Generate daily burndown data
   const burndown: BurndownDataPoint[] = [];
@@ -321,64 +423,16 @@ export function calculateBurndown(
   return burndown;
 }
 
-/**
- * Build a timeline of when issues were completed (moved to Done status).
- * Returns a map of date string -> points completed that day.
- */
-function buildCompletionTimeline(
-  issues: JiraIssue[],
-  pointsField: string,
-  resolve?: StatusCategoryResolver
-): Map<string, number> {
-  const timeline = new Map<string, number>();
-
-  for (const issue of issues) {
-    const points = getStoryPoints(issue, pointsField);
-    if (points === 0) continue;
-
-    const completionDate = findCompletionDate(issue, resolve);
-    if (completionDate) {
-      const dateStr = completionDate.toISOString().split("T")[0];
-      timeline.set(dateStr, (timeline.get(dateStr) || 0) + points);
-    }
+/** When the issue last changed status up to `at`; the resolution date without a changelog. */
+function lastStatusChange(issue: JiraIssue, at: Date): Date | null {
+  const histories = issue.changelog?.histories;
+  if (!histories) return issue.fields.resolutiondate ? new Date(issue.fields.resolutiondate) : null;
+  let last: Date | null = null;
+  for (const entry of histories) {
+    const created = new Date(entry.created);
+    if (created <= at && entry.items.some((item) => item.field === "status") && (!last || created > last)) last = created;
   }
-
-  return timeline;
-}
-
-/**
- * Find when an issue was moved to Done status (from changelog).
- */
-function findCompletionDate(issue: JiraIssue, resolve?: StatusCategoryResolver): Date | null {
-  // If currently complete, look for when it transitioned to Done
-  if (!isIssueComplete(issue, resolve)) return null;
-
-  const changelog = issue.changelog?.histories;
-  if (!changelog) {
-    // No changelog, use resolution date if available
-    if (issue.fields.resolutiondate) {
-      return new Date(issue.fields.resolutiondate);
-    }
-    return null;
-  }
-
-  // Find the most recent transition to a Done status
-  for (let i = changelog.length - 1; i >= 0; i--) {
-    const entry = changelog[i];
-    for (const item of entry.items) {
-      if (item.field === "status") {
-        // The last status change is the move into the current (done) status.
-        return new Date(entry.created);
-      }
-    }
-  }
-
-  // Fallback to resolution date
-  if (issue.fields.resolutiondate) {
-    return new Date(issue.fields.resolutiondate);
-  }
-
-  return null;
+  return last;
 }
 
 /**
@@ -411,8 +465,8 @@ export function formatSprintMetrics(metrics: SprintMetrics): string {
   if (metrics.addedDuringSprint > 0 || metrics.removedDuringSprint > 0) {
     lines.push("");
     lines.push("Scope Change:");
-    lines.push(`  Added: ${metrics.addedDuringSprint} points`);
-    lines.push(`  Removed: ${metrics.removedDuringSprint} points`);
+    lines.push(`  Added: ${metrics.addedDuringSprint} points (${metrics.addedIssues} issues)`);
+    lines.push(`  Removed: ${metrics.removedDuringSprint} points (${metrics.removedIssues} issues)`);
     lines.push(`  Change: ${metrics.scopeChangePercent}%`);
   }
 

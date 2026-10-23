@@ -128,8 +128,10 @@ function jqlValue(value: string): string {
 
 /** New comments on the given pages (CQL scopes comments by `container`). */
 export function buildCommentsCql(pageIds: string[], minutes: number): string | undefined {
-  if (pageIds.length === 0) return undefined;
-  return `type = comment AND container IN (${pageIds.join(", ")}) AND created >= now("-${minutes}m") ORDER BY created DESC`;
+  // Page ids come from the server; only numeric ones may enter the CQL.
+  const ids = pageIds.filter((id) => /^\d+$/.test(id));
+  if (ids.length === 0) return undefined;
+  return `type = comment AND container IN (${ids.join(", ")}) AND created >= now("-${minutes}m") ORDER BY created DESC`;
 }
 
 // ── result model ─────────────────────────────────────────────────────────
@@ -176,6 +178,20 @@ export interface DigestProjectOverview {
   changed: DigestIssueChange[];
 }
 
+/** One person's open work in the digest's projects (or "(unassigned)"). */
+export interface DigestTeamMember {
+  name: string;
+  open: number;
+  /** In a wip status (after the status map). */
+  wip: number;
+  /** Due date before today. */
+  overdue: number;
+  /** No update for `staleDays` or more. */
+  stale: number;
+  /** Days since the oldest wip issue last changed; null without wip. */
+  oldestWipDays: number | null;
+}
+
 export interface DigestAuditFinding {
   rule: string;
   key: string;
@@ -220,6 +236,8 @@ export interface DigestV1 {
     projects?: DigestProjectOverview[];
     /** Error findings of the audit rules for those projects; present when the audit ran. */
     audit?: DigestAuditFinding[];
+    /** Open work per person in those projects; present when projects were asked for. */
+    team?: { staleDays: number; members: DigestTeamMember[] };
   };
   confluence?: {
     mentions: DigestPage[];
@@ -263,6 +281,10 @@ export interface DigestRawInput {
     resolve?: StatusCategoryResolver;
     /** The audit section's findings (already errors only), and inputs it read only in part. */
     audit?: { findings: JiraAuditFinding[]; partial: string[] };
+    /** Open issues of the configured projects, for the team section. */
+    teamIssues?: JiraIssue[];
+    /** Days without an update that make an open issue stale (default 30). */
+    staleDays?: number;
   };
   confluence: {
     mentions?: ConfluenceSearchResult[];
@@ -302,6 +324,8 @@ function issueChanges(log: JiraChangelogEntry[] | undefined, since: number, me: 
     const you = Boolean(me) && history.author?.accountId === me;
     if (you && !includeOwn) continue;
     for (const item of history.items) {
+      // Backlog reordering ("Rank", or "Rang" in German) is noise in a digest.
+      if (Object.hasOwn(item, "toString") && /^Ranked (higher|lower)$/.test(item.toString ?? "")) continue;
       changes.push({
         at: history.created,
         author: history.author?.displayName ?? "",
@@ -405,6 +429,36 @@ function byNewest<T extends { id: string }>(time: (t: T) => string | undefined) 
 }
 
 /** Turn the raw fetch into the versioned digest. */
+/**
+ * Open work per assignee: open, wip, overdue and stale counts and the age of
+ * the oldest wip issue. Busiest first; nobody's issues last as "(unassigned)".
+ */
+export function teamMembers(issues: JiraIssue[], opts: { resolve?: StatusCategoryResolver; now: Date; staleDays: number }): DigestTeamMember[] {
+  const resolve = opts.resolve ?? categoryOf;
+  const today = opts.now.toISOString().slice(0, 10);
+  const byName = new Map<string, DigestTeamMember>();
+  for (const issue of issues) {
+    const category = (issue.fields.status && resolve(issue.fields.status)) || "todo";
+    if (category === "done") continue;
+    const name = issue.fields.assignee?.displayName ?? UNASSIGNED;
+    const m = byName.get(name) ?? { name, open: 0, wip: 0, overdue: 0, stale: 0, oldestWipDays: null };
+    byName.set(name, m);
+    m.open++;
+    const idleDays = issue.fields.updated ? Math.floor((opts.now.getTime() - Date.parse(issue.fields.updated)) / DAY_MS) : 0;
+    if (category === "wip") {
+      m.wip++;
+      m.oldestWipDays = Math.max(m.oldestWipDays ?? 0, idleDays);
+    }
+    if (issue.fields.duedate && issue.fields.duedate < today) m.overdue++;
+    if (idleDays >= opts.staleDays) m.stale++;
+  }
+  return [...byName.values()].sort(
+    (a, b) => Number(a.name === UNASSIGNED) - Number(b.name === UNASSIGNED) || b.wip - a.wip || b.open - a.open || a.name.localeCompare(b.name)
+  );
+}
+
+const UNASSIGNED = "(unassigned)";
+
 export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn: boolean; limit: number }): DigestV1 {
   const { includeOwn, limit } = opts;
   const truncated: string[] = [];
@@ -474,7 +528,8 @@ export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn
       waiting: cap("jira.waiting", (input.jira.waiting ?? []).map((i) => toDigestIssue(i, base))),
       changed: cap("jira.changed", changed),
       sprints,
-      ...(input.jira.projectKeys?.length ? { projects: projectOverviews(input, { since, me, cap }) } : {}),
+      // A failed project fetch is left out, not shown as empty lists (#306); its warning says why.
+      ...(input.jira.projectKeys?.length && input.jira.projectIssues !== undefined ? { projects: projectOverviews(input, { since, me, cap }) } : {}),
       ...(input.jira.audit
         ? {
             audit: cap(
@@ -492,6 +547,13 @@ export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn
           }
         : {}),
     };
+    if (input.jira.teamIssues) {
+      const staleDays = input.jira.staleDays ?? 30;
+      digest.jira.team = {
+        staleDays,
+        members: cap("jira.team", teamMembers(input.jira.teamIssues, { resolve: input.jira.resolve, now: opts.now, staleDays })),
+      };
+    }
     // Not under `truncated`: --limit does not help, and not a `jira.` section, which would hold the marker back.
     if (input.jira.audit?.partial.length) {
       digest.warnings.push({ section: "audit", message: `read only part of the ${input.jira.audit.partial.join(", ")}; the audit errors are a lower bound.` });
@@ -553,8 +615,12 @@ export function succeededProducts(digest: DigestV1, products: DigestProduct[]): 
 }
 
 /** True when at least one section came back (skipped and failed sections are both absent). */
+/** Configuration carried in `jira`, not a fetched section: it says nothing about success (#306). */
+const JIRA_SETTINGS = new Set(["projectKeys", "staleDays", "resolve"]);
+
 export function anySectionSucceeded(input: Pick<DigestRawInput, "jira" | "confluence">): boolean {
-  return [...Object.values(input.jira), ...Object.values(input.confluence)].some((value) => value !== undefined);
+  const jira = Object.entries(input.jira).filter(([key]) => !JIRA_SETTINGS.has(key)).map(([, value]) => value);
+  return [...jira, ...Object.values(input.confluence)].some((value) => value !== undefined);
 }
 
 // ── marker state ─────────────────────────────────────────────────────────
@@ -630,6 +696,7 @@ const TITLES: Record<string, string> = {
   created: "Created",
   completed: "Completed",
   audit: "Audit errors",
+  team: "Team",
 };
 
 function changeLine(change: DigestChange, now: Date): string {
@@ -642,6 +709,7 @@ function isEmpty(d: DigestV1): boolean {
     ...(d.jira ? [d.jira.waiting, d.jira.changed, d.jira.sprints] : []),
     ...(d.jira?.projects ?? []).flatMap((p) => [p.created, p.completed, p.changed]),
     d.jira?.audit ?? [],
+    d.jira?.team?.members ?? [],
     ...(d.confluence ? Object.values(d.confluence) : []),
   ];
   return lists.every((list) => list.length === 0);
@@ -658,7 +726,7 @@ function blocks(d: DigestV1, now: Date): Array<{ product: string; blocks: Block[
     const b: Block[] = [];
     const issueLine = (i: DigestIssue, extra = "") => ({
       text: `${i.key}  [${i.status}]  ${i.summary}${extra}`,
-      md: `[${i.key}](${i.url}) ${escapeMd(i.summary)} · *${i.status}*${extra}`,
+      md: `[${i.key}](${i.url}) ${escapeMd(i.summary)} · *${escapeMd(i.status)}*${escapeMd(extra)}`,
     });
     if (d.jira.waiting.length) {
       b.push({ heading: `${TITLES.waiting} (${d.jira.waiting.length})`, lines: d.jira.waiting.map((i) => issueLine(i, i.priority ? ` · ${i.priority}` : "")) });
@@ -679,8 +747,24 @@ function blocks(d: DigestV1, now: Date): Array<{ product: string; blocks: Block[
         heading: `${TITLES.audit} (${d.jira.audit.length})`,
         lines: d.jira.audit.map((f) => ({
           text: `${f.key}  [${f.status}]  ${f.summary} — ${f.rule}: ${f.detail}`,
-          md: `[${f.key}](${f.url}) ${escapeMd(f.summary)} · *${f.status}* — \`${f.rule}\`: ${escapeMd(f.detail)}`,
+          md: `[${f.key}](${f.url}) ${escapeMd(f.summary)} · *${escapeMd(f.status)}* — \`${f.rule}\`: ${escapeMd(f.detail)}`,
         })),
+      });
+    }
+    if (d.jira.team?.members.length) {
+      const stale = d.jira.team.staleDays;
+      b.push({
+        heading: `${TITLES.team} (${d.jira.team.members.length})`,
+        lines: d.jira.team.members.map((m) => {
+          const facts = [
+            `open ${m.open}`,
+            `in progress ${m.wip}`,
+            ...(m.overdue ? [`overdue ${m.overdue}`] : []),
+            ...(m.stale ? [`no update ${stale}d+ ${m.stale}`] : []),
+            ...(m.oldestWipDays ? [`oldest in progress ${m.oldestWipDays}d`] : []),
+          ].join(" · ");
+          return { text: `${m.name}  ${facts}`, md: `**${escapeMd(m.name)}** ${escapeMd(facts)}` };
+        }),
       });
     }
     out.push({ product: "Jira", blocks: b });
@@ -785,6 +869,7 @@ export function digestItemCount(d: DigestV1): number {
     (d.jira ? d.jira.waiting.length + d.jira.changed.length + d.jira.sprints.length : 0) +
     (d.jira?.projects ?? []).reduce((n, p) => n + p.created.length + p.completed.length + p.changed.length, 0) +
     (d.jira?.audit?.length ?? 0) +
+    (d.jira?.team?.members.length ?? 0) +
     (d.confluence ? Object.values(d.confluence).reduce((n, list) => n + list.length, 0) : 0)
   );
 }

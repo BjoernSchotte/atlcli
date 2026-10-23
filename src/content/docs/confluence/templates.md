@@ -34,10 +34,11 @@ atlcli wiki template list
 atlcli wiki page create --template meeting-notes \
   --var title="Sprint Planning" \
   --var date=2025-01-14 \
+  --var type=planning \
   --space TEAM
 
 # Render template to stdout (preview)
-atlcli wiki template render meeting-notes --var title="Test"
+atlcli wiki template render meeting-notes --var title="Test" --var date=2025-01-14 --var type=standup
 ```
 
 ## Template File Format
@@ -107,6 +108,8 @@ variables:
 | `date` | Date value | ISO 8601 or relative (today, tomorrow) |
 | `boolean` | True/false | Accepts true/false, yes/no, 1/0 |
 | `select` | Enum from options | Must match one of `options` |
+
+`template render`, `page create --template` and `docs add --template` stop with a usage error (exit code 1) when a `required` variable without a `default` is missing or a value does not match its type; the error names the variables. `--interactive` asks for them instead. A variable the template uses but does not declare renders empty, with a warning on stderr.
 
 ## Built-in Variables
 

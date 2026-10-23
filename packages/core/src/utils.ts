@@ -17,7 +17,44 @@ export const ERROR_CODES = {
   IO: "ATLCLI_ERR_IO",
   CONFIG: "ATLCLI_ERR_CONFIG",
   VALIDATION: "ATLCLI_ERR_VALIDATION",
+  FORBIDDEN: "ATLCLI_ERR_FORBIDDEN",
+  NOT_FOUND: "ATLCLI_ERR_NOT_FOUND",
+  RATE_LIMIT: "ATLCLI_ERR_RATE_LIMIT",
 } as const;
+
+const HTTP_ERROR_CODES: Record<number, string> = {
+  401: ERROR_CODES.AUTH,
+  403: ERROR_CODES.FORBIDDEN,
+  404: ERROR_CODES.NOT_FOUND,
+  429: ERROR_CODES.RATE_LIMIT,
+};
+
+/**
+ * An uncaught error as the `--json` error object: an API error's HTTP status
+ * (its `status`, or "API error (403)" in the message) picks the code.
+ */
+export function describeError(err: unknown): { code: string; message: string; details: Record<string, unknown> } {
+  const message = err instanceof Error ? err.message : String(err);
+  const own = (err as { status?: unknown } | null)?.status;
+  const status = typeof own === "number" ? own : Number(/API error \((\d{3})\)/.exec(message)?.[1]) || undefined;
+  if (status === undefined) return { code: ERROR_CODES.API, message, details: {} };
+  return { code: HTTP_ERROR_CODES[status] ?? ERROR_CODES.API, message, details: { status } };
+}
+
+/**
+ * Long flags that never take a value, so `--json PROJ-1` keeps `PROJ-1` as a
+ * positional. Only flags that every command reads as a switch belong here.
+ */
+const SWITCHES = new Set([
+  "all", "all-projects", "all-results", "confirm", "csv", "debug", "delete-folders", "details", "dry-run", "edit",
+  "force", "help", "history", "internal", "json", "markdown", "no-color", "no-headers", "no-log", "plain", "quiet",
+  "refresh-users", "skip-user-check", "system", "validate", "verbose", "watching", "yes",
+]);
+
+/** A token that starts a new flag; anything else after a flag is its value ("- item", "-5", "-"). */
+function isFlagToken(token: string): boolean {
+  return /^(--|-[A-Za-z])/.test(token);
+}
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -40,17 +77,17 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const token = argv[i];
     if (!token) continue;
     if (token.startsWith("--")) {
-      // Long flag: --key or --key=value
-      const [keyRaw, valueRaw] = token.slice(2).split("=", 2);
-      const key = keyRaw.trim();
+      // Long flag: --key or --key=value; the value is everything after the first "=".
+      const body = token.slice(2);
+      const eq = body.indexOf("=");
+      const key = (eq === -1 ? body : body.slice(0, eq)).trim();
       if (!key) continue;
-      if (valueRaw !== undefined) {
-        addFlag(key, valueRaw);
+      if (eq !== -1) {
+        addFlag(key, body.slice(eq + 1));
         continue;
       }
       const next = argv[i + 1];
-      // A lone "-" is a value (stdin/stdout), not a flag: `--body-file -`.
-      if (next && (next === "-" || !next.startsWith("-"))) {
+      if (!SWITCHES.has(key) && next !== undefined && next !== "" && !isFlagToken(next)) {
         addFlag(key, next);
         i += 1;
       } else {
@@ -61,8 +98,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       const flags_part = token.slice(1);
       // Check if it's a single letter followed by =
       if (flags_part.includes("=")) {
-        const [keyRaw, valueRaw] = flags_part.split("=", 2);
-        addFlag(keyRaw, valueRaw);
+        const eq = flags_part.indexOf("=");
+        addFlag(flags_part.slice(0, eq), flags_part.slice(eq + 1));
         continue;
       }
       // Check if single letter with next arg as value
@@ -107,13 +144,28 @@ export function hasFlag(flags: Record<string, string | boolean | string[]>, key:
   return value === true || typeof value === "string" || (Array.isArray(value) && value.length > 0);
 }
 
+/**
+ * Drops C0/C1 control characters except tab, newline and SGR color sequences
+ * (`ESC[…m`, which renderers such as the page diff emit), so server-provided
+ * text cannot move the cursor, rewrite earlier lines or set the window title.
+ */
+export function stripControlChars(text: string): string {
+  return text.replace(/\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (match) => (match.length > 1 ? match : ""));
+}
+
+/**
+ * Writes a result. Under `--json`, stdout carries exactly one JSON document per
+ * command: text (help, progress, notes) goes to stderr instead of becoming an
+ * extra JSON string on stdout (#301).
+ */
 export function output(data: unknown, opts: OutputOptions): void {
   if (opts.json) {
-    process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
+    if (typeof data === "string") process.stderr.write(`${stripControlChars(data)}\n`);
+    else process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
     return;
   }
   if (typeof data === "string") {
-    process.stdout.write(`${data}\n`);
+    process.stdout.write(`${stripControlChars(data)}\n`);
     return;
   }
   process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
@@ -138,7 +190,7 @@ export function fail(
       opts
     );
   } else {
-    process.stderr.write(`${message}\n`);
+    process.stderr.write(`${stripControlChars(message)}\n`);
   }
   process.exit(code);
 }

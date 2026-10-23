@@ -103,6 +103,16 @@ describe("markdownToStorage", () => {
     expect(html).toContain("</ac:plain-text-link-body></ac:link>");
   });
 
+  test("mention round trip: userkey ids, unnamed mentions without a body", () => {
+    expect(markdownToStorage("@[Server User](userkey:8a7f)")).toContain('<ac:link><ri:user ri:userkey="8a7f" /><ac:plain-text-link-body><![CDATA[Server User]]>');
+    expect(markdownToStorage("@[acc-1](acc-1)")).toContain('<ac:link><ri:user ri:account-id="acc-1" /></ac:link>');
+    const bracketed = storageToMarkdown('<p><ac:link><ri:user ri:account-id="acc-1" /><ac:plain-text-link-body><![CDATA[Max Muster [extern]]]></ac:plain-text-link-body></ac:link></p>');
+    expect(bracketed).toContain("@[Max Muster \\[extern\\]](acc-1)");
+    expect(markdownToStorage(bracketed)).toContain('<ri:user ri:account-id="acc-1" /><ac:plain-text-link-body><![CDATA[Max Muster [extern]]]>');
+    const storage = '<p>x <ac:link><ri:user ri:userkey="8a7f" /></ac:link></p>';
+    expect(markdownToStorage(storageToMarkdown(storage))).toContain('<ri:user ri:userkey="8a7f" />');
+  });
+
   test("converts colored text to span with style", () => {
     const md = "This is {color:red}important{color} text";
     const html = markdownToStorage(md);
@@ -348,6 +358,26 @@ describe("storageToMarkdown", () => {
     const storage = '<p>CC <ac:link><ri:user ri:account-id="123456:abcd-efgh" /></ac:link></p>';
     const md = storageToMarkdown(storage);
     expect(md).toContain("@[123456:abcd-efgh](123456:abcd-efgh)");
+  });
+
+  test("names an unnamed mention from mentionNames", () => {
+    const storage = '<p>CC <ac:link><ri:user ri:account-id="123456:abcd-efgh" /></ac:link></p>';
+    const md = storageToMarkdown(storage, { mentionNames: new Map([["123456:abcd-efgh", "Ann Example"]]) });
+    expect(md).toContain("@[Ann Example](123456:abcd-efgh)");
+  });
+
+  test("converts mention shapes the old pattern dropped: userkey, attribute order, closing tag, link bodies", () => {
+    const names = new Map([["userkey:8a7f", "Server User"]]);
+    const cases: Array<[string, string]> = [
+      ['<ac:link><ri:user ri:userkey="8a7f" /></ac:link>', "@[Server User](userkey:8a7f)"],
+      ['<ac:link><ri:user ri:local-id="l1" ri:account-id="acc-1" /></ac:link>', "@[acc-1](acc-1)"],
+      ['<ac:link ac:anchor="x"><ri:user ri:account-id="acc-1"></ri:user></ac:link>', "@[acc-1](acc-1)"],
+      ['<ac:link><ri:user ri:account-id="acc-1" /><ac:link-body><strong>Rich &amp; Bold</strong></ac:link-body></ac:link>', "@[Rich & Bold](acc-1)"],
+      ['<ac:link><ri:user ri:account-id="acc-1" /><ac:plain-text-link-body>Tom &amp; Co</ac:plain-text-link-body></ac:link>', "@[Tom & Co](acc-1)"],
+    ];
+    for (const [mention, expected] of cases) {
+      expect(storageToMarkdown(`<p>x ${mention} y</p>`, { mentionNames: names })).toContain(expected);
+    }
   });
 
   test("converts colored span to markdown syntax", () => {
@@ -1556,6 +1586,56 @@ More content
       expect(roundtrip).toContain(":::toc-zone");
       expect(roundtrip).toContain("minLevel=2");
       expect(roundtrip).toContain("## Test");
+    });
+  });
+
+  // Regression #289
+  describe("toc and expand parameters", () => {
+    test("toc passes its parameters to storage", () => {
+      const html = markdownToStorage(`:::toc minLevel=2 maxlevel=3 style="none" bogus=1\n:::`);
+      expect(html).toContain('<ac:parameter ac:name="minLevel">2</ac:parameter>');
+      expect(html).toContain('<ac:parameter ac:name="maxLevel">3</ac:parameter>');
+      expect(html).toContain('<ac:parameter ac:name="style">none</ac:parameter>');
+      expect(html).not.toContain("bogus");
+    });
+
+    test("toc without parameters stays a bare macro", () => {
+      expect(markdownToStorage(`:::toc\n:::`)).toContain('<ac:structured-macro ac:name="toc"/>');
+    });
+
+    test("toc parameters round-trip markdown -> storage -> markdown", () => {
+      const original = `:::toc minLevel=2 maxLevel=3 include="^Intro.*"\n:::`;
+      expect(storageToMarkdown(markdownToStorage(original)).trim()).toBe(original);
+    });
+
+    test("storage toc parameters become :::toc parameters", () => {
+      const storage = `<ac:structured-macro ac:name="toc" ac:schema-version="1"><ac:parameter ac:name="maxLevel">3</ac:parameter><ac:parameter ac:name="minLevel">2</ac:parameter></ac:structured-macro>`;
+      // Confluence reorders stored parameters; pull emits them in a stable order.
+      expect(storageToMarkdown(storage).trim()).toBe(`:::toc minLevel=2 maxLevel=3\n:::`);
+    });
+
+    test("storage toc parameter order as Confluence stores it pulls canonically", () => {
+      const storage = `<ac:structured-macro ac:name="toc"><ac:parameter ac:name="minLevel">2</ac:parameter><ac:parameter ac:name="include">^(Intro|Second)$</ac:parameter><ac:parameter ac:name="style">none</ac:parameter></ac:structured-macro>`;
+      expect(storageToMarkdown(storage).trim()).toBe(`:::toc minLevel=2 style=none include="^(Intro|Second)$"\n:::`);
+    });
+
+    test("expand takes only the quoted title, not trailing parameters", () => {
+      const html = markdownToStorage(`:::expand "Details" expanded=true\nHidden.\n:::`);
+      expect(html).toContain('<ac:parameter ac:name="title">Details</ac:parameter>');
+      expect(html).not.toContain("expanded");
+    });
+
+    test("unquoted and fully quoted titles are unchanged", () => {
+      expect(markdownToStorage(`:::expand Click me now\nx\n:::`)).toContain(">Click me now</ac:parameter>");
+      expect(markdownToStorage(`:::info "Say "hi" twice"\nx\n:::`)).toContain(">Say &quot;hi&quot; twice</ac:parameter>");
+    });
+
+    test("expand round-trips and a title starting with a quote survives", () => {
+      const original = `:::expand Details\nHidden.\n:::`;
+      expect(storageToMarkdown(markdownToStorage(original)).trim()).toBe(original);
+      const legacy = `<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">"Details" expanded=true</ac:parameter><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>`;
+      const pulled = storageToMarkdown(legacy);
+      expect(markdownToStorage(pulled)).toContain(">&quot;Details&quot; expanded=true</ac:parameter>");
     });
   });
 

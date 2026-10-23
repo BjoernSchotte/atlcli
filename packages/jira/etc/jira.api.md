@@ -173,6 +173,14 @@ export interface ExportedIssue {
     fields: Record<string, unknown>;
     comments?: ExportedComment[];
     attachments?: ExportedAttachment[];
+    exportErrors?: ExportFetchError[];
+}
+
+// export: ExportFetchError
+export interface ExportFetchError {
+    part: "comments" | "attachments" | "attachment";
+    filename?: string;
+    message: string;
 }
 
 // export: ExportOptions
@@ -248,6 +256,7 @@ export interface JiraChangelogEntry {
     items: Array<{
         field: string;
         fieldtype: string;
+        fieldId?: string;
         from: string | null;
         fromString: string | null;
         to: string | null;
@@ -279,6 +288,7 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
+    searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
         startAt?: number;
         maxResults?: number;
@@ -430,7 +440,9 @@ export declare class JiraClient {
         comments: JiraComment[];
         total: number;
     }>;
-    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    addComment(keyOrId: string, body: AdfDocument | string, options?: {
+        internal?: boolean;
+    }): Promise<JiraComment>;
     updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
     deleteComment(keyOrId: string, commentId: string): Promise<void>;
     getChangelog(keyOrId: string, options?: {
@@ -595,6 +607,11 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraSearchResults>;
+    getAllSprintIssues(sprintId: number, options?: {
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraIssue[]>;
+    getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -699,6 +716,9 @@ export interface JiraErrorResponse {
     errors?: Record<string, string>;
     status?: number;
 }
+
+// export: jiraErrorText
+export declare function jiraErrorText(data: unknown): string;
 
 // export: JiraField
 export interface JiraField {
@@ -924,12 +944,14 @@ export interface JiraSprint {
     completeDate?: string;
     goal?: string;
     boardId?: number;
+    originBoardId?: number;
 }
 
 // export: JiraStatus
 export interface JiraStatus {
     id: string;
     name: string;
+    untranslatedName?: string;
     description?: string;
     statusCategory?: {
         id: number;
@@ -1050,6 +1072,8 @@ export interface SprintMetrics {
     incompleteIssues: number;
     addedDuringSprint: number;
     removedDuringSprint: number;
+    addedIssues: number;
+    removedIssues: number;
     scopeChangePercent: number;
     sayDoRatio: number;
 }
@@ -1356,6 +1380,7 @@ export interface BuildReportInput {
     baseUrl: string;
     pointsField?: string;
     sprintMetrics?: SprintMetrics;
+    asOf?: Map<string, SprintIssueSnapshot>;
     resolve?: StatusCategoryResolver;
     now: Date;
 }
@@ -1409,6 +1434,9 @@ export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraI
 
 // export: calculateVelocityTrend
 export declare function calculateVelocityTrend(boardId: number, boardName: string, sprintMetrics: SprintMetrics[]): VelocityTrend;
+
+// export: calendarDay
+export declare function calendarDay(value: string): string;
 
 // export: cancelTimer
 export declare function cancelTimer(): TimerState;
@@ -1598,6 +1626,14 @@ export interface ExportedIssue {
     fields: Record<string, unknown>;
     comments?: ExportedComment[];
     attachments?: ExportedAttachment[];
+    exportErrors?: ExportFetchError[];
+}
+
+// export: ExportFetchError
+export interface ExportFetchError {
+    part: "comments" | "attachments" | "attachment";
+    filename?: string;
+    message: string;
 }
 
 // export: ExportOptions
@@ -1805,6 +1841,9 @@ export declare function isRuleActive(rules: AuditRules, ruleId: string): boolean
 // export: isRuleOff
 export declare function isRuleOff(config: AuditRuleConfig | undefined, ruleId: string): boolean;
 
+// export: issueAt
+export declare function issueAt(issue: JiraIssue, sprintId: number, at: Date, pointsField: string, resolve?: StatusCategoryResolver): SprintIssueSnapshot;
+
 // export: IssueFlowTimeline
 export interface IssueFlowTimeline {
     key: string;
@@ -1936,6 +1975,7 @@ export interface JiraChangelogEntry {
     items: Array<{
         field: string;
         fieldtype: string;
+        fieldId?: string;
         from: string | null;
         fromString: string | null;
         to: string | null;
@@ -1967,6 +2007,7 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
+    searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
         startAt?: number;
         maxResults?: number;
@@ -2118,7 +2159,9 @@ export declare class JiraClient {
         comments: JiraComment[];
         total: number;
     }>;
-    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    addComment(keyOrId: string, body: AdfDocument | string, options?: {
+        internal?: boolean;
+    }): Promise<JiraComment>;
     updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
     deleteComment(keyOrId: string, commentId: string): Promise<void>;
     getChangelog(keyOrId: string, options?: {
@@ -2283,6 +2326,11 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraSearchResults>;
+    getAllSprintIssues(sprintId: number, options?: {
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraIssue[]>;
+    getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -2387,6 +2435,9 @@ export interface JiraErrorResponse {
     errors?: Record<string, string>;
     status?: number;
 }
+
+// export: jiraErrorText
+export declare function jiraErrorText(data: unknown): string;
 
 // export: JiraField
 export interface JiraField {
@@ -2612,12 +2663,14 @@ export interface JiraSprint {
     completeDate?: string;
     goal?: string;
     boardId?: number;
+    originBoardId?: number;
 }
 
 // export: JiraStatus
 export interface JiraStatus {
     id: string;
     name: string;
+    untranslatedName?: string;
     description?: string;
     statusCategory?: {
         id: number;
@@ -2903,6 +2956,9 @@ export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "
 // @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead
 export declare function listTemplates(): Promise<JiraTemplateInfo[]>;
 
+// export: loadSprintHistory
+export declare function loadSprintHistory(client: JiraClient, sprint: Pick<JiraSprint, "id" | "originBoardId">, fields: string[]): Promise<JiraIssue[]>;
+
 // export: loadTemplate
 // @deprecated loadTemplate — Use JiraTemplateResolver.resolve() instead
 export declare function loadTemplate(name: string): Promise<JiraTemplate>;
@@ -3178,6 +3234,22 @@ export declare function severityForValue(config: AuditRuleConfig, kind: AuditRul
     limit: number;
 } | undefined;
 
+// export: sprintEnd
+export declare function sprintEnd(sprint: Pick<JiraSprint, "completeDate">, now?: Date): Date;
+
+// export: sprintIssueAt
+export declare function sprintIssueAt(issue: JiraIssue, sprint: Pick<JiraSprint, "id" | "startDate" | "completeDate">, pointsField: string, resolve?: StatusCategoryResolver, end?: Date): {
+    start: SprintIssueSnapshot;
+    end: SprintIssueSnapshot;
+};
+
+// export: SprintIssueSnapshot
+export interface SprintIssueSnapshot {
+    inSprint: boolean;
+    points: number;
+    done: boolean;
+}
+
 // export: SprintMetrics
 export interface SprintMetrics {
     sprintId: number;
@@ -3193,9 +3265,17 @@ export interface SprintMetrics {
     incompleteIssues: number;
     addedDuringSprint: number;
     removedDuringSprint: number;
+    addedIssues: number;
+    removedIssues: number;
     scopeChangePercent: number;
     sayDoRatio: number;
 }
+
+// export: sprintMoves
+export declare function sprintMoves(issue: JiraIssue, sprintId: number, start: Date, end: Date): {
+    joinedAt?: Date;
+    leftAt?: Date;
+};
 
 // export: startTimer
 export declare function startTimer(issueKey: string, profile: string, comment?: string): TimerState;
@@ -3526,6 +3606,14 @@ export interface ExportedIssue {
     fields: Record<string, unknown>;
     comments?: ExportedComment[];
     attachments?: ExportedAttachment[];
+    exportErrors?: ExportFetchError[];
+}
+
+// export: ExportFetchError
+export interface ExportFetchError {
+    part: "comments" | "attachments" | "attachment";
+    filename?: string;
+    message: string;
 }
 
 // export: ExportOptions
@@ -3601,6 +3689,7 @@ export interface JiraChangelogEntry {
     items: Array<{
         field: string;
         fieldtype: string;
+        fieldId?: string;
         from: string | null;
         fromString: string | null;
         to: string | null;
@@ -3632,6 +3721,7 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
+    searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
         startAt?: number;
         maxResults?: number;
@@ -3783,7 +3873,9 @@ export declare class JiraClient {
         comments: JiraComment[];
         total: number;
     }>;
-    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    addComment(keyOrId: string, body: AdfDocument | string, options?: {
+        internal?: boolean;
+    }): Promise<JiraComment>;
     updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
     deleteComment(keyOrId: string, commentId: string): Promise<void>;
     getChangelog(keyOrId: string, options?: {
@@ -3948,6 +4040,11 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraSearchResults>;
+    getAllSprintIssues(sprintId: number, options?: {
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraIssue[]>;
+    getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -4052,6 +4149,9 @@ export interface JiraErrorResponse {
     errors?: Record<string, string>;
     status?: number;
 }
+
+// export: jiraErrorText
+export declare function jiraErrorText(data: unknown): string;
 
 // export: JiraField
 export interface JiraField {
@@ -4277,12 +4377,14 @@ export interface JiraSprint {
     completeDate?: string;
     goal?: string;
     boardId?: number;
+    originBoardId?: number;
 }
 
 // export: JiraStatus
 export interface JiraStatus {
     id: string;
     name: string;
+    untranslatedName?: string;
     description?: string;
     statusCategory?: {
         id: number;
@@ -4403,6 +4505,8 @@ export interface SprintMetrics {
     incompleteIssues: number;
     addedDuringSprint: number;
     removedDuringSprint: number;
+    addedIssues: number;
+    removedIssues: number;
     scopeChangePercent: number;
     sayDoRatio: number;
 }
@@ -4709,6 +4813,7 @@ export interface BuildReportInput {
     baseUrl: string;
     pointsField?: string;
     sprintMetrics?: SprintMetrics;
+    asOf?: Map<string, SprintIssueSnapshot>;
     resolve?: StatusCategoryResolver;
     now: Date;
 }
@@ -4762,6 +4867,9 @@ export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraI
 
 // export: calculateVelocityTrend
 export declare function calculateVelocityTrend(boardId: number, boardName: string, sprintMetrics: SprintMetrics[]): VelocityTrend;
+
+// export: calendarDay
+export declare function calendarDay(value: string): string;
 
 // export: cancelTimer
 export declare function cancelTimer(): TimerState;
@@ -4951,6 +5059,14 @@ export interface ExportedIssue {
     fields: Record<string, unknown>;
     comments?: ExportedComment[];
     attachments?: ExportedAttachment[];
+    exportErrors?: ExportFetchError[];
+}
+
+// export: ExportFetchError
+export interface ExportFetchError {
+    part: "comments" | "attachments" | "attachment";
+    filename?: string;
+    message: string;
 }
 
 // export: ExportOptions
@@ -5158,6 +5274,9 @@ export declare function isRuleActive(rules: AuditRules, ruleId: string): boolean
 // export: isRuleOff
 export declare function isRuleOff(config: AuditRuleConfig | undefined, ruleId: string): boolean;
 
+// export: issueAt
+export declare function issueAt(issue: JiraIssue, sprintId: number, at: Date, pointsField: string, resolve?: StatusCategoryResolver): SprintIssueSnapshot;
+
 // export: IssueFlowTimeline
 export interface IssueFlowTimeline {
     key: string;
@@ -5289,6 +5408,7 @@ export interface JiraChangelogEntry {
     items: Array<{
         field: string;
         fieldtype: string;
+        fieldId?: string;
         from: string | null;
         fromString: string | null;
         to: string | null;
@@ -5320,6 +5440,7 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
+    searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
         startAt?: number;
         maxResults?: number;
@@ -5471,7 +5592,9 @@ export declare class JiraClient {
         comments: JiraComment[];
         total: number;
     }>;
-    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    addComment(keyOrId: string, body: AdfDocument | string, options?: {
+        internal?: boolean;
+    }): Promise<JiraComment>;
     updateComment(keyOrId: string, commentId: string, body: AdfDocument | string): Promise<JiraComment>;
     deleteComment(keyOrId: string, commentId: string): Promise<void>;
     getChangelog(keyOrId: string, options?: {
@@ -5636,6 +5759,11 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraSearchResults>;
+    getAllSprintIssues(sprintId: number, options?: {
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraIssue[]>;
+    getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -5740,6 +5868,9 @@ export interface JiraErrorResponse {
     errors?: Record<string, string>;
     status?: number;
 }
+
+// export: jiraErrorText
+export declare function jiraErrorText(data: unknown): string;
 
 // export: JiraField
 export interface JiraField {
@@ -5965,12 +6096,14 @@ export interface JiraSprint {
     completeDate?: string;
     goal?: string;
     boardId?: number;
+    originBoardId?: number;
 }
 
 // export: JiraStatus
 export interface JiraStatus {
     id: string;
     name: string;
+    untranslatedName?: string;
     description?: string;
     statusCategory?: {
         id: number;
@@ -6256,6 +6389,9 @@ export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "
 // @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead
 export declare function listTemplates(): Promise<JiraTemplateInfo[]>;
 
+// export: loadSprintHistory
+export declare function loadSprintHistory(client: JiraClient, sprint: Pick<JiraSprint, "id" | "originBoardId">, fields: string[]): Promise<JiraIssue[]>;
+
 // export: loadTemplate
 // @deprecated loadTemplate — Use JiraTemplateResolver.resolve() instead
 export declare function loadTemplate(name: string): Promise<JiraTemplate>;
@@ -6531,6 +6667,22 @@ export declare function severityForValue(config: AuditRuleConfig, kind: AuditRul
     limit: number;
 } | undefined;
 
+// export: sprintEnd
+export declare function sprintEnd(sprint: Pick<JiraSprint, "completeDate">, now?: Date): Date;
+
+// export: sprintIssueAt
+export declare function sprintIssueAt(issue: JiraIssue, sprint: Pick<JiraSprint, "id" | "startDate" | "completeDate">, pointsField: string, resolve?: StatusCategoryResolver, end?: Date): {
+    start: SprintIssueSnapshot;
+    end: SprintIssueSnapshot;
+};
+
+// export: SprintIssueSnapshot
+export interface SprintIssueSnapshot {
+    inSprint: boolean;
+    points: number;
+    done: boolean;
+}
+
 // export: SprintMetrics
 export interface SprintMetrics {
     sprintId: number;
@@ -6546,9 +6698,17 @@ export interface SprintMetrics {
     incompleteIssues: number;
     addedDuringSprint: number;
     removedDuringSprint: number;
+    addedIssues: number;
+    removedIssues: number;
     scopeChangePercent: number;
     sayDoRatio: number;
 }
+
+// export: sprintMoves
+export declare function sprintMoves(issue: JiraIssue, sprintId: number, start: Date, end: Date): {
+    joinedAt?: Date;
+    leftAt?: Date;
+};
 
 // export: startTimer
 export declare function startTimer(issueKey: string, profile: string, comment?: string): TimerState;

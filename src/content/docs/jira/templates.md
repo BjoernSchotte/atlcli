@@ -30,8 +30,11 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--issue` | Source issue key |
+| `--issue` | Source issue key (required) |
 | `--description` | Template description |
+| `--tags` | Comma-separated tags |
+| `--level` | Storage level: `global`, `profile` or `project` (see [Choosing a Level](#choosing-a-level)) |
+| `--project` | Project key for project-level storage |
 | `--force` | Overwrite existing template |
 
 ## View Template
@@ -52,9 +55,14 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--project` | Target project (required) |
-| `--summary` | Issue summary (required) |
-| `--assignee` | Override assignee |
+| `--project` | Target project (required, or `global.project`) |
+| `--summary` | Issue summary (default: the template's summary; required if the template has none) |
+| `--description` | Description instead of the template's |
+| `--assignee` | Assignee (see [Users](issues.md#users)) |
+
+:::note[Data Center]
+`--assignee` needs a Cloud account ID. On Data Center it is ignored; assign the issue afterwards with `issue assign`.
+:::
 
 ## Delete Template
 

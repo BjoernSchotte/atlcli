@@ -46,6 +46,9 @@ import {
   buildPageDiffChangeSetWithSpillV1,
   shouldUseSemanticDiffSpillV1,
 } from "../semantic-diff-spill.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
+import { labelList } from "./search.js";
+import { checkTemplateRender } from "./template-render-check.js";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Show help if --help or -h flag is set
@@ -131,7 +134,7 @@ export async function handlePage(args: string[], flags: Record<string, string | 
       await handleConvert(flags, opts);
       return;
     default:
-      output(pageHelp(), opts);
+      unknownSubcommand(sub, pageHelp(), opts);
       return;
   }
 }
@@ -201,12 +204,14 @@ async function handleGet(flags: Record<string, string | boolean | string[]>, opt
 
 async function handleList(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
-  const label = getFlag(flags, "label");
+  const labels = labelList(flags);
+  const label = labels[0];
+  const cqlFlag = getFlag(flags, "cql");
   const space = getFlag(flags, "space") ?? defaults.space;
   const limit = Number(getFlag(flags, "limit") ?? 25);
 
-  // If --label is provided, use getPagesByLabel
-  if (label) {
+  // A single --label without --cql uses the label endpoint; anything else is one CQL query.
+  if (label && labels.length === 1 && !cqlFlag) {
     const pages = await client.getPagesByLabel(label, {
       spaceKey: space,
       limit: Number.isNaN(limit) ? 25 : limit,
@@ -226,15 +231,20 @@ async function handleList(flags: Record<string, string | boolean | string[]>, op
 
   // Otherwise use CQL search
   const max = Number.isNaN(limit) ? 25 : limit;
-  const cql = pageListCql(getFlag(flags, "cql"), space);
+  const cql = pageListCql(cqlFlag, space, labels);
   const pages = await client.searchPages(cql, max, { maxResults: max });
   output({ schemaVersion: "1", pages }, opts);
 }
 
-/** CQL for `page list`: explicit `--cql` wins; otherwise scope to the space. */
-export function pageListCql(cql: string | undefined, space: string | undefined): string {
-  if (cql) return cql;
-  return space ? `space = "${space}" AND type = page` : "type = page";
+/**
+ * CQL for `page list`: explicit `--cql` wins over `--space`; labels are added
+ * to either, never dropped (#296).
+ */
+export function pageListCql(cql: string | undefined, space: string | undefined, labels: string[] = []): string {
+  const base = cql ? cql : space ? `space = "${space}" AND type = page` : "type = page";
+  if (labels.length === 0) return base;
+  const labelCql = labels.map((l) => `label = "${l.replace(/["\\]/g, "\\$&")}"`).join(" AND ");
+  return cql ? `(${base}) AND ${labelCql}` : `${base} AND ${labelCql}`;
 }
 
 async function handleCreate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -300,6 +310,7 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
     // Render template
     const engine = new TemplateEngine();
     const rendered = engine.render(template, { variables, builtins });
+    checkTemplateRender(rendered, opts);
 
     if (dryRun) {
       output({
@@ -337,7 +348,7 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
 
   // Body mode (original behavior)
   if (!space || !title || !bodyPath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--space, --title, and --body are required (or set defaults.space in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--space, --title, and --body are required (or set a default: atlcli config set global.space <value>).");
   }
   const client = await getClient(flags, opts);
   const convOpts = await getConversionOptions(flags, opts);
@@ -402,7 +413,7 @@ async function handleLabel(args: string[], flags: Record<string, string | boolea
       await handleLabelList(flags, opts);
       return;
     default:
-      output(labelHelp(), opts);
+      unknownSubcommand(action, labelHelp(), opts);
       return;
   }
 }
@@ -819,7 +830,10 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
             { classification: "review-storage-unavailable" },
           );
         }
-        const convOpts = await getConversionOptions(flags, opts);
+        const convOpts = {
+          ...(await getConversionOptions(flags, opts)),
+          mentionNames: await client.mentionNames([baselineStorage, targetStorage]),
+        };
         const textDiff = generateDiff(
           storageToMarkdown(baselineStorage, convOpts),
           storageToMarkdown(targetStorage, convOpts),
@@ -921,8 +935,9 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
     oldPage = await client.getPageAtVersion(id, compareVersion);
   }
 
-  const oldMarkdown = storageToMarkdown(oldPage.storage, convOpts);
-  const targetMarkdown = storageToMarkdown(targetPage.storage, convOpts);
+  const pageConvOpts = { ...convOpts, mentionNames: await client.mentionNames([oldPage.storage, targetPage.storage]) };
+  const oldMarkdown = storageToMarkdown(oldPage.storage, pageConvOpts);
+  const targetMarkdown = storageToMarkdown(targetPage.storage, pageConvOpts);
 
   const diff = generateDiff(oldMarkdown, targetMarkdown, {
     oldLabel: `Version ${compareVersion}`,
@@ -1613,10 +1628,7 @@ async function handleDelete(flags: Record<string, string | boolean | string[]>, 
     const page = await client.getPage(id);
 
     if (dryRun) {
-      output(`Would delete: "${page.title}" (${id})`, opts);
-      if (opts.json) {
-        output({ schemaVersion: "1", dryRun: true, pages: [{ id, title: page.title }] }, opts);
-      }
+      output(opts.json ? { schemaVersion: "1", dryRun: true, pages: [{ id, title: page.title }] } : `Would delete: "${page.title}" (${id})`, opts);
       return;
     }
 
@@ -1928,7 +1940,6 @@ async function handleLinkIssue(
 ): Promise<void> {
   const pageId = getFlag(flags, "id");
   const issueKey = getFlag(flags, "issue");
-  const comment = hasFlag(flags, "comment");
 
   if (!pageId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -1962,17 +1973,15 @@ async function handleLinkIssue(
 
   // Get Jira client and create remote link (lazy: wiki commands stay Jira-free)
   const { JiraClient } = await import("@atlcli/jira");
-  const { buildConfluencePageRemoteLink, linkedPageComment } = await import("./jira-confluence-link.js");
+  const { buildConfluencePageRemoteLink, linkPageComment } = await import("./jira-confluence-link.js");
   assertCliAuthSupported(profile, opts);
   const jiraClient = new JiraClient(profile);
 
   try {
     const result = await jiraClient.createRemoteLink(issueKey, buildConfluencePageRemoteLink(profile, linkedPage));
 
-    // Add comment to issue if requested
-    if (comment) {
-      await jiraClient.addComment(issueKey, linkedPageComment(jiraClient, linkedPage));
-    }
+    const comment = linkPageComment(jiraClient, flags.comment, linkedPage);
+    if (comment) await jiraClient.addComment(issueKey, comment);
 
     output(
       {

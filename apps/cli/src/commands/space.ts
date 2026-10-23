@@ -10,6 +10,7 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleSpace(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Show help if --help or -h flag is set
@@ -30,7 +31,7 @@ export async function handleSpace(args: string[], flags: Record<string, string |
       await handleCreate(flags, opts);
       return;
     default:
-      output(spaceHelp(), opts);
+      unknownSubcommand(sub, spaceHelp(), opts);
       return;
   }
 }

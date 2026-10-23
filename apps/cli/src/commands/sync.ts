@@ -539,9 +539,9 @@ class SyncEngine {
       if (pageState) {
         // Check for changes
         if (pageInfo.version > pageState.version) {
-          // Remote has newer version - pull
-          const existingFile = join(this.opts.dir, pageState.path);
-          await this.pullPage(pageInfo.id, existingFile);
+          // Remote has a newer version. Same path as polling: a locally edited
+          // file is merged, never overwritten by the pull.
+          await this.handleRemoteChange(pageInfo.id, pageState.path);
         }
       } else {
         // New page - create local file
@@ -724,7 +724,11 @@ class SyncEngine {
         }
       });
 
-      await this.poller.initialize();
+      // Baseline at the versions the initial sync pulled, not at whatever the
+      // remote holds now: an edit landing in between must still be reported.
+      await this.poller.initialize(
+        new Map(Object.entries(this.state?.pages ?? {}).map(([id, page]) => [id, page.version]))
+      );
       this.poller.start();
     }
 
@@ -846,11 +850,16 @@ class SyncEngine {
     }
   }
 
+  /** The conversion options for one page, with its mentioned users' names. */
+  private async pageConversionOptions(storage: string): Promise<ConversionOptions> {
+    return { ...this.conversionOptions, mentionNames: await this.client.mentionNames([storage]) };
+  }
+
   /** Pull a page from Confluence using nested hierarchy paths */
   private async pullPage(pageId: string, existingFile?: string): Promise<void> {
     try {
       const page = await this.client.getPage(pageId);
-      const markdown = storageToMarkdown(page.storage, this.conversionOptions);
+      const markdown = storageToMarkdown(page.storage, await this.pageConversionOptions(page.storage));
 
       // Get page ancestors for hierarchy-based path
       const ancestors = page.ancestors || [];
@@ -1708,9 +1717,14 @@ class SyncEngine {
     pageState: PageState
   ): Promise<void> {
     try {
+      // The merge works on bodies; the file keeps its frontmatter, which holds the page id.
+      // Without it push treats the file as a new page and resolve cannot find it.
+      const { frontmatter } = parseFrontmatter(await readTextFile(filePath));
+      const withFrontmatter = (body: string): string => (frontmatter ? addFrontmatter(body, frontmatter) : body);
+
       // Get remote content
       const remotePage = await this.client.getPage(pageId);
-      const remoteContent = storageToMarkdown(remotePage.storage, this.conversionOptions);
+      const remoteContent = storageToMarkdown(remotePage.storage, await this.pageConversionOptions(remotePage.storage));
 
       // Get base content from .atlcli/cache/
       const baseContent = await readBaseContent(this.atlcliDir, pageId);
@@ -1740,7 +1754,7 @@ class SyncEngine {
           return;
         }
 
-        await writeTextFile(filePath, result.content);
+        await writeTextFile(filePath, withFrontmatter(result.content));
 
         // Push merged content
         const storage = markdownToStorage(result.content, this.conversionOptions);
@@ -1812,7 +1826,7 @@ class SyncEngine {
         } else {
           // Write conflict markers
           if (!this.opts.dryRun) {
-            await writeTextFile(filePath, result.content);
+            await writeTextFile(filePath, withFrontmatter(result.content));
 
             // Update state to conflict
             const relativePath = this.getRelativePath(filePath);

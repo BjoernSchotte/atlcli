@@ -139,6 +139,8 @@ import {
 import type { Ignore } from "@atlcli/confluence/internal";
 import { readAttachmentFile, resolveAttachmentFile } from "./docs-attachments.js";
 import { handleSync, syncHelp } from "./sync.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
+import { checkTemplateRender } from "./template-render-check.js";
 
 /** Sync state for bidirectional sync tracking */
 export type SyncState = "synced" | "local-modified" | "remote-modified" | "conflict";
@@ -390,7 +392,7 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
       await handleDocsConvert(args.slice(1), flags, opts);
       return;
     default:
-      output(docsHelp(), opts);
+      unknownSubcommand(sub, docsHelp(), opts);
       return;
   }
 }
@@ -484,7 +486,7 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
     // Only --space provided (or default)
     scope = { type: "space" };
   } else {
-    fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required (or set defaults.space in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required (or set a default: atlcli config set global.space <value>).");
   }
 
   // Auto-detect space from page/ancestor if not provided
@@ -1044,8 +1046,11 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const pullComments = hasFlag(flags, "comments");
   let commentsPulled = 0;
 
-  // Build conversion options using baseUrl from dirConfig
-  const conversionOptions = buildConversionOptions(dirConfig?.baseUrl);
+  // Build conversion options using baseUrl from dirConfig, with the mentioned users' names
+  const conversionOptions = {
+    ...buildConversionOptions(dirConfig?.baseUrl),
+    mentionNames: await client.mentionNames(pageDetails.map((detail) => detail.storage)),
+  };
 
   for (const detail of pageDetails) {
     // Convert storage to markdown, then apply page-specific attachment paths
@@ -1538,15 +1543,15 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           version: detail.version,
           lastSyncedAt: new Date().toISOString(),
           localHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            storageToMarkdown(detail.storage, conversionOptions),
             basename(pagePath, ".md")
           ))),
           remoteHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            storageToMarkdown(detail.storage, conversionOptions),
             basename(pagePath, ".md")
           ))),
           baseHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            storageToMarkdown(detail.storage, conversionOptions),
             basename(pagePath, ".md")
           ))),
           syncState: "synced",
@@ -2000,12 +2005,16 @@ atlcli:
   let updated = 0;
   let created = 0;
   let skipped = 0;
+  const conflicts: PushConflict[] = [];
 
   for (const filePath of files) {
-    const result = await pushFile({ client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state, baseUrl: dirConfig?.baseUrl, legacyEditor: hasFlag(flags, "legacy-editor") });
+    const result = await pushFile({
+      client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state, baseUrl: dirConfig?.baseUrl,
+      legacyEditor: hasFlag(flags, "legacy-editor"), force: hasFlag(flags, "force"), conflicts,
+    });
     if (result === "updated") updated += 1;
     else if (result === "created") created += 1;
-    else skipped += 1;
+    else if (result === "skipped") skipped += 1;
   }
 
   // Check for deleted folders (in state but index.md removed locally)
@@ -2056,6 +2065,17 @@ atlcli:
   if (state && atlcliDir) {
     state.lastSync = new Date().toISOString();
     await writeState(atlcliDir, state);
+  }
+
+  if (conflicts.length > 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `${conflicts.length} page(s) changed in Confluence since the last pull and were not pushed. ` +
+        "Run 'atlcli wiki docs pull' or 'atlcli wiki docs sync' to merge, or push with --force to overwrite.",
+      { conflicts, results: { updated, created, skipped, conflicts: conflicts.length } }
+    );
   }
 
   if (isSingleFile && files.length === 1) {
@@ -2176,6 +2196,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
     // Render template
     const engine = new TemplateEngine();
     const rendered = engine.render(template, { variables, builtins });
+    checkTemplateRender(rendered, opts);
     markdownContent = rendered.content;
     labels = template.metadata.labels;
   }
@@ -2265,6 +2286,9 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
   const debounceMs = Number(getFlag(flags, "debounce") ?? 500);
   const atlcliDir = findAtlcliDirWithWarning(dir, opts);
   const dirConfig = atlcliDir ? await readConfig(atlcliDir) : null;
+  // The sync state gives push the version of the last pull, so a remote edit is not overwritten (#285).
+  const state = atlcliDir ? await readState(atlcliDir) : undefined;
+  const force = hasFlag(flags, "force");
 
   if (!opts.json) {
     output(`Watching ${dir} for Markdown changes...`, opts);
@@ -2290,11 +2314,16 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
 
       for (const file of batch) {
         try {
-          const result = await pushFile({ client, filePath: file, space, opts, baseUrl: dirConfig?.baseUrl });
-          const payload = { schemaVersion: "1", file, result };
+          const conflicts: PushConflict[] = [];
+          const result = await pushFile({
+            client, filePath: file, space, opts, atlcliDir: atlcliDir ?? undefined, state, baseUrl: dirConfig?.baseUrl, force, conflicts,
+          });
+          if (atlcliDir && state) await writeState(atlcliDir, state);
+          const payload = { schemaVersion: "1", file, result, ...(conflicts.length ? { conflict: conflicts[0] } : {}) };
           if (opts.json) {
             process.stdout.write(`${JSON.stringify(payload)}\n`);
-          } else {
+          } else if (result !== "conflict") {
+            // A conflict was already reported by pushFile.
             output(`Updated ${file} (${result})`, opts);
           }
         } catch (err) {
@@ -2318,7 +2347,14 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
   });
 }
 
-type PushResult = "updated" | "created" | "skipped";
+type PushResult = "updated" | "created" | "skipped" | "conflict";
+
+interface PushConflict {
+  file: string;
+  pageId: string;
+  baseVersion: number;
+  remoteVersion: number;
+}
 
 async function pushFile(params: {
   client: ConfluenceClient;
@@ -2329,8 +2365,12 @@ async function pushFile(params: {
   state?: AtlcliState;
   baseUrl?: string;
   legacyEditor?: boolean;
+  /** Overwrite a page that changed remotely since the last pull. */
+  force?: boolean;
+  /** Receives each page that changed remotely while the file changed locally. */
+  conflicts?: PushConflict[];
 }): Promise<PushResult> {
-  const { client, filePath, space, opts, atlcliDir, state, baseUrl, legacyEditor } = params;
+  const { client, filePath, space, opts, atlcliDir, state, baseUrl, legacyEditor, force } = params;
 
   // Read file and parse frontmatter
   const rawContent = await readTextFile(filePath);
@@ -2463,6 +2503,31 @@ async function pushFile(params: {
   // Strip frontmatter before converting to storage format
   const conversionOptions = buildConversionOptions(baseUrl);
   let storage = markdownToStorage(markdownContent, conversionOptions);
+
+  // A page edited remotely since the last pull must not be overwritten (#285).
+  // Checked before any attachment upload or move, so a conflict changes nothing.
+  let current: Awaited<ReturnType<ConfluenceClient["getPage"]>> | undefined;
+  const baseVersion = pageId ? (state?.pages[pageId]?.version ?? legacyMeta?.version) : undefined;
+  if (pageId && baseVersion !== undefined && !force) {
+    current = await client.getPage(pageId);
+    const remoteVersion = current.version ?? 1;
+    if (remoteVersion > baseVersion) {
+      const baseHash = state?.pages[pageId]?.baseHash;
+      if (baseHash !== undefined && hashContent(normalizeMarkdown(markdownContent)) === baseHash) {
+        // Unchanged locally: nothing to push; the next pull brings the remote edit.
+        return "skipped";
+      }
+      params.conflicts?.push({ file: filePath, pageId, baseVersion, remoteVersion });
+      if (!opts.json) {
+        output(
+          `${basename(filePath)}: changed in Confluence since your last pull (v${baseVersion} → v${remoteVersion}); not pushed. ` +
+            "Run 'atlcli wiki docs pull' or 'atlcli wiki docs sync' to merge, or push with --force to overwrite.",
+          opts
+        );
+      }
+      return "conflict";
+    }
+  }
 
   // Check for attachment references and upload them
   const pageFilename = basename(filePath);
@@ -2669,7 +2734,7 @@ async function pushFile(params: {
     }
 
     // Update existing page
-    const current = await client.getPage(pageId);
+    current ??= await client.getPage(pageId);
     const title = frontmatter?.title || legacyMeta?.title || current.title;
     const version = (current.version ?? 1) + 1;
     const page = await client.updatePage({ id: pageId, title, storage, version });
@@ -3397,26 +3462,30 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
   const accept = getFlag(flags, "accept") as "local" | "remote" | "merged" | undefined;
 
   const content = await readTextFile(filePath);
+  const { frontmatter } = parseFrontmatter(content);
   const meta = await readMeta(filePath);
+  // A page is tracked through its frontmatter id and the workspace state, or a legacy .meta.json (#275).
+  const atlcliDir = findAtlcliDir(dirname(filePath));
+  const state = atlcliDir ? await readState(atlcliDir) : undefined;
+  const pageId = frontmatter?.id ?? meta?.id;
+  const pageState = pageId ? state?.pages[pageId] : undefined;
 
-  if (!meta) {
-    fail(opts, 1, ERROR_CODES.USAGE, "File is not tracked (no metadata).");
+  if (!pageId || (!pageState && !meta)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "File is not tracked: no page id in its frontmatter, and no sync state for it.");
   }
 
-  // Check if file has conflict markers
+  const inConflict = pageState?.syncState === "conflict" || (!!meta && isEnhancedMeta(meta) && meta.syncState === "conflict");
   const hasMarkers = content.includes("<<<<<<< LOCAL") &&
                      content.includes("=======") &&
                      content.includes(">>>>>>> REMOTE");
 
-  if (!hasMarkers) {
-    // No markers but marked as conflict - might have been manually edited
-    const staleConflict = isEnhancedMeta(meta) && meta.syncState === "conflict";
-    const message = staleConflict
-      ? "File was marked as conflict but has no conflict markers."
+  if (!hasMarkers && !(accept === "merged" && inConflict)) {
+    const message = inConflict
+      ? "File was marked as conflict but has no conflict markers. Run with --accept merged to keep it as it is."
       : "File has no conflicts to resolve.";
     output(
       opts.json
-        ? { schemaVersion: "1", file: filePath, resolved: false, staleConflict, message }
+        ? { schemaVersion: "1", file: filePath, resolved: false, staleConflict: inConflict, message }
         : message,
       opts
     );
@@ -3427,32 +3496,60 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
     fail(opts, 1, ERROR_CODES.USAGE, "Specify --accept local|remote|merged");
   }
 
-  if (accept === "merged") {
-    // User should have manually resolved - just verify no markers remain
+  if (accept === "merged" && hasMarkers) {
     fail(opts, 1, ERROR_CODES.USAGE, "For 'merged', edit the file to remove conflict markers first.");
   }
 
-  // Resolve by choosing a side
-  const resolved = resolveConflicts(content, accept);
-  await writeTextFile(filePath, resolved);
+  // `merged`: the user's edit is the resolution; otherwise pick a side of every marker.
+  const resolved = accept === "merged" ? content : resolveConflicts(content, accept);
+  if (resolved !== content) await writeTextFile(filePath, resolved);
+  const resolvedBody = normalizeMarkdown(parseFrontmatter(resolved).content);
+  const localHash = hashContent(resolvedBody);
 
-  // Update metadata
-  if (isEnhancedMeta(meta)) {
-    const updatedMeta: EnhancedMeta = {
-      ...meta,
-      syncState: "local-modified",
-      localHash: hashContent(normalizeMarkdown(resolved)),
-    };
-    await writeMeta(filePath, updatedMeta);
+  let baseAdvanced = false;
+  if (atlcliDir && state && pageState) {
+    const update: Partial<PageState> = { syncState: "local-modified", localHash };
+    // The markers' REMOTE side is the remote page the conflict was made from. If the page
+    // is still at that content, the resolution already contains it: it becomes the push base,
+    // so push does not report the same conflict again. A newer remote edit keeps the old base.
+    if (hasMarkers) {
+      try {
+        const client = await getClient(flags, opts);
+        const remote = await client.getPage(pageId);
+        const dirConfig = await readConfig(atlcliDir);
+        const remoteBody = normalizeMarkdown(replaceAttachmentPaths(
+          storageToMarkdown(remote.storage, { ...buildConversionOptions(dirConfig?.baseUrl), mentionNames: await client.mentionNames([remote.storage]) }),
+          basename(filePath, ".md")
+        ));
+        const conflictRemote = normalizeMarkdown(parseFrontmatter(resolveConflicts(content, "remote")).content);
+        if (remoteBody === conflictRemote) {
+          const remoteHash = hashContent(remoteBody);
+          Object.assign(update, { version: remote.version ?? pageState.version, remoteHash, baseHash: remoteHash });
+          if (localHash === remoteHash) update.syncState = "synced";
+          baseAdvanced = true;
+        }
+      } catch {
+        // Offline or no access: keep the old base; push will ask for a sync.
+      }
+    }
+    updatePageState(state, pageId, { ...pageState, ...update });
+    await writeState(atlcliDir, state);
+  } else if (meta && isEnhancedMeta(meta)) {
+    await writeMeta(filePath, { ...meta, syncState: "local-modified", localHash } as EnhancedMeta);
   }
 
   if (opts.json) {
-    output({ schemaVersion: "1", file: filePath, resolved: true, accept }, opts);
+    output({ schemaVersion: "1", file: filePath, resolved: true, accept, baseAdvanced }, opts);
     return;
   }
 
   output(`Resolved conflicts in ${filePath} using ${accept} version.`, opts);
-  output("Run 'atlcli wiki docs push' to push the resolved version.", opts);
+  output(
+    baseAdvanced || !atlcliDir
+      ? "Run 'atlcli wiki docs push' to push the resolved version."
+      : "Run 'atlcli wiki docs sync' to merge it with the current remote page, or push with --force.",
+    opts
+  );
 }
 
 async function handleDocsDiff(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -3517,10 +3614,17 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
 
   // Fetch remote page
   const remotePage = await client.getPage(pageId);
-  const remoteMarkdown = storageToMarkdown(remotePage.storage, conversionOptions);
+  // Shape the remote side like pull writes the file: page-relative attachment paths, normalized.
+  const remoteMarkdown = normalizeMarkdown(replaceAttachmentPaths(
+    storageToMarkdown(remotePage.storage, {
+      ...conversionOptions,
+      mentionNames: await client.mentionNames([remotePage.storage]),
+    }),
+    basename(filePath, ".md")
+  ));
 
   // Generate diff
-  const diff = generateDiff(remoteMarkdown, localMarkdown, {
+  const diff = generateDiff(remoteMarkdown, normalizeMarkdown(localMarkdown), {
     oldLabel: `Remote (v${remotePage.version})`,
     newLabel: "Local",
     context: 3,
@@ -3793,9 +3897,9 @@ tree, or pass an explicit path/--dir when running from elsewhere.
 Commands:
   init <dir> [scope options]                        Initialize directory for sync
   pull [dir] [scope options] [--limit <n>] [--force] [--label <l>] [--comments]
-  push [dir|file] [--validate] [--delete-folders]   Push changes to Confluence
+  push [dir|file] [--validate] [--delete-folders] [--force]   Push changes to Confluence
   add <file> [--title <t>] [--parent <id>]          Add file to Confluence
-  watch <dir> [--space <key>] [--debounce <ms>]
+  watch <dir> [--space <key>] [--debounce <ms>] [--force]
   sync <dir> [scope options] [--poll-interval <ms>] [--label <label>]
   status [dir] [--links]                             Show sync state (--links for link analysis)
   resolve <file> --accept local|remote|merged        Resolve conflicts

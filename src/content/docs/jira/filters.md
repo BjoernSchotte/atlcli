@@ -5,7 +5,7 @@ description: "Filters - atlcli documentation"
 
 # Filters
 
-Save and manage JQL filters.
+Save, run and share JQL filters.
 
 ## Prerequisites
 
@@ -23,12 +23,24 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--favorite` | Show only favorites |
-| `--owner` | Filter by owner |
+| `--query` | Filter by name |
+| `--limit` | Maximum filters (default 50) |
 
 ## Get Filter
 
 ```bash
 atlcli jira filter get 12345
+```
+
+Prints the filter's name, JQL, owner and who it is shared with. `--json` gives the JSON.
+
+## Run Filter
+
+List the filter's issues, like [search](search.md): a table by default, with `--columns`, `--plain`, `--csv`, `--no-headers`, `--limit`, `--all-results` and `--json`.
+
+```bash
+atlcli jira filter run 12345
+atlcli jira filter run 12345 --columns key,status,assignee --csv
 ```
 
 ## Create Filter
@@ -58,32 +70,27 @@ atlcli jira filter update 12345 --jql "assignee = currentUser() AND status = 'In
 atlcli jira filter delete 12345 --confirm
 ```
 
-## Use Filter in Search
-
-```bash
-atlcli jira search --filter 12345
-```
-
 ## Share Filter
 
-Share a filter with users or groups:
+Share a filter with a user, a group, a project or everyone:
 
 ```bash
 atlcli jira filter share 12345 --user alice@company.com
 atlcli jira filter share 12345 --group developers
 atlcli jira filter share 12345 --project PROJ
+atlcli jira filter share 12345 --type global
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--user` | Share with user (email or account ID) |
-| `--group` | Share with group |
-| `--project` | Share with project |
-| `--role` | Share with project role |
+| `--user` | Share with a user: email, name or account ID (Jira Cloud) |
+| `--group` | Share with a group |
+| `--project` | Share with a project |
+| `--type` | `global`, `project`, `group` or `user`. Optional when `--user`, `--group` or `--project` is given |
 
 ## Related Topics
 
-- [Search](search.md) - JQL search and shortcuts
+- [Search](search.md) - JQL search, filter flags and table output
 - [Bulk Operations](bulk-operations.md) - Use filters for batch updates

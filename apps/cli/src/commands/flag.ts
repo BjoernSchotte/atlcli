@@ -11,6 +11,7 @@ import {
   unsetFlag,
   FlagValue,
 } from "@atlcli/core";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleFlag(
   args: string[],
@@ -40,7 +41,7 @@ export async function handleFlag(
       await handleUnset(args.slice(1), flags, opts);
       return;
     default:
-      output(flagHelp(), opts);
+      unknownSubcommand(sub, flagHelp(), opts);
       return;
   }
 }
@@ -145,7 +146,7 @@ async function handleUnset(
   }
 }
 
-function flagHelp(): string {
+export function flagHelp(): string {
   return `Usage: atlcli flag <command> [options]
 
 Commands:

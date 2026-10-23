@@ -49,10 +49,13 @@ const WORKFLOW_SAMPLE = 200;
 export const AUDIT_RULES_FILE = "audit-rules.yaml";
 const FAIL_ON = ["info", "warning", "error", "never"] as const;
 
-/** Where a rules file is looked up, first match wins: project, profile, global. */
-export function auditRulesCandidates(profile: string, cwd = process.cwd()): string[] {
+/**
+ * Where a rules file is looked up, first match wins: project, profile, global.
+ * `cwd: null` skips the project file.
+ */
+export function auditRulesCandidates(profile: string, cwd: string | null = process.cwd()): string[] {
   return [
-    join(cwd, ".atlcli", AUDIT_RULES_FILE),
+    ...(cwd === null ? [] : [join(cwd, ".atlcli", AUDIT_RULES_FILE)]),
     profileFilePath(profile, AUDIT_RULES_FILE),
     join(homedir(), ".atlcli", AUDIT_RULES_FILE),
   ];
@@ -67,8 +70,13 @@ export function auditBaselinePath(profile: string): string {
  * built-in default profile. Without a file, `audit.jira.staleDays` (profile,
  * then global) still sets the stale thresholds.
  */
-export async function loadAuditRules(profile: Profile, globalStaleDays: [number, number, number] | undefined, rulesFlag?: string): Promise<AuditRules> {
-  const path = rulesFlag ? resolvePath(rulesFlag) : auditRulesCandidates(profile.name).find((p) => existsSync(p));
+export async function loadAuditRules(
+  profile: Profile,
+  globalStaleDays: [number, number, number] | undefined,
+  rulesFlag?: string,
+  cwd: string | null = process.cwd()
+): Promise<AuditRules> {
+  const path = rulesFlag ? resolvePath(rulesFlag) : auditRulesCandidates(profile.name, cwd).find((p) => existsSync(p));
   if (!path) {
     const rules = defaultAuditRules();
     const stale = profile.audit?.jira?.staleDays ?? globalStaleDays;
@@ -350,12 +358,13 @@ Rules (category/rule):
 
 Rules file (first found): --rules <file>, ./.atlcli/${AUDIT_RULES_FILE},
   ~/.atlcli/profiles/<profile>/${AUDIT_RULES_FILE}, ~/.atlcli/${AUDIT_RULES_FILE}
-Baseline: ~/.atlcli/profiles/<profile>/audit-baseline.json; without one, findings on
-  issues not updated for 180 days count as legacy (one line per rule).
+Baseline: ~/.atlcli/profiles/<profile>/audit-baseline.json. Findings on issues not
+  updated for 180 days count as legacy (one line per rule), with or without a baseline
+  file, unless --no-baseline is given.
 
 Options:
-  --project <key>       Project (default: defaults.project)
-  --board <id>          Use the board's saved filter (default: defaults.board)
+  --project <key>       Project (default: global.project or profiles.<name>.project)
+  --board <id>          Use the board's saved filter (default: global.board or profiles.<name>.board)
   --jql <jql>           Any JQL; wins over --board and --project
   --rules <file>        Rules file to use
   --checks <list>       Only these rules: rule ids, categories (workflow, flow, hygiene,

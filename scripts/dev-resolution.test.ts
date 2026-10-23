@@ -96,8 +96,10 @@ describe("development-condition resolution (spec 009)", () => {
       readFileSync(join(REPO_ROOT, "package.json"), "utf8"),
     ) as { scripts?: Record<string, string> };
 
-    expect(rootPackage.scripts?.test).toContain(
-      "--path-ignore-patterns='spikes/**'",
+    // `bun run test` goes through the isolating wrapper (#278), which passes the pattern on.
+    expect(rootPackage.scripts?.test).toBe("bun scripts/test-helpers/run-tests.ts");
+    expect(readFileSync(join(REPO_ROOT, "scripts/test-helpers/run-tests.ts"), "utf8")).toContain(
+      '"--path-ignore-patterns=spikes/**"',
     );
   });
 });

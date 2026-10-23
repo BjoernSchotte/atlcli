@@ -545,6 +545,20 @@ Conflict detected: docs/api.md
   Remote: Modified 2025-01-14 10:35 (version 5 → version 6)
 ```
 
+### Push and watch
+
+`docs push` and `docs watch` check each tracked page against the version of your last pull before they upload anything:
+
+- **Remote unchanged:** the local file is pushed.
+- **Remote changed, local file unchanged:** the file is skipped; the next `pull` brings the remote edit.
+- **Remote changed, local file changed:** the file is not pushed, and neither are its attachments. `push` lists the pages and exits with code 1:
+
+```
+api.md: changed in Confluence since your last pull (v5 → v6); not pushed. Run 'atlcli wiki docs pull' or 'atlcli wiki docs sync' to merge, or push with --force to overwrite.
+```
+
+Run `atlcli wiki docs sync` to merge both edits, or `atlcli wiki docs pull` and edit again. `--force` overwrites the remote edit on purpose; the page history keeps it.
+
 ### Resolution Strategies
 
 Control how conflicts are handled in sync mode:
@@ -601,14 +615,19 @@ This endpoint returns user data. Response format is JSON.
 ### Resolving Conflicts
 
 ```bash
-# Edit file to resolve conflicts manually
-vim docs/api.md
-
-# Then resolve with chosen strategy
+# Keep one side of every conflict region
 atlcli wiki docs resolve docs/api.md --accept local
 atlcli wiki docs resolve docs/api.md --accept remote
-atlcli wiki docs resolve docs/api.md --accept merged  # After manual edit
+
+# Or remove the markers by hand, then mark the file as resolved
+vim docs/api.md
+atlcli wiki docs resolve docs/api.md --accept merged
+
+# Push the resolution
+atlcli wiki docs push docs/api.md
 ```
+
+`resolve` finds the page through the file's frontmatter and the workspace state in `.atlcli/`. With `--accept local` or `--accept remote` it checks that the Confluence page still has the content the conflict was made from; then the resolution becomes the base for the next push. If the page changed again in the meantime, `resolve` says so, and `push` refuses until you run `atlcli wiki docs sync` again.
 
 :::tip[Stuck in merge conflicts?]
 Reset to remote version with `atlcli wiki docs pull ./docs --force`, or force your local version with `--accept local` followed by push.

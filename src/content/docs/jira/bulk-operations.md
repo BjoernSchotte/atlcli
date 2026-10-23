@@ -86,7 +86,7 @@ Options:
 | `--issues` | Comma-separated issue keys (instead of `--jql`) |
 | `--to` | Target status name (required) |
 | `--dry-run` | Preview changes |
-| `--limit` | Maximum issues to process |
+| `--limit` | Maximum issues to process (default 1000) |
 
 ### Examples
 
@@ -130,6 +130,26 @@ Options:
 
 Give exactly one of `--sprint` or `--backlog`. Issues are moved 50 at a time, the Jira Agile API maximum per request; a failed chunk is reported in `result.errors` and the remaining chunks still run. Moving issues between projects is not supported. For a single sprint, `atlcli jira sprint add` and `sprint remove` do the same job.
 
+## Bulk Link Page
+
+Link one Confluence page to every matching issue (as a remote link, like [`issue link-page`](issues.md#cross-product-linking)):
+
+```bash
+atlcli jira bulk link-page --jql "sprint in openSprints()" --page 12345 --dry-run
+atlcli jira bulk link-page --issues PROJ-1,PROJ-2 --page 12345 --comment
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--jql` | JQL query |
+| `--issues` | Comma-separated keys (instead of `--jql`) |
+| `--page` | Confluence page ID (required) |
+| `--comment [text]` | Also post a comment on each issue: bare, "Linked to Confluence page: <link>" (as `jira issue link-page` posts); with text, that text as Markdown. `--dry-run` shows it as `comment` (`null` when none) |
+| `--dry-run` | Show the page and the matching issues without linking |
+| `--limit` | Maximum issues to link (default 1000) |
+
 ## Bulk Delete
 
 Delete multiple issues:
@@ -146,6 +166,7 @@ Options:
 | `--issues` | Comma-separated keys |
 | `--confirm` | Required for destructive operation |
 | `--dry-run` | Preview what would be deleted |
+| `--limit` | Maximum issues to delete (default 1000) |
 
 :::caution
 Bulk delete is irreversible. Always use `--dry-run` first.
@@ -239,3 +260,4 @@ atlcli jira bulk edit --jql "..." --set "priority=High" --json
 - [Search](search.md) - JQL query syntax
 - [Issues](issues.md) - Single issue operations
 - [Filters](filters.md) - Save and reuse JQL queries
+- [Boards & Sprints](boards-sprints.md) - Single-sprint moves

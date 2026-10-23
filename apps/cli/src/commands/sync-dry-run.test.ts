@@ -21,6 +21,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hashContent, normalizeMarkdown } from "@atlcli/confluence";
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const PAGE_ID = "12345";
@@ -111,7 +112,9 @@ async function makeLegacyFixture(name: string): Promise<string> {
         spaceKey: "DOCSY",
         version: 1,
         lastSyncedAt: "2026-07-19T00:00:00.000Z",
-        localHash: "hash-local",
+        // The real hash of the body: "synced" means the file matches it, and
+        // the initial sync now merges (instead of pulling over) a file that does not.
+        localHash: hashContent(normalizeMarkdown("\n# Legacy Page\n\nLocal body.\n")),
         remoteHash: "hash-remote",
         baseHash: "hash-base",
         syncState: "synced",

@@ -15,15 +15,16 @@ Git integration for Confluence sync.
 
 ## Overview
 
-The Git plugin adds Git-aware features to Confluence sync:
+The Git plugin connects a docs directory that is also a Git repository with Confluence sync. It does two things:
 
-- Commit messages on push
-- Branch-based sync
-- Conflict detection using Git status
+- **Commit after pull:** after every `atlcli wiki docs pull`, it commits the files the pull changed, with a message like `sync(confluence): pull 3 page(s) from Confluence`.
+- **Push after commit:** `atlcli git hook install` adds a Git `post-commit` hook that runs `atlcli wiki docs push` for the directory after each of your commits.
+
+The plugin has no settings, and it adds no `wiki docs` subcommand: you commit with Git as usual.
 
 ## Installation
 
-The Git plugin is bundled with atlcli:
+The Git plugin is bundled with atlcli and disabled by default:
 
 ```bash
 atlcli plugin enable git
@@ -31,106 +32,57 @@ atlcli plugin enable git
 
 ## Commands
 
-### Commit
+| Command | What it does |
+|---------|--------------|
+| `atlcli git hook install [dir] [--force]` | Install the `post-commit` hook in the repository of `dir` (default: current directory). `--force` replaces an existing hook that atlcli did not write |
+| `atlcli git hook status [dir]` | Show whether the hook is installed |
+| `atlcli git hook remove [dir]` | Remove the hook |
 
-Commit synced docs with a message:
+The commit after pull needs no command; it runs whenever the plugin is enabled and the docs directory is inside a Git repository.
 
-```bash
-atlcli wiki docs commit -m "Update API documentation"
-```
+## The post-commit hook
 
-This:
-1. Stages all changes in the docs directory
-2. Creates a Git commit
-3. Pushes to Confluence
+After each commit, the hook pushes the docs directory to Confluence. It never blocks a commit:
 
-### Status
-
-Show sync status with Git info:
-
-```bash
-atlcli wiki docs status
-```
-
-Output includes:
-- Local changes (Git status)
-- Remote changes (Confluence modifications)
-- Conflict markers
-
-## Configuration
-
-Configure in `~/.atlcli/config.json`:
-
-```json
-{
-  "plugins": {
-    "git": {
-      "autoCommit": false,
-      "commitPrefix": "[docs] ",
-      "branch": "main"
-    }
-  }
-}
-```
-
-### Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `autoCommit` | Auto-commit after push | `false` |
-| `commitPrefix` | Prefix for commit messages | `""` |
-| `branch` | Branch for sync operations | `main` |
+- It skips the push while `atlcli wiki docs sync` runs (the daemon pushes itself).
+- It skips directories without `.atlcli/`.
+- A failed push prints `[atlcli-git] Push failed (non-blocking)`; the commit stays. Push refuses pages that changed in Confluence since your last pull, so run `atlcli wiki docs pull` or `sync` and commit again.
 
 ## Workflow
 
 ### Recommended Flow
 
 ```bash
-# 1. Pull latest
+# One-time setup
+atlcli plugin enable git
+atlcli git hook install ./docs
+
+# 1. Pull latest; the plugin commits what changed
 atlcli wiki docs pull ./docs
-git status  # Check for remote changes
 
 # 2. Edit locally
 # ...
 
-# 3. Commit and push
-atlcli wiki docs commit -m "Update user guide"
-# This: stages, commits, pushes to Confluence
+# 3. Commit; the hook pushes to Confluence
+git add docs && git commit -m "Update user guide"
 
-# 4. Push to Git remote
+# 4. Push to the Git remote
 git push
 ```
 
 ### Branch-Based Docs
 
-Work on docs in a branch:
+Work on docs in a branch, and push to Confluence only from the branch you publish:
 
 ```bash
+atlcli git hook remove ./docs     # no automatic push while on the branch
 git checkout -b docs/api-update
 # Edit docs...
-atlcli wiki docs push ./docs
 git add . && git commit -m "API updates"
 git push -u origin docs/api-update
-# Create PR
-```
-
-## Hooks
-
-The Git plugin adds hooks:
-
-- **pre-push**: Checks for uncommitted changes
-- **post-pull**: Shows Git status after pull
-
-Disable hooks:
-
-```json
-{
-  "plugins": {
-    "git": {
-      "hooks": false
-    }
-  }
-}
+# After review and merge on main:
+git checkout main && git pull
+atlcli wiki docs push ./docs
 ```
 
 ## Related Topics

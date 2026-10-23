@@ -256,7 +256,14 @@ and without `--allow-delete`.
 
 Some pages do not survive the Markdown round trip — a two-column layout, an
 inline colour span. The VFS warns once per page when you write one, naming it,
-rather than flattening it silently. Macros generally *do* round-trip.
+rather than flattening it silently. `wiki sh` and `wiki mount` print the warning
+on stderr:
+
+```
+atlcli: warning: /DOCSY/release-notes/_index.md: this page does not round-trip through Markdown. …
+```
+
+Macros generally *do* round-trip.
 
 ## Search current page bodies
 

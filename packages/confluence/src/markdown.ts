@@ -6,12 +6,48 @@ import sup from "markdown-it-sup";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { KNOWN_MACROS } from "./known-macros.js";
+import {
+  MACRO_REGEX,
+  CONFLUENCE_MACRO_REGEX,
+  PANEL_MACRO_REGEX,
+  EXCERPT_MACRO_REGEX,
+  EXCERPT_INCLUDE_REGEX,
+  INCLUDE_MACRO_REGEX,
+  GALLERY_MACRO_REGEX,
+  ATTACHMENTS_MACRO_REGEX,
+  MULTIMEDIA_MACRO_REGEX,
+  WIDGET_MACRO_REGEX,
+  SECTION_MACRO_REGEX,
+  SECTION_COLUMN_REGEX,
+  CHILDREN_MACRO_REGEX,
+  CONTENT_BY_LABEL_REGEX,
+  RECENTLY_UPDATED_REGEX,
+  PAGETREE_MACRO_REGEX,
+  TOC_ZONE_MACRO_REGEX,
+  PAGE_PROPERTIES_MACRO_REGEX,
+  PAGE_PROPERTIES_REPORT_REGEX,
+  TASK_REPORT_MACRO_REGEX,
+  LABELS_LIST_MACRO_REGEX,
+  POPULAR_LABELS_MACRO_REGEX,
+  RELATED_LABELS_MACRO_REGEX,
+  BLOG_POSTS_MACRO_REGEX,
+  SPACES_LIST_MACRO_REGEX,
+  PAGE_INDEX_MACRO_REGEX,
+  CONTRIBUTORS_MACRO_REGEX,
+  CHANGE_HISTORY_MACRO_REGEX,
+  LOREMIPSUM_MACRO_REGEX,
+  TOC_PARAMETERS,
+  parseMacroParams,
+  splitMacroTitle,
+} from "./macro-syntax.js";
 export { KNOWN_MACROS } from "./known-macros.js";
 import { sha256HexOfUtf8 } from "./sha256.js";
 import { encodeBase64, decodeBase64 } from "@atlcli/core";
 import { stripFrontmatter } from "./frontmatter.js";
 import { normalizeEmojiShortName } from "./emoji-projection.js";
 import { parseXml, type XmlElement } from "./export-blocks.js";
+import { decodeHTML } from "entities";
+import { mentionIdFromAttributes, STORAGE_MENTION_PATTERN, USERKEY_MENTION_PREFIX } from "./mention-ids.js";
 
 // ============ Smart Link Types and Utilities ============
 
@@ -26,6 +62,11 @@ export interface ConversionOptions {
   emitWarnings?: boolean;
   /** Callback for deprecation warnings */
   onWarning?: (message: string) => void;
+  /**
+   * Display names by mention id (`ConfluenceClient.mentionNames`), used when a
+   * mention's storage carries no link body. Without a name the id is shown.
+   */
+  mentionNames?: ReadonlyMap<string, string>;
 }
 
 /** URL patterns for detecting Atlassian product URLs */
@@ -141,11 +182,7 @@ md.renderer.rules.fence = (tokens, idx) => {
  * Supported Confluence macro types for ::: syntax
  */
 const PANEL_MACROS = ["info", "note", "warning", "tip"];
-// Use [ \t]+ instead of \s+ to avoid matching newlines in the title capture
-const MACRO_REGEX = /^:::(info|note|warning|tip|expand|toc)(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
 
-// Regex for preserved confluence macros (unknown/3rd-party)
-const CONFLUENCE_MACRO_REGEX = /^:::confluence\s+(\S+)\n([\s\S]*?)^:::\s*$/gm;
 
 // Draw.io macro names. Single source of truth so both regexes below stay in
 // sync when a new variant is added.
@@ -243,9 +280,16 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
   });
 
   // Handle user mentions: @[Display Name](account-id)
-  processed = processed.replace(MENTION_REGEX, (_, displayName, accountId) => {
+  processed = processed.replace(MENTION_REGEX, (_, escapedName: string, id: string) => {
+    // `\[` and `\]` let a name carry brackets ("Max Muster [extern]"); an empty name is unnamed.
+    const displayName = escapedName.replace(/\\(.)/g, "$1") || id;
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
-    const html = `<ac:link><ri:user ri:account-id="${escapeHtml(accountId)}" /><ac:plain-text-link-body><![CDATA[${displayName}]]></ac:plain-text-link-body></ac:link>`;
+    const user = id.startsWith(USERKEY_MENTION_PREFIX)
+      ? `ri:userkey="${escapeHtml(id.slice(USERKEY_MENTION_PREFIX.length))}"`
+      : `ri:account-id="${escapeHtml(id)}"`;
+    // An unnamed mention (`@[id](id)`) gets no link body, so Confluence shows the live name.
+    const body = displayName === id ? "" : `<ac:plain-text-link-body><![CDATA[${displayName}]]></ac:plain-text-link-body>`;
+    const html = `<ac:link><ri:user ${user} />${body}</ac:link>`;
     macros.push({ placeholder, html });
     return placeholder;
   });
@@ -481,10 +525,10 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
     // Process columns inside the section
     let columnsHtml = "";
-    const columnRegex = /:::column(?:[ \t]+(.+))?\n([\s\S]*?):::column-end/gm;
     let columnMatch;
+    SECTION_COLUMN_REGEX.lastIndex = 0;
 
-    while ((columnMatch = columnRegex.exec(content)) !== null) {
+    while ((columnMatch = SECTION_COLUMN_REGEX.exec(content)) !== null) {
       const columnParams = columnMatch[1] || "";
       const columnContent = columnMatch[2].trim();
 
@@ -965,16 +1009,21 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
     let html: string;
 
-    // Helper to strip surrounding quotes from macro titles
-    const stripQuotes = (t: string | undefined): string | undefined => {
-      if (!t) return t;
-      const trimmed = t.trim();
-      const match = trimmed.match(/^["'](.*)["']$/);
-      return match ? match[1] : trimmed;
-    };
+    // A quoted title may be followed by parameters (`"Details" expanded=true`);
+    // only the quoted part is the title. Unsupported parameters are dropped and
+    // reported by `docs check`.
+    const stripQuotes = (t: string | undefined): string | undefined => splitMacroTitle(t).title;
 
     if (macro === "toc") {
-      html = `<ac:structured-macro ac:name="toc"/>`;
+      // For toc the capture holds parameters: `:::toc minLevel=2 maxLevel=3`
+      let tocParams = "";
+      for (const [key, value] of parseMacroParams(title)) {
+        const name = TOC_PARAMETERS.get(key.toLowerCase());
+        if (name) tocParams += `\n<ac:parameter ac:name="${name}">${escapeHtml(value)}</ac:parameter>`;
+      }
+      html = tocParams
+        ? `<ac:structured-macro ac:name="toc">${tocParams}\n</ac:structured-macro>`
+        : `<ac:structured-macro ac:name="toc"/>`;
     } else if (macro === "expand") {
       const expandTitle = stripQuotes(title) || "Click to expand";
       html = `<ac:structured-macro ac:name="expand">
@@ -1238,7 +1287,7 @@ const EMOTICON_REGEX = /:([a-z0-9_][-a-z0-9_]*|[+-]1):/gi;
  * Regex for user mentions: @[Display Name](account-id)
  * The account-id is typically in format like "123456:abcd-efgh-ijkl" or "admin"
  */
-const MENTION_REGEX = /@\[([^\]]+)\]\(([^)]+)\)/g;
+const MENTION_REGEX = /@\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
 
 /**
  * Regex for colored text: {color:red}text{color} or {color:#FF0000}text{color}
@@ -1251,155 +1300,6 @@ const COLOR_REGEX = /\{color:([^}]+)\}([\s\S]*?)\{color\}/gi;
  * Supports CSS color names and hex codes
  */
 const BG_COLOR_REGEX = /\{bg:([^}]+)\}([\s\S]*?)\{bg\}/gi;
-
-/**
- * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
- */
-const PANEL_MACRO_REGEX = /^:::panel(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
-
-/**
- * Regex for excerpt macro: :::excerpt name="name" hidden
- */
-const EXCERPT_MACRO_REGEX = /^:::excerpt(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
-
-/**
- * Regex for excerpt-include macro: :::excerpt-include page="id" name="name"
- */
-const EXCERPT_INCLUDE_REGEX = /^:::excerpt-include(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for include macro: :::include page="id"
- */
-const INCLUDE_MACRO_REGEX = /^:::include(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for gallery macro: :::gallery columns=3
- */
-const GALLERY_MACRO_REGEX = /^:::gallery(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for attachments macro: :::attachments patterns="*.pdf"
- */
-const ATTACHMENTS_MACRO_REGEX = /^:::attachments(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for multimedia macro: :::multimedia url="..."
- */
-const MULTIMEDIA_MACRO_REGEX = /^:::multimedia(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for widget macro: :::widget url="..."
- */
-const WIDGET_MACRO_REGEX = /^:::widget(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for section macro with nested columns: :::section ... :::column ... ::: ... :::
- * Uses a special delimiter :::section-end to avoid ambiguity with nested ::: blocks
- */
-const SECTION_MACRO_REGEX = /^:::section(?:[ \t]+(.+))?\n([\s\S]*?)^:::section-end\s*$/gm;
-
-/**
- * Regex for column macro inside section: :::column width="50%"
- */
-const COLUMN_MACRO_REGEX = /^:::column(?:[ \t]+(.+))?\n([\s\S]*?)^:::column-end\s*$/gm;
-
-/**
- * Regex for children macro: :::children depth=2 sort="title"
- */
-const CHILDREN_MACRO_REGEX = /^:::children(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for content-by-label macro: :::content-by-label labels="label1,label2"
- */
-const CONTENT_BY_LABEL_REGEX = /^:::content-by-label(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for recently-updated macro: :::recently-updated max=10
- */
-const RECENTLY_UPDATED_REGEX = /^:::recently-updated(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for pagetree macro: :::pagetree root="PageName"
- */
-const PAGETREE_MACRO_REGEX = /^:::pagetree(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for toc-zone macro: :::toc-zone minLevel=2 maxLevel=4
- * Has body content for the zone
- */
-const TOC_ZONE_MACRO_REGEX = /^:::toc-zone(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
-
-/**
- * Regex for page-properties macro: :::page-properties id="info"
- * Has body content (key-value table). Confluence calls this "details" internally.
- */
-const PAGE_PROPERTIES_MACRO_REGEX = /^:::page-properties(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
-
-/**
- * Regex for page-properties-report macro: :::page-properties-report labels="status"
- * No body content. Confluence calls this "detailssummary" internally.
- */
-const PAGE_PROPERTIES_REPORT_REGEX = /^:::page-properties-report(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for task-report macro: :::task-report spaces="DEV" labels="sprint-1"
- * No body content. Confluence calls this "tasks-report-macro" internally.
- */
-const TASK_REPORT_MACRO_REGEX = /^:::task-report(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for labels-list macro: :::labels
- * No parameters. Shows labels on current page.
- */
-const LABELS_LIST_MACRO_REGEX = /^:::labels\n?:::\s*$/gm;
-
-/**
- * Regex for popular-labels macro: :::popular-labels count=20 spaces="DEV"
- * Shows a tag cloud of popular labels.
- */
-const POPULAR_LABELS_MACRO_REGEX = /^:::popular-labels(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for related-labels macro: :::related-labels labels="api,docs"
- * Shows content related by labels.
- */
-const RELATED_LABELS_MACRO_REGEX = /^:::related-labels(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for blog-posts macro: :::blog-posts max=10 spaces="TEAM"
- * Lists blog posts from specified spaces.
- */
-const BLOG_POSTS_MACRO_REGEX = /^:::blog-posts(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for spaces-list macro: :::spaces-list spaces="DEV,OPS"
- * Lists Confluence spaces.
- */
-const SPACES_LIST_MACRO_REGEX = /^:::spaces-list(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for page-index macro: :::page-index
- * Shows alphabetical index of pages.
- */
-const PAGE_INDEX_MACRO_REGEX = /^:::page-index\n?:::\s*$/gm;
-
-/**
- * Regex for contributors macro: :::contributors mode=list limit=10
- * Shows page contributors.
- */
-const CONTRIBUTORS_MACRO_REGEX = /^:::contributors(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for change-history macro: :::change-history limit=10
- * Shows page version history.
- */
-const CHANGE_HISTORY_MACRO_REGEX = /^:::change-history(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for loremipsum macro: :::loremipsum paragraphs=3
- * Generates placeholder Lorem Ipsum text.
- */
-const LOREMIPSUM_MACRO_REGEX = /^:::loremipsum(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Regex for local attachment image references: ![alt](./path.attachments/image.png)
@@ -1639,7 +1539,23 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   );
   storage = storage.replace(
     /<ac:structured-macro\s+ac:name="toc"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
-    () => `<div data-macro="toc">TOC</div>`
+    (_, inner: string) => {
+      // Keep the parameters as `:::toc` markdown (`minLevel=2 style=none`).
+      // Confluence reorders stored parameters, so emit them in the documented
+      // TOC_PARAMETERS order to keep pulls stable.
+      const order = [...TOC_PARAMETERS.values()];
+      const rank = (name: string) => {
+        const i = order.indexOf(name);
+        return i < 0 ? order.length : i;
+      };
+      const found = [...inner.matchAll(/<ac:parameter\s+ac:name="([^"]+)"[^>]*>([^<]*)<\/ac:parameter>/gi)];
+      let params = "";
+      for (const m of found.sort((a, b) => rank(a[1]) - rank(b[1]))) {
+        const value = decodeHTML(m[2]);
+        params += ` ${m[1]}=${/^[\w.,%-]+$/.test(value) ? value : `"${value}"`}`;
+      }
+      return `<div data-macro="toc" data-params="${escapeHtml(params)}">TOC</div>`;
+    }
   );
 
   // Convert status macro (inline lozenge)
@@ -1681,22 +1597,15 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     }
   );
 
-  // Convert user mentions: <ac:link><ri:user ri:account-id="..." />...</ac:link>
-  // With display name in plain-text-link-body
-  storage = storage.replace(
-    /<ac:link>\s*<ri:user\s+ri:account-id="([^"]+)"[^>]*\/>\s*<ac:plain-text-link-body>(?:<!\[CDATA\[)?([^\]<]+)(?:\]\]>)?<\/ac:plain-text-link-body>\s*<\/ac:link>/gi,
-    (_, accountId, displayName) => {
-      return `<span data-mention="true" data-account-id="${escapeHtml(accountId)}" data-display-name="${escapeHtml(displayName.trim())}">@${escapeHtml(displayName.trim())}</span>`;
-    }
-  );
-
-  // Convert user mentions without display name
-  storage = storage.replace(
-    /<ac:link>\s*<ri:user\s+ri:account-id="([^"]+)"[^>]*\/>\s*<\/ac:link>/gi,
-    (_, accountId) => {
-      return `<span data-mention="true" data-account-id="${escapeHtml(accountId)}">@${escapeHtml(accountId)}</span>`;
-    }
-  );
+  // Convert user mentions. The name is the link body, else the looked-up name, else the id.
+  storage = storage.replace(STORAGE_MENTION_PATTERN, (match, attrs: string, plainBody?: string, richBody?: string) => {
+    const id = mentionIdFromAttributes(attrs);
+    if (!id) return match;
+    const body = plainBody !== undefined ? mentionBodyText(plainBody) : richBody !== undefined ? decodeHTML(richBody.replace(/<[^>]*>/g, "")) : "";
+    const displayName = body.trim() || options?.mentionNames?.get(id);
+    const name = displayName ? ` data-display-name="${escapeHtml(displayName)}"` : "";
+    return `<span data-mention="true" data-account-id="${escapeHtml(id)}"${name}>@${escapeHtml(displayName ?? id)}</span>`;
+  });
 
   // Convert colored spans to placeholder for turndown
   storage = storage.replace(
@@ -2596,7 +2505,7 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const accountId = (node as any).getAttribute?.("data-account-id") || "";
       const displayName = (node as any).getAttribute?.("data-display-name") || accountId;
       if (!accountId) return "";
-      return `@[${displayName}](${accountId})`;
+      return `@[${displayName.replace(/[\\[\]]/g, "\\$&")}](${accountId})`;
     },
   });
 
@@ -2746,16 +2655,21 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const title = (node as any).getAttribute?.("data-title") || "";
 
       if (macroType === "toc") {
-        return "\n\n:::toc\n:::\n\n";
+        const params = (node as any).getAttribute?.("data-params") || "";
+        return `\n\n:::toc${params}\n:::\n\n`;
       }
 
+      // A title that starts with a quote is wrapped in quotes again, so it is
+      // not split into title + parameters on the next push.
+      const quotedTitle = /^["']/.test(title) ? `"${title}"` : title;
+
       if (macroType === "expand") {
-        return `\n\n:::expand ${title}\n${content.trim()}\n:::\n\n`;
+        return `\n\n:::expand ${quotedTitle}\n${content.trim()}\n:::\n\n`;
       }
 
       // Panel macros (info, note, warning, tip)
       if (PANEL_MACROS.includes(macroType)) {
-        const titlePart = title ? ` ${title}` : "";
+        const titlePart = title ? ` ${quotedTitle}` : "";
         return `\n\n:::${macroType}${titlePart}\n${content.trim()}\n:::\n\n`;
       }
 
@@ -3240,4 +3154,9 @@ export function normalizeMarkdown(markdown: string): string {
  */
 export function hashContent(content: string): string {
   return sha256HexOfUtf8(content);
+}
+
+/** A plain-text link body: CDATA sections verbatim, other text entity-decoded. */
+function mentionBodyText(body: string): string {
+  return body.replace(/<!\[CDATA\[([\s\S]*?)\]\]>|([^<]+)/g, (_, cdata?: string, text?: string) => cdata ?? decodeHTML(text ?? ""));
 }

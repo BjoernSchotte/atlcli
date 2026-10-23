@@ -33,7 +33,7 @@ import { ConflictStore } from "./conflict-store.js";
 import { mapClientError, withRateLimitRetry } from "./errors.js";
 import { assertWritable, type ModeGuard } from "./mode.js";
 import type { VfsLogger } from "./options.js";
-import { parseVfsFrontmatter, renderPageMarkdown, toStorage } from "./page-store.js";
+import { mentionNamesFor, parseVfsFrontmatter, renderPageMarkdown, toStorage } from "./page-store.js";
 import { titleFromName } from "./path-mapper.js";
 import type { TreeIndex, TreeNode } from "./tree-index.js";
 import { VfsError } from "./types.js";
@@ -375,7 +375,7 @@ export class WriteBack {
       version,
       parentId: page.parentId ?? node.parentId,
     });
-    const markdown = renderPageMarkdown(refreshed, page.storage, this.opts.instanceUrl);
+    const markdown = renderPageMarkdown(refreshed, page.storage, this.opts.instanceUrl, undefined, await mentionNamesFor(this.opts.client, page.storage));
     this.opts.cache.putBody({
       pageId: node.id,
       version,
@@ -386,13 +386,13 @@ export class WriteBack {
   }
 
   /** Updates the index and the cache so the next read is a hit, not a fetch. */
-  private commit(
+  private async commit(
     node: TreeNode,
     path: string,
     body: string,
     title: string,
     version: number,
-  ): VfsWriteResult {
+  ): Promise<VfsWriteResult> {
     const refreshed = this.opts.index.upsert({
       id: node.id,
       title,
@@ -407,7 +407,7 @@ export class WriteBack {
     this.opts.cache.putBody({
       pageId: node.id,
       version,
-      markdown: renderPageMarkdown(refreshed, storage, this.opts.instanceUrl),
+      markdown: renderPageMarkdown(refreshed, storage, this.opts.instanceUrl, undefined, await mentionNamesFor(this.opts.client, storage)),
       storageHash: hashStorage(storage),
     });
     return { path, pageId: node.id, version, created: false };
@@ -469,7 +469,7 @@ export class WriteBack {
       this.opts.cache.putBody({
         pageId: created.id,
         version: node.version ?? 1,
-        markdown: renderPageMarkdown(node, storage, this.opts.instanceUrl),
+        markdown: renderPageMarkdown(node, storage, this.opts.instanceUrl, undefined, await mentionNamesFor(this.opts.client, storage)),
         storageHash: hashStorage(storage),
       });
       this.opts.audit.record({

@@ -43,6 +43,12 @@ export interface VfsClient {
   getCurrentUser(options?: {
     signal?: AbortSignal;
   }): Promise<{ accountId: string; displayName: string; email?: string }>;
+  /**
+   * Display names for the user mentions in storage bodies (read-only user
+   * lookups, cached per id by the client). Optional: without it, mentions
+   * keep the name the storage carries, or their id.
+   */
+  mentionNames?(storages: readonly string[], options?: { signal?: AbortSignal }): Promise<Map<string, string>>;
 
   // --- spaces -------------------------------------------------------------
   listSpaces(limit?: number): Promise<ConfluenceSpace[]>;

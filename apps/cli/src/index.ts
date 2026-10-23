@@ -14,19 +14,20 @@ import {
   saveUpdateState,
   shouldCheckForUpdates,
   getFlagValue,
+  describeError,
 } from "@atlcli/core";
 import type { CommandContext } from "@atlcli/plugin-api";
-import { handleAuth } from "./commands/auth.js";
-import { handleCompletion } from "./commands/completion.js";
-import { handleConfig } from "./commands/config.js";
+import { handleAuth, authHelp } from "./commands/auth.js";
+import { handleCompletion, completionHelp } from "./commands/completion.js";
+import { handleConfig, configHelp } from "./commands/config.js";
 import { handleDoctor } from "./commands/doctor.js";
-import { handleFlag } from "./commands/flag.js";
+import { handleFlag, flagHelp } from "./commands/flag.js";
 import { handleUpdate } from "./commands/update.js";
 import { handleWiki } from "./commands/wiki.js";
-import { handleLog } from "./commands/log.js";
+import { handleLog, logHelp } from "./commands/log.js";
 import { handleModels } from "./commands/models.js";
-import { handlePlugin } from "./commands/plugin.js";
-import { handleJira } from "./commands/jira.js";
+import { handlePlugin, pluginHelp } from "./commands/plugin.js";
+import { handleJira, jiraHelpFor } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
 import { handleSkill } from "./commands/skill.js";
 import {
@@ -35,7 +36,9 @@ import {
   handleResearch,
   researchHelp,
 } from "./commands/research.js";
-import { handleAudit } from "./commands/audit.js";
+import { auditHelp, handleAudit } from "./commands/audit.js";
+import { auditJiraHelp } from "./commands/audit-jira.js";
+import { auditWikiHelp } from "./commands/audit-wiki.js";
 import { digestHelp, handleDigest } from "./commands/digest.js";
 import {
   handlePdfTemplate,
@@ -43,6 +46,8 @@ import {
   ReportedPdfTemplateCliError,
 } from "./commands/pdf-template.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
+import { unknownSubcommand } from "./commands/unknown-subcommand.js";
+import { ROOT_COMMANDS } from "./root-commands.js";
 
 const VERSION = getCurrentVersion();
 
@@ -61,7 +66,7 @@ async function main(): Promise<void> {
     try {
       const config = await loadConfig();
       configureLogging({
-        level: config.logging?.level ?? "info",
+        level: logLevelFromEnv() ?? config.logging?.level ?? "info",
         enableGlobal: config.logging?.global ?? true,
         enableProject: config.logging?.project ?? true,
         projectDir: process.cwd(),
@@ -69,7 +74,7 @@ async function main(): Promise<void> {
     } catch {
       // Ignore config load errors for logging
       configureLogging({
-        level: "info",
+        level: logLevelFromEnv() ?? "info",
         enableGlobal: true,
         enableProject: true,
         projectDir: process.cwd(),
@@ -88,7 +93,7 @@ async function main(): Promise<void> {
   // Global version: only treat --version/-v as the root command shortcut.
   // Subcommands such as `wiki page diff --version 3` own their flag value.
   if (versionRequested && !command) {
-    output(versionInfo(), opts);
+    printVersion(opts);
     return;
   }
 
@@ -187,7 +192,7 @@ async function main(): Promise<void> {
         await handleUpdate(rest, parsed.flags, opts);
         break;
       case "version":
-        output(versionInfo(), opts);
+        printVersion(opts);
         break;
       case "release-info":
         output(json ? getReleaseInfo() : releaseInfoText(), opts);
@@ -207,7 +212,7 @@ async function main(): Promise<void> {
         if (pluginCmd) {
           await executePluginCommand(pluginCmd, rest, parsed.flags, opts);
         } else {
-          output(rootHelp(registry), opts);
+          unknownSubcommand(command, rootHelp(registry), opts);
         }
     }
 
@@ -258,35 +263,40 @@ function showCommandHelp(
   registry: import("./plugins/loader.js").PluginRegistry,
   opts: { json: boolean }
 ): void {
+  // Groups whose handlers ignore `help` print their help text directly: dispatching would run the verb (#270).
   const helpFlags = { help: true };
 
   switch (command) {
     case "auth":
-      handleAuth(subArgs, helpFlags, opts);
+      output(authHelp(), opts);
       break;
     case "completion":
-      handleCompletion(subArgs, helpFlags, opts);
+      output(completionHelp(), opts);
       break;
     case "config":
-      handleConfig(subArgs, helpFlags, opts);
+      output(configHelp(), opts);
       break;
     case "doctor":
       handleDoctor(subArgs, helpFlags, opts);
       break;
     case "flag":
-      handleFlag(subArgs, helpFlags, opts);
+      output(flagHelp(), opts);
       break;
     case "wiki":
       handleWiki(subArgs, helpFlags, opts);
       break;
     case "jira":
-      handleJira(subArgs, helpFlags, opts);
+      output(jiraHelpFor(subArgs), opts);
       break;
     case "research":
       output(researchHelp(), opts);
       break;
     case "digest":
       output(digestHelp(), opts);
+      break;
+    case "audit":
+      // `audit jira --help` / `audit wiki --help` print the target's help (#286).
+      output(subArgs[0] === "jira" ? auditJiraHelp() : subArgs[0] === "wiki" ? auditWikiHelp() : auditHelp(), opts);
       break;
     case "chat":
       output(chatHelp(), opts);
@@ -295,13 +305,13 @@ function showCommandHelp(
       output(pdfTemplateHelp(), opts);
       break;
     case "log":
-      handleLog(subArgs, helpFlags, opts);
+      output(logHelp(), opts);
       break;
     case "models":
       handleModels(subArgs, helpFlags, opts);
       break;
     case "plugin":
-      handlePlugin(subArgs, helpFlags, opts);
+      output(pluginHelp(), opts);
       break;
     case "skill":
       handleSkill(subArgs, helpFlags, opts);
@@ -310,7 +320,7 @@ function showCommandHelp(
       handleUpdate(subArgs, helpFlags, opts);
       break;
     case "version":
-      output(versionInfo(), opts);
+      printVersion(opts);
       break;
     default:
       // Check for plugin commands
@@ -405,24 +415,7 @@ ${pluginCommands.map((c) => `  ${c.name.padEnd(12)} ${c.command.description}`).j
 atlcli <command>
 
 Commands:
-  auth        Authenticate and manage profiles
-  completion  Generate shell completion scripts
-  config      Manage CLI configuration
-  doctor      Diagnose common issues
-  flag        Manage feature flags
-  wiki        Confluence operations (page, space, docs, search)
-  jira        Jira operations (issue, board, sprint, epic)
-  digest      What changed since your last look, across Jira and Confluence
-  research    Run bounded read-only Jira + Confluence research
-  chat        Ask a read-only Jira or Confluence question
-  pdf-template Create reviewed PDF template packs from Word documents
-  log         Query and manage logs
-  models      Optional local models (table structure for PDF import)
-  plugin      Manage plugins
-  skill       Print or install the agent skill
-  update      Check for and install updates
-  version     Show version
-  release-info Show versioned build provenance
+${ROOT_COMMANDS.map(([name, description]) => `  ${name.padEnd(12)} ${description}`).join("\n")}
 ${pluginSection}
 Global options:
   --profile <name>   Use specific auth profile
@@ -466,7 +459,21 @@ await main().catch((err) => {
     process.exitCode = err.exitCode;
     return;
   }
-  const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`${message}\n`);
+  const error = describeError(err);
+  // --json: the error object on stdout, like `fail()`, so scripts parse one shape.
+  if (process.argv.slice(2).includes("--json")) process.stdout.write(`${JSON.stringify({ error }, null, 2)}\n`);
+  else process.stderr.write(`${error.message}\n`);
   process.exitCode = 1;
 });
+
+/** `--version`/`version`: under `--json` a JSON string on stdout, kept for compatibility (release-info.test.ts). */
+function printVersion(opts: { json: boolean }): void {
+  if (opts.json) process.stdout.write(`${JSON.stringify(versionInfo())}\n`);
+  else output(versionInfo(), opts);
+}
+
+/** `ATLCLI_LOG_LEVEL` overrides `logging.level` (#282); an unknown value is ignored. */
+function logLevelFromEnv(): "off" | "error" | "warn" | "info" | "debug" | undefined {
+  const level = process.env.ATLCLI_LOG_LEVEL?.trim().toLowerCase();
+  return level === "off" || level === "error" || level === "warn" || level === "info" || level === "debug" ? level : undefined;
+}

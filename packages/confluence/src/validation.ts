@@ -8,6 +8,30 @@ import {
   type MarkdownLink,
 } from "./links.js";
 import { parseFrontmatter } from "./frontmatter.js";
+import {
+  BLOCK_MACRO_RULES,
+  MACRO_REGEX,
+  SECTION_COLUMN_REGEX,
+  TOC_PARAMETERS,
+  parseMacroParams,
+  splitMacroTitle,
+} from "./macro-syntax.js";
+
+/**
+ * Parameters push drops for `:::toc` / `:::expand` / panels. `toc` keeps the
+ * Confluence toc parameters; expand and the panels only take a title (the
+ * Confluence expand macro has no "expanded" option).
+ */
+function unsupportedMacroParams(macro: string, raw: string | undefined): string[] {
+  if (macro === "toc") {
+    return parseMacroParams(raw)
+      .filter(([key]) => !TOC_PARAMETERS.has(key.toLowerCase()))
+      .map(([key]) => `Unsupported ":::toc" parameter "${key}" is ignored (supported: ${[...TOC_PARAMETERS.values()].join(", ")})`);
+  }
+  return parseMacroParams(splitMacroTitle(raw).params).map(
+    ([key]) => `Unsupported ":::${macro}" parameter "${key}" is ignored (only a quoted title is supported)`,
+  );
+}
 import type { AtlcliState } from "./atlcli-dir.js";
 import type { SyncDbAdapter } from "./sync-db/types.js";
 
@@ -257,73 +281,77 @@ export function validateMacros(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const lines = content.split("\n");
+  const lineOf = (offset: number) => content.slice(0, offset).split("\n").length - 1;
 
-  // Track open macro blocks
-  const macroStack: Array<{ name: string; line: number }> = [];
+  // Replay the converter: run the same macro regexes in the same order and
+  // blank out every match, so later rules see what the converter sees.
+  // `consumed` lines became macros; `rendered` lines are macro bodies that are
+  // rendered as plain Markdown, where a `:::` line stays literal text.
+  const consumed = new Set<number>();
+  const rendered = new Set<number>();
+  const markRendered = (from: number, text: string) => {
+    if (!text) return;
+    const first = lineOf(from);
+    const count = text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+    for (let l = first; l < first + count; l++) rendered.add(l);
+  };
 
-  // Known macro names
-  const knownMacros = new Set([
-    "info",
-    "note",
-    "warning",
-    "tip",
-    "expand",
-    "toc",
-    "children",
-    "excerpt",
-    "excerpt-include",
-    "include",
-    "panel",
-    "code",
-    "noformat",
-    "section",
-    "column",
-    "recently-updated",
-    "pagetree",
-    "content-by-label",
-    "gallery",
-    "attachments",
-    "multimedia",
-    "widget",
-  ]);
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineNum = i + 1;
-
-    // Check for macro open: :::macroname or :::macroname params
-    const openMatch = line.match(/^:::(\w+)(?:\s|$)/);
-    if (openMatch) {
-      const macroName = openMatch[1];
-      macroStack.push({ name: macroName, line: lineNum });
-      continue;
-    }
-
-    // Check for macro close: :::
-    if (line.trim() === ":::") {
-      if (macroStack.length === 0) {
-        issues.push({
-          severity: "error",
-          code: "MACRO_UNCLOSED",
-          message: `Unexpected macro close ":::" without matching open`,
-          file: filePath,
-          line: lineNum,
-        });
-      } else {
-        macroStack.pop();
+  let working = content;
+  for (const rule of BLOCK_MACRO_RULES) {
+    working = working.replace(rule.regex, (match: string, ...args: unknown[]) => {
+      const offset = args.find((a) => typeof a === "number") as number;
+      const first = lineOf(offset);
+      const last = first + match.split("\n").length - 1;
+      for (let l = first; l <= last; l++) consumed.add(l);
+      if (rule.regex === MACRO_REGEX) {
+        const [macro, raw] = args as [string, string | undefined];
+        for (const message of unsupportedMacroParams(macro, raw)) {
+          issues.push({ severity: "warning", code: "MACRO_INVALID_PARAMS", message, file: filePath, line: first + 1 });
+        }
       }
-    }
+      const bodyStart = offset + match.indexOf("\n") + 1;
+      if (rule.body !== undefined) {
+        markRendered(bodyStart, String(args[rule.body - 1] ?? ""));
+      } else if (rule.columns) {
+        const body = String(args[1] ?? "");
+        for (const column of body.matchAll(SECTION_COLUMN_REGEX)) {
+          const columnStart = bodyStart + column.index! + column[0].indexOf("\n") + 1;
+          markRendered(columnStart, column[2]);
+        }
+      }
+      return match.replace(/[^\n]/g, " ");
+    });
   }
 
-  // Check for unclosed macros
-  for (const unclosed of macroStack) {
-    issues.push({
-      severity: "error",
-      code: "MACRO_UNCLOSED",
-      message: `Unclosed macro ":::${unclosed.name}" starting at line ${unclosed.line}`,
-      file: filePath,
-      line: unclosed.line,
-    });
+  let fence: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      if (!fence) fence = fenceMatch[1][0];
+      else if (fenceMatch[1][0] === fence) fence = null;
+      continue;
+    }
+    if (fence) continue;
+
+    const macroLine = line.match(/^ {0,3}:::(\S*)/);
+    if (!macroLine || (consumed.has(i) && !rendered.has(i))) continue;
+
+    const name = macroLine[1];
+    const lineNum = i + 1;
+    let message: string;
+    if (rendered.has(i)) {
+      message = `Nested macro line "${line.trim()}" is not supported here and is pushed as literal text`;
+    } else if (name === "" && line.trim() !== ":::") {
+      message = `Unsupported macro line "${line.trim()}": write ":::name" without a space (pushed as literal text)`;
+    } else if (name === "") {
+      message = `Unexpected macro close ":::" without matching open (pushed as literal text)`;
+    } else if (name.endsWith("-end")) {
+      message = `Unexpected ":::${name}" without matching ":::${name.slice(0, -4)}" (pushed as literal text)`;
+    } else {
+      message = `Unclosed or unsupported macro ":::${name}" starting at line ${lineNum} (pushed as literal text)`;
+    }
+    issues.push({ severity: "error", code: "MACRO_UNCLOSED", message, file: filePath, line: lineNum });
   }
 
   return issues;

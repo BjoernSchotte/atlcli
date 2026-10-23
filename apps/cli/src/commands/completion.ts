@@ -15,6 +15,7 @@ import {
   PluginCommandInfo,
 } from "../completions.js";
 import { getPluginRegistry } from "../plugins/loader.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleCompletion(
   args: string[],
@@ -65,12 +66,12 @@ export async function handleCompletion(
       return;
 
     default:
-      output(completionHelp(), opts);
+      unknownSubcommand(sub, completionHelp(), opts);
       return;
   }
 }
 
-function completionHelp(): string {
+export function completionHelp(): string {
   return `atlcli completion <shell>
 
 Generate shell completion scripts for tab completion.

@@ -338,11 +338,14 @@ describe("unzipDocx — archive budget (spec 011)", () => {
     for (let i = 0; i < chunk.length; i += 64) {
       crypto.getRandomValues(chunk.subarray(i, Math.min(i + 2, chunk.length)));
     }
-    const bytes = buildArchive({
-      "word/media/a.bin": chunk,
-      "word/media/b.bin": chunk,
-      "word/media/c.bin": chunk,
-    });
+    // Deflate the 50 MiB once and store that stream three times: PizZip reuses
+    // a loaded member's compressed data verbatim. Deflating it per member in
+    // pure JS was the test's whole cost (6.5 s on a loaded CI runner).
+    const member = (new PizZip(buildArchive({ m: chunk }, { docx: false })).files.m as unknown as { _data: unknown })._data;
+    const zip = new PizZip();
+    zip.file("word/document.xml", "<w:document/>");
+    for (const name of ["a", "b", "c"]) (zip.file as (n: string, d: unknown) => unknown)(`word/media/${name}.bin`, member);
+    const bytes = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
     expect(bytes.byteLength).toBeLessThan(MAX_TEMPLATE_BYTES);
     expectDocxError(() => unzipDocx(bytes), "uncompressed-too-large");
   });

@@ -5,7 +5,7 @@ description: "Fields - atlcli documentation"
 
 # Fields
 
-Work with Jira custom and system fields.
+Work with Jira custom and system fields. All field commands print JSON, pretty-printed even without `--json`.
 
 ## Prerequisites
 
@@ -24,18 +24,22 @@ Options:
 |------|-------------|
 | `--custom` | Show only custom fields |
 | `--system` | Show only system fields |
-| `--type` | Filter by field type |
+| `--type` | Filter by schema type (`string`, `number`, `array`, …) |
 
 Output:
 
+```json
+{
+  "schemaVersion": "1",
+  "fields": [
+    { "id": "summary", "name": "Summary", "type": "string", "custom": false, "searchable": true, "clauseNames": ["summary"] },
+    { "id": "customfield_10016", "name": "Story Points", "type": "number", "custom": true, "searchable": true, "clauseNames": ["cf[10016]", "Story Points"] }
+  ],
+  "total": 2
+}
 ```
-ID                    NAME                TYPE        CUSTOM
-summary               Summary             string      No
-priority              Priority            priority    No
-customfield_10001     Story Points        number      Yes
-customfield_10002     Sprint              array       Yes
-customfield_10003     Epic Link           any         Yes
-```
+
+`type` is the field's schema type, or `unknown` when Jira reports none.
 
 ## Search Fields
 
@@ -45,12 +49,17 @@ Search for fields by name:
 atlcli jira field search "story"
 ```
 
-Output:
+The query matches the field name, ID or JQL clause names, case-insensitively. Output:
 
-```
-ID                    NAME                TYPE
-customfield_10001     Story Points        number
-customfield_10016     Story point est.    number
+```json
+{
+  "schemaVersion": "1",
+  "query": "story",
+  "fields": [
+    { "id": "customfield_10016", "name": "Story Points", "type": "number", "custom": true, "clauseNames": ["cf[10016]", "Story Points"] }
+  ],
+  "total": 1
+}
 ```
 
 This is useful for finding the field ID for custom fields like story points.
@@ -60,17 +69,27 @@ This is useful for finding the field ID for custom fields like story points.
 Get details about a specific field:
 
 ```bash
-atlcli jira field get --id customfield_10001
+atlcli jira field get customfield_10016
 ```
 
-Output:
+The ID works positionally or with `--id`. Output:
 
-```
-Field: Story Points
-ID:    customfield_10001
-Type:  number
-Custom: Yes
-Schema: { "type": "number", "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float" }
+```json
+{
+  "schemaVersion": "1",
+  "field": {
+    "id": "customfield_10016",
+    "key": "customfield_10016",
+    "name": "Story Points",
+    "custom": true,
+    "type": "number",
+    "customType": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+    "searchable": true,
+    "orderable": true,
+    "navigable": true,
+    "clauseNames": ["cf[10016]", "Story Points"]
+  }
+}
 ```
 
 ## Field Options
@@ -78,17 +97,24 @@ Schema: { "type": "number", "custom": "com.atlassian.jira.plugin.system.customfi
 For select, multi-select, and cascading select fields, list available options:
 
 ```bash
-atlcli jira field options --id customfield_10001
+atlcli jira field options customfield_10077
 ```
 
 Output:
 
+```json
+{
+  "schemaVersion": "1",
+  "field": { "id": "customfield_10077", "name": "Category" },
+  "options": [
+    { "id": "10001", "value": "Feature", "disabled": false },
+    { "id": "10002", "value": "Bug", "disabled": false }
+  ],
+  "total": 2
+}
 ```
-ID       VALUE
-10001    Option A
-10002    Option B
-10003    Option C
-```
+
+Only custom fields have options. For a field without options, `options` is empty and `message` says why. Reading them needs Jira admin permission; without it the command fails with `ATLCLI_ERR_FORBIDDEN` and exit code 1, so an empty `options` list always means the field has none.
 
 ## Using Fields in Issues
 
@@ -137,30 +163,6 @@ atlcli jira search --jql "'Story Points' > 3"
 Custom field IDs differ between Jira instances. Use `atlcli jira field search` to find the correct ID for your instance.
 
 :::
-
-## JSON Output
-
-```bash
-atlcli jira field list --json
-```
-
-```json
-{
-  "schemaVersion": "1",
-  "fields": [
-    {
-      "id": "customfield_10001",
-      "name": "Story Points",
-      "type": "number",
-      "custom": true,
-      "schema": {
-        "type": "number",
-        "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float"
-      }
-    }
-  ]
-}
-```
 
 ## Related Topics
 

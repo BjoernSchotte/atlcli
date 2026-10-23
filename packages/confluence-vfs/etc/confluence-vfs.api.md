@@ -460,7 +460,7 @@ export declare function renderComments(node: TreeNode, comments: PageComments): 
 export declare function renderFrontmatter(frontmatter: VfsFrontmatter): string;
 
 // export: renderPageMarkdown
-export declare function renderPageMarkdown(node: TreeNode, storage: string, instanceUrl: string, labels?: string[]): string;
+export declare function renderPageMarkdown(node: TreeNode, storage: string, instanceUrl: string, labels?: string[], mentionNames?: ReadonlyMap<string, string>): string;
 
 // export: RESERVED_NAMES
 export declare const RESERVED_NAMES: Set<string>;
@@ -723,6 +723,9 @@ export interface VfsClient {
         displayName: string;
         email?: string;
     }>;
+    mentionNames?(storages: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string, options?: {
         signal?: AbortSignal;
@@ -1169,6 +1172,7 @@ export declare class FakeConfluenceClient implements VfsClient {
     private childrenOf;
     private toChild;
     getInstanceUrl(): string;
+    mentionNames?: (storages: readonly string[]) => Promise<Map<string, string>>;
     getCurrentUser(): Promise<{
         accountId: string;
         displayName: string;

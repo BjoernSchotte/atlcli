@@ -310,6 +310,9 @@ export class FakeConfluenceClient implements VfsClient {
     return this.instanceUrl;
   }
 
+  /** Unset by default, like a client without user lookups; tests assign one. */
+  mentionNames?: (storages: readonly string[]) => Promise<Map<string, string>>;
+
   async getCurrentUser(): Promise<{ accountId: string; displayName: string; email?: string }> {
     this.record("getCurrentUser", "");
     return { accountId: this.accountId, displayName: this.displayName };

@@ -12,7 +12,7 @@ description: "atlcli digest: what changed since your last look and what waits on
 - An authenticated profile with Jira and Confluence access (`atlcli auth login`)
 - **Jira permission**: Browse Projects for the issues you work on
 - **Confluence permission**: View for the spaces you work in
-- For the sprint section: a scrum board, set with `--board` or `defaults.board` (kanban boards have no sprints and are skipped)
+- For the sprint section: a scrum board, set with `--board` or `global.board` (kanban boards have no sprints and are skipped)
 - For the project overview: Jira project keys, set with `--project` or `digest.projects`
 - For `--summarize`: `ANTHROPIC_API_KEY` in the environment
 
@@ -55,14 +55,17 @@ description: "atlcli digest: what changed since your last look and what waits on
 | Jira | Sprint | Each active sprint of the board: progress bar, to do / in progress / done counts, your open issues, days left |
 | Jira project | Completed · Created · Changed | Per project from `--project` or `digest.projects`: issues moved into a done status, issues created, and issues changed in the window, by anyone, with assignee and change lines |
 | Jira | Audit errors | Error-level findings of the [audit rules](jira/audit-rules.md) for those projects; only when the audit feature is enabled |
+| Jira | Team | Per person in those projects: open issues, in progress, overdue, no update for N days, and the oldest issue in progress. Not limited to the window |
 | Confluence | Mentions | Pages and comments that mention you |
 | Confluence | Comments on your pages | New comments on your 50 most recently modified pages |
 | Confluence | Open inline comments | Unresolved inline comments on your 10 most recently modified pages (`--max-pages`), oldest first. These are not limited to the window: they wait on you. |
 | Confluence | Your pages edited | Your pages that someone else edited |
 | Confluence | Watched pages changed | Pages and blog posts you watch that someone else edited |
-| Confluence | Recently changed in space | Pages changed in `--space` (or `defaults.space`); only when a space is set |
+| Confluence | Recently changed in space | Pages changed in `--space` (or `global.space`); only when a space is set |
 
 A page that matches several sections appears once, in the first one in this order: mentions, your pages, watched, recent. In `--json` output its entry lists the other sections in `alsoIn`.
+
+Backlog reordering (`Rank`) is not a change line; an issue whose only change is its rank is not listed.
 
 Your own edits and comments are left out. Pass `--include-own` to keep them; your own Jira changes are then marked `(you)`.
 
@@ -74,8 +77,8 @@ Empty sections are not printed. If nothing changed, the digest says `Nothing new
 |---|---|---|---|
 | `--since` | `lastrun`, `<n>m`, `<n>h`, `<n>d`, `<n>w`, `today`, `yesterday`, ISO date or datetime | `lastrun` | Start of the window. `m` means **minutes** here (in `jira worklog` it means months). `today` and `yesterday` start at local midnight. At most 30 days back. |
 | `--only` | `jira` or `confluence` | both | Run one product only |
-| `--space` | space key(s), comma-separated | `defaults.space` | Enables "Recently changed in space" |
-| `--board` | board id | `defaults.board` | Enables the sprint section (scrum boards only) |
+| `--space` | space key(s), comma-separated | `global.space` | Enables "Recently changed in space" |
+| `--board` | board id | `global.board` | Enables the sprint section (scrum boards only) |
 | `--project` | project key(s), comma-separated | `digest.projects` | Enables the project overview |
 | `--status-map` | `"<status>=todo\|wip\|done,…"` | `flow.statusMap` | Override status categories, see [Status mapping](jira/flow-metrics.md#status-mapping) |
 | `--limit` | integer ≥ 1 | `10` | Items per section; a cut section is listed under warnings |
@@ -112,7 +115,7 @@ The overview reads up to 200 changed issues across all projects in one search, p
 
 ### Audit errors
 
-With the audit feature enabled (`atlcli flag set audit true --global`), the digest also runs the [audit rules](jira/audit-rules.md) for its projects and lists what is still at `error` after the baseline. It uses the same rules file and baseline as `atlcli audit jira`. It runs only the rules that can reach `error`, and leaves out `flow/stuck-wip` and `flow/status-aging`, which read the done issues and their history, unless the rule sets `digest: true`.
+With the audit feature enabled (`atlcli flag set audit true --global`), the digest also runs the [audit rules](jira/audit-rules.md) for its projects and lists what is still at `error` after the baseline. It uses the same baseline as `atlcli audit jira` and the same rules file, except one in the current directory's `.atlcli/`: the digest reads only the profile and global rules files. It runs only the rules that can reach `error`, and leaves out `flow/stuck-wip` and `flow/status-aging`, which read the done issues and their history, unless the rule sets `digest: true`.
 
 The section reads up to 300 open issues across the projects; beyond that, a warning says the list is a lower bound. With the default rules, the section costs a few requests: one search for open issues, one for resolved issues outside Done, one bulk changelog request, and one field list for the Flagged field.
 
@@ -122,6 +125,28 @@ Jira
     GROW-60  [In Progress]  HR marketing — hygiene/overdue: Due 2025-12-31, 294 d overdue.
     GROW-1343  [In Progress]  Meetups — hygiene/stale: Not updated for 157 d.
 ```
+
+### Team
+
+With projects (`--project` or `digest.projects`), the digest lists everyone with open issues in them, busiest first, and the unassigned issues last:
+
+```
+Jira
+  Team (3)
+    Thomas Schindler  open 4 · in progress 4 · no update 30d+ 4 · oldest in progress 469d
+    Roman Binshtok  open 2 · in progress 0 · no update 30d+ 2
+    (unassigned)  open 56 · in progress 7 · no update 30d+ 55 · oldest in progress 486d
+```
+
+| Figure | Meaning |
+|---|---|
+| open | Issues not in a done status, after `flow.statusMap` |
+| in progress | In an In Progress status, after the map |
+| overdue | Due date before today |
+| no update Nd+ | Not updated for N days or more: the first value of `audit.jira.staleDays` (default 30) |
+| oldest in progress | Days since the longest-waiting issue in progress was last updated |
+
+The section costs one search (up to 300 open issues across the projects; beyond that, a warning says the counts are a lower bound). `--summarize` sends these names and counts too.
 
 ## The last-run marker
 

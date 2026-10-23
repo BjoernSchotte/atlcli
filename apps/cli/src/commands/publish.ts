@@ -67,6 +67,7 @@ import {
   STARLIGHT_PUBLISHING_EXPERIENCE_V1,
 } from "@atlcli/web-publish-starlight";
 import { visitExportBlocksV1 } from "@atlcli/export-blocks";
+import { assertCliAuthSupported } from "./session-guard.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -683,6 +684,8 @@ export async function handlePublish(args: string[], flags: Flags, opts: OutputOp
     return;
   }
   const state = await loadPublishProject(flags);
+  // Operations that read Confluence refuse a browser-only `session` profile up front, like every other command (#308).
+  if (operation === "plan" || operation === "refresh" || operation === "run") assertCliAuthSupported(await resolveProfile(flags), opts);
   let result: unknown;
   switch (operation) {
     case "plan": {

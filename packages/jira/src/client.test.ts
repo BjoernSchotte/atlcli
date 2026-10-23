@@ -889,6 +889,30 @@ describe("JiraClient.getChangelogs", () => {
   });
 });
 
+describe("JiraClient.getAllSprintIssues", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("pages past the first 100 issues", async () => {
+    // Regression: sprint report and analytics read one page of 200 and dropped the rest.
+    const starts: string[] = [];
+    globalThis.fetch = mock((url: string) => {
+      const startAt = Number(new URL(url).searchParams.get("startAt"));
+      starts.push(String(startAt));
+      const count = Math.max(0, Math.min(100, 250 - startAt));
+      const issues = Array.from({ length: count }, (_, i) => ({ id: String(startAt + i), key: `P-${startAt + i}`, fields: {} }));
+      return Promise.resolve(Response.json({ startAt, maxResults: 100, total: 250, issues }));
+    }) as unknown as typeof fetch;
+
+    const issues = await new JiraClient(mockProfile).getAllSprintIssues(7, { fields: ["status"] });
+
+    expect(issues).toHaveLength(250);
+    expect(issues.at(-1)?.key).toBe("P-249");
+    expect(starts).toEqual(["0", "100", "200"]);
+  });
+});
+
 describe("JiraClient.getBoardFilterJql", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;

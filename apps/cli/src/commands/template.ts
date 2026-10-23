@@ -44,6 +44,8 @@ import {
   type ImportOptions,
 } from "@atlcli/core";
 import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence/internal";
+import { unknownSubcommand } from "./unknown-subcommand.js";
+import { checkTemplateRender } from "./template-render-check.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -102,7 +104,7 @@ export async function handleTemplate(
       await handleUpdate(rest, flags, opts);
       return;
     default:
-      output(templateHelp(), opts);
+      unknownSubcommand(sub, templateHelp(), opts);
       return;
   }
 }
@@ -1062,6 +1064,7 @@ async function handleRender(
       variables,
       builtins,
     });
+    checkTemplateRender(result, opts);
 
     if (opts.json) {
       output({
@@ -1140,7 +1143,7 @@ async function handleInit(
     }
 
     // Convert storage format to markdown
-    content = storageToMarkdown(page.storage);
+    content = storageToMarkdown(page.storage, { mentionNames: await client.mentionNames([page.storage]) });
     sourceDescription = `page: ${page.title} (${page.id})`;
   }
 
@@ -1755,7 +1758,7 @@ async function handleUpdate(
 function templateHelp(): string {
   return `atlcli wiki template <command>
 
-Template management with hierarchical storage (global > profile > space).
+Template management with hierarchical storage; the most specific level wins (space > profile > global).
 
 Commands:
   list        List available templates

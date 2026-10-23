@@ -96,8 +96,8 @@ The issue history shows which of two cases applies, and the finding says so:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `--project` | project key | `defaults.project` | Select the project's issues |
-| `--board` | board id | `defaults.board` | Select the issues of the board's saved filter |
+| `--project` | project key | `global.project` | Select the project's issues |
+| `--board` | board id | `global.board` | Select the issues of the board's saved filter |
 | `--jql` | JQL | — | Any JQL; wins over `--board` and `--project` |
 | `--rules` | file path | first rules file found | Rules file to use, see [Audit Rules](audit-rules.md#where-the-rules-come-from) |
 | `--checks` | comma-separated | all active rules | Only these: rule ids, categories (`workflow`, `flow`, `hygiene`, `custom`), or the older names `stuck-wip`, `unassigned-wip`, `stale`. Turns rules off; never on. |

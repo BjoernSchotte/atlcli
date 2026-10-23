@@ -170,10 +170,11 @@ export async function handlePageTasksToIssues(
   const created: Array<{ index: number; key: string }> = [];
   const failed: Array<{ index: number; error: string }> = [];
   const linkedPage = { id: page.id, title: page.title, url: pageUrl, spaceKey: page.spaceKey };
+  const mentionNames = await confluence.mentionNames([page.storage]);
   for (const entry of plan.filter((e) => e.action === "create")) {
     const task = tasks[entry.index]!;
     try {
-      const key = await createIssueForTask(jira, task, entry, { project: project!, flags, pageTitle: page.title, pageUrl, warn });
+      const key = await createIssueForTask(jira, task, entry, { project: project!, flags, pageTitle: page.title, pageUrl, warn, mentionNames });
       created.push({ index: entry.index, key });
       ledger.issues[key] = { fingerprint: taskFingerprint(task), createdAt: new Date().toISOString() };
       if (ledgerWritable) await confluence.upsertPageProperty(pageId, TASK_LEDGER_KEY, ledger);
@@ -247,10 +248,12 @@ async function createIssueForTask(
     pageTitle: string;
     pageUrl: string;
     warn: (message: string) => void;
+    /** Display names for the task's mentions, so the description names people. */
+    mentionNames?: ReadonlyMap<string, string>;
   }
 ): Promise<string> {
   const title = context.pageTitle.replace(/[\\[\]]/g, "\\$&");
-  const body = storageToMarkdown(task.bodyStorage).trim();
+  const body = storageToMarkdown(task.bodyStorage, { mentionNames: context.mentionNames }).trim();
   const description = `${body}\n\n_Created from [${title}](${context.pageUrl.replace(/[()\s]/g, encodeURIComponent)})_`;
   const labels = getFlags(context.flags, "label");
   const parent = getFlag(context.flags, "parent");

@@ -401,13 +401,17 @@ function convertInline(children: Token[], options: MarkdownToAdfOptions): AdfNod
       case "link_open": {
         const href = String(token.attrGet("href") ?? "");
         // `@[Name](accountId)` parses as "@" + link; it is a mention.
+        // The name may span several tokens: escaped brackets ("Ann \[Ops\]") are `text_special`.
         const previous = out[out.length - 1];
-        if (previous?.type === "text" && previous.text?.endsWith("@") && children[i + 2]?.type === "link_close") {
-          const name = children[i + 1]?.type === "text" ? children[i + 1]!.content : "";
+        let close = i + 1;
+        while (children[close]?.type === "text" || children[close]?.type === "text_special") close++;
+        if (previous?.type === "text" && previous.text?.endsWith("@") && children[close]?.type === "link_close") {
+          const id = safeDecode(href);
+          const name = children.slice(i + 1, close).map((t) => t.content).join("") || id;
           previous.text = previous.text.slice(0, -1);
           if (!previous.text) out.pop();
-          out.push({ type: "mention", attrs: { id: safeDecode(href), text: `@${name}` } });
-          i += 2;
+          out.push({ type: "mention", attrs: { id, text: `@${name}` } });
+          i = close;
           break;
         }
         // Autolinks (`<url>`) and bare /browse/KEY URLs become smart links.
@@ -432,8 +436,14 @@ function convertInline(children: Token[], options: MarkdownToAdfOptions): AdfNod
       }
       case "html_inline": {
         const sentinel = options.sentinels === false ? undefined : decodeSentinel(token.content);
+        const openMark = htmlOpenMark(token.content);
+        const closeMark = HTML_CLOSE_MARK[token.content.trim().toLowerCase()];
         if (sentinel) {
           out.push(sentinel);
+        } else if (openMark) {
+          marks.push(openMark);
+        } else if (closeMark && marks.some((mark) => mark.type === closeMark)) {
+          popMark(closeMark);
         } else {
           options.onWarning?.("Raw inline HTML was kept as plain text.");
           pushText(token.content);
@@ -446,6 +456,23 @@ function convertInline(children: Token[], options: MarkdownToAdfOptions): AdfNod
   }
   return mergeAdjacentText(out);
 }
+
+/** The inline HTML adfToMarkdown writes for marks without a markdown form: `<u>`, `<sub>`, `<sup>`, colour spans. */
+function htmlOpenMark(html: string): AdfMark | undefined {
+  const tag = html.trim();
+  if (/^<u>$/i.test(tag)) return { type: "underline" };
+  const subsup = /^<(sub|sup)>$/i.exec(tag)?.[1];
+  if (subsup) return { type: "subsup", attrs: { type: subsup.toLowerCase() } };
+  const color = /^<span style="color: ?(#[0-9a-fA-F]{3,8});?">$/.exec(tag)?.[1];
+  return color ? { type: "textColor", attrs: { color } } : undefined;
+}
+
+const HTML_CLOSE_MARK: Record<string, string> = {
+  "</u>": "underline",
+  "</sub>": "subsup",
+  "</sup>": "subsup",
+  "</span>": "textColor",
+};
 
 function splitDialect(text: string, options: MarkdownToAdfOptions): AdfNode[] {
   const out: AdfNode[] = [];
@@ -637,7 +664,8 @@ function serializeTable(node: AdfNode, options: AdfToMarkdownOptions): string | 
   return [line(grid[0]!), line(grid[0]!.map(() => "---")), ...grid.slice(1).map(line)].join("\n");
 }
 
-const MARK_ORDER = ["link", "strong", "em", "strike", "code"];
+/** Outermost first; marks without a markdown form are written as the inline HTML htmlOpenMark reads back. */
+const MARK_ORDER = ["link", "textColor", "underline", "subsup", "strong", "em", "strike", "code"];
 
 function serializeInline(nodes: AdfNode[], options: AdfToMarkdownOptions): string {
   return mergeAdjacentText(nodes.map((node) => ({ ...node })))
@@ -698,7 +726,21 @@ function serializeText(text: string, marks: AdfMark[]): string {
   if (!core) return lead + trail;
 
   for (const mark of known) {
+    const attrs = (mark.attrs ?? {}) as Record<string, AdfJsonValue>;
     switch (mark.type) {
+      case "underline":
+        core = `<u>${core}</u>`;
+        break;
+      case "subsup": {
+        const tag = attrs.type === "sub" ? "sub" : "sup";
+        core = `<${tag}>${core}</${tag}>`;
+        break;
+      }
+      case "textColor": {
+        const color = String(attrs.color ?? "");
+        if (/^#[0-9a-fA-F]{3,8}$/.test(color)) core = `<span style="color: ${color}">${core}</span>`;
+        break;
+      }
       case "strike":
         core = `~~${core}~~`;
         break;

@@ -87,20 +87,43 @@ Checks that internal links resolve to existing files:
 
 ### Macro Validation
 
-Checks that macro blocks are properly closed:
+Replays the same macro rules `push` uses, so `check` accepts exactly what
+`push` converts and fails on every `:::` line that `push` would leave on the
+page as literal text:
 
 ```markdown
-::: info
+:::info
 This panel is properly closed.
 :::                                   ✓ Valid
 
-::: warning
+:::section
+:::column
+Left
+:::column-end
+:::section-end                        ✓ Valid (section/column use -end markers)
+
+:::toc-zone minLevel=2
+## Heading
+:::                                   ✓ Valid
+
+:::warning
 This panel is never closed...         ✗ MACRO_UNCLOSED
+
+:::section
+:::column
+Left
+:::
+:::                                   ✗ MACRO_UNCLOSED (needs :::column-end / :::section-end)
 ```
+
+Lines inside fenced code blocks are ignored. Macros nested inside another
+macro body (for example `:::note` inside `:::info`) are flagged, because the
+outer body is rendered as plain Markdown and the inner `:::` lines would show
+up as text.
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| `MACRO_UNCLOSED` | Error | Macro opened with `:::name` but no closing `:::` |
+| `MACRO_UNCLOSED` | Error | A `:::` line that `push` would not turn into a macro: unclosed, unknown, stray close, or nested |
 
 ### Size Validation
 
