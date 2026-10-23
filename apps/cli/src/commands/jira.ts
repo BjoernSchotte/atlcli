@@ -609,9 +609,13 @@ async function handleIssue(
 ): Promise<void> {
   const [sub, positional] = args;
   // `issue get PROJ-1` works like `--key PROJ-1` for the handlers that read only the flag.
+  let keyTaken = false;
   if (positional && /^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(positional) && getFlag(flags, "key") === undefined) {
     flags = { ...flags, key: positional };
+    keyTaken = true;
   }
+  // comment/comments read further positionals (body, subcommand): the key is not one of them.
+  const afterKey = args.slice(keyTaken ? 2 : 1);
   switch (sub) {
     case "get":
       await handleIssueGet(flags, opts);
@@ -638,10 +642,10 @@ async function handleIssue(
       await handleIssueAssign(flags, opts);
       return;
     case "comment":
-      await handleIssueCommentAdd(args.slice(1), flags, opts);
+      await handleIssueCommentAdd(afterKey, flags, opts);
       return;
     case "comments":
-      await handleIssueComments(args.slice(1), flags, opts);
+      await handleIssueComments(afterKey, flags, opts);
       return;
     case "history":
       await handleIssueHistory(flags, opts);

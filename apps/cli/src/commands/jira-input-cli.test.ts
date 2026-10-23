@@ -89,6 +89,7 @@ beforeAll(async () => {
         return new Response(null, { status: 201 });
       }
       if (path === "/rest/api/3/issue/AB-1/assignee") return new Response(null, { status: 204 });
+      if (path === "/rest/api/3/issue/AB-1/comment" && req.method === "GET") return Response.json({ comments: [], total: 0 });
       if (path === "/rest/api/3/issue/AB-1/comment") return Response.json({ id: "9", body: body.body });
       if (path === "/rest/api/3/issue/AB-1/remotelink" && req.method === "POST") return Response.json({ id: 77, self: "" });
       if (path === "/rest/api/3/issue/AB-1/remotelink/77") return new Response(null, { status: 204 });
@@ -286,6 +287,15 @@ describe("paging and fixes from the docs audit", () => {
         { type: "text", text: "spec", marks: [{ type: "strong" }] },
       ]);
     }
+  });
+
+  test("issue comment/comments take the key positionally without it landing in the body", async () => {
+    await run(["issue", "comment", "AB-1", "Done", "--json"]);
+    expect(sent("/rest/api/3/issue/AB-1/comment").body.content[0].content).toEqual([{ type: "text", text: "Done" }]);
+    requests = [];
+    const list = await run(["issue", "comments", "AB-1", "list", "--json"]);
+    expect(list.exitCode, list.stderr).toBe(0);
+    expect(requests.some((r) => r.method === "GET" && r.path === "/rest/api/3/issue/AB-1/comment")).toBe(true);
   });
 
   test("bulk link-page --dry-run says which comment would be added (#290)", async () => {
