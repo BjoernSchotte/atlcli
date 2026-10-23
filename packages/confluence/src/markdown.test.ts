@@ -106,6 +106,9 @@ describe("markdownToStorage", () => {
   test("mention round trip: userkey ids, unnamed mentions without a body", () => {
     expect(markdownToStorage("@[Server User](userkey:8a7f)")).toContain('<ac:link><ri:user ri:userkey="8a7f" /><ac:plain-text-link-body><![CDATA[Server User]]>');
     expect(markdownToStorage("@[acc-1](acc-1)")).toContain('<ac:link><ri:user ri:account-id="acc-1" /></ac:link>');
+    const bracketed = storageToMarkdown('<p><ac:link><ri:user ri:account-id="acc-1" /><ac:plain-text-link-body><![CDATA[Max Muster [extern]]]></ac:plain-text-link-body></ac:link></p>');
+    expect(bracketed).toContain("@[Max Muster \\[extern\\]](acc-1)");
+    expect(markdownToStorage(bracketed)).toContain('<ri:user ri:account-id="acc-1" /><ac:plain-text-link-body><![CDATA[Max Muster [extern]]]>');
     const storage = '<p>x <ac:link><ri:user ri:userkey="8a7f" /></ac:link></p>';
     expect(markdownToStorage(storageToMarkdown(storage))).toContain('<ri:user ri:userkey="8a7f" />');
   });

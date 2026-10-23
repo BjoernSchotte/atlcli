@@ -401,13 +401,17 @@ function convertInline(children: Token[], options: MarkdownToAdfOptions): AdfNod
       case "link_open": {
         const href = String(token.attrGet("href") ?? "");
         // `@[Name](accountId)` parses as "@" + link; it is a mention.
+        // The name may span several tokens: escaped brackets ("Ann \[Ops\]") are `text_special`.
         const previous = out[out.length - 1];
-        if (previous?.type === "text" && previous.text?.endsWith("@") && children[i + 2]?.type === "link_close") {
-          const name = children[i + 1]?.type === "text" ? children[i + 1]!.content : "";
+        let close = i + 1;
+        while (children[close]?.type === "text" || children[close]?.type === "text_special") close++;
+        if (previous?.type === "text" && previous.text?.endsWith("@") && children[close]?.type === "link_close") {
+          const id = safeDecode(href);
+          const name = children.slice(i + 1, close).map((t) => t.content).join("") || id;
           previous.text = previous.text.slice(0, -1);
           if (!previous.text) out.pop();
-          out.push({ type: "mention", attrs: { id: safeDecode(href), text: `@${name}` } });
-          i += 2;
+          out.push({ type: "mention", attrs: { id, text: `@${name}` } });
+          i = close;
           break;
         }
         // Autolinks (`<url>`) and bare /browse/KEY URLs become smart links.

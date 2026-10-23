@@ -250,7 +250,9 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
   });
 
   // Handle user mentions: @[Display Name](account-id)
-  processed = processed.replace(MENTION_REGEX, (_, displayName: string, id: string) => {
+  processed = processed.replace(MENTION_REGEX, (_, escapedName: string, id: string) => {
+    // `\[` and `\]` let a name carry brackets ("Max Muster [extern]"); an empty name is unnamed.
+    const displayName = escapedName.replace(/\\(.)/g, "$1") || id;
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
     const user = id.startsWith(USERKEY_MENTION_PREFIX)
       ? `ri:userkey="${escapeHtml(id.slice(USERKEY_MENTION_PREFIX.length))}"`
@@ -1250,7 +1252,7 @@ const EMOTICON_REGEX = /:([a-z0-9_][-a-z0-9_]*|[+-]1):/gi;
  * Regex for user mentions: @[Display Name](account-id)
  * The account-id is typically in format like "123456:abcd-efgh-ijkl" or "admin"
  */
-const MENTION_REGEX = /@\[([^\]]+)\]\(([^)]+)\)/g;
+const MENTION_REGEX = /@\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
 
 /**
  * Regex for colored text: {color:red}text{color} or {color:#FF0000}text{color}
@@ -2601,7 +2603,7 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const accountId = (node as any).getAttribute?.("data-account-id") || "";
       const displayName = (node as any).getAttribute?.("data-display-name") || accountId;
       if (!accountId) return "";
-      return `@[${displayName}](${accountId})`;
+      return `@[${displayName.replace(/[\\[\]]/g, "\\$&")}](${accountId})`;
     },
   });
 

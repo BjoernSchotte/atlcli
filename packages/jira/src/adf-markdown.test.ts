@@ -224,6 +224,14 @@ describe("adfToMarkdown", () => {
     expect(adfToMarkdown("plain DC text")).toBe("plain DC text");
   });
 
+  test("a mention whose name has brackets survives the round trip", () => {
+    const adf = doc({ type: "paragraph", content: [{ type: "mention", attrs: { id: "acc-1", text: "@Max Muster [extern]" } }] });
+    const md = adfToMarkdown(adf);
+    expect(md).toBe("@[Max Muster \\[extern\\]](acc-1)");
+    expect(markdownToAdf(md).content[0]).toEqual({ type: "paragraph", content: [{ type: "mention", attrs: { id: "acc-1", text: "@Max Muster [extern]" } }] });
+    expect(markdownToAdf("@[](acc-1)").content[0]).toEqual({ type: "paragraph", content: [{ type: "mention", attrs: { id: "acc-1", text: "@acc-1" } }] });
+  });
+
   test("mention without text falls back to the id", () => {
     expect(adfToMarkdown(doc({ type: "paragraph", content: [{ type: "mention", attrs: { id: "u1" } }] }))).toBe("@[u1](u1)");
   });

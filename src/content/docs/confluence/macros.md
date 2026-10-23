@@ -329,6 +329,12 @@ Mention users by account ID:
 
 The account ID can be found in Confluence user profiles or via the API.
 
+Escape square brackets in a name with a backslash. atlcli writes names that way when it pulls:
+
+```markdown
+@[Max Muster \[extern\]](557058:abcd-efgh-ijkl)
+```
+
 On Server and Data Center, mentions point at a user key. atlcli writes it with a `userkey:` prefix:
 
 ```markdown
