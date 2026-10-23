@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/react",
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true
+  },
+  "include": ["index.d.ts", "src/**/*.ts", "src/**/*.tsx", "../confluence/src/types.d.ts"],
+  "exclude": []
+}

@@ -36,6 +36,7 @@ import {
   statusScopeJql,
 } from "@atlcli/jira";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { stripOrderBy } from "@atlcli/jira";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -61,10 +62,8 @@ export function resolveIssueSelection(
   return undefined;
 }
 
-/** Drop a trailing `ORDER BY …` so the JQL can be wrapped in parentheses. */
-export function stripOrderBy(jql: string): string {
-  return jql.replace(/\s*\bORDER\s+BY\b[^"']*$/i, "").trim();
-}
+// Drop a trailing `ORDER BY …` so the JQL can be wrapped in parentheses.
+export { stripOrderBy };
 
 /** `90d`, `12w` or a bare number of days. */
 export function parseWindowDays(value: string | undefined, fallback: number): number | undefined {

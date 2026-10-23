@@ -5,14 +5,12 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "strict": true,
-    "skipLibCheck": true,
     "noEmit": true,
     "types": ["bun-types"],
     "customConditions": ["development"]
   },
   "include": [
     "apps/**/src/**/*.ts",
-    "apps/cli/src/**/*.tsx",
     "packages/**/src/**/*.ts",
     "packages/**/src/**/*.tsx",
     "scripts/**/*.ts"
@@ -21,6 +19,7 @@
     "src",
     "astro.config.mjs",
     "apps/browser-export-harness",
+    "packages/tui",
     "packages/web-publish-astro/fixtures/**",
     "packages/export-blocks-astro/fixtures/**"
   ]

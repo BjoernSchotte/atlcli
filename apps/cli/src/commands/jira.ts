@@ -29,6 +29,11 @@ import {
   replaceText,
   resolveColumns,
   resolveUser,
+  findTransition,
+  SearchInputError,
+  searchInputFromFlags,
+  searchJql,
+  pageAgile,
 } from "./jira-input.js";
 import {
   ERROR_CODES,
@@ -226,24 +231,7 @@ type ClientWithDefaults = {
 };
 
 
-/**
- * Up to `limit` values of a paged Agile list (`startAt`): Jira caps each page
- * (50 for boards and sprints), whatever `maxResults` asks for.
- */
-export async function pageAgile<T>(
-  fetchPage: (startAt: number, maxResults: number) => Promise<{ values: T[]; total?: number; isLast?: boolean }>,
-  limit = Infinity
-): Promise<{ values: T[]; total?: number }> {
-  const values: T[] = [];
-  let total: number | undefined;
-  while (values.length < limit) {
-    const page = await fetchPage(values.length, Math.min(50, limit - values.length));
-    values.push(...page.values);
-    total = page.total;
-    if (page.values.length === 0 || page.isLast || (total !== undefined && values.length >= total)) break;
-  }
-  return { values: values.slice(0, limit), total };
-}
+export { pageAgile };
 
 /** The board's `count` most recently closed sprints, oldest first. */
 async function recentClosedSprints(client: JiraClient, boardId: number, count: number) {
@@ -882,9 +870,7 @@ async function handleIssueTransition(
 
   // Find transition by name
   const transitions = await client.getTransitions(key);
-  const transition = transitions.find(
-    (t: JiraTransition) => t.name.toLowerCase() === to.toLowerCase() || t.id === to
-  );
+  const transition = findTransition(transitions, to);
 
   if (!transition) {
     const available = transitions.map((t: JiraTransition) => t.name).join(", ");
@@ -4813,42 +4799,13 @@ async function handleSearch(
   const { client, defaults } = await getClient(flags, opts, true);
 
   // Raw JQL (args or --jql) and the filter flags are ANDed.
-  const raw = args.join(" ") || getFlag(flags, "jql");
-  const dates: string[] = [];
-  for (const [flag, field, clause] of [
-    ["created", "created", jqlSince],
-    ["updated", "updated", jqlSince],
-    ["created-before", "created", jqlBefore],
-    ["updated-before", "updated", jqlBefore],
-  ] as const) {
-    const value = getFlag(flags, flag);
-    if (value === undefined) continue;
-    const jql = clause(field, value);
-    if (!jql) fail(opts, 1, ERROR_CODES.USAGE, `--${flag} takes -7d (h, m, w too), today, week, month, year or YYYY-MM-DD.`);
-    dates.push(jql);
+  let jql: string;
+  try {
+    jql = await searchJql(client, searchInputFromFlags(flags, args.join(" ") || undefined), defaults.project);
+  } catch (err) {
+    if (err instanceof SearchInputError) fail(opts, 1, ERROR_CODES.USAGE, err.message);
+    throw err;
   }
-  const assigneeFlag = getFlag(flags, "assignee");
-  const { negate: notAssignee, value: assigneeValue } = splitNegation(assigneeFlag ?? "");
-  let assignee: string | undefined;
-  if (assigneeValue === "me") assignee = "currentUser()";
-  else if (assigneeValue) {
-    const ref = await userFlag(client, assigneeValue, opts);
-    assignee = ref === null ? "EMPTY" : JSON.stringify("accountId" in ref ? ref.accountId : ref.name);
-  }
-  const jql = buildSearchJql({
-    jql: raw,
-    // The default project only applies to a search built from flags.
-    project: getFlag(flags, "project") ?? (raw ? undefined : defaults.project),
-    assignee,
-    notAssignee,
-    status: await statusFlag(client, flags),
-    type: getFlag(flags, "type"),
-    label: getFlag(flags, "label"),
-    sprint: getFlag(flags, "sprint"),
-    watching: hasFlag(flags, "watching"),
-    history: hasFlag(flags, "history"),
-    dates,
-  });
 
   const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
   await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
