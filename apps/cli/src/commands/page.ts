@@ -819,7 +819,10 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
             { classification: "review-storage-unavailable" },
           );
         }
-        const convOpts = await getConversionOptions(flags, opts);
+        const convOpts = {
+          ...(await getConversionOptions(flags, opts)),
+          mentionNames: await client.mentionNames([baselineStorage, targetStorage]),
+        };
         const textDiff = generateDiff(
           storageToMarkdown(baselineStorage, convOpts),
           storageToMarkdown(targetStorage, convOpts),
@@ -921,8 +924,9 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
     oldPage = await client.getPageAtVersion(id, compareVersion);
   }
 
-  const oldMarkdown = storageToMarkdown(oldPage.storage, convOpts);
-  const targetMarkdown = storageToMarkdown(targetPage.storage, convOpts);
+  const pageConvOpts = { ...convOpts, mentionNames: await client.mentionNames([oldPage.storage, targetPage.storage]) };
+  const oldMarkdown = storageToMarkdown(oldPage.storage, pageConvOpts);
+  const targetMarkdown = storageToMarkdown(targetPage.storage, pageConvOpts);
 
   const diff = generateDiff(oldMarkdown, targetMarkdown, {
     oldLabel: `Version ${compareVersion}`,

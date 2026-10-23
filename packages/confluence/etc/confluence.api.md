@@ -829,6 +829,7 @@ export declare class ConfluenceClient {
     private authHeader;
     private useSession;
     private maxRetries;
+    private mentionNameCache;
     private baseDelayMs;
     private tlsOptions;
     private guardTransport;
@@ -1212,6 +1213,10 @@ export declare class ConfluenceClient {
     getPageOwner(pageId: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceUser | null>;
+    mentionNames(storages: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    private lookupMentionName;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
         signal?: AbortSignal;
@@ -1395,6 +1400,7 @@ export interface ConversionOptions {
     baseUrl?: string;
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
+    mentionNames?: ReadonlyMap<string, string>;
 }
 
 // export: createAdfAnnotationResolver
@@ -4264,6 +4270,7 @@ export declare class ConfluenceClient {
     private authHeader;
     private useSession;
     private maxRetries;
+    private mentionNameCache;
     private baseDelayMs;
     private tlsOptions;
     private guardTransport;
@@ -4647,6 +4654,10 @@ export declare class ConfluenceClient {
     getPageOwner(pageId: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceUser | null>;
+    mentionNames(storages: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    private lookupMentionName;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
         signal?: AbortSignal;
@@ -4830,6 +4841,7 @@ export interface ConversionOptions {
     baseUrl?: string;
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
+    mentionNames?: ReadonlyMap<string, string>;
 }
 
 // export: createAdfAnnotationResolver
@@ -7699,6 +7711,7 @@ export declare class ConfluenceClient {
     private authHeader;
     private useSession;
     private maxRetries;
+    private mentionNameCache;
     private baseDelayMs;
     private tlsOptions;
     private guardTransport;
@@ -8082,6 +8095,10 @@ export declare class ConfluenceClient {
     getPageOwner(pageId: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceUser | null>;
+    mentionNames(storages: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    private lookupMentionName;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
         signal?: AbortSignal;
@@ -8265,6 +8282,7 @@ export interface ConversionOptions {
     baseUrl?: string;
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
+    mentionNames?: ReadonlyMap<string, string>;
 }
 
 // export: createAdfAnnotationResolver
@@ -10828,6 +10846,7 @@ export declare class ConfluenceClient {
     private authHeader;
     private useSession;
     private maxRetries;
+    private mentionNameCache;
     private baseDelayMs;
     private tlsOptions;
     private guardTransport;
@@ -11211,6 +11230,10 @@ export declare class ConfluenceClient {
     getPageOwner(pageId: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceUser | null>;
+    mentionNames(storages: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    private lookupMentionName;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
         signal?: AbortSignal;
@@ -11410,6 +11433,7 @@ export interface ConversionOptions {
     baseUrl?: string;
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
+    mentionNames?: ReadonlyMap<string, string>;
 }
 
 // export: convertLegacyStateToExport
@@ -14635,6 +14659,7 @@ export declare class ConfluenceClient {
     private authHeader;
     private useSession;
     private maxRetries;
+    private mentionNameCache;
     private baseDelayMs;
     private tlsOptions;
     private guardTransport;
@@ -15018,6 +15043,10 @@ export declare class ConfluenceClient {
     getPageOwner(pageId: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceUser | null>;
+    mentionNames(storages: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    private lookupMentionName;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
         signal?: AbortSignal;
@@ -15201,6 +15230,7 @@ export interface ConversionOptions {
     baseUrl?: string;
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
+    mentionNames?: ReadonlyMap<string, string>;
 }
 
 // export: createAdfAnnotationResolver
@@ -17262,6 +17292,7 @@ export declare class ConfluenceClient {
     private authHeader;
     private useSession;
     private maxRetries;
+    private mentionNameCache;
     private baseDelayMs;
     private tlsOptions;
     private guardTransport;
@@ -17645,6 +17676,10 @@ export declare class ConfluenceClient {
     getPageOwner(pageId: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceUser | null>;
+    mentionNames(storages: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    private lookupMentionName;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
         signal?: AbortSignal;

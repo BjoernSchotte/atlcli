@@ -329,6 +329,14 @@ Mention users by account ID:
 
 The account ID can be found in Confluence user profiles or via the API.
 
+On Server and Data Center, mentions point at a user key. atlcli writes it with a `userkey:` prefix:
+
+```markdown
+@[Jane Roe](userkey:8a7f808a8b1c2d3e)
+```
+
+When you pull or diff a page, atlcli fills in the display name of each mentioned user. Confluence often stores a mention without one, so atlcli looks the user up once per run. If the lookup fails, for example for a deleted user, the mention keeps its ID as the name: `@[557058:abcd-efgh-ijkl](557058:abcd-efgh-ijkl)`. When you push such a mention, atlcli writes it without link text, so Confluence shows the user's current name.
+
 ## Status Macro
 
 Inline status labels:
