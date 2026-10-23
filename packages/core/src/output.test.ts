@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ERROR_CODES, describeError, stripControlChars } from "./utils.js";
+import { ERROR_CODES, describeError, output, stripControlChars } from "./utils.js";
 
 describe("describeError", () => {
   test("an API error's status picks the code: from `status` or from the message", () => {
@@ -21,5 +21,25 @@ describe("stripControlChars", () => {
 
   test("keeps SGR color sequences, drops cursor movement", () => {
     expect(stripControlChars("\u001b[31mred\u001b[0m\u001b[2Ax")).toBe("\u001b[31mred\u001b[0m[2Ax");
+  });
+});
+
+describe("output under --json (#301)", () => {
+  test("text goes to stderr, data to stdout: one JSON document per command", () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const stdout = process.stdout.write;
+    const stderr = process.stderr.write;
+    process.stdout.write = ((chunk: string) => (out.push(chunk), true)) as typeof process.stdout.write;
+    process.stderr.write = ((chunk: string) => (err.push(chunk), true)) as typeof process.stderr.write;
+    try {
+      output("Would delete: x", { json: true });
+      output({ ok: true }, { json: true });
+    } finally {
+      process.stdout.write = stdout;
+      process.stderr.write = stderr;
+    }
+    expect(err).toEqual(["Would delete: x\n"]);
+    expect(JSON.parse(out.join(""))).toEqual({ ok: true });
   });
 });

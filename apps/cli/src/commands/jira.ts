@@ -124,6 +124,7 @@ import {
   toJiraRichText,
   type StatusCategoryResolver,
 } from "@atlcli/jira";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleJira(
   args: string[],
@@ -410,19 +411,6 @@ async function outputIssueList(
  * a missing command now fails with a usage error. In `--json` mode the error
  * object is the only thing written, so stdout stays single-document.
  */
-function unknownSubcommand(
-  sub: string | undefined,
-  help: string,
-  opts: OutputOptions
-): void {
-  if (!sub) {
-    output(help, opts);
-    return;
-  }
-  if (!opts.json) output(help, opts);
-  fail(opts, 1, ERROR_CODES.USAGE, `Unknown subcommand: ${sub}`, { subcommand: sub });
-}
-
 // ============ Me ============
 
 async function handleMe(
@@ -4928,6 +4916,11 @@ function formatIssue(issue: JiraIssue): Record<string, unknown> {
 
 // ============ Export/Import Commands ============
 
+/** Flags other than the global ones, i.e. the user asked for something specific. */
+function hasCommandFlags(flags: Record<string, string | boolean | string[]>): boolean {
+  return Object.keys(flags).some((name) => !["json", "profile", "no-log", "debug", "verbose", "no-color"].includes(name));
+}
+
 async function handleExport(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
@@ -4938,9 +4931,13 @@ async function handleExport(
   const includeComments = !hasFlag(flags, "no-comments");
   const includeAttachments = !hasFlag(flags, "no-attachments");
 
+  // Help only for a bare `jira export`; a missing --jql among other flags is a usage error (#294).
   if (!jql) {
-    output(exportHelp(), opts);
-    return;
+    if (!hasCommandFlags(flags)) {
+      output(exportHelp(), opts);
+      return;
+    }
+    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required for export.");
   }
 
   if (!outputPath) {
@@ -5019,6 +5016,29 @@ async function handleExport(
     outputPath,
   });
 
+  // Failed comment/attachment fetches are in the file (`exportErrors`) and fail the run (#293).
+  const incomplete = exportedIssues.filter((issue) => issue.exportErrors?.length);
+  if (!opts.json) {
+    for (const issue of incomplete) {
+      for (const error of issue.exportErrors!) {
+        process.stderr.write(`Warning: ${issue.key}: ${error.part}${error.filename ? ` ${error.filename}` : ""} not exported: ${error.message}\n`);
+      }
+    }
+  }
+  if (incomplete.length > 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.API,
+      `Exported ${exportedIssues.length} issues to ${outputPath}, but ${incomplete.length} are incomplete: some comments or attachments could not be fetched (see "exportErrors" in the file).`,
+      {
+        exported: exportedIssues.length,
+        outputPath,
+        incomplete: incomplete.map((issue) => ({ key: issue.key, errors: issue.exportErrors })),
+      }
+    );
+  }
+
   if (opts.json) {
     output({
       schemaVersion: "1",
@@ -5046,9 +5066,13 @@ async function handleImport(
   const dryRun = hasFlag(flags, "dry-run");
   const skipAttachments = hasFlag(flags, "skip-attachments");
 
+  // Help only for a bare `jira import`; a missing flag among others is a usage error (#294).
   if (!filePath || !project) {
-    output(importHelp(), opts);
-    return;
+    if (!hasCommandFlags(flags)) {
+      output(importHelp(), opts);
+      return;
+    }
+    fail(opts, 1, ERROR_CODES.USAGE, !filePath ? "--file is required for import." : "--project is required for import (no default project is set).");
   }
 
   // `--map-field "CSV Column=field"` (repeatable) renames columns before mapping.
@@ -6278,16 +6302,11 @@ async function handleFieldOptions(
         opts
       );
     } else if (msg.includes("403") || msg.includes("administrators")) {
-      output(
-        {
-          schemaVersion: "1",
-          field: { id: field.id, name: field.name },
-          options: [],
-          total: 0,
-          message: "Jira admin permission required to access field options.",
-        },
-        opts
-      );
+      // Not an empty list: `options: []` must only ever mean the field has none (#291).
+      fail(opts, 1, ERROR_CODES.FORBIDDEN, "Jira admin permission required to access field options.", {
+        status: 403,
+        field: { id: field.id, name: field.name },
+      });
     } else {
       throw error;
     }

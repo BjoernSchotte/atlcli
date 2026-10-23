@@ -63,7 +63,9 @@ test.each(CASES)("%p prints help and runs nothing", async (args, helpText) => {
   });
   const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   expect(exitCode, stderr).toBe(0);
-  expect(stdout).toContain(helpText);
+  // Under --json the help is text on stderr; stdout carries no extra JSON document (#301).
+  expect(args.includes("--json") ? stderr : stdout).toContain(helpText);
+  if (args.includes("--json")) expect(stdout).toBe("");
   expect(stdout).not.toContain("#compdef");
   expect(requests).toEqual([]);
   expect(await readFile(config, "utf8")).toBe(before);

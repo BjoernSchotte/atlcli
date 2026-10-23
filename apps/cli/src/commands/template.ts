@@ -44,6 +44,7 @@ import {
   type ImportOptions,
 } from "@atlcli/core";
 import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence/internal";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -102,7 +103,7 @@ export async function handleTemplate(
       await handleUpdate(rest, flags, opts);
       return;
     default:
-      output(templateHelp(), opts);
+      unknownSubcommand(sub, templateHelp(), opts);
       return;
   }
 }

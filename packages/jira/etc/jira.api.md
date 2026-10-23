@@ -173,6 +173,14 @@ export interface ExportedIssue {
     fields: Record<string, unknown>;
     comments?: ExportedComment[];
     attachments?: ExportedAttachment[];
+    exportErrors?: ExportFetchError[];
+}
+
+// export: ExportFetchError
+export interface ExportFetchError {
+    part: "comments" | "attachments" | "attachment";
+    filename?: string;
+    message: string;
 }
 
 // export: ExportOptions
@@ -1618,6 +1626,14 @@ export interface ExportedIssue {
     fields: Record<string, unknown>;
     comments?: ExportedComment[];
     attachments?: ExportedAttachment[];
+    exportErrors?: ExportFetchError[];
+}
+
+// export: ExportFetchError
+export interface ExportFetchError {
+    part: "comments" | "attachments" | "attachment";
+    filename?: string;
+    message: string;
 }
 
 // export: ExportOptions
@@ -3590,6 +3606,14 @@ export interface ExportedIssue {
     fields: Record<string, unknown>;
     comments?: ExportedComment[];
     attachments?: ExportedAttachment[];
+    exportErrors?: ExportFetchError[];
+}
+
+// export: ExportFetchError
+export interface ExportFetchError {
+    part: "comments" | "attachments" | "attachment";
+    filename?: string;
+    message: string;
 }
 
 // export: ExportOptions
@@ -5035,6 +5059,14 @@ export interface ExportedIssue {
     fields: Record<string, unknown>;
     comments?: ExportedComment[];
     attachments?: ExportedAttachment[];
+    exportErrors?: ExportFetchError[];
+}
+
+// export: ExportFetchError
+export interface ExportFetchError {
+    part: "comments" | "attachments" | "attachment";
+    filename?: string;
+    message: string;
 }
 
 // export: ExportOptions

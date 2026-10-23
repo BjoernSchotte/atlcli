@@ -43,6 +43,7 @@ import {
   ReportedPdfTemplateCliError,
 } from "./commands/pdf-template.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
+import { unknownSubcommand } from "./commands/unknown-subcommand.js";
 
 const VERSION = getCurrentVersion();
 
@@ -88,7 +89,7 @@ async function main(): Promise<void> {
   // Global version: only treat --version/-v as the root command shortcut.
   // Subcommands such as `wiki page diff --version 3` own their flag value.
   if (versionRequested && !command) {
-    output(versionInfo(), opts);
+    printVersion(opts);
     return;
   }
 
@@ -184,7 +185,7 @@ async function main(): Promise<void> {
         await handleUpdate(rest, parsed.flags, opts);
         break;
       case "version":
-        output(versionInfo(), opts);
+        printVersion(opts);
         break;
       case "release-info":
         output(json ? getReleaseInfo() : releaseInfoText(), opts);
@@ -204,7 +205,7 @@ async function main(): Promise<void> {
         if (pluginCmd) {
           await executePluginCommand(pluginCmd, rest, parsed.flags, opts);
         } else {
-          output(rootHelp(registry), opts);
+          unknownSubcommand(command, rootHelp(registry), opts);
         }
     }
 
@@ -305,7 +306,7 @@ function showCommandHelp(
       handleUpdate(subArgs, helpFlags, opts);
       break;
     case "version":
-      output(versionInfo(), opts);
+      printVersion(opts);
       break;
     default:
       // Check for plugin commands
@@ -466,3 +467,9 @@ await main().catch((err) => {
   else process.stderr.write(`${error.message}\n`);
   process.exitCode = 1;
 });
+
+/** `--version`/`version`: under `--json` a JSON string on stdout, kept for compatibility (release-info.test.ts). */
+function printVersion(opts: { json: boolean }): void {
+  if (opts.json) process.stdout.write(`${JSON.stringify(versionInfo())}\n`);
+  else output(versionInfo(), opts);
+}

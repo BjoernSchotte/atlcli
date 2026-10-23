@@ -592,6 +592,16 @@ export interface ExportedIssue {
   fields: Record<string, unknown>;
   comments?: ExportedComment[];
   attachments?: ExportedAttachment[];
+  /** What could not be fetched; absent when the issue exported completely. */
+  exportErrors?: ExportFetchError[];
+}
+
+/** A comment list, attachment list or single attachment that failed to download. */
+export interface ExportFetchError {
+  part: "comments" | "attachments" | "attachment";
+  /** The attachment's file name, for `part: "attachment"`. */
+  filename?: string;
+  message: string;
 }
 
 /** Full export data structure */

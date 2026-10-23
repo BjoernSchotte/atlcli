@@ -10,6 +10,7 @@ import { handleWikiImport } from "./wiki-import.js";
 import { handleWikiMount } from "./wiki-mount.js";
 import { handleWikiSh } from "./wiki-sh.js";
 import { handleWikiVfs } from "./wiki-vfs.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleWiki(
   args: string[],
@@ -68,7 +69,7 @@ export async function handleWiki(
       await handleWikiVfs(rest, flags, opts);
       return;
     default:
-      output(wikiHelp(), opts);
+      unknownSubcommand(sub, wikiHelp(), opts);
       return;
   }
 }

@@ -528,7 +528,8 @@ export function buildDigest(input: DigestRawInput, opts: { now: Date; includeOwn
       waiting: cap("jira.waiting", (input.jira.waiting ?? []).map((i) => toDigestIssue(i, base))),
       changed: cap("jira.changed", changed),
       sprints,
-      ...(input.jira.projectKeys?.length ? { projects: projectOverviews(input, { since, me, cap }) } : {}),
+      // A failed project fetch is left out, not shown as empty lists (#306); its warning says why.
+      ...(input.jira.projectKeys?.length && input.jira.projectIssues !== undefined ? { projects: projectOverviews(input, { since, me, cap }) } : {}),
       ...(input.jira.audit
         ? {
             audit: cap(
@@ -614,8 +615,12 @@ export function succeededProducts(digest: DigestV1, products: DigestProduct[]): 
 }
 
 /** True when at least one section came back (skipped and failed sections are both absent). */
+/** Configuration carried in `jira`, not a fetched section: it says nothing about success (#306). */
+const JIRA_SETTINGS = new Set(["projectKeys", "staleDays", "resolve"]);
+
 export function anySectionSucceeded(input: Pick<DigestRawInput, "jira" | "confluence">): boolean {
-  return [...Object.values(input.jira), ...Object.values(input.confluence)].some((value) => value !== undefined);
+  const jira = Object.entries(input.jira).filter(([key]) => !JIRA_SETTINGS.has(key)).map(([, value]) => value);
+  return [...jira, ...Object.values(input.confluence)].some((value) => value !== undefined);
 }
 
 // ── marker state ─────────────────────────────────────────────────────────

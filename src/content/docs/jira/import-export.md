@@ -38,6 +38,20 @@ atlcli jira export --jql "project = PROJ" --format json -o issues.json
 
 Exported comments are markdown, so an export can be imported again without losing formatting.
 
+### Incomplete exports
+
+If the comments or attachments of an issue cannot be fetched, for example because of missing permissions, the export still writes the file but fails with exit code 1. Each gap is marked in the file, and a warning names it on stderr:
+
+```json
+{
+  "key": "PROJ-123",
+  "comments": [],
+  "exportErrors": [{ "part": "comments", "message": "Jira API error (403): Forbidden" }]
+}
+```
+
+An empty `comments` or `attachments` list without `exportErrors` means the issue has none.
+
 ## Import
 
 ### Import from CSV
@@ -108,6 +122,8 @@ A `--map-field` column that is not in the CSV header stops the import with an er
 | `--map-field column "X" is not in the CSV header` | Column name differs (case, spaces) | Copy the header exactly |
 | A `*`, `_` or `#` in the description vanished or turned into formatting | Descriptions are markdown | Escape the character: `\*`, `\_`, `\#` |
 | Issue created without the description | Column is not named `description` | Add `--map-field "Your Column=description"` |
+| Export exits 1 and lists issues as incomplete | Comments or attachments could not be fetched | Check `exportErrors` in the file; fix the permission and export again |
+| `--project is required for import` | No `--project` and no default project | Pass `--project <key>` |
 
 ## Related Topics
 

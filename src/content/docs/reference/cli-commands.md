@@ -10,10 +10,12 @@ Quick reference for all atlcli commands.
 | Flag | Description |
 |------|-------------|
 | `--profile <name>` | Auth profile to use |
-| `--json` | Output as JSON; errors too: `{"error": {"code", "message", "details"}}` on stdout, exit code 1 |
+| `--json` | Output as JSON: exactly one document on stdout. Errors too: `{"error": {"code", "message", "details"}}`, exit code 1. Help and progress text go to stderr |
 | `--no-log` | Disable logging for this command |
 | `--help` | Show help |
 | `--version` | Show version |
+
+A command group without a subcommand (`atlcli wiki page`) prints its help and exits 0. An unknown subcommand (`atlcli wiki page lsit`) is a usage error with exit code 1.
 
 ## Authentication
 

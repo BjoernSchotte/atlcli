@@ -153,9 +153,15 @@ export function stripControlChars(text: string): string {
   return text.replace(/\u001b\[[0-9;]*m|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, (match) => (match.length > 1 ? match : ""));
 }
 
+/**
+ * Writes a result. Under `--json`, stdout carries exactly one JSON document per
+ * command: text (help, progress, notes) goes to stderr instead of becoming an
+ * extra JSON string on stdout (#301).
+ */
 export function output(data: unknown, opts: OutputOptions): void {
   if (opts.json) {
-    process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
+    if (typeof data === "string") process.stderr.write(`${stripControlChars(data)}\n`);
+    else process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
     return;
   }
   if (typeof data === "string") {
