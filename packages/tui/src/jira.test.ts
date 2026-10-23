@@ -89,6 +89,20 @@ describe("loading", () => {
     expect(calls.filter((c) => c.method === "getIssue").map((c) => c.args[0])).toEqual(["AB-1", "AB-2"]);
   });
 
+  test("another list starts at the top even when it holds the selected issue; a reload keeps it", async () => {
+    const lists: Record<string, string[]> = { A: ["AB-1", "AB-2"], B: ["AB-9", "AB-1"] };
+    const { ctx, settle } = setup({ search: (jql: string) => ({ issues: lists[jql]!.map((k) => issue(k)) }), getIssue: (k: string) => issue(k) });
+    await loadIssues(ctx, "A", "A");
+    ctx.store.set((s) => ({ ...s, jira: { ...s.jira, list: { ...s.jira.list, selected: 1 } } }));
+    await loadIssues(ctx, "A", "A");
+    expect(ctx.store.get().jira.list.selected).toBe(1);
+    ctx.store.set((s) => ({ ...s, jira: { ...s.jira, list: { ...s.jira.list, selected: 0 } } }));
+    // Regression: switching lists kept the old items, so AB-1 (also in B) stayed selected.
+    await loadIssues(ctx, "B", "B");
+    await settle();
+    expect(ctx.store.get().jira.list.selected).toBe(0);
+  });
+
   test("a failed search shows its error in the list", async () => {
     const { ctx } = setup({ search: () => Promise.reject(new Error("JQL error: bad field")) });
     await loadIssues(ctx, "Search", "bad");

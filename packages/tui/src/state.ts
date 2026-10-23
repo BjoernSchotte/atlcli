@@ -204,7 +204,7 @@ export interface JiraState {
   tab: JiraTab;
 }
 
-export type WikiTab = "page" | "info" | "history";
+export type WikiTab = "page" | "info";
 
 export interface WikiPageRow {
   id: string;

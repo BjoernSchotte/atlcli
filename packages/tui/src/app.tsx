@@ -12,12 +12,13 @@ import { jira } from "./jira.js";
 import { JiraDetail, JiraRow } from "./jira-view.js";
 import { keyString, resolveCommand, type Command, type Ctx, type KeyLike } from "./keymap.js";
 import { overlayKey } from "./overlays.js";
-import { initialState, topOverlay, type AppState } from "./state.js";
+import { initialState, topOverlay, type AppState, type WikiPageRow } from "./state.js";
 import { createStore, type Store } from "./store.js";
 import { syntaxStyleFor, THEMES } from "./theme.js";
-import { DetailFrame, EnvProvider, Header, ListPane, NavPane, Overlays, runCommand, StatusBar, useApp, useEnv, type Env, type RowProps } from "./views.js";
+import { EnvProvider, Header, ListPane, NavPane, Overlays, runCommand, StatusBar, useApp, useEnv, type Env, type RowProps } from "./views.js";
 import type { JiraIssue } from "@atlcli/jira";
 import { wiki } from "./wiki.js";
+import { WikiDetail, WikiRow } from "./wiki-view.js";
 
 export const AREAS: Record<AppState["area"], AreaModule> = { jira, wiki };
 
@@ -81,11 +82,7 @@ type AreaView = { idOf: (item: never) => string; Row: (p: RowProps<never>) => Re
 
 const ROWS: Record<AppState["area"], AreaView> = {
   jira: { idOf: (i: JiraIssue) => i.key, Row: JiraRow, Detail: JiraDetail } as unknown as AreaView,
-  wiki: {
-    idOf: (i: { id: string }) => i.id,
-    Row: () => null,
-    Detail: () => <DetailFrame title="Wiki"><text content="Coming with the Wiki milestone." /></DetailFrame>,
-  },
+  wiki: { idOf: (i: WikiPageRow) => i.id, Row: WikiRow, Detail: WikiDetail } as unknown as AreaView,
 };
 
 export function Shell() {

@@ -54,14 +54,15 @@ let moreToken: string | undefined;
 /** Loads a list; a newer load wins over an older one still in flight. */
 export async function loadIssues(ctx: Ctx, title: string, jql: string): Promise<void> {
   const seq = ++listSeq;
+  // A reload of the same list keeps the selection; another list starts at the top.
+  const sameQuery = ctx.store.get().jira.list.query === jql;
   ctx.store.set((s) => ({ ...s, jira: { ...s.jira, list: { ...s.jira.list, title, query: jql, loading: true, error: undefined } } }));
   try {
     const result = await ctx.opts.jira.search(jql, { maxResults: PAGE, fields: LIST_FIELDS });
     if (seq !== listSeq) return;
     moreToken = result.nextPageToken;
-    const sameQuery = ctx.store.get().jira.list.query === jql;
     ctx.store.set((s) => {
-      const base = sameQuery ? s.jira.list : { ...s.jira.list, selected: 0, marked: [] };
+      const base = sameQuery ? s.jira.list : { ...s.jira.list, items: [], selected: 0, marked: [] };
       return { ...s, jira: { ...s.jira, list: withItems(base, result.issues, (i) => i.key, Boolean(result.nextPageToken)) } };
     });
     jira.select(ctx);
