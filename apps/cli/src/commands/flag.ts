@@ -145,7 +145,7 @@ async function handleUnset(
   }
 }
 
-function flagHelp(): string {
+export function flagHelp(): string {
   return `Usage: atlcli flag <command> [options]
 
 Commands:

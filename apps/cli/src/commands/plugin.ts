@@ -336,7 +336,7 @@ async function handleDisable(args: string[], opts: OutputOptions): Promise<void>
   }
 }
 
-function pluginHelp(): string {
+export function pluginHelp(): string {
   return `atlcli plugin <command>
 
 Manage CLI plugins to extend functionality.

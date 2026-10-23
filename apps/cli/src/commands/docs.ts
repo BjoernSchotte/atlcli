@@ -2003,12 +2003,16 @@ atlcli:
   let updated = 0;
   let created = 0;
   let skipped = 0;
+  const conflicts: PushConflict[] = [];
 
   for (const filePath of files) {
-    const result = await pushFile({ client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state, baseUrl: dirConfig?.baseUrl, legacyEditor: hasFlag(flags, "legacy-editor") });
+    const result = await pushFile({
+      client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state, baseUrl: dirConfig?.baseUrl,
+      legacyEditor: hasFlag(flags, "legacy-editor"), force: hasFlag(flags, "force"), conflicts,
+    });
     if (result === "updated") updated += 1;
     else if (result === "created") created += 1;
-    else skipped += 1;
+    else if (result === "skipped") skipped += 1;
   }
 
   // Check for deleted folders (in state but index.md removed locally)
@@ -2059,6 +2063,17 @@ atlcli:
   if (state && atlcliDir) {
     state.lastSync = new Date().toISOString();
     await writeState(atlcliDir, state);
+  }
+
+  if (conflicts.length > 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `${conflicts.length} page(s) changed in Confluence since the last pull and were not pushed. ` +
+        "Run 'atlcli wiki docs pull' or 'atlcli wiki docs sync' to merge, or push with --force to overwrite.",
+      { conflicts, results: { updated, created, skipped, conflicts: conflicts.length } }
+    );
   }
 
   if (isSingleFile && files.length === 1) {
@@ -2268,6 +2283,9 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
   const debounceMs = Number(getFlag(flags, "debounce") ?? 500);
   const atlcliDir = findAtlcliDirWithWarning(dir, opts);
   const dirConfig = atlcliDir ? await readConfig(atlcliDir) : null;
+  // The sync state gives push the version of the last pull, so a remote edit is not overwritten (#285).
+  const state = atlcliDir ? await readState(atlcliDir) : undefined;
+  const force = hasFlag(flags, "force");
 
   if (!opts.json) {
     output(`Watching ${dir} for Markdown changes...`, opts);
@@ -2293,11 +2311,16 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
 
       for (const file of batch) {
         try {
-          const result = await pushFile({ client, filePath: file, space, opts, baseUrl: dirConfig?.baseUrl });
-          const payload = { schemaVersion: "1", file, result };
+          const conflicts: PushConflict[] = [];
+          const result = await pushFile({
+            client, filePath: file, space, opts, atlcliDir: atlcliDir ?? undefined, state, baseUrl: dirConfig?.baseUrl, force, conflicts,
+          });
+          if (atlcliDir && state) await writeState(atlcliDir, state);
+          const payload = { schemaVersion: "1", file, result, ...(conflicts.length ? { conflict: conflicts[0] } : {}) };
           if (opts.json) {
             process.stdout.write(`${JSON.stringify(payload)}\n`);
-          } else {
+          } else if (result !== "conflict") {
+            // A conflict was already reported by pushFile.
             output(`Updated ${file} (${result})`, opts);
           }
         } catch (err) {
@@ -2321,7 +2344,14 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
   });
 }
 
-type PushResult = "updated" | "created" | "skipped";
+type PushResult = "updated" | "created" | "skipped" | "conflict";
+
+interface PushConflict {
+  file: string;
+  pageId: string;
+  baseVersion: number;
+  remoteVersion: number;
+}
 
 async function pushFile(params: {
   client: ConfluenceClient;
@@ -2332,8 +2362,12 @@ async function pushFile(params: {
   state?: AtlcliState;
   baseUrl?: string;
   legacyEditor?: boolean;
+  /** Overwrite a page that changed remotely since the last pull. */
+  force?: boolean;
+  /** Receives each page that changed remotely while the file changed locally. */
+  conflicts?: PushConflict[];
 }): Promise<PushResult> {
-  const { client, filePath, space, opts, atlcliDir, state, baseUrl, legacyEditor } = params;
+  const { client, filePath, space, opts, atlcliDir, state, baseUrl, legacyEditor, force } = params;
 
   // Read file and parse frontmatter
   const rawContent = await readTextFile(filePath);
@@ -2466,6 +2500,31 @@ async function pushFile(params: {
   // Strip frontmatter before converting to storage format
   const conversionOptions = buildConversionOptions(baseUrl);
   let storage = markdownToStorage(markdownContent, conversionOptions);
+
+  // A page edited remotely since the last pull must not be overwritten (#285).
+  // Checked before any attachment upload or move, so a conflict changes nothing.
+  let current: Awaited<ReturnType<ConfluenceClient["getPage"]>> | undefined;
+  const baseVersion = pageId ? (state?.pages[pageId]?.version ?? legacyMeta?.version) : undefined;
+  if (pageId && baseVersion !== undefined && !force) {
+    current = await client.getPage(pageId);
+    const remoteVersion = current.version ?? 1;
+    if (remoteVersion > baseVersion) {
+      const baseHash = state?.pages[pageId]?.baseHash;
+      if (baseHash !== undefined && hashContent(normalizeMarkdown(markdownContent)) === baseHash) {
+        // Unchanged locally: nothing to push; the next pull brings the remote edit.
+        return "skipped";
+      }
+      params.conflicts?.push({ file: filePath, pageId, baseVersion, remoteVersion });
+      if (!opts.json) {
+        output(
+          `${basename(filePath)}: changed in Confluence since your last pull (v${baseVersion} → v${remoteVersion}); not pushed. ` +
+            "Run 'atlcli wiki docs pull' or 'atlcli wiki docs sync' to merge, or push with --force to overwrite.",
+          opts
+        );
+      }
+      return "conflict";
+    }
+  }
 
   // Check for attachment references and upload them
   const pageFilename = basename(filePath);
@@ -2672,7 +2731,7 @@ async function pushFile(params: {
     }
 
     // Update existing page
-    const current = await client.getPage(pageId);
+    current ??= await client.getPage(pageId);
     const title = frontmatter?.title || legacyMeta?.title || current.title;
     const version = (current.version ?? 1) + 1;
     const page = await client.updatePage({ id: pageId, title, storage, version });
@@ -3803,9 +3862,9 @@ tree, or pass an explicit path/--dir when running from elsewhere.
 Commands:
   init <dir> [scope options]                        Initialize directory for sync
   pull [dir] [scope options] [--limit <n>] [--force] [--label <l>] [--comments]
-  push [dir|file] [--validate] [--delete-folders]   Push changes to Confluence
+  push [dir|file] [--validate] [--delete-folders] [--force]   Push changes to Confluence
   add <file> [--title <t>] [--parent <id>]          Add file to Confluence
-  watch <dir> [--space <key>] [--debounce <ms>]
+  watch <dir> [--space <key>] [--debounce <ms>] [--force]
   sync <dir> [scope options] [--poll-interval <ms>] [--label <label>]
   status [dir] [--links]                             Show sync state (--links for link analysis)
   resolve <file> --accept local|remote|merged        Resolve conflicts

@@ -452,7 +452,7 @@ async function handleDelete(
   );
 }
 
-function authHelp(): string {
+export function authHelp(): string {
   return `atlcli auth <command>
 
 Manage authentication profiles for Atlassian Cloud and Server/Data Center.

@@ -6900,6 +6900,24 @@ Examples:
 `;
 }
 
+/**
+ * The deepest help text for `jira <args> --help`. Help is printed from here
+ * instead of dispatching, so `--help` never runs a verb (#270).
+ */
+export function jiraHelpFor(args: string[]): string {
+  const [group, sub] = args;
+  if (group === "issue" && sub === "attachment") return attachmentHelp();
+  if (group === "worklog" && sub === "timer") return timerHelp();
+  if (group === "bulk" && sub === "label") return bulkLabelHelp();
+  const groups: Record<string, () => string> = {
+    project: projectHelp, issue: issueHelp, board: boardHelp, sprint: sprintHelp, worklog: worklogHelp,
+    epic: epicHelp, analyze: analyzeHelp, bulk: bulkHelp, filter: filterHelp, export: exportHelp,
+    import: importHelp, webhook: webhookHelp, subtask: subtaskHelp, component: componentHelp,
+    version: versionHelp, field: fieldHelp, template: templateHelp,
+  };
+  return (group && groups[group]?.()) || jiraHelp();
+}
+
 function jiraHelp(): string {
   return `atlcli jira <command>
 
