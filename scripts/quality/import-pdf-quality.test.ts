@@ -10,10 +10,14 @@ import {
 let manifest: PdfQualityManifest;
 let observations: PdfQualityObservation[];
 
+// The hook runs the real PDFium import over all ten quality fixtures: ~0.85 s on
+// an M-series laptop, but past the default 5 s hook timeout on a loaded Linux
+// CI runner (run 39934056076, general-6). That is the gate's actual work, not a hang, so it gets an
+// explicit budget.
 beforeAll(async () => {
   manifest = await readPdfQualityManifest();
   observations = await collectPdfQualityObservations(manifest);
-});
+}, 30_000);
 
 describe("PDF import semantic quality gate", () => {
   it("enforces every producer row without emitting source bodies", () => {
