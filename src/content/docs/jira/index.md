@@ -78,7 +78,7 @@ atlcli jira issue transition --key PROJ-123 --to "In Progress"
 atlcli jira worklog timer start PROJ-123
 
 # Stop and log
-atlcli jira worklog timer stop PROJ-123
+atlcli jira worklog timer stop
 
 # Log directly
 atlcli jira worklog add PROJ-123 --time 2h

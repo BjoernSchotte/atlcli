@@ -395,6 +395,9 @@ describe("sprint metrics as of the sprint", () => {
     // In the sprint at the end: T-1, T-2, T-3, T-4, T-6.
     expect([m.totalIssues, m.incompleteIssues]).toEqual([5, 2]);
     expect([m.addedDuringSprint, m.removedDuringSprint]).toEqual([3, 4]);
+    // Counts, not points (regression: the report's issues.added/removed held points).
+    // Added: the moved-in issue and the one created during the sprint; removed: the moved-out one.
+    expect([m.addedIssues, m.removedIssues]).toEqual([2, 1]);
     expect(m.sayDoRatio).toBe(100);
     expect(m.scopeChangePercent).toBe(50);
   });

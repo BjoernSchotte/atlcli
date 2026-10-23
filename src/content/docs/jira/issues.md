@@ -265,7 +265,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--key` | Issue key (required) |
-| `--confirm` | Skip confirmation prompt |
+| `--confirm` | Required to delete |
 | `--delete-subtasks` | Also delete subtasks |
 
 ## Transitions
@@ -289,13 +289,16 @@ Options:
 atlcli jira issue transitions --key PROJ-123
 ```
 
-Output:
+Output (Jira's transition objects, shortened):
 
-```
-ID    NAME           TO STATUS
-21    Start          In Progress
-31    Done           Done
-41    Review         In Review
+```json
+{
+  "schemaVersion": "1",
+  "transitions": [
+    { "id": "21", "name": "Start", "to": { "id": "3", "name": "In Progress" } },
+    { "id": "31", "name": "Done", "to": { "id": "10001", "name": "Done" } }
+  ]
+}
 ```
 
 ## Comments
@@ -440,6 +443,8 @@ Every flag that takes a user (`--assignee` on create, update, assign, clone, `su
 
 atlcli looks the user up with Jira's user search. An exact email or display name wins; otherwise the only active hit. If several users match, the command fails and lists them; use the email or the account ID. Jira hides some emails, depending on each user's profile visibility; then use the name.
 
+On Data Center, `--lead` (components, projects) and `template apply --assignee` need a Cloud account ID, so atlcli leaves them unset there.
+
 ## Open in the Browser
 
 ```bash
@@ -466,6 +471,7 @@ Options:
 |------|-------------|
 | `--key` | Issue key (required) |
 | `--page` | Confluence page ID (required) |
+| `--comment` | Also post a comment on the issue that links the page (switch) |
 
 ### List Linked Pages
 
@@ -473,18 +479,19 @@ Options:
 atlcli jira issue pages --key PROJ-123
 ```
 
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--key` | Issue key (required) |
-| `--space` | Filter by Confluence space |
+Prints `{schemaVersion, issueKey, pages, total}`; each page has `id` (the link ID), `globalId`, `title`, `url` and `summary`.
 
 ### Unlink Page
 
 ```bash
+# By Confluence page ID
 atlcli jira issue unlink-page --key PROJ-123 --page 12345
+
+# By link ID (the id from issue pages)
+atlcli jira issue unlink-page --key PROJ-123 --link 10500
 ```
+
+`unlink-page` needs `--key` and one of `--link <id>` or `--page <id>`.
 
 ### Examples
 
@@ -492,11 +499,11 @@ atlcli jira issue unlink-page --key PROJ-123 --page 12345
 # Link a Confluence page to an issue
 atlcli jira issue link-page --key PROJ-123 --page 12345
 
+# Link it and leave a comment on the issue
+atlcli jira issue link-page --key PROJ-123 --page 12345 --comment
+
 # List all Confluence pages linked to an issue
 atlcli jira issue pages --key PROJ-123
-
-# Filter by space
-atlcli jira issue pages --key PROJ-123 --space TEAM
 
 # Remove link
 atlcli jira issue unlink-page --key PROJ-123 --page 12345
@@ -504,7 +511,7 @@ atlcli jira issue unlink-page --key PROJ-123 --page 12345
 
 ## JSON Output
 
-All commands support `--json`:
+Issue commands print JSON, pretty-printed even without `--json`. Only issue lists (`search`, `my`, `filter run`, board, sprint and epic issue lists) print a table; see [Search](search.md).
 
 ```bash
 atlcli jira issue get --key PROJ-123 --json
@@ -513,31 +520,28 @@ atlcli jira issue get --key PROJ-123 --json
 ```json
 {
   "schemaVersion": "1",
-  "key": "PROJ-123",
-  "id": "10001",
-  "summary": "Fix login bug",
-  "status": {
-    "name": "In Progress",
-    "category": "indeterminate"
-  },
-  "priority": {
-    "name": "High",
-    "iconUrl": "..."
-  },
-  "assignee": {
-    "displayName": "Alice",
-    "emailAddress": "alice@company.com"
-  },
-  "reporter": {
-    "displayName": "Bob",
-    "emailAddress": "bob@company.com"
-  },
-  "created": "2025-01-14T10:00:00Z",
-  "updated": "2025-01-14T15:30:00Z",
-  "labels": ["bug", "critical"],
-  "url": "https://company.atlassian.net/browse/PROJ-123"
+  "issue": {
+    "id": "10001",
+    "key": "PROJ-123",
+    "summary": "Fix login bug",
+    "status": "In Progress",
+    "statusCategory": "indeterminate",
+    "type": "Bug",
+    "priority": "High",
+    "assignee": "Alice Lee",
+    "assigneeId": "557058:1b2c3d4e",
+    "reporter": "Bob Kim",
+    "created": "2025-01-14T10:00:00.000+0000",
+    "updated": "2025-01-14T15:30:00.000+0000",
+    "labels": ["bug", "critical"],
+    "parent": "PROJ-100",
+    "description": { "type": "doc", "version": 1, "content": [] },
+    "descriptionMarkdown": "Users report a 500 error on iOS Safari."
+  }
 }
 ```
+
+`description` is the raw value from Jira (ADF on Cloud, a string on Data Center); `descriptionMarkdown` is the same content as markdown.
 
 ## Related Topics
 

@@ -226,16 +226,38 @@ async function sprintIssuesWithHistory(client: JiraClient, sprintId: number, fie
   return attachChangelogs(issues, await client.getChangelogs(issues));
 }
 
+/**
+ * Up to `limit` values of a paged Agile list (`startAt`): Jira caps each page
+ * (50 for boards and sprints), whatever `maxResults` asks for.
+ */
+export async function pageAgile<T>(
+  fetchPage: (startAt: number, maxResults: number) => Promise<{ values: T[]; total?: number; isLast?: boolean }>,
+  limit = Infinity
+): Promise<{ values: T[]; total?: number }> {
+  const values: T[] = [];
+  let total: number | undefined;
+  while (values.length < limit) {
+    const page = await fetchPage(values.length, Math.min(50, limit - values.length));
+    values.push(...page.values);
+    total = page.total;
+    if (page.values.length === 0 || page.isLast || (total !== undefined && values.length >= total)) break;
+  }
+  return { values: values.slice(0, limit), total };
+}
+
 /** The board's `count` most recently closed sprints, oldest first. */
 async function recentClosedSprints(client: JiraClient, boardId: number, count: number) {
-  const all: Awaited<ReturnType<JiraClient["listSprints"]>>["values"] = [];
-  for (let startAt = 0; ; ) {
-    const page = await client.listSprints(boardId, { state: "closed", startAt, maxResults: 50 });
-    all.push(...page.values);
-    startAt += page.values.length;
-    if (page.values.length === 0 || (page as { isLast?: boolean }).isLast) break;
+  const { values } = await pageAgile((startAt, maxResults) => client.listSprints(boardId, { state: "closed", startAt, maxResults }));
+  return latestSprints(values, count);
+}
+
+/** `--limit` for an Agile list: a positive integer, default 50. */
+function agileLimit(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): number {
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  if (!Number.isInteger(limit) || limit < 1) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--limit must be a positive integer.");
   }
-  return latestSprints(all, count);
+  return limit;
 }
 
 /**
@@ -433,13 +455,13 @@ async function handleProject(
       await handleProjectList(flags, opts);
       return;
     case "get":
-      await handleProjectGet(flags, opts);
+      await handleProjectGet(args[1], flags, opts);
       return;
     case "create":
       await handleProjectCreate(flags, opts);
       return;
     case "types":
-      await handleProjectTypes(flags, opts);
+      await handleProjectTypes(args[1], flags, opts);
       return;
     default:
       unknownSubcommand(sub, projectHelp(), opts);
@@ -464,12 +486,13 @@ async function handleProjectList(
 }
 
 async function handleProjectGet(
+  positional: string | undefined,
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const key = getFlag(flags, "key");
+  const key = positional ?? getFlag(flags, "key");
   if (!key) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--key is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "Project key is required: <key> or --key <key>.");
   }
 
   const client = await getClient(flags, opts);
@@ -506,12 +529,13 @@ async function handleProjectCreate(
 }
 
 async function handleProjectTypes(
+  positional: string | undefined,
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const key = getFlag(flags, "key");
+  const key = positional ?? getFlag(flags, "key");
   if (!key) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--key is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "Project key is required: <key> or --key <key>.");
   }
 
   const client = await getClient(flags, opts);
@@ -524,9 +548,9 @@ function projectHelp(): string {
 
 Commands:
   list [--limit <n>] [--query <text>]
-  get --key <key>
+  get <key>                           (or --key <key>)
   create --key <KEY> --name <name> [--type software|service_desk|business] [--template <key>] [--description <text>] [--lead <user>]
-  types --key <key>                   List issue types for a project
+  types <key>                         List issue types for a project
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -1799,17 +1823,18 @@ async function handleBoardList(
   opts: OutputOptions
 ): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
-  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const limit = agileLimit(flags, opts);
   const type = getFlag(flags, "type") as "scrum" | "kanban" | "simple" | undefined;
   const name = getFlag(flags, "name");
   const project = hasFlag(flags, "all-projects") ? undefined : (getFlag(flags, "project") ?? defaults.project);
 
-  const result = await client.listBoards({
-    maxResults: Number.isNaN(limit) ? 50 : limit,
-    type,
-    name,
-    projectKeyOrId: project,
-  });
+  const result = await pageAgile(
+    (startAt, maxResults) => client.listBoards({ startAt, maxResults, type, name, projectKeyOrId: project }),
+    limit
+  );
+  if (result.total !== undefined && result.total > result.values.length) {
+    process.stderr.write(`Showing ${result.values.length} of ${result.total} boards; raise --limit for more.\n`);
+  }
 
   output({ schemaVersion: "1", boards: result.values, total: result.total }, opts);
 }
@@ -1944,13 +1969,13 @@ async function handleSprintList(
   if (!boardId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set defaults.board in config).");
   }
-  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const limit = agileLimit(flags, opts);
   const state = getFlag(flags, "state") as "future" | "active" | "closed" | undefined;
 
-  const result = await client.listSprints(Number(boardId), {
-    maxResults: Number.isNaN(limit) ? 50 : limit,
-    state,
-  });
+  const result = await pageAgile((startAt, maxResults) => client.listSprints(Number(boardId), { startAt, maxResults, state }), limit);
+  if (result.total !== undefined && result.total > result.values.length) {
+    process.stderr.write(`Showing ${result.values.length} of ${result.total} sprints; raise --limit for more.\n`);
+  }
 
   output({ schemaVersion: "1", sprints: result.values, total: result.total }, opts);
 }
@@ -2173,12 +2198,14 @@ async function handleSprintReport(
         total: metrics.totalIssues,
         completed: metrics.completedIssues,
         incomplete: metrics.incompleteIssues,
-        added: metrics.addedDuringSprint,
-        removed: metrics.removedDuringSprint,
+        added: metrics.addedIssues,
+        removed: metrics.removedIssues,
       },
       progress: {
         committed: metrics.committedPoints,
         completed: metrics.completedPoints,
+        added: metrics.addedDuringSprint,
+        removed: metrics.removedDuringSprint,
         percent: metrics.committedPoints > 0
           ? Math.round((metrics.completedPoints / metrics.committedPoints) * 100)
           : 0,
@@ -2927,7 +2954,8 @@ async function handleEpicList(
 ): Promise<void> {
   const { client, defaults } = await getClient(flags, opts, true);
   const project = getFlag(flags, "project") ?? defaults.project;
-  const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
+  // An explicit --project wins over defaults.board.
+  const boardId = getFlag(flags, "board") ?? (defaults.board && !getFlag(flags, "project") ? String(defaults.board) : undefined);
   const includeDone = hasFlag(flags, "done");
   const limit = Number(getFlag(flags, "limit") ?? 50);
 
@@ -3516,6 +3544,8 @@ async function handleAnalyzeScopeChange(
         committedPoints: metrics.committedPoints,
         addedPoints: metrics.addedDuringSprint,
         removedPoints: metrics.removedDuringSprint,
+        addedIssues: metrics.addedIssues,
+        removedIssues: metrics.removedIssues,
         scopeChangePercent: metrics.scopeChangePercent,
         stability: metrics.scopeChangePercent <= 10 ? "stable" : metrics.scopeChangePercent <= 25 ? "moderate" : "unstable",
       },
@@ -4216,7 +4246,7 @@ async function handleBulkLinkPage(
   const pageId = getFlag(flags, "page");
   const dryRun = hasFlag(flags, "dry-run");
   const limit = Number(getFlag(flags, "limit") ?? 1000);
-  const comment = getFlag(flags, "comment");
+  const comment = hasFlag(flags, "comment");
 
   if (!pageId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--page is required.");
@@ -5065,7 +5095,7 @@ Options:
 Notes:
   - Import creates new issues only (does not update existing)
   - Issues with existing keys are skipped
-  - Required fields: summary, issuetype
+  - Required field: summary (issuetype defaults to Task)
   - Comments and attachments are included if present in file
   - Text descriptions and comments are markdown; quoted CSV cells may span lines
   - CSV labels and components are comma-separated inside one quoted cell

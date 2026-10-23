@@ -67,6 +67,18 @@ beforeAll(async () => {
       if (path === "/rest/api/3/issue/AB-1/remotelink" && req.method === "POST") return Response.json({ id: 77, self: "" });
       if (path === "/rest/api/3/issue/AB-1/remotelink/77") return new Response(null, { status: 204 });
       if (path.startsWith("/rest/api/3/issue/")) return Response.json(ISSUE);
+      if (path === "/rest/api/3/project/AB") return Response.json({ id: "1", key: "AB", name: "Alpha" });
+      if (path === "/rest/api/3/project/AB/statuses" || path === "/rest/api/3/issue/createmeta/AB/issuetypes") return Response.json({ issueTypes: [], values: [] });
+      // 120 boards and 60 sprints, served in pages of at most 50 whatever maxResults asks for.
+      if (path === "/rest/agile/1.0/board" || path === "/rest/agile/1.0/board/9/sprint") {
+        const all = path.endsWith("/sprint") ? 60 : 120;
+        const start = Number(url.searchParams.get("startAt") ?? 0);
+        const end = Math.min(start + Math.min(50, Number(url.searchParams.get("maxResults"))), all);
+        const values = Array.from({ length: end - start }, (_, i) => ({ id: start + i + 1, name: `B${start + i + 1}`, state: "closed" }));
+        return Response.json({ values, total: all, isLast: end >= all });
+      }
+      if (path === "/rest/agile/1.0/board/9/epic") return Response.json({ values: [], total: 0 });
+      if (path.endsWith("/content/55")) return Response.json({ id: "55", title: "Spec", type: "page", space: { key: "DOCSY" }, version: { number: 1 }, ancestors: [] });
       return new Response(JSON.stringify({ message: `stub: no route for ${path}` }), { status: 404 });
     },
   });
@@ -76,6 +88,7 @@ beforeAll(async () => {
     join(home, ".atlcli", "config.json"),
     JSON.stringify({
       currentProfile: "p",
+      global: { board: 9 },
       profiles: { p: { name: "p", baseUrl: server.url.origin, deploymentType: "cloud", auth: { type: "bearer" } } },
     })
   );
@@ -184,6 +197,36 @@ describe("issue", () => {
     const { exitCode, stdout } = await run(["issue", "comments", "add", "--key", "AB-1", "--edit", "--json"]);
     expect(exitCode).toBe(1);
     expect(JSON.parse(stdout).error.message).toContain("--edit needs a terminal");
+  });
+});
+
+describe("paging and fixes from the docs audit", () => {
+  test("board list and sprint list page past Jira's 50 per page (regression: stopped at 50)", async () => {
+    const boards = await run(["board", "list", "--all-projects", "--limit", "120", "--json"]);
+    expect(JSON.parse(boards.stdout).boards).toHaveLength(120);
+    const capped = await run(["board", "list", "--all-projects", "--json"]);
+    expect(JSON.parse(capped.stdout).boards).toHaveLength(50);
+    expect(capped.stderr).toContain("Showing 50 of 120 boards");
+    const sprints = await run(["sprint", "list", "--board", "9", "--limit", "100", "--json"]);
+    expect(JSON.parse(sprints.stdout).sprints.map((s: { id: number }) => s.id)).toEqual(Array.from({ length: 60 }, (_, i) => i + 1));
+  });
+
+  test("project get takes the key positionally (regression: only --key worked)", async () => {
+    const { exitCode, stdout } = await run(["project", "get", "AB", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout).project.key).toBe("AB");
+  });
+
+  test("bulk link-page --comment posts the comment (regression: a bare --comment was dropped)", async () => {
+    const { exitCode } = await run(["bulk", "link-page", "--issues", "AB-1", "--page", "55", "--comment", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(requests.some((r) => r.method === "POST" && r.path === "/rest/api/3/issue/AB-1/comment")).toBe(true);
+  });
+
+  test("epic list --project wins over defaults.board (regression: board path taken)", async () => {
+    await run(["epic", "list", "--project", "AB", "--json"]);
+    expect(requests.some((r) => r.path === "/rest/api/3/search/jql")).toBe(true);
+    expect(requests.some((r) => r.path.endsWith("/epic"))).toBe(false);
   });
 });
 

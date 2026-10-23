@@ -531,6 +531,19 @@ digest; `explain` performs no asset I/O. PDF output standards remain a separate
 
 ## Jira
 
+Issue lists print a table (see [Search](#search)); the other Jira commands print JSON, pretty-printed even without `--json`.
+
+### Projects
+
+```bash
+atlcli jira project list [--query <text>] [--limit <n>]   # Default limit 50
+atlcli jira project get <key>           # Or --key <key>
+atlcli jira project create --key <KEY> --name <name> \
+  [--type software|service_desk|business] [--template <key>] \
+  [--description <text>] [--lead <user>]
+atlcli jira project types <key>         # Issue types; or --key <key>
+```
+
 ### Issues
 
 ```bash
@@ -579,7 +592,8 @@ atlcli jira open [<key>|<project>]      # Open an issue, a project or the site
 atlcli jira issue link-page --key <key> --page <id>  # Link to Confluence page
 atlcli jira issue link-page --key <key> --page <id> --comment  # With comment
 atlcli jira issue pages --key <key>     # List linked Confluence pages
-atlcli jira issue unlink-page --key <key> --link <id>  # Remove link
+atlcli jira issue unlink-page --key <key> --link <id>  # Remove link by link id
+atlcli jira issue unlink-page --key <key> --page <id>  # Remove link by page id
 
 atlcli jira watch <key>                 # Watch issue
 atlcli jira unwatch <key>               # Stop watching
@@ -680,24 +694,27 @@ atlcli jira board list --project <key>
 atlcli jira board list --type scrum     # Filter by type
 atlcli jira board list --name <pattern>
 atlcli jira board get --id <id>         # Get board details
-atlcli jira board backlog --id <id>     # Get backlog issues
-atlcli jira board issues --id <id>      # Get board issues
+atlcli jira board backlog --id <id> [--jql <query>] [--limit <n>]  # Backlog issues
+atlcli jira board issues --id <id> [--jql <query>] [--limit <n>]   # Board issues
 ```
+
+`board list` and `sprint list` page through all results up to `--limit` (default 50) and print `Showing N of M …` on stderr when more exist.
 
 ### Sprints
 
 ```bash
-atlcli jira sprint list --board <id>
+atlcli jira sprint list --board <id> [--state active|future|closed] [--limit <n>]  # --board defaults to defaults.board
 atlcli jira sprint get --id <id>
 atlcli jira sprint create --board <id> --name <name>
 atlcli jira sprint create --board <id> --name <name> \
   --start <date> --end <date> --goal <text>
-atlcli jira sprint start --id <id>
+atlcli jira sprint start --id <id> [--start <date>] [--end <date>] [--goal <text>]
 atlcli jira sprint close --id <id>
 atlcli jira sprint delete --id <id> --confirm
+atlcli jira sprint issues --id <id> [--jql <query>] [--limit <n>]  # Issue table
 atlcli jira sprint add <issues...> --sprint <id>
 atlcli jira sprint remove <issues...>   # Move to backlog
-atlcli jira sprint report <id>          # Sprint metrics report
+atlcli jira sprint report <id> [--points-field <id>] [--status-map <map>]  # Sprint metrics (JSON)
 atlcli jira sprint review <id> --space <key> [--export <file>]  # Sprint review page
 ```
 
@@ -707,6 +724,7 @@ atlcli jira sprint review <id> --space <key> [--export <file>]  # Sprint review 
 atlcli jira epic list --project <key>
 atlcli jira epic list --board <id>
 atlcli jira epic list --project <key> --done  # Include done epics
+atlcli jira epic list --limit <n>       # Default 50
 atlcli jira epic get <key>
 atlcli jira epic create --project <key> --summary <text>
 atlcli jira epic issues <key>           # List child issues
@@ -721,16 +739,17 @@ atlcli jira epic progress <key>         # Show completion progress
 atlcli jira subtask list --parent <key>
 atlcli jira subtask create --parent <key> --summary <text>
 atlcli jira subtask create --parent <key> --summary <text> \
-  --assignee <email> --description <text>
+  --assignee <user> --description <text>
 ```
 
 ### Components
 
 ```bash
 atlcli jira component list --project <key>
+atlcli jira component get <id>
 atlcli jira component create --project <key> --name <name>
 atlcli jira component create --project <key> --name <name> \
-  --lead <email> --description <text>
+  --lead <user> --description <text>
 atlcli jira component update --id <id> --name <name>
 atlcli jira component delete --id <id> --confirm
 ```
@@ -739,10 +758,13 @@ atlcli jira component delete --id <id> --confirm
 
 ```bash
 atlcli jira version list --project <key>
+atlcli jira version get <id>
 atlcli jira version create --project <key> --name <name>
 atlcli jira version create --project <key> --name <name> \
   --start-date <date> --release-date <date>
-atlcli jira version release --id <id>
+atlcli jira version update <id> [--name <name>] [--description <text>] \
+  [--start-date <date>] [--release-date <date>]
+atlcli jira version release --id <id>    # Release date = today
 atlcli jira version delete --id <id> --confirm
 atlcli jira version notes <id|name> --space <key> [--project <key>] [--group-by type|epic] [--export <file>]  # Release notes page
 ```
@@ -805,8 +827,11 @@ atlcli jira bulk label add <label> --jql <query>
 atlcli jira bulk label remove <label> --jql <query>
 atlcli jira bulk delete --jql <query> --confirm
 atlcli jira bulk move --jql <query> --sprint <id>   # Or --backlog
+atlcli jira bulk link-page --jql <query> --page <id> [--comment] [--dry-run]
 atlcli jira bulk edit --issues <K1,K2> --set "labels=a,b"  # --issues instead of --jql
 ```
+
+Every bulk command takes `--limit <n>` (default 1000) and `--dry-run`.
 
 ### Filters
 
@@ -888,7 +913,8 @@ atlcli jira import --file <path> --dry-run
 
 ```bash
 # Start local webhook server (use with ngrok/cloudflare tunnel)
-atlcli jira webhook serve --port 3000
+atlcli jira webhook serve                # Port 8080, path /webhook
+atlcli jira webhook serve --port 3000 --path /jira
 atlcli jira webhook serve --port 3000 --projects PROJ,TEAM
 atlcli jira webhook serve --port 3000 --events jira:issue_updated
 atlcli jira webhook serve --secret <secret>  # HMAC validation
