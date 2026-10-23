@@ -60,7 +60,7 @@ atlcli jira project get PROJ
 atlcli jira project get --key PROJ
 ```
 
-The key works positionally or with `--key`. Output:
+The key works positionally or with `--key`. Prints the project's key, name, type, lead and description. With `--json`:
 
 ```json
 {
@@ -156,7 +156,7 @@ Output:
 atlcli jira component get 10100
 ```
 
-Prints `{schemaVersion, component}` with `id`, `name`, `description`, `lead`, `leadAccountId` and `assigneeType`.
+Prints the component's name, lead and default assignee. With `--json`: `{schemaVersion, component}` with `id`, `name`, `description`, `lead`, `leadAccountId` and `assigneeType`.
 
 ### Create Component
 
@@ -219,7 +219,7 @@ Output:
 atlcli jira version get 10202
 ```
 
-Prints `{schemaVersion, version}` with the same fields as `version list`.
+Prints the version's name, release state and dates. With `--json`: `{schemaVersion, version}` with the same fields as `version list`.
 
 ### Create Version
 

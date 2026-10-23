@@ -48,7 +48,7 @@ atlcli jira epic list --project ATLCLI --done
 atlcli jira epic get ATLCLI-100
 ```
 
-Prints `{schemaVersion, epic}` with `key`, `summary`, `status`, `statusCategory`, `description`, `assignee`, `reporter`, `created`, `updated`, `childCount` and `progress` (`done`, `total`, `percent`).
+Prints the epic's status, assignee, progress bar and description. With `--json`: `{schemaVersion, epic}` with `key`, `summary`, `status`, `statusCategory`, `description`, `assignee`, `reporter`, `created`, `updated`, `childCount` and `progress` (`done`, `total`, `percent`).
 
 ## Create Epic
 

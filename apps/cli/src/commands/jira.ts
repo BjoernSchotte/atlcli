@@ -13,6 +13,8 @@ import {
   buildSearchJql,
   editInEditor,
   issueCell,
+  renderDetails,
+  renderIssueView,
   jqlBefore,
   jqlIn,
   jqlSince,
@@ -345,10 +347,22 @@ async function userFlag(client: JiraClient, value: string, opts: OutputOptions):
 }
 
 /** A user flag as a Cloud account id (component and project leads). */
-async function accountIdFlag(client: JiraClient, value: string | undefined, opts: OutputOptions): Promise<string | undefined> {
+async function accountIdFlag(
+  client: JiraClient,
+  value: string | undefined,
+  opts: OutputOptions,
+  flag = "--lead"
+): Promise<string | undefined> {
   if (!value) return undefined;
+  // Data Center has no account ids here; say so instead of dropping the value.
+  if (!client.isCloudSite) fail(opts, 1, ERROR_CODES.USAGE, `${flag} needs Jira Cloud; on Data Center set it in Jira.`);
   const ref = await userFlag(client, value, opts);
   return ref && "accountId" in ref ? ref.accountId : undefined;
+}
+
+/** A detail view: `json` with --json, otherwise the text view. */
+function outputDetails(json: unknown, text: () => string, opts: OutputOptions): void {
+  output(opts.json ? json : text(), opts);
 }
 
 /**
@@ -492,7 +506,13 @@ async function handleProjectGet(
 
   const client = await getClient(flags, opts);
   const project = await client.getProject(key);
-  output({ schemaVersion: "1", project }, opts);
+  outputDetails({ schemaVersion: "1", project }, () =>
+    renderDetails(`${project.key}  ${project.name}`, [
+      ["Type", project.projectTypeKey],
+      ["Lead", project.lead?.displayName],
+      ["Description", project.description],
+      ["URL", `${client.siteUrl}/browse/${project.key}`],
+    ]), opts);
 }
 
 async function handleProjectCreate(
@@ -675,15 +695,19 @@ async function handleIssueGet(
   }
 
   const expand = getFlag(flags, "expand");
-  const format = getFlag(flags, "format") ?? "json";
-  if (format !== "json" && format !== "markdown") {
-    fail(opts, 1, ERROR_CODES.USAGE, "--format must be json or markdown.");
+  const format = getFlag(flags, "format") ?? "text";
+  if (format !== "text" && format !== "json" && format !== "markdown") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--format must be text, json or markdown.");
   }
   const client = await getClient(flags, opts);
   const issue = await client.getIssue(key, { expand });
 
   if (format === "markdown" && !opts.json) {
     output(formatIssueMarkdown(issue, client.siteUrl), opts);
+    return;
+  }
+  if (format === "text" && !opts.json) {
+    output(renderIssueView(issue, client.siteUrl), opts);
     return;
   }
   output({ schemaVersion: "1", issue: { ...formatIssue(issue), descriptionMarkdown: adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl }) } }, opts);
@@ -1845,7 +1869,12 @@ async function handleBoardGet(
 
   const client = await getClient(flags, opts);
   const board = await client.getBoard(Number(id));
-  output({ schemaVersion: "1", board }, opts);
+  outputDetails({ schemaVersion: "1", board }, () =>
+    renderDetails(`Board ${board.name}`, [
+      ["ID", board.id],
+      ["Type", board.type],
+      ["Project", board.location?.projectKey],
+    ]), opts);
 }
 
 async function handleBoardBacklog(
@@ -1986,7 +2015,17 @@ async function handleSprintGet(
 
   const client = await getClient(flags, opts);
   const sprint = await client.getSprint(Number(id));
-  output({ schemaVersion: "1", sprint }, opts);
+  const day = (iso?: string) => (iso ? calendarDay(iso) : undefined);
+  outputDetails({ schemaVersion: "1", sprint }, () =>
+    renderDetails(`Sprint ${sprint.name}`, [
+      ["ID", sprint.id],
+      ["State", sprint.state],
+      ["Start", day(sprint.startDate)],
+      ["End", day(sprint.endDate)],
+      ["Completed", day(sprint.completeDate)],
+      ["Board", sprint.originBoardId],
+      ["Goal", sprint.goal],
+    ]), opts);
 }
 
 async function handleSprintCreate(
@@ -3015,7 +3054,8 @@ async function handleEpicGet(
     (i) => i.fields.status?.statusCategory?.key === "done"
   ).length;
 
-  output(
+  const percent = children.length > 0 ? Math.round((done / children.length) * 100) : 0;
+  outputDetails(
     {
       schemaVersion: "1",
       epic: {
@@ -3032,10 +3072,21 @@ async function handleEpicGet(
         progress: {
           done,
           total: children.length,
-          percent: children.length > 0 ? Math.round((done / children.length) * 100) : 0,
+          percent,
         },
       },
     },
+    () =>
+      renderDetails(
+        `${issue.key}  ${issue.fields.summary ?? ""}`,
+        [
+          ["Status", issue.fields.status?.name],
+          ["Assignee", issue.fields.assignee?.displayName ?? "(unassigned)"],
+          ["Progress", `${generateProgressBar(percent)} (${done} of ${children.length} done)`],
+          ["URL", `${client.siteUrl}/browse/${issue.key}`],
+        ],
+        [["Description", adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl })]]
+      ),
     opts
   );
 }
@@ -4487,12 +4538,22 @@ async function handleFilterGet(
 
   const client = await getClient(flags, opts);
   const filter = await client.getFilter(id, { expand: "sharePermissions" });
+  const formatted = formatFilter(filter);
 
-  output(
+  outputDetails(
     {
       schemaVersion: "1",
-      filter: formatFilter(filter),
+      filter: formatted,
     },
+    () =>
+      renderDetails(`Filter ${formatted.name}`, [
+        ["ID", formatted.id],
+        ["JQL", formatted.jql],
+        ["Owner", formatted.owner],
+        ["Favourite", formatted.favourite ? "yes" : undefined],
+        ["Shared with", (formatted.sharePermissions ?? []).map((p) => (p.type === "global" ? "everyone" : `${p.type} ${p.project ?? p.group ?? ""}`.trim()))],
+        ["Description", formatted.description],
+      ]),
     opts
   );
 }
@@ -4646,7 +4707,7 @@ async function handleFilterShare(
     projectId = projectData.id;
   }
 
-  const accountId = shareType === "user" ? await accountIdFlag(client, user, opts) : undefined;
+  const accountId = shareType === "user" ? await accountIdFlag(client, user, opts, "--user") : undefined;
   if (shareType === "user" && !accountId) {
     fail(opts, 1, ERROR_CODES.USAGE, "Sharing with a user needs a user on Jira Cloud.");
   }
@@ -5658,7 +5719,7 @@ async function handleComponentGet(
   const client = await getClient(flags, opts);
   const component = await client.getComponent(id);
 
-  output({
+  outputDetails({
     schemaVersion: "1",
     component: {
       id: component.id,
@@ -5668,7 +5729,13 @@ async function handleComponentGet(
       leadAccountId: component.lead?.accountId,
       assigneeType: component.assigneeType,
     },
-  }, opts);
+  }, () =>
+    renderDetails(`Component ${component.name}`, [
+      ["ID", component.id],
+      ["Lead", component.lead?.displayName],
+      ["Default assignee", component.assigneeType],
+      ["Description", component.description],
+    ]), opts);
 }
 
 async function handleComponentCreate(
@@ -5864,7 +5931,7 @@ async function handleVersionGet(
   const client = await getClient(flags, opts);
   const version = await client.getVersion(id);
 
-  output({
+  outputDetails({
     schemaVersion: "1",
     version: {
       id: version.id,
@@ -5875,7 +5942,15 @@ async function handleVersionGet(
       startDate: version.startDate,
       archived: version.archived,
     },
-  }, opts);
+  }, () =>
+    renderDetails(`Version ${version.name}`, [
+      ["ID", version.id],
+      ["Released", version.released ? "yes" : "no"],
+      ["Start", version.startDate],
+      ["Release date", version.releaseDate],
+      ["Archived", version.archived ? "yes" : undefined],
+      ["Description", version.description],
+    ]), opts);
 }
 
 async function handleVersionCreate(
@@ -6675,8 +6750,9 @@ async function handleTemplateApply(
   const createInput = templateToCreateInput(template, projectKey, {
     summary: finalSummary,
     description,
-    assignee: await accountIdFlag(client, assignee, opts),
   });
+  // Any user form, on Cloud (account id) and Data Center (user name).
+  if (assignee) (createInput.fields as Record<string, unknown>).assignee = await userFlag(client, assignee, opts);
 
   const created = await client.createIssue(createInput as { fields: { project: { key: string }; issuetype: { name: string }; summary: string } });
 

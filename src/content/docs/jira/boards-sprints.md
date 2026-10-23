@@ -56,7 +56,7 @@ atlcli jira board list --name "Team"
 atlcli jira board get --id 123
 ```
 
-Output:
+Prints the board's name, ID, type and project. With `--json`:
 
 ```json
 {
@@ -143,7 +143,7 @@ atlcli jira sprint list --board 123 --state future
 atlcli jira sprint get --id 456
 ```
 
-Output:
+Prints the sprint's name, state, dates, board and goal. With `--json`:
 
 ```json
 {

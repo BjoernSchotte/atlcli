@@ -15,6 +15,7 @@ import {
   resolveDigestSince,
   sinceMinutes,
   succeededProducts,
+  teamMembers,
 } from "./digest-core.js";
 
 const NOW = new Date("2026-10-22T12:00:00.000Z");
@@ -363,5 +364,52 @@ describe("project overview", () => {
     );
     expect(d.jira!.sprints[0].counts).toEqual({ todo: 0, wip: 1, done: 1 });
     expect(d.jira!.projects).toBeUndefined();
+  });
+});
+
+describe("team", () => {
+  const status = (key: "new" | "indeterminate" | "done", name: string = key) => ({ id: name, name, statusCategory: { key } });
+  const open = (assignee: string | undefined, key: "new" | "indeterminate", updatedDaysAgo: number, duedate?: string) =>
+    ({
+      key: "T",
+      fields: {
+        status: status(key),
+        assignee: assignee ? { displayName: assignee } : null,
+        updated: new Date(NOW.getTime() - updatedDaysAgo * 86_400_000).toISOString(),
+        ...(duedate ? { duedate } : {}),
+      },
+    }) as unknown as JiraIssue;
+
+  test("per person: open, in progress, overdue, stale, oldest in progress; unassigned last", () => {
+    const issues = [
+      open("Ann", "indeterminate", 2),
+      open("Ann", "indeterminate", 12, "2026-10-01"),
+      open("Ann", "new", 40),
+      open("Bob", "new", 1, "2026-12-01"),
+      open(undefined, "indeterminate", 3),
+      { key: "D", fields: { status: status("done"), assignee: { displayName: "Bob" } } } as unknown as JiraIssue,
+    ];
+    expect(teamMembers(issues, { now: NOW, staleDays: 30 })).toEqual([
+      { name: "Ann", open: 3, wip: 2, overdue: 1, stale: 1, oldestWipDays: 12 },
+      { name: "Bob", open: 1, wip: 0, overdue: 0, stale: 0, oldestWipDays: null },
+      { name: "(unassigned)", open: 1, wip: 1, overdue: 0, stale: 0, oldestWipDays: 3 },
+    ]);
+  });
+
+  test("the status map decides what is done and what is in progress", () => {
+    const resolve = createStatusCategoryResolver([{ id: "Fertig", name: "Fertig", statusCategory: { id: 4, key: "indeterminate", name: "x" } }], { Fertig: "done" });
+    const fertig = { key: "F", fields: { status: status("indeterminate", "Fertig"), assignee: { displayName: "Ann" } } } as unknown as JiraIssue;
+    expect(teamMembers([fertig], { resolve, now: NOW, staleDays: 30 })).toEqual([]);
+  });
+
+  test("rendered in the Jira block, text and markdown", () => {
+    const d = buildDigest(raw({ products: ["jira"], jira: { ...raw().jira, teamIssues: [open("Ann", "indeterminate", 35, "2026-10-01")], staleDays: 30 } }), {
+      now: NOW,
+      includeOwn: false,
+      limit: 10,
+    });
+    expect(d.jira?.team?.members).toHaveLength(1);
+    expect(renderDigestText(d, NOW)).toContain("Ann  open 1 · in progress 1 · overdue 1 · no update 30d+ 1 · oldest in progress 35d");
+    expect(renderDigestMarkdown(d, NOW)).toContain("### Team (1)");
   });
 });

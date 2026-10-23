@@ -10,7 +10,7 @@ Quick reference for all atlcli commands.
 | Flag | Description |
 |------|-------------|
 | `--profile <name>` | Auth profile to use |
-| `--json` | Output as JSON |
+| `--json` | Output as JSON; errors too: `{"error": {"code", "message", "details"}}` on stdout, exit code 1 |
 | `--no-log` | Disable logging for this command |
 | `--help` | Show help |
 | `--version` | Show version |

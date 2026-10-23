@@ -17,7 +17,29 @@ export const ERROR_CODES = {
   IO: "ATLCLI_ERR_IO",
   CONFIG: "ATLCLI_ERR_CONFIG",
   VALIDATION: "ATLCLI_ERR_VALIDATION",
+  FORBIDDEN: "ATLCLI_ERR_FORBIDDEN",
+  NOT_FOUND: "ATLCLI_ERR_NOT_FOUND",
+  RATE_LIMIT: "ATLCLI_ERR_RATE_LIMIT",
 } as const;
+
+const HTTP_ERROR_CODES: Record<number, string> = {
+  401: ERROR_CODES.AUTH,
+  403: ERROR_CODES.FORBIDDEN,
+  404: ERROR_CODES.NOT_FOUND,
+  429: ERROR_CODES.RATE_LIMIT,
+};
+
+/**
+ * An uncaught error as the `--json` error object: an API error's HTTP status
+ * (its `status`, or "API error (403)" in the message) picks the code.
+ */
+export function describeError(err: unknown): { code: string; message: string; details: Record<string, unknown> } {
+  const message = err instanceof Error ? err.message : String(err);
+  const own = (err as { status?: unknown } | null)?.status;
+  const status = typeof own === "number" ? own : Number(/API error \((\d{3})\)/.exec(message)?.[1]) || undefined;
+  if (status === undefined) return { code: ERROR_CODES.API, message, details: {} };
+  return { code: HTTP_ERROR_CODES[status] ?? ERROR_CODES.API, message, details: { status } };
+}
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];

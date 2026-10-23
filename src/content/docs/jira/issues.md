@@ -24,7 +24,35 @@ Options:
 |------|-------------|
 | `--key` | Issue key (required) |
 | `--expand` | Expand: `changelog`, `comments`, `transitions` |
-| `--format` | `json` (default) or `markdown`: a YAML front block plus the description as markdown |
+| `--format` | `text` (default): a readable view; `json`; or `markdown`: a YAML front block plus the description as markdown |
+
+Without `--json`, the issue prints as a readable view: fields, the description as markdown, links and the last three comments.
+
+```
+PROJ-123  Login fails on Safari
+
+Status    In Progress
+Type      Bug
+Priority  High
+Assignee  Ann Lee
+Reporter  Bob Stone
+Labels    mobile, urgent
+Created   2026-10-01
+Updated   2026-10-20
+URL       https://example.atlassian.net/browse/PROJ-123
+
+Description
+  Users report a 500 error on iOS Safari.
+
+Links (1)
+  blocks PROJ-130  [To Do]  Release 2.4
+
+Comments (last 3 of 5)
+  Ann Lee · 2026-10-20
+  Fixed in **v2**, please retest.
+```
+
+Content kept only for round trips (`<!--adf:…-->` markers) shows as `[…]` in this view. `--json` or `--format json` gives the JSON below.
 
 ### Examples
 
@@ -511,7 +539,7 @@ atlcli jira issue unlink-page --key PROJ-123 --page 12345
 
 ## JSON Output
 
-Issue commands print JSON, pretty-printed even without `--json`. Only issue lists (`search`, `my`, `filter run`, board, sprint and epic issue lists) print a table; see [Search](search.md).
+Without `--json`, `issue get` prints a readable view and issue lists (`search`, `my`, `filter run`, board, sprint and epic issue lists) print a table; see [Search](search.md). Other issue commands print pretty JSON either way. With `--json`, every command prints JSON, errors included (see [Errors](#errors)).
 
 ```bash
 atlcli jira issue get --key PROJ-123 --json
@@ -542,6 +570,31 @@ atlcli jira issue get --key PROJ-123 --json
 ```
 
 `description` is the raw value from Jira (ADF on Cloud, a string on Data Center); `descriptionMarkdown` is the same content as markdown.
+
+## Errors
+
+With `--json`, a failed command prints one error object on stdout and exits with code 1:
+
+```json
+{
+  "error": {
+    "code": "ATLCLI_ERR_NOT_FOUND",
+    "message": "Jira API error (404): Not Found (response body omitted: logBody policy)",
+    "details": { "status": 404 }
+  }
+}
+```
+
+| Code | Meaning |
+|------|---------|
+| `ATLCLI_ERR_USAGE` | Wrong or missing flags |
+| `ATLCLI_ERR_AUTH` | Not logged in, or the token was rejected (401) |
+| `ATLCLI_ERR_FORBIDDEN` | No permission (403) |
+| `ATLCLI_ERR_NOT_FOUND` | Does not exist, or you cannot see it (404) |
+| `ATLCLI_ERR_RATE_LIMIT` | Too many requests (429) |
+| `ATLCLI_ERR_API` | Any other API error; `details.status` holds the HTTP status |
+
+Without `--json`, the message goes to stderr.
 
 ## Related Topics
 

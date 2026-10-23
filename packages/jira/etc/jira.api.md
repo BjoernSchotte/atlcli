@@ -709,6 +709,9 @@ export interface JiraErrorResponse {
     status?: number;
 }
 
+// export: jiraErrorText
+export declare function jiraErrorText(data: unknown): string;
+
 // export: JiraField
 export interface JiraField {
     id: string;
@@ -2417,6 +2420,9 @@ export interface JiraErrorResponse {
     status?: number;
 }
 
+// export: jiraErrorText
+export declare function jiraErrorText(data: unknown): string;
+
 // export: JiraField
 export interface JiraField {
     id: string;
@@ -4119,6 +4125,9 @@ export interface JiraErrorResponse {
     errors?: Record<string, string>;
     status?: number;
 }
+
+// export: jiraErrorText
+export declare function jiraErrorText(data: unknown): string;
 
 // export: JiraField
 export interface JiraField {
@@ -5827,6 +5836,9 @@ export interface JiraErrorResponse {
     errors?: Record<string, string>;
     status?: number;
 }
+
+// export: jiraErrorText
+export declare function jiraErrorText(data: unknown): string;
 
 // export: JiraField
 export interface JiraField {

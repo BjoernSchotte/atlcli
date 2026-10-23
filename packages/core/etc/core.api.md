@@ -617,6 +617,13 @@ export declare function deleteKeychainToken(service: string, account: string): b
 // export: DeploymentType
 export type DeploymentType = "cloud" | "data-center";
 
+// export: describeError
+export declare function describeError(err: unknown): {
+    code: string;
+    message: string;
+    details: Record<string, unknown>;
+};
+
 // export: detectImportSourceType
 export declare function detectImportSourceType(source: string): "directory" | "git" | "url";
 
@@ -658,6 +665,9 @@ export declare const ERROR_CODES: {
     readonly IO: "ATLCLI_ERR_IO";
     readonly CONFIG: "ATLCLI_ERR_CONFIG";
     readonly VALIDATION: "ATLCLI_ERR_VALIDATION";
+    readonly FORBIDDEN: "ATLCLI_ERR_FORBIDDEN";
+    readonly NOT_FOUND: "ATLCLI_ERR_NOT_FOUND";
+    readonly RATE_LIMIT: "ATLCLI_ERR_RATE_LIMIT";
 };
 
 // export: ErrorData
@@ -2150,6 +2160,13 @@ export declare function deleteKeychainToken(service: string, account: string): b
 // export: DeploymentType
 export type DeploymentType = "cloud" | "data-center";
 
+// export: describeError
+export declare function describeError(err: unknown): {
+    code: string;
+    message: string;
+    details: Record<string, unknown>;
+};
+
 // export: detectImportSourceType
 export declare function detectImportSourceType(source: string): "directory" | "git" | "url";
 
@@ -2191,6 +2208,9 @@ export declare const ERROR_CODES: {
     readonly IO: "ATLCLI_ERR_IO";
     readonly CONFIG: "ATLCLI_ERR_CONFIG";
     readonly VALIDATION: "ATLCLI_ERR_VALIDATION";
+    readonly FORBIDDEN: "ATLCLI_ERR_FORBIDDEN";
+    readonly NOT_FOUND: "ATLCLI_ERR_NOT_FOUND";
+    readonly RATE_LIMIT: "ATLCLI_ERR_RATE_LIMIT";
 };
 
 // export: ErrorData
