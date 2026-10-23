@@ -49,6 +49,10 @@ const SWITCHES = new Set([
   "all", "all-projects", "all-results", "confirm", "csv", "debug", "delete-folders", "details", "dry-run", "edit",
   "force", "help", "history", "internal", "json", "list", "markdown", "no-color", "no-headers", "no-log", "plain", "quiet",
   "refresh-users", "skip-user-check", "system", "validate", "verbose", "watching", "yes",
+  // audit wiki checks
+  "archived", "broken-links", "check-external", "drafts", "export-graph", "external-links", "fix", "folders",
+  "inactive-contributors", "include-remote", "no-baseline", "orphans", "prune-baseline", "rebuild-graph", "restricted",
+  "single-contributor", "update-baseline",
 ]);
 
 /** A token that starts a new flag; anything else after a flag is its value ("- item", "-5", "-"). */
