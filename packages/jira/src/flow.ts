@@ -8,7 +8,8 @@
  * bucketed in UTC, like `calculateBurndown`.
  */
 
-import type { JiraChangelogEntry, JiraIssue, JiraStatus } from "./types.js";
+import type { JiraClient } from "./client.js";
+import type { JiraChangelogEntry, JiraIssue, JiraSprint, JiraStatus } from "./types.js";
 
 export type FlowCategory = "todo" | "wip" | "done";
 
@@ -586,4 +587,28 @@ export function renderCfdText(cfd: CumulativeFlowV1): string {
     header,
     cfd.days.map((day) => [day.date, ...cfd.columns.map((c) => String(day.counts[c.name] ?? 0))])
   ).join("\n");
+}
+
+/**
+ * A sprint's issues with changelogs, as sprint metrics need them: the issues
+ * in the sprint now plus those removed before it ended (only Jira's sprint
+ * report still lists them), each with `created` and `issuetype`. Without a
+ * board, or when the report is unavailable, only the sprint's issue list.
+ */
+export async function loadSprintHistory(
+  client: JiraClient,
+  sprint: Pick<JiraSprint, "id" | "originBoardId">,
+  fields: string[]
+): Promise<JiraIssue[]> {
+  const wanted = [...new Set([...fields, "created", "issuetype"])];
+  const issues = await client.getAllSprintIssues(sprint.id, { fields: wanted });
+  const have = new Set(issues.map((issue) => issue.key));
+  const removedKeys = sprint.originBoardId
+    ? (await client.getSprintRemovedIssueKeys(sprint.originBoardId, sprint.id).catch(() => [])).filter((key) => !have.has(key))
+    : [];
+  for (let i = 0; i < removedKeys.length; i += 100) {
+    const chunk = removedKeys.slice(i, i + 100);
+    issues.push(...(await client.search(`key in (${chunk.join(", ")})`, { maxResults: chunk.length, fields: wanted })).issues);
+  }
+  return attachChangelogs(issues, await client.getChangelogs(issues));
 }

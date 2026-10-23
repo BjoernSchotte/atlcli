@@ -13,8 +13,10 @@ import {
   renderSparkline,
   resolveStatusMap,
   statusScopeJql,
+  loadSprintHistory,
 } from "./flow.js";
 import { calculateBurndown, calculateSprintMetrics, issueAt, latestSprints } from "./analysis.js";
+import type { JiraClient } from "./client.js";
 import type { JiraChangelogEntry, JiraIssue, JiraStatus } from "./types.js";
 
 const STATUSES: JiraStatus[] = [
@@ -395,8 +397,45 @@ describe("sprint metrics as of the sprint", () => {
     // In the sprint at the end: T-1, T-2, T-3, T-4, T-6.
     expect([m.totalIssues, m.incompleteIssues]).toEqual([5, 2]);
     expect([m.addedDuringSprint, m.removedDuringSprint]).toEqual([3, 4]);
+    // Counts, not points (regression: the report's issues.added/removed held points).
+    // Added: the moved-in issue and the one created during the sprint; removed: the moved-out one.
+    expect([m.addedIssues, m.removedIssues]).toEqual([2, 1]);
     expect(m.sayDoRatio).toBe(100);
     expect(m.scopeChangePercent).toBe(50);
+  });
+
+  test("added and removed again during the sprint counts as both (as in Jira's sprint report; live: TCW 811)", () => {
+    // Joined on day 2 at 6 points, moved out on day 4: not in the sprint at either end.
+    const inAndOut = withHistory(issue("T-10", "2026-09-20T00:00:00.000Z", [], p(6)), [
+      ["2026-10-02T09:00:00.000Z", sprintItem("", "910")],
+      ["2026-10-04T09:00:00.000Z", sprintItem("910", "")],
+    ]);
+    const base = calculateSprintMetrics(sprint, issues, PF, issues, fertig);
+    const m = calculateSprintMetrics(sprint, [...issues, inAndOut], PF, [...issues, inAndOut], fertig);
+    expect([m.addedIssues - base.addedIssues, m.removedIssues - base.removedIssues]).toEqual([1, 1]);
+    expect([m.addedDuringSprint - base.addedDuringSprint, m.removedDuringSprint - base.removedDuringSprint]).toEqual([6, 6]);
+    // Never in the sprint at its end: not part of the totals or the commitment.
+    expect([m.totalIssues, m.committedPoints]).toEqual([base.totalIssues, base.committedPoints]);
+  });
+
+  test("loadSprintHistory adds the issues Jira's sprint report lists as removed", async () => {
+    const listed = issue("T-1", "2026-09-20T00:00:00.000Z", [], p(1));
+    const punted = issue("T-20", "2026-09-20T00:00:00.000Z", [], p(2));
+    const searched: string[] = [];
+    const client = {
+      getAllSprintIssues: async () => [listed],
+      getSprintRemovedIssueKeys: async (board: number, id: number) => (board === 7 && id === 910 ? ["T-20", "T-1"] : []),
+      search: async (jql: string) => (searched.push(jql), { issues: [punted] }),
+      getChangelogs: async () => new Map(),
+    } as unknown as JiraClient;
+    const loaded = await loadSprintHistory(client, { id: 910, originBoardId: 7 }, ["summary"]);
+    expect(loaded.map((i) => i.key)).toEqual(["T-1", "T-20"]);
+    // Only the keys not already listed are fetched.
+    expect(searched).toEqual(["key in (T-20)"]);
+    // A failing report or no board: the sprint's list alone.
+    const failing = { ...client, getSprintRemovedIssueKeys: async () => { throw new Error("403"); } } as unknown as JiraClient;
+    expect((await loadSprintHistory(failing, { id: 910, originBoardId: 7 }, [])).map((i) => i.key)).toEqual(["T-1"]);
+    expect((await loadSprintHistory(client, { id: 910 }, [])).map((i) => i.key)).toEqual(["T-1"]);
   });
 
   test("without the map, Fertig is not done; without changelogs, the current state counts", () => {

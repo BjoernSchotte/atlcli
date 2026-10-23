@@ -30,7 +30,7 @@ All of them print JSON (`schemaVersion: "1"`), with or without `--json`.
 
 | Flag | Type | Default | Used by |
 |---|---|---|---|
-| `--board` | board id | `defaults.board` (predictability) | velocity, predictability |
+| `--board` | board id | `defaults.board` | velocity, predictability |
 | `--sprint` | sprint id | required | burndown, scope-change |
 | `--sprints` | integer | `5` | velocity, predictability: the most recently closed sprints, listed oldest first |
 | `--points-field` | field id | auto-detected | all |
@@ -54,7 +54,8 @@ Sprint metrics count the sprint as it was, not as the issues are today. atlcli r
 |---|---|
 | Committed | Issues in the sprint at its exact start, at their estimate then |
 | Completed | Issues in the sprint at its end, in a done status then, at their estimate then |
-| Added / removed | Points that joined after the start / left before the end |
+| Added | Issues that joined after the start, including those removed again |
+| Removed | Issues in the sprint at some point that were out of it at the end |
 | Issues | Issues in the sprint at its end |
 
 Left out, as in Jira's sprint report:
@@ -64,7 +65,9 @@ Left out, as in Jira's sprint report:
 
 Work finished after the sprint no longer counts as completed. An estimate changed during the sprint counts as committed at its old value.
 
-**Limitation:** an issue moved out of the sprint before it closed no longer appears in the sprint's issue list. Its removal therefore stays invisible; Jira lists it as "removed from sprint".
+An issue moved out of the sprint before it closed no longer appears in the sprint's issue list. atlcli reads those issues from Jira's own sprint report ("Issues removed from sprint") and replays them like the others. An issue added and removed again during the sprint counts as added and as removed, as in Jira.
+
+If that report is not available (missing permission on the board), removed issues are left out, as before; nothing fails.
 
 ### Story points detection
 
@@ -127,12 +130,14 @@ atlcli jira analyze scope-change --sprint 456
 ```json
 {
   "schemaVersion": "1",
-  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed" },
+  "sprint": { "id": 456, "name": "Sprint 14", "state": "closed", "startDate": "2026-10-06T08:00:00.000Z", "endDate": "2026-10-17T16:00:00.000Z" },
   "pointsField": "customfield_10016",
   "scopeChange": {
     "committedPoints": 40,
     "addedPoints": 5,
     "removedPoints": 3,
+    "addedIssues": 2,
+    "removedIssues": 1,
     "scopeChangePercent": 20,
     "stability": "moderate"
   },
@@ -140,7 +145,7 @@ atlcli jira analyze scope-change --sprint 456
 }
 ```
 
-`scopeChangePercent` is (added + removed) / committed × 100. Stability is `stable` up to 10 %, `moderate` up to 25 % and `unstable` above.
+`addedPoints`/`removedPoints` are points, `addedIssues`/`removedIssues` issue counts. `scopeChangePercent` is (added + removed points) / committed points × 100. Stability is `stable` up to 10 %, `moderate` up to 25 % and `unstable` above.
 
 ## Predictability
 
@@ -177,14 +182,26 @@ atlcli jira sprint report 456
   "velocity": 34,
   "sayDoRatio": 85,
   "scopeChange": 20,
-  "issues": { "total": 22, "completed": 18, "incomplete": 4, "added": 5, "removed": 3 },
-  "progress": { "committed": 40, "completed": 34, "percent": 85, "bar": "[█████████████████───] 85%" }
+  "issues": { "total": 22, "completed": 18, "incomplete": 4, "added": 2, "removed": 1 },
+  "progress": { "committed": 40, "completed": 34, "added": 5, "removed": 3, "percent": 85, "bar": "[█████████████████───] 85%" }
 }
 ```
 
+| Field | Unit | Meaning |
+|---|---|---|
+| `issues.total`, `completed`, `incomplete` | issues | In the sprint at its end; done or not (see [As of the sprint](#as-of-the-sprint)) |
+| `issues.added`, `issues.removed` | issues | Joined after the start / left before the end |
+| `progress.committed`, `progress.completed` | points | At the start / done at the end |
+| `progress.added`, `progress.removed` | points | Points of the added / removed issues |
+| `scopeChange` | percent | (added + removed points) / committed points |
+
+:::caution[Changed in this release]
+`issues.added` and `issues.removed` used to hold points. They now count issues; the points moved to `progress.added` and `progress.removed`.
+:::
+
 ## Requests
 
-Every sprint metric reads the change history of all sprint issues in one request per 1000 issues on Jira Cloud (`changelog/bulkfetch`); velocity and predictability do so once per sprint. On Data Center they read it per issue, five at a time.
+Every sprint metric reads the change history of all sprint issues in one request per 1000 issues on Jira Cloud (`changelog/bulkfetch`); velocity and predictability do so once per sprint. On Data Center they read it per issue, five at a time. Each sprint also costs one read of Jira's sprint report for the removed issues, plus one search if there are any.
 
 ## Best practices
 

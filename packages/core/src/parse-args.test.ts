@@ -9,6 +9,10 @@ describe("parseArgs", () => {
     expect(parsed._).toEqual(["issue", "create"]);
   });
 
+  test("a dash before a digit is a value: relative dates, negative numbers", () => {
+    expect(parseArgs(["--updated", "-7d", "--offset", "-2", "--json"]).flags).toEqual({ updated: "-7d", offset: "-2", json: true });
+  });
+
   test("a following flag still makes the long flag boolean", () => {
     expect(parseArgs(["--dry-run", "--json"]).flags).toEqual({ "dry-run": true, json: true });
   });

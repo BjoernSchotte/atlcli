@@ -118,7 +118,7 @@ For `--started` flag:
 | Format | Example |
 |--------|---------|
 | ISO 8601 | `2025-01-14T09:00:00` |
-| Date only | `2025-01-14` (assumes start of day) |
+| Date only | `2025-01-14` (that day, at the current time of day) |
 | Relative | `today`, `yesterday` |
 | Time only | `09:00`, `14:30` (today) |
 
@@ -175,7 +175,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--issue` | Issue key (required) |
-| `--limit` | Maximum results |
+| `--limit` | Maximum results (default 50) |
 
 ## Update Worklog
 
@@ -213,10 +213,12 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--user` | User email or `me` (default: `me`) |
+| `--user` | `me` (default), or an email or display name |
 | `--since` | Start date (default: 30 days ago) |
 | `--until` | End date (default: today) |
 | `--group-by` | Group results: `issue` or `date` |
+
+`--user` is not resolved like other [user flags](issues.md#users). atlcli searches with `worklogAuthor = "<value>"` and keeps the worklogs whose author's display name or email contains the value. An account ID does not match.
 
 ### Date formats for --since/--until
 
@@ -267,7 +269,7 @@ atlcli jira worklog report --since 7d --json
 
 ## JSON Output
 
-All worklog commands support `--json` for structured output:
+Worklog commands print JSON, pretty-printed even without `--json`:
 
 ```bash
 atlcli jira worklog list --issue PROJ-123 --json
@@ -279,18 +281,23 @@ atlcli jira worklog list --issue PROJ-123 --json
   "worklogs": [
     {
       "id": "10001",
+      "issueId": "10123",
       "author": "Alice",
       "authorId": "557058:abc123",
       "timeSpent": "2h",
       "timeSpentSeconds": 7200,
       "timeSpentHuman": "2 hours",
       "started": "2026-01-14T09:00:00.000+0000",
-      "comment": "Initial investigation"
+      "created": "2026-01-14T11:02:13.000+0000",
+      "updated": "2026-01-14T11:02:13.000+0000",
+      "comment": { "type": "doc", "version": 1, "content": [] }
     }
   ],
   "total": 1
 }
 ```
+
+`comment` is Jira's raw value: ADF on Cloud, a string on Data Center.
 
 ## Best Practices
 

@@ -117,5 +117,5 @@ it("docs diff reports no changes right after docs pull", async () => {
   expect(diff.exitCode, diff.stderr).toBe(0);
   const parsed = JSON.parse(diff.stdout);
   expect(parsed.unified, parsed.unified).toBeDefined();
-  expect(parsed.hasChanges, parsed.unified).toBe(false);
+  if (parsed.hasChanges) throw new Error(`unexpected diff:\n${parsed.unified}`);
 }, 90_000);

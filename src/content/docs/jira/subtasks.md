@@ -28,16 +28,24 @@ View subtasks of a parent issue:
 atlcli jira subtask list PROJ-123
 ```
 
-Output:
+Output (pretty JSON, with or without `--json`):
 
-```
-KEY         STATUS        ASSIGNEE      SUMMARY
-PROJ-124    In Progress   alice         Implement API endpoint
-PROJ-125    To Do         bob           Write unit tests
-PROJ-126    Done          alice         Update documentation
+```json
+{
+  "schemaVersion": "1",
+  "parent": {
+    "key": "PROJ-123",
+    "summary": "Implement user authentication"
+  },
+  "subtasks": [
+    { "key": "PROJ-124", "summary": "Implement API endpoint", "status": "In Progress", "type": "Sub-task" },
+    { "key": "PROJ-125", "summary": "Write unit tests", "status": "To Do", "type": "Sub-task" }
+  ],
+  "total": 2
+}
 ```
 
-Use `--json` for JSON output.
+The parent key works positionally or with `--parent`.
 
 ## Create Subtask
 
@@ -52,10 +60,11 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--summary` | Subtask summary (required) |
-| `--description` | Detailed description |
-| `--assignee` | Assignee email or account ID |
+| `--description` | Description (markdown); `--description-file <path\|->` reads it from a file or stdin |
+| `--assignee` | Assignee (see [Users](issues.md#users)) |
 | `--priority` | Priority name (e.g., High, Medium, Low) |
-| `--labels` | Comma-separated labels |
+
+Prints `{schemaVersion, created: {id, key, parent, summary}}`. To add labels, run `issue update --key <new key> --add-labels …` afterwards.
 
 ### Examples
 
@@ -75,7 +84,7 @@ done
 
 ## Subtask Types
 
-atlcli automatically detects the correct subtask issue type for your project. Different projects may use different names:
+atlcli uses the first subtask issue type of the parent's project. Projects name it differently, for example:
 
 - Sub-task
 - Subtask
@@ -93,35 +102,6 @@ atlcli jira issue get --key PROJ-124
 ```
 
 Output includes the parent issue reference.
-
-## JSON Output
-
-```bash
-atlcli jira subtask list PROJ-123 --json
-```
-
-```json
-{
-  "schemaVersion": "1",
-  "parent": {
-    "key": "PROJ-123",
-    "summary": "Implement user authentication"
-  },
-  "subtasks": [
-    {
-      "key": "PROJ-124",
-      "summary": "Implement API endpoint",
-      "status": "In Progress",
-      "assignee": {
-        "displayName": "Alice",
-        "email": "alice@company.com"
-      },
-      "priority": "High"
-    }
-  ],
-  "total": 3
-}
-```
 
 ## Use Cases
 

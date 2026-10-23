@@ -231,7 +231,7 @@ atlcli jira issue attach PROJ-123 ./build.log --comment "Build failed - see atta
 
 ```bash
 # Export all attachments from issues matching JQL
-for key in $(atlcli jira search --jql "project = PROJ AND attachments is not EMPTY" --json | jq -r '.issues[].key'); do
+for key in $(atlcli jira search --jql "project = PROJ AND attachments is not EMPTY" --all-results --json | jq -r '.issues[].key'); do
   mkdir -p "./attachments/$key"
   atlcli jira issue attachments $key --json | \
     jq -r '.attachments[].id' | \

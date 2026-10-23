@@ -35,7 +35,10 @@ atlcli jira issue get --key PROJ-123 --expand changelog
 # JSON output (includes descriptionMarkdown next to the raw ADF description)
 atlcli jira issue get --key PROJ-123 --json
 
-# Edit the description in your editor and write it back
+# Edit the description in $VISUAL/$EDITOR and write it back
+atlcli jira issue update --key PROJ-123 --edit
+
+# The same by hand, for scripts
 atlcli jira issue get --key PROJ-123 --json | jq -r .issue.descriptionMarkdown > desc.md
 $EDITOR desc.md
 atlcli jira issue update --key PROJ-123 --description-file desc.md
@@ -103,7 +106,8 @@ Options:
 | `--summary` | Issue summary (required) |
 | `--description` | Issue description (markdown) |
 | `--description-file` | Read the description from a markdown file, or `-` for stdin. Not together with `--description`. |
-| `--assignee` | Assignee account ID |
+| `--edit` | Write the description in `$VISUAL`/`$EDITOR` (needs a terminal) |
+| `--assignee` | Assignee: `me`, an email, a name or an account ID (see [Users](#users)) |
 | `--priority` | Priority name |
 | `--labels` | Comma-separated labels |
 | `--parent` | Parent issue key (for subtasks) |
@@ -122,7 +126,7 @@ atlcli jira issue create --project PROJ --type Bug \
 # Create and assign
 atlcli jira issue create --project PROJ --type Task \
   --summary "Update docs" \
-  --assignee 557058:abc123
+  --assignee alice@example.com
 
 # Description from a markdown file
 atlcli jira issue create --project PROJ --type Bug \
@@ -205,10 +209,11 @@ Options:
 | `--summary` | New summary |
 | `--description` | New description (markdown) |
 | `--description-file` | New description from a markdown file, or `-` for stdin |
+| `--edit` | Edit the current description in `$VISUAL`/`$EDITOR`; nothing is written if it is unchanged |
 | `--priority` | New priority |
 | `--add-labels` | Add labels (comma-separated) |
 | `--remove-labels` | Remove labels (comma-separated) |
-| `--assignee` | New assignee (account ID or `none` to unassign) |
+| `--assignee` | New assignee (see [Users](#users)); `none` or `x` unassigns |
 | `--field` | Set a custom field — `<id>=<value>`, repeatable |
 
 ### Examples
@@ -226,6 +231,29 @@ atlcli jira issue update --key PROJ-123 --add-labels reviewed,verified
 atlcli jira issue update --key PROJ-123 --assignee none
 ```
 
+## Clone Issue
+
+Create a copy of an issue:
+
+```bash
+atlcli jira issue clone PROJ-123
+atlcli jira issue clone PROJ-123 --replace "v1:v2" --replace "Q3:Q4"
+atlcli jira issue clone PROJ-123 --project OTHER --assignee me
+```
+
+The clone gets the source's summary, description, type and labels. In the same project it also gets the components and the parent. Priority, assignee, sprint, versions and custom fields are not copied: they may not fit the target project.
+
+| Flag | Description |
+|------|-------------|
+| `--replace` | `find:replace` in summary and description, repeatable; split at the first colon |
+| `--summary` | Summary instead of the source's (replacements still apply) |
+| `--project` | Target project (default: the source's) |
+| `--type` | Issue type (default: the source's) |
+| `--priority` | Priority |
+| `--labels` | Labels instead of the source's |
+| `--parent` | Parent issue key |
+| `--assignee` | Assignee (see [Users](#users)) |
+
 ## Delete Issue
 
 ```bash
@@ -237,7 +265,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--key` | Issue key (required) |
-| `--confirm` | Skip confirmation prompt |
+| `--confirm` | Required to delete |
 | `--delete-subtasks` | Also delete subtasks |
 
 ## Transitions
@@ -261,13 +289,16 @@ Options:
 atlcli jira issue transitions --key PROJ-123
 ```
 
-Output:
+Output (Jira's transition objects, shortened):
 
-```
-ID    NAME           TO STATUS
-21    Start          In Progress
-31    Done           Done
-41    Review         In Review
+```json
+{
+  "schemaVersion": "1",
+  "transitions": [
+    { "id": "21", "name": "Start", "to": { "id": "3", "name": "In Progress" } },
+    { "id": "31", "name": "Done", "to": { "id": "10001", "name": "Done" } }
+  ]
+}
 ```
 
 ## Comments
@@ -275,9 +306,13 @@ ID    NAME           TO STATUS
 Comment bodies are markdown (see [Markdown descriptions and comments](#markdown-descriptions-and-comments)).
 
 ```bash
-# Add a comment (positional text, --body or --body-file)
+# Add a comment (positional text, --body, --body-file or --edit)
 atlcli jira issue comment --key PROJ-123 "Working on **this**"
 atlcli jira issue comments add --key PROJ-123 --body-file notes.md
+atlcli jira issue comments add --key PROJ-123 --edit
+
+# Internal comment, hidden from customers (Jira Service Management)
+atlcli jira issue comments add --key DESK-7 "Escalated to 2nd level" --internal
 
 # List comments as JSON (bodies converted to markdown) or as readable markdown
 atlcli jira issue comments list --key PROJ-123 --json
@@ -290,7 +325,7 @@ atlcli jira issue comments delete --key PROJ-123 --id 10042 --confirm
 
 | Command | Required flags | Notes |
 |---------|----------------|-------|
-| `comment` / `comments add` | `--key`, one of text / `--body` / `--body-file` | `--body-file -` reads stdin |
+| `comment` / `comments add` | `--key`, one of text / `--body` / `--body-file` / `--edit` | `--body-file -` reads stdin; `--internal` for JSM |
 | `comments list` | `--key` | `--limit` (default 100), `--format markdown` |
 | `comments edit` | `--key`, `--id`, `--body` or `--body-file` | Replaces the whole body |
 | `comments delete` | `--key`, `--id`, `--confirm` | |
@@ -326,6 +361,19 @@ Options:
 | `--from` | Source issue key (required) |
 | `--to` | Target issue key (required) |
 | `--type` | Link type name (required) |
+
+### Web Links
+
+Attach a URL to an issue (Jira shows it under **Web links**):
+
+```bash
+atlcli jira issue link --key PROJ-123 --url https://example.com/spec --title "Spec"
+
+# Remove it by the link id from the output above
+atlcli jira issue unlink --key PROJ-123 --remote 10500
+```
+
+`--title` defaults to the URL. For Confluence pages, use [link-page](#cross-product-linking).
 
 ### Remove a Link
 
@@ -369,12 +417,43 @@ atlcli jira unwatch PROJ-123
 ## Assign
 
 ```bash
-# Assign to user
+# Assign to a user, or to yourself
 atlcli jira issue assign --key PROJ-123 --assignee alice@company.com
+atlcli jira issue assign --key PROJ-123 --assignee me
+
+# The project's default assignee
+atlcli jira issue assign --key PROJ-123 --assignee default
 
 # Unassign
 atlcli jira issue assign --key PROJ-123 --assignee none
 ```
+
+## Users
+
+Every flag that takes a user (`--assignee` on create, update, assign, clone, `subtask create`, `template apply` and `bulk edit --set assignee=`, `--lead` on components and projects, `--user` on `filter share`) accepts:
+
+| Value | Meaning |
+|-------|---------|
+| `me` | You |
+| `alice@example.com` | The user with that email |
+| `Alice Lee` | The user with that display name |
+| `557058:1b2c…` | An account ID, used as is (Jira Cloud) |
+| `none`, `x` | Nobody (unassign) |
+| `default` | The project's default assignee (`issue assign` only) |
+
+atlcli looks the user up with Jira's user search. An exact email or display name wins; otherwise the only active hit. If several users match, the command fails and lists them; use the email or the account ID. Jira hides some emails, depending on each user's profile visibility; then use the name.
+
+On Data Center, `--lead` (components, projects) and `template apply --assignee` need a Cloud account ID, so atlcli leaves them unset there.
+
+## Open in the Browser
+
+```bash
+atlcli jira open PROJ-123   # an issue
+atlcli jira open PROJ       # a project
+atlcli jira open            # defaults.project, or the site
+```
+
+The URL is printed first, so it also works over SSH. `atlcli jira issue open <key>` does the same for an issue.
 
 ## Cross-Product Linking
 
@@ -392,6 +471,7 @@ Options:
 |------|-------------|
 | `--key` | Issue key (required) |
 | `--page` | Confluence page ID (required) |
+| `--comment` | Also post a comment on the issue that links the page (switch) |
 
 ### List Linked Pages
 
@@ -399,18 +479,19 @@ Options:
 atlcli jira issue pages --key PROJ-123
 ```
 
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--key` | Issue key (required) |
-| `--space` | Filter by Confluence space |
+Prints `{schemaVersion, issueKey, pages, total}`; each page has `id` (the link ID), `globalId`, `title`, `url` and `summary`.
 
 ### Unlink Page
 
 ```bash
+# By Confluence page ID
 atlcli jira issue unlink-page --key PROJ-123 --page 12345
+
+# By link ID (the id from issue pages)
+atlcli jira issue unlink-page --key PROJ-123 --link 10500
 ```
+
+`unlink-page` needs `--key` and one of `--link <id>` or `--page <id>`.
 
 ### Examples
 
@@ -418,11 +499,11 @@ atlcli jira issue unlink-page --key PROJ-123 --page 12345
 # Link a Confluence page to an issue
 atlcli jira issue link-page --key PROJ-123 --page 12345
 
+# Link it and leave a comment on the issue
+atlcli jira issue link-page --key PROJ-123 --page 12345 --comment
+
 # List all Confluence pages linked to an issue
 atlcli jira issue pages --key PROJ-123
-
-# Filter by space
-atlcli jira issue pages --key PROJ-123 --space TEAM
 
 # Remove link
 atlcli jira issue unlink-page --key PROJ-123 --page 12345
@@ -430,7 +511,7 @@ atlcli jira issue unlink-page --key PROJ-123 --page 12345
 
 ## JSON Output
 
-All commands support `--json`:
+Issue commands print JSON, pretty-printed even without `--json`. Only issue lists (`search`, `my`, `filter run`, board, sprint and epic issue lists) print a table; see [Search](search.md).
 
 ```bash
 atlcli jira issue get --key PROJ-123 --json
@@ -439,31 +520,28 @@ atlcli jira issue get --key PROJ-123 --json
 ```json
 {
   "schemaVersion": "1",
-  "key": "PROJ-123",
-  "id": "10001",
-  "summary": "Fix login bug",
-  "status": {
-    "name": "In Progress",
-    "category": "indeterminate"
-  },
-  "priority": {
-    "name": "High",
-    "iconUrl": "..."
-  },
-  "assignee": {
-    "displayName": "Alice",
-    "emailAddress": "alice@company.com"
-  },
-  "reporter": {
-    "displayName": "Bob",
-    "emailAddress": "bob@company.com"
-  },
-  "created": "2025-01-14T10:00:00Z",
-  "updated": "2025-01-14T15:30:00Z",
-  "labels": ["bug", "critical"],
-  "url": "https://company.atlassian.net/browse/PROJ-123"
+  "issue": {
+    "id": "10001",
+    "key": "PROJ-123",
+    "summary": "Fix login bug",
+    "status": "In Progress",
+    "statusCategory": "indeterminate",
+    "type": "Bug",
+    "priority": "High",
+    "assignee": "Alice Lee",
+    "assigneeId": "557058:1b2c3d4e",
+    "reporter": "Bob Kim",
+    "created": "2025-01-14T10:00:00.000+0000",
+    "updated": "2025-01-14T15:30:00.000+0000",
+    "labels": ["bug", "critical"],
+    "parent": "PROJ-100",
+    "description": { "type": "doc", "version": 1, "content": [] },
+    "descriptionMarkdown": "Users report a 500 error on iOS Safari."
+  }
 }
 ```
+
+`description` is the raw value from Jira (ADF on Cloud, a string on Data Center); `descriptionMarkdown` is the same content as markdown.
 
 ## Related Topics
 
