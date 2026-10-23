@@ -126,6 +126,20 @@ describe("ConfluencePoller", () => {
       expect(events[0].previousVersion).toBe(1);
     });
 
+    test("reports an edit that landed between the caller's sync and initialize", async () => {
+      // The caller pulled version 1; the remote moved to 2 before the poller
+      // took its baseline. Baselining at 2 would lose that edit for good.
+      const { client } = createMockClient([{ id: "1", title: "Page 1", version: 2 }]);
+      const poller = new ConfluencePoller({ client, scope: { type: "page", pageId: "1" } });
+      await poller.initialize(new Map([["1", 1], ["unrelated", 9]]));
+      expect(poller.getState().knownPages.get("1")?.version).toBe(1);
+
+      const events: PollChangeEvent[] = [];
+      poller.on((e) => { events.push(e); });
+      await poller.poll();
+      expect(events.map((e) => [e.type, e.version, e.previousVersion])).toEqual([["changed", 2, 1]]);
+    });
+
     test("detects deleted pages for space/tree scope", async () => {
       const pages: PageChangeInfo[] = [
         { id: "1", title: "Page 1", version: 1 },
