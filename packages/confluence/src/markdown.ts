@@ -2512,7 +2512,12 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
   // Handle colored text
   service.addRule("coloredText", {
     filter: (node) => {
-      return node.nodeName === "SPAN" && (node as any).hasAttribute?.("data-color");
+      // A status lozenge also carries data-color; it belongs to statusMacro.
+      return (
+        node.nodeName === "SPAN" &&
+        (node as any).hasAttribute?.("data-color") &&
+        !(node as any).hasAttribute?.("data-macro")
+      );
     },
     replacement: (content, node) => {
       const color = (node as any).getAttribute?.("data-color") || "";
