@@ -358,12 +358,13 @@ Rules (category/rule):
 
 Rules file (first found): --rules <file>, ./.atlcli/${AUDIT_RULES_FILE},
   ~/.atlcli/profiles/<profile>/${AUDIT_RULES_FILE}, ~/.atlcli/${AUDIT_RULES_FILE}
-Baseline: ~/.atlcli/profiles/<profile>/audit-baseline.json; without one, findings on
-  issues not updated for 180 days count as legacy (one line per rule).
+Baseline: ~/.atlcli/profiles/<profile>/audit-baseline.json. Findings on issues not
+  updated for 180 days count as legacy (one line per rule), with or without a baseline
+  file, unless --no-baseline is given.
 
 Options:
-  --project <key>       Project (default: defaults.project)
-  --board <id>          Use the board's saved filter (default: defaults.board)
+  --project <key>       Project (default: global.project or profiles.<name>.project)
+  --board <id>          Use the board's saved filter (default: global.board or profiles.<name>.board)
   --jql <jql>           Any JQL; wins over --board and --project
   --rules <file>        Rules file to use
   --checks <list>       Only these rules: rule ids, categories (workflow, flow, hygiene,

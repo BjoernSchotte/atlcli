@@ -424,7 +424,7 @@ async function handleMe(
   output({ schemaVersion: "1", user }, opts);
 }
 
-/** `jira open [KEY|PROJECT]`: an issue, a project (default: defaults.project) or the site. */
+/** `jira open [KEY|PROJECT]`: an issue, a project (default: global.project or profiles.<name>.project) or the site. */
 async function handleOpen(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -749,7 +749,7 @@ async function handleIssueCreate(
   const customFields = parseCustomFields(getFlags(flags, "field"));
 
   if (!project || !type || !summary) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project, --type, and --summary are required (or set defaults.project in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project, --type, and --summary are required (or set a default: atlcli config set global.project <value>).");
   }
   if (hasFlag(flags, "edit")) description = await editFlag(description ?? "", opts);
   const assignee = assigneeFlag ? ((await userFlag(client, assigneeFlag, opts)) ?? undefined) : undefined;
@@ -1975,7 +1975,7 @@ async function handleSprintList(
   const { client, defaults } = await getClient(flags, opts, true);
   const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
   if (!boardId) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set defaults.board in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set a default: atlcli config set global.board <value>).");
   }
   const limit = agileLimit(flags, opts);
   const state = getFlag(flags, "state") as "future" | "active" | "closed" | undefined;
@@ -2021,7 +2021,7 @@ async function handleSprintCreate(
   const name = getFlag(flags, "name");
 
   if (!boardId || !name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--board and --name are required (or set defaults.board in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--board and --name are required (or set a default: atlcli config set global.board <value>).");
   }
   const startDate = getFlag(flags, "start");
   const endDate = getFlag(flags, "end");
@@ -3085,7 +3085,7 @@ async function handleEpicCreate(
   const description = await readRichTextFlag(flags, "description", opts);
 
   if (!project) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set defaults.project in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set a default: atlcli config set global.project <value>).");
   }
   if (!summary) {
     fail(opts, 1, ERROR_CODES.USAGE, "--summary is required.");
@@ -3362,7 +3362,7 @@ async function handleAnalyzeVelocity(
   const { client, defaults } = await getClient(flags, opts, true);
   const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
   if (!boardId) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set defaults.board in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set a default: atlcli config set global.board <value>).");
   }
 
   const sprintCount = Number(getFlag(flags, "sprints") ?? 5);
@@ -3596,7 +3596,7 @@ async function handleAnalyzePredictability(
   const { client, defaults } = await getClient(flags, opts, true);
   const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
   if (!boardId) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set defaults.board in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set a default: atlcli config set global.board <value>).");
   }
 
   const sprintCount = Number(getFlag(flags, "sprints") ?? 5);
@@ -3707,7 +3707,7 @@ Options:
   --sprint <id>        Sprint ID for burndown/scope-change
   --sprints <n>        Number of sprints to analyze (default: 5)
   --points-field <id>  Story points field ID (auto-detected if not specified)
-  --project <key>      Project for flow/aging/cfd (default: defaults.project)
+  --project <key>      Project for flow/aging/cfd (default: global.project or profiles.<name>.project)
   --jql <jql>          Any JQL for flow/aging/cfd; wins over --board and --project
   --since <n>d|<n>w    Window for flow/aging/cfd (default: 90d)
   --limit <n>          Max issues for flow/aging/cfd (default: 1000)
@@ -4677,7 +4677,7 @@ async function handleFilterShare(
   }
 
   if (shareType === "project" && !project) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project is required when type is 'project' (or set defaults.project in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required when type is 'project' (or set a default: atlcli config set global.project <value>).");
   }
   if (shareType === "group" && !group) {
     fail(opts, 1, ERROR_CODES.USAGE, "--group is required when type is 'group'.");
@@ -5708,7 +5708,7 @@ async function handleComponentList(
   const { client, defaults } = await getClient(flags, opts, true);
   const project = getFlag(flags, "project") ?? defaults.project;
   if (!project) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set defaults.project in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set a default: atlcli config set global.project <value>).");
   }
   const components = await client.getProjectComponents(project);
 
@@ -5768,7 +5768,7 @@ async function handleComponentCreate(
   const lead = getFlag(flags, "lead");
 
   if (!project || !name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required (or set defaults.project in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required (or set a default: atlcli config set global.project <value>).");
   }
   const component = await client.createComponent({
     project,
@@ -5917,7 +5917,7 @@ async function handleVersionList(
   const { client, defaults } = await getClient(flags, opts, true);
   const project = getFlag(flags, "project") ?? defaults.project;
   if (!project) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set defaults.project in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set a default: atlcli config set global.project <value>).");
   }
   const versions = await client.getProjectVersions(project);
 
@@ -5984,7 +5984,7 @@ async function handleVersionCreate(
   const releaseDate = getFlag(flags, "release-date");
 
   if (!project || !name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required (or set defaults.project in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required (or set a default: atlcli config set global.project <value>).");
   }
 
   // Need project ID for version creation
@@ -6113,7 +6113,7 @@ Commands:
       Delete a version
 
   notes <id|name> --space <key> [--project <key>] [--group-by type|epic] [--template <name>]
-        [--parent <id>] [--title <t>] [--var k=v ...] [--dry-run] [--force] [--export <file>]
+        [--parent <id>] [--title <t>] [--var k=v ...] [--status-map <map>] [--dry-run] [--force] [--export <file>]
       Create or update a release notes page in Confluence
       (--list-templates, --print-template <name> show the bundled templates)
 
@@ -6745,7 +6745,7 @@ async function handleTemplateApply(
     fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
   }
   if (!projectKey) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project <key> is required (or set defaults.project in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project <key> is required (or set a default: atlcli config set global.project <value>).");
   }
 
   const ctx = await getJiraTemplateContext(flags);

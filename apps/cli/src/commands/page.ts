@@ -348,7 +348,7 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
 
   // Body mode (original behavior)
   if (!space || !title || !bodyPath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--space, --title, and --body are required (or set defaults.space in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--space, --title, and --body are required (or set a default: atlcli config set global.space <value>).");
   }
   const client = await getClient(flags, opts);
   const convOpts = await getConversionOptions(flags, opts);

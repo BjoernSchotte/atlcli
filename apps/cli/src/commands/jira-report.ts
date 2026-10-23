@@ -217,7 +217,7 @@ async function publishReport(
   options: { defaultTemplate: string; defaultTitle: string }
 ): Promise<void> {
   const space = getFlag(flags, "space") ?? ctx.defaults.space;
-  if (!space) fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or set defaults.space in config).");
+  if (!space) fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or set a default: atlcli config set global.space <value>).");
   const title = getFlag(flags, "title") ?? options.defaultTitle;
   const templateName = getFlag(flags, "template") ?? options.defaultTemplate;
 

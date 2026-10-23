@@ -26,8 +26,8 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--project` | Filter by project key. Default: `defaults.project` of the profile |
-| `--all-projects` | Ignore `--project` and `defaults.project`; list the boards of every project |
+| `--project` | Filter by project key. Default: `global.project` of the profile |
+| `--all-projects` | Ignore `--project` and `global.project`; list the boards of every project |
 | `--type` | Filter by type: `scrum`, `kanban`, `simple` |
 | `--name` | Filter by name pattern |
 | `--limit` | Maximum results (default 50) |
@@ -109,7 +109,7 @@ Table flags as for `board issues`.
 
 ## Sprints
 
-`--board` on `sprint list` and `sprint create` falls back to `defaults.board` from your config.
+`--board` on `sprint list` and `sprint create` falls back to `global.board` from your config.
 
 ### List Sprints
 
@@ -121,7 +121,7 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--board` | Board ID (required, or `defaults.board`) |
+| `--board` | Board ID (required, or `global.board`) |
 | `--state` | Filter: `active`, `future`, `closed` |
 | `--limit` | Maximum results (default 50) |
 
@@ -189,7 +189,7 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--board` | Board ID (required, or `defaults.board`) |
+| `--board` | Board ID (required, or `global.board`) |
 | `--name` | Sprint name (required) |
 | `--start` | Start date (YYYY-MM-DD) |
 | `--end` | End date (YYYY-MM-DD) |

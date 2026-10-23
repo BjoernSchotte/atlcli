@@ -22,12 +22,12 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--project` | Filter by project key (default: `defaults.project`) |
+| `--project` | Filter by project key (default: `global.project`) |
 | `--board` | List the epics of a board instead (Agile API) |
 | `--done` | Include completed epics |
 | `--limit` | Maximum results (default 50) |
 
-`epic list` searches with JQL (`issuetype = Epic`, unresolved unless `--done`) by default. It uses the board instead when you pass `--board`, or when `defaults.board` is set and you pass no `--project`; an explicit `--project` wins over `defaults.board`.
+`epic list` searches with JQL (`issuetype = Epic`, unresolved unless `--done`) by default. It uses the board instead when you pass `--board`, or when `global.board` is set and you pass no `--project`; an explicit `--project` wins over `global.board`.
 
 ### Examples
 

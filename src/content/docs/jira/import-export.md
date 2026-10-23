@@ -71,7 +71,7 @@ atlcli jira import --file issues.json --project PROJ
 | Flag | Description |
 |------|-------------|
 | `--file` | Input file (required) |
-| `--project` | Target project (required unless `defaults.project` is set) |
+| `--project` | Target project (required unless `global.project` is set) |
 | `--dry-run` | Preview without creating |
 | `--skip-attachments` | Do not upload attachments from a JSON export |
 | `--map-field` | Rename a CSV column before mapping, `"CSV Column=field"`. Repeatable, CSV only. |

@@ -52,6 +52,8 @@ const CASES: Array<[string[], string]> = [
   [["log", "clear", "--help"], "Clear old log files"],
   [["plugin", "install", "./nowhere", "--help"], "plugin"],
   [["completion", "zsh", "--help"], "completion"],
+  [["audit", "jira", "--help"], "Usage: atlcli audit jira"],
+  [["audit", "wiki", "--help"], "Usage: atlcli audit wiki"],
 ];
 
 test.each(CASES)("%p prints help and runs nothing", async (args, helpText) => {

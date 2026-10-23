@@ -199,7 +199,7 @@ The baseline lists accepted findings, as rule plus issue key, or rule plus `stat
 | `--no-baseline` | Ignore the baseline and the legacy cutoff for this run. |
 
 **Legacy cutoff, the default baseline:**
-- Without a baseline file, findings on issues not updated for `baseline.olderThan` days (180 in `default` and `minimal`) count as legacy. They are not listed one by one; the report prints one line per rule.
+- Findings on issues not updated for `baseline.olderThan` days (180 in `default` and `minimal`) count as legacy, with or without a baseline file. They are not listed one by one; the report prints one line per rule. `--no-baseline` turns the cutoff off for a run.
 - The cutoff never hides `workflow/resolved-not-done`, which reports statuses.
 - Once a baseline file exists, its entries apply in addition to the cutoff.
 

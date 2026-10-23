@@ -5,6 +5,8 @@
  * and returning matching commands, subcommands, and flags.
  */
 
+import { ROOT_COMMANDS } from "./root-commands.js";
+
 /**
  * Plugin command info for dynamic completion.
  */
@@ -14,20 +16,7 @@ export interface PluginCommandInfo {
 }
 
 // Root commands (built-in)
-const BUILTIN_ROOT_COMMANDS = [
-  "audit",
-  "auth",
-  "completion",
-  "digest",
-  "doctor",
-  "jira",
-  "log",
-  "plugin",
-  "pdf-template",
-  "update",
-  "version",
-  "wiki",
-];
+const BUILTIN_ROOT_COMMANDS = ROOT_COMMANDS.map(([name]) => name).sort();
 
 // Subcommands for each root command
 const SUBCOMMANDS: Record<string, string[]> = {

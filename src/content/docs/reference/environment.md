@@ -14,14 +14,14 @@ Environment variables for configuring atlcli.
 | `ATLCLI_SITE` | Atlassian instance URL (e.g., `https://company.atlassian.net`) |
 | `ATLCLI_EMAIL` | Account email |
 | `ATLCLI_API_TOKEN` | API token |
-| `ATLCLI_PROFILE` | Default profile name |
+| `ATLCLI_PROFILE` | Profile to use when `--profile` is not given; overrides the current profile |
 
 ## Configuration
 
 | Variable | Description |
 |----------|-------------|
-| `ATLCLI_CONFIG` | Path to config file |
-| `ATLCLI_LOG_LEVEL` | Log level (debug, info, warn, error) |
+| `ATLCLI_CONFIG` | Path to the config file, instead of `~/.atlcli/config.json` |
+| `ATLCLI_LOG_LEVEL` | Log level (`off`, `error`, `warn`, `info`, `debug`); overrides `logging.level` |
 | `ATLCLI_MODELS_DIR` | Directory for optional local models (default `~/.atlcli/models`) |
 
 ## Usage

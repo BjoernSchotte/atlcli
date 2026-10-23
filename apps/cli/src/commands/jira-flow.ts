@@ -97,7 +97,7 @@ export async function selectionJql(ctx: JiraContext, flags: Flags, opts: OutputO
     ctx.defaults
   );
   if (!selection) {
-    fail(opts, 1, ERROR_CODES.USAGE, "Select issues with --project, --board or --jql (or set defaults.project / defaults.board).");
+    fail(opts, 1, ERROR_CODES.USAGE, "Select issues with --project, --board or --jql (or set a default: atlcli config set global.project <key> or global.board <id>).");
   }
   if (selection.kind === "jql") return stripOrderBy(selection.value);
   if (selection.kind === "project") return `project = "${selection.value.replace(/"/g, '\\"')}"`;

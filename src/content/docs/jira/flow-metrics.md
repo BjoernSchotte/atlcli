@@ -54,8 +54,8 @@ An issue that passed through a status the mapping does not know is left out of c
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `--project` | project key | `defaults.project` | Select the project's issues |
-| `--board` | board id | `defaults.board` | Select the issues of the board's saved filter |
+| `--project` | project key | `global.project` | Select the project's issues |
+| `--board` | board id | `global.board` | Select the issues of the board's saved filter |
 | `--jql` | JQL | — | Any JQL. A trailing `ORDER BY` is ignored. |
 | `--since` | `<n>d`, `<n>w` or a number of days | `90d` | Window for completions, throughput and the CFD |
 | `--limit` | integer ≥ 1 | `1000` | Most issues read. Hitting it prints a `truncated` warning. |
@@ -64,7 +64,7 @@ An issue that passed through a status the mapping does not know is left out of c
 | `--csv` | flag | off | One CSV row per issue (per day for `cfd`), RFC 4180 quoting |
 | `--json` | flag | off | JSON output with `schemaVersion: "1"` |
 
-Selection precedence: `--jql`, then `--board`, then `--project`, then `defaults.board`, then `defaults.project`. Without any of them the command fails with `ATLCLI_ERR_USAGE`.
+Selection precedence: `--jql`, then `--board`, then `--project`, then `global.board`, then `global.project`. Without any of them the command fails with `ATLCLI_ERR_USAGE`.
 
 The issues read are those matching the selection that are either not done, or were updated inside the window.
 

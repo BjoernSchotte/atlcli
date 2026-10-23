@@ -128,7 +128,7 @@ This is useful when creating issues to know which types are available.
 
 ## Components
 
-`--project` falls back to `defaults.project` from your config.
+`--project` falls back to `global.project` from your config.
 
 ### List Components
 
@@ -191,7 +191,7 @@ atlcli jira component delete 10100 --confirm
 
 ## Versions
 
-`--project` falls back to `defaults.project` from your config.
+`--project` falls back to `global.project` from your config.
 
 ### List Versions
 

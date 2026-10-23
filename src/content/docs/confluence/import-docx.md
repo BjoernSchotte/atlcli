@@ -489,7 +489,7 @@ atlcli wiki import --manifest batch.yaml --confirm --resume # continue later
 | `--split <1\|2>` | number | off | Split into a page tree at heading levels 1 (or 1+2) |
 | `--skip-existing` | flag | off | Batch: skip files whose titles already exist (resume an interrupted batch) |
 | `--update-page <id>` | string | — | Reimport into this existing page (keeps id/URL/history) |
-| `--expect-version <n>` | number | — | Required with `--update-page --confirm`; must match the page's current version |
+| `--expect-version <n>` | number | — | Optional with `--update-page`: the reimport also fails unless the page is at this version |
 | `--restriction <mode>` | string | `inherit` | `inherit` \| `private` \| `explicit` page visibility |
 | `--viewer <principal>` | string, repeatable | — | Explicit mode: `account:<id>` or `group-id:<id>` |
 | `--editor <principal>` | string, repeatable | — | Explicit mode: `account:<id>` or `group-id:<id>` |

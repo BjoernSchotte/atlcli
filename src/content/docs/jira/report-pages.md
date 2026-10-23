@@ -42,8 +42,8 @@ The page shows the sprint goal, dates, issue and story-point counts, and done an
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `<id\|name>` / `<sprintId>` | positional | required | Version id or name; sprint id |
-| `--project` | project key | `defaults.project` | Needed to find a version by name |
-| `--space` | space key | `defaults.space` | Space of the page (required) |
+| `--project` | project key | `global.project` | Needed to find a version by name |
+| `--space` | space key | `global.space` | Space of the page (required) |
 | `--parent` | page ID | space root | Parent page for a new page |
 | `--title` | string | `Release notes – <version>` / `Sprint review – <sprint>` | Page title |
 | `--group-by` | `type` \| `epic` | `type` | Release notes only: picks the bundled template |

@@ -486,7 +486,7 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
     // Only --space provided (or default)
     scope = { type: "space" };
   } else {
-    fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required (or set defaults.space in config).");
+    fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required (or set a default: atlcli config set global.space <value>).");
   }
 
   // Auto-detect space from page/ancestor if not provided

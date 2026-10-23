@@ -186,7 +186,8 @@ export type Config = {
 };
 
 const CONFIG_DIR = join(os.homedir(), ".atlcli");
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+/** `ATLCLI_CONFIG` points at another config file (#282). */
+const CONFIG_PATH = process.env.ATLCLI_CONFIG?.trim() || join(CONFIG_DIR, "config.json");
 
 export function getConfigPath(): string {
   return CONFIG_PATH;
@@ -257,8 +258,14 @@ export function setCurrentProfile(config: Config, name: string): void {
   config.currentProfile = name;
 }
 
+/**
+ * The profile a command uses: `--profile`, else `ATLCLI_PROFILE`, else the
+ * config's current profile (#282).
+ */
 export function getActiveProfile(config: Config, requested?: string): Profile | undefined {
-  if (requested) return config.profiles[requested];
+  const fromEnv = typeof process === "undefined" ? undefined : process.env.ATLCLI_PROFILE?.trim();
+  const name = requested || fromEnv;
+  if (name) return config.profiles[name];
   if (config.currentProfile) return config.profiles[config.currentProfile];
   return undefined;
 }
