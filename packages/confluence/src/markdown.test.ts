@@ -689,6 +689,13 @@ describe("round-trip conversion", () => {
     expect(normalizeMarkdown(result)).toBe(normalizeMarkdown(original));
   });
 
+  test("status lozenge survives round-trip instead of turning into coloured text", () => {
+    const original = "State: {status:green}Done{status} and {color:red}hot{color}\n";
+    const result = storageToMarkdown(markdownToStorage(original));
+    expect(result).toContain("{status:green}Done{status}");
+    expect(result).toContain("{color:red}hot{color}");
+  });
+
   test("code block survives round-trip", () => {
     const original = "```js\nconst x = 1;\n```\n";
     const html = markdownToStorage(original);

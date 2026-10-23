@@ -40,6 +40,11 @@ describe("classifyChanges", () => {
       expected: narrow({ code: true, staticQuality: true, unitTests: true }),
     },
     {
+      name: "agent skill content",
+      paths: ["skills/atlcli/SKILL.md", "skills/atlcli/references/safety.md"],
+      expected: narrow({ code: true, staticQuality: true, unitTests: true }),
+    },
+    {
       name: "CLI PDF adapter",
       paths: ["apps/cli/src/commands/export-pdf.ts"],
       expected: narrow({

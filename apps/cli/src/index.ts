@@ -29,6 +29,7 @@ import { handleModels } from "./commands/models.js";
 import { handlePlugin, pluginHelp } from "./commands/plugin.js";
 import { handleJira, jiraHelpFor } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
+import { handleSkill } from "./commands/skill.js";
 import {
   chatHelp,
   handleChat,
@@ -184,6 +185,9 @@ async function main(): Promise<void> {
       case "plugin":
         await handlePlugin(rest, parsed.flags, opts);
         break;
+      case "skill":
+        await handleSkill(rest, parsed.flags, opts);
+        break;
       case "update":
         await handleUpdate(rest, parsed.flags, opts);
         break;
@@ -308,6 +312,9 @@ function showCommandHelp(
       break;
     case "plugin":
       output(pluginHelp(), opts);
+      break;
+    case "skill":
+      handleSkill(subArgs, helpFlags, opts);
       break;
     case "update":
       handleUpdate(subArgs, helpFlags, opts);

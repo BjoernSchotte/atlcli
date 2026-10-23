@@ -279,6 +279,7 @@ atlcli jira search --assignee me --status "In Progress"
 | Diagnose configuration | `atlcli doctor` |
 | Automate in CI | `--json`, `--strict`, and documented exit codes |
 | Extend atlcli | `atlcli plugin --help` |
+| Teach an agent atlcli | `atlcli skill --install .claude/skills` |
 
 ## Confluence as a filesystem
 
@@ -308,6 +309,21 @@ Writing is off by default: `--mode rw` enables edits, deletion needs
 See [Virtual Filesystem](https://atlcli.sh/confluence/virtual-filesystem/), and
 [Confluence for Coding Agents](https://atlcli.sh/recipes/confluence-vfs-agents/)
 for a snippet to paste into `AGENTS.md`.
+
+## Agent skill
+
+atlcli ships an agent skill that teaches a coding agent the CLI: the flag
+grammar, JSON output and error codes, and the rule to confirm every write with
+the user. It lives in [`skills/atlcli/`](skills/atlcli/) in the Agent Skills
+layout, and every binary carries a copy built from the same source:
+
+```bash
+atlcli skill --install .claude/skills   # writes .claude/skills/atlcli/
+atlcli skill                            # prints SKILL.md
+atlcli skill references/safety.md       # prints one linked file
+```
+
+See [Agent Skill](https://atlcli.sh/reference/agent-skill/).
 
 ## CLI or browser extension?
 

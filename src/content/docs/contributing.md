@@ -162,9 +162,14 @@ atlcli/
 │   ├── core/             # Shared utilities
 │   ├── confluence/       # Confluence API client
 │   └── jira/             # Jira API client
+├── skills/               # Agent skill, embedded in the CLI (atlcli skill)
 ├── docs/                 # Documentation (this site)
 └── spec/                 # Internal specs and roadmaps
 ```
+
+`skills/atlcli/SKILL.md` names the atlcli source its content was last checked
+against: an upstream commit, and the release it follows. Change that reference
+only after reviewing the skill's content against the new source.
 
 ## E2E Resources
 

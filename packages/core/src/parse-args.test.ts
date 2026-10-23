@@ -38,6 +38,13 @@ describe("parseArgs", () => {
     expect(parseArgs(["--updated", "-7d"]).flags.updated).toBe("-7d");
   });
 
+  test("audit wiki check switches never swallow the directory", () => {
+    expect(parseArgs(["audit", "wiki", "--orphans", "--broken-links", "./docs", "--json"])).toEqual({
+      _: ["audit", "wiki", "./docs"],
+      flags: { orphans: true, "broken-links": true, json: true },
+    });
+  });
+
   test("a value starting with '-' that is not a flag is the value (#272)", () => {
     expect(parseArgs(["--description", "- first item"]).flags.description).toBe("- first item");
     expect(parseArgs(["--offset", "-5"]).flags.offset).toBe("-5");

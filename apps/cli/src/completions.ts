@@ -5,6 +5,7 @@
  * and returning matching commands, subcommands, and flags.
  */
 
+import { SKILL_FILES } from "./skill-files.js";
 import { ROOT_COMMANDS } from "./root-commands.js";
 
 /**
@@ -52,6 +53,8 @@ const SUBCOMMANDS: Record<string, string[]> = {
   ],
   log: ["clear", "list", "show", "tail"],
   plugin: ["disable", "enable", "install", "list", "remove"],
+  // `atlcli skill <path>` takes a file of the skill in place of a subcommand.
+  skill: SKILL_FILES.map((file) => file.path),
   "pdf-template": [
     "analyze",
     "build",
@@ -614,6 +617,9 @@ const COMMAND_FLAGS: Record<string, string[]> = {
 
   // update flags
   update: ["--check"],
+
+  // skill flags
+  skill: ["--install", "--list"],
 };
 
 /**

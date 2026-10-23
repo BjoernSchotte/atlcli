@@ -19,6 +19,7 @@ export const ROOT_COMMANDS: ReadonlyArray<readonly [name: string, description: s
   ["log", "Query and manage logs"],
   ["models", "Optional local models (table structure for PDF import)"],
   ["plugin", "Manage plugins"],
+  ["skill", "Print or install the agent skill"],
   ["update", "Check for and install updates"],
   ["version", "Show version"],
   ["release-info", "Show versioned build provenance"],

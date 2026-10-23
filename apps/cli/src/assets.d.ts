@@ -1,8 +1,11 @@
 /**
- * Bun `with { type: "file" }` asset imports: the module's default export is
- * the file's path (on disk under `bun run`, `$bunfs` inside a compiled
- * binary). TypeScript never resolves these specifiers — these ambient
- * declarations supply the type.
+ * Bun asset imports. TypeScript never resolves these specifiers; these ambient
+ * declarations supply the types.
+ *
+ * - `with { type: "file" }`: the default export is the file's path (on disk
+ *   under `bun run`, `$bunfs` inside a compiled binary).
+ * - `with { type: "text" }`: the default export is the file's content, inlined
+ *   into bundles and compiled binaries as a string.
  */
 declare module "*.wasm" {
   const path: string;
@@ -12,6 +15,12 @@ declare module "*.wasm" {
 declare module "*.ttf" {
   const path: string;
   export default path;
+}
+
+/** Imported with `type: "text"` (the agent skill under `skills/atlcli/`). */
+declare module "*.md" {
+  const content: string;
+  export default content;
 }
 
 /**

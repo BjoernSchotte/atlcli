@@ -456,6 +456,10 @@ export async function handleRecent(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  if (hasFlag(flags, "help")) {
+    output(recentHelp(), opts);
+    return;
+  }
   const { client, defaults } = await getClient(flags, opts, true);
   const days = getFlag(flags, "days") ?? "7";
   const cql =
@@ -487,6 +491,10 @@ export async function handleMy(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  if (hasFlag(flags, "help")) {
+    output(myHelp(), opts);
+    return;
+  }
   const { client, defaults } = await getClient(flags, opts, true);
   const cql =
     buildMyPagesCql({
@@ -508,6 +516,34 @@ export async function handleMy(
     formatTable(result.results, opts);
     output(`\n${result.results.length} pages`, opts);
   }
+}
+
+export function recentHelp(): string {
+  return `atlcli wiki recent [options]
+
+Show pages modified in the last days, newest first.
+
+Options:
+  --days <n>        Look back n days (default: 7)
+  --space <key>     Filter by space (comma-separated for multiple; default: profile space)
+  --label <name>    Filter by label
+  --limit <n>       Max results (default: 25)
+  --json            JSON output
+`;
+}
+
+export function myHelp(): string {
+  return `atlcli wiki my [options]
+
+Show pages you created, newest first.
+
+Options:
+  --contributed     Pages you contributed to instead of created
+  --space <key>     Filter by space (comma-separated for multiple; default: profile space)
+  --label <name>    Filter by label
+  --limit <n>       Max results (default: 25)
+  --json            JSON output
+`;
 }
 
 /** Every `--label` value, repeated or comma-separated. */
