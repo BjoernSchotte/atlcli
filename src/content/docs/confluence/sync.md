@@ -545,6 +545,20 @@ Conflict detected: docs/api.md
   Remote: Modified 2025-01-14 10:35 (version 5 → version 6)
 ```
 
+### Push and watch
+
+`docs push` and `docs watch` check each tracked page against the version of your last pull before they upload anything:
+
+- **Remote unchanged:** the local file is pushed.
+- **Remote changed, local file unchanged:** the file is skipped; the next `pull` brings the remote edit.
+- **Remote changed, local file changed:** the file is not pushed, and neither are its attachments. `push` lists the pages and exits with code 1:
+
+```
+api.md: changed in Confluence since your last pull (v5 → v6); not pushed. Run 'atlcli wiki docs pull' or 'atlcli wiki docs sync' to merge, or push with --force to overwrite.
+```
+
+Run `atlcli wiki docs sync` to merge both edits, or `atlcli wiki docs pull` and edit again. `--force` overwrites the remote edit on purpose; the page history keeps it.
+
 ### Resolution Strategies
 
 Control how conflicts are handled in sync mode:
