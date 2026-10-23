@@ -190,7 +190,8 @@ describe("wiki import PDF review-first planning", () => {
       expect(result.content.outline.some((item: { text: string }) => item.text === "Original visual views")).toBe(heading);
       expect(result.blockers).toEqual([]);
     }
-  });
+    // Four full plans of the scan fixture: past 5 s on a loaded machine.
+  }, 30_000);
 
   it("rejects format mismatch, cross-format flags, unsafe split values, and confirm+dry-run before writes", async () => {
     const fakePdf = join(directory, "wrong.pdf");
