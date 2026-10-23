@@ -139,6 +139,7 @@ import {
 import type { Ignore } from "@atlcli/confluence/internal";
 import { readAttachmentFile, resolveAttachmentFile } from "./docs-attachments.js";
 import { handleSync, syncHelp } from "./sync.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 /** Sync state for bidirectional sync tracking */
 export type SyncState = "synced" | "local-modified" | "remote-modified" | "conflict";
@@ -390,7 +391,7 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
       await handleDocsConvert(args.slice(1), flags, opts);
       return;
     default:
-      output(docsHelp(), opts);
+      unknownSubcommand(sub, docsHelp(), opts);
       return;
   }
 }

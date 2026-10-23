@@ -114,7 +114,7 @@ Output:
 }
 ```
 
-Only custom fields have options. Reading them needs Jira admin permission; without it, or for a field without options, `options` is empty and `message` says why.
+Only custom fields have options. For a field without options, `options` is empty and `message` says why. Reading them needs Jira admin permission; without it the command fails with `ATLCLI_ERR_FORBIDDEN` and exit code 1, so an empty `options` list always means the field has none.
 
 ## Using Fields in Issues
 

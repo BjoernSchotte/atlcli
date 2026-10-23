@@ -240,6 +240,13 @@ describe("buildDigest", () => {
     expect(anySectionSucceeded({ jira: {}, confluence: { comments: [] } })).toBe(true);
   });
 
+  test("configured projects are not a fetched section; a failed project fetch shows no empty lists (#306)", () => {
+    const failed = { jira: { projectKeys: ["PROJ"], staleDays: 30, waiting: undefined, projectIssues: undefined }, confluence: { recent: undefined } };
+    expect(anySectionSucceeded(failed)).toBe(false);
+    const d = buildDigest(raw({ jira: { ...raw().jira, projectKeys: ["PROJ"], projectIssues: undefined } }), { now: NOW, includeOwn: false, limit: 10 });
+    expect(d.jira?.projects).toBeUndefined();
+  });
+
   test("text and Markdown snapshots are deterministic", () => {
     const d = buildDigest(raw(), { now: NOW, includeOwn: false, limit: 10 });
     expect(renderDigestText(d, NOW)).toMatchSnapshot();

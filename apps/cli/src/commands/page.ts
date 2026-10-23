@@ -46,6 +46,7 @@ import {
   buildPageDiffChangeSetWithSpillV1,
   shouldUseSemanticDiffSpillV1,
 } from "../semantic-diff-spill.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Show help if --help or -h flag is set
@@ -131,7 +132,7 @@ export async function handlePage(args: string[], flags: Record<string, string | 
       await handleConvert(flags, opts);
       return;
     default:
-      output(pageHelp(), opts);
+      unknownSubcommand(sub, pageHelp(), opts);
       return;
   }
 }
@@ -402,7 +403,7 @@ async function handleLabel(args: string[], flags: Record<string, string | boolea
       await handleLabelList(flags, opts);
       return;
     default:
-      output(labelHelp(), opts);
+      unknownSubcommand(action, labelHelp(), opts);
       return;
   }
 }
@@ -1617,10 +1618,7 @@ async function handleDelete(flags: Record<string, string | boolean | string[]>, 
     const page = await client.getPage(id);
 
     if (dryRun) {
-      output(`Would delete: "${page.title}" (${id})`, opts);
-      if (opts.json) {
-        output({ schemaVersion: "1", dryRun: true, pages: [{ id, title: page.title }] }, opts);
-      }
+      output(opts.json ? { schemaVersion: "1", dryRun: true, pages: [{ id, title: page.title }] } : `Would delete: "${page.title}" (${id})`, opts);
       return;
     }
 

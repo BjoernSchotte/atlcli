@@ -10,6 +10,7 @@ import os from "node:os";
 import { hasFlag, getFlag, output, fail, ERROR_CODES } from "@atlcli/core";
 import type { OutputOptions } from "@atlcli/core";
 import type { LogEntry, LogLevel, LogEntryType } from "@atlcli/core";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 /** Get the global logs directory */
 function getGlobalLogsDir(): string {
@@ -187,7 +188,7 @@ export async function handleLog(
       await handleClear(flags, opts);
       break;
     default:
-      output(logHelp(), opts);
+      unknownSubcommand(subcommand, logHelp(), opts);
   }
 }
 

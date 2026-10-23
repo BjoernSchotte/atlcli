@@ -101,6 +101,7 @@ import {
   type LoadedExportTemplate,
 } from "./export-internals.js";
 import { handleExportJobs } from "./export-jobs.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 /**
  * `--template`, or its documented short form `-t`.
@@ -175,7 +176,7 @@ export async function handleExport(
         await deleteTemplate(rest, flags, opts);
         return;
       default:
-        output(exportHelp(), opts);
+        unknownSubcommand(sub, exportHelp(), opts);
         return;
     }
   }

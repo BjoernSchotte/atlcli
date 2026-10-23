@@ -25,6 +25,7 @@ import {
   setProfile,
   slugify,
 } from "@atlcli/core";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleAuth(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
@@ -61,7 +62,7 @@ export async function handleAuth(args: string[], flags: Record<string, string | 
       await handleDelete(args.slice(1), flags, opts);
       return;
     default:
-      output(authHelp(), opts);
+      unknownSubcommand(sub, authHelp(), opts);
       return;
   }
 }

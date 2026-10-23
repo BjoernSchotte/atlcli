@@ -7,7 +7,8 @@
  * atlcli config unset <key>             - Remove a value
  */
 
-import { OutputOptions, output, loadConfig, saveConfig, hasFlag } from "@atlcli/core";
+import { ERROR_CODES, OutputOptions, fail, output, loadConfig, saveConfig, hasFlag } from "@atlcli/core";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleConfig(
   args: string[],
@@ -36,7 +37,7 @@ export async function handleConfig(
       await configUnset(rest[0], opts);
       return;
     default:
-      output(configHelp(), opts);
+      unknownSubcommand(sub, configHelp(), opts);
       return;
   }
 }
@@ -72,10 +73,7 @@ async function configList(opts: OutputOptions): Promise<void> {
 }
 
 async function configGet(key: string, opts: OutputOptions): Promise<void> {
-  if (!key) {
-    output("Usage: atlcli config get <key>", opts);
-    return;
-  }
+  if (!key) fail(opts, 1, ERROR_CODES.USAGE, "Usage: atlcli config get <key>");
 
   const config = await loadConfig();
 
@@ -106,17 +104,10 @@ async function configGet(key: string, opts: OutputOptions): Promise<void> {
 }
 
 async function configSet(key: string, value: string, opts: OutputOptions): Promise<void> {
-  if (!key || value === undefined || value === "") {
-    output("Usage: atlcli config set <key> <value>", opts);
-    return;
-  }
+  if (!key || value === undefined || value === "") fail(opts, 1, ERROR_CODES.USAGE, "Usage: atlcli config set <key> <value>");
 
-  // Validate key path
-  if (!isValidKey(key)) {
-    output(`Invalid key: ${key}`, opts);
-    output("Valid keys: global.(project|space|board), profiles.<name>.(project|space|board), logging.(level|global|project)", opts);
-    return;
-  }
+  // Only these keys can be set here; everything else is edited in ~/.atlcli/config.json (#305).
+  if (!isValidKey(key)) invalidKey(key, opts);
 
   const config = await loadConfig();
 
@@ -124,27 +115,19 @@ async function configSet(key: string, value: string, opts: OutputOptions): Promi
   const profileMatch = key.match(/^profiles\.([^.]+)\.(.+)$/);
   if (profileMatch) {
     const [, profileName, field] = profileMatch;
-    if (!config.profiles[profileName]) {
-      output(`Profile "${profileName}" not found.`, opts);
-      return;
-    }
+    if (!config.profiles[profileName]) fail(opts, 1, ERROR_CODES.CONFIG, `Profile "${profileName}" not found.`, { profile: profileName });
     (config.profiles[profileName] as any)[field] = parseValue(value);
-    await saveConfig(config);
-    output(`Set ${key} = ${value}`, opts);
-    return;
+  } else {
+    setNestedValue(config, key, parseValue(value));
   }
-
-  setNestedValue(config, key, parseValue(value));
   await saveConfig(config);
-
-  output(`Set ${key} = ${value}`, opts);
+  output(opts.json ? { schemaVersion: "1", set: { key, value: parseValue(value) } } : `Set ${key} = ${value}`, opts);
 }
 
 async function configUnset(key: string, opts: OutputOptions): Promise<void> {
-  if (!key) {
-    output("Usage: atlcli config unset <key>", opts);
-    return;
-  }
+  if (!key) fail(opts, 1, ERROR_CODES.USAGE, "Usage: atlcli config unset <key>");
+  // The same keys as `set`: unset must not delete a profile's auth or other hand-edited settings.
+  if (!isValidKey(key)) invalidKey(key, opts);
 
   const config = await loadConfig();
 
@@ -156,14 +139,11 @@ async function configUnset(key: string, opts: OutputOptions): Promise<void> {
       delete (config.profiles[profileName] as any)[field];
       await saveConfig(config);
     }
-    output(`Unset ${key}`, opts);
-    return;
+  } else {
+    deleteNestedValue(config, key);
+    await saveConfig(config);
   }
-
-  deleteNestedValue(config, key);
-  await saveConfig(config);
-
-  output(`Unset ${key}`, opts);
+  output(opts.json ? { schemaVersion: "1", unset: key } : `Unset ${key}`, opts);
 }
 
 // Helper: get nested value by dot notation
@@ -197,6 +177,18 @@ function parseValue(value: string): any {
 }
 
 // Helper: validate key
+const VALID_KEYS = "global.(project|space|board), profiles.<name>.(project|space|board), logging.(level|global|project)";
+
+function invalidKey(key: string, opts: OutputOptions): never {
+  return fail(
+    opts,
+    1,
+    ERROR_CODES.USAGE,
+    `Invalid key: ${key}\nValid keys: ${VALID_KEYS}\nOther settings (flow.statusMap, digest.*, audit.*) are edited in ~/.atlcli/config.json.`,
+    { key, validKeys: VALID_KEYS }
+  );
+}
+
 function isValidKey(key: string): boolean {
   // Global: global.project, global.space, global.board
   if (/^global\.(project|space|board)$/.test(key)) return true;

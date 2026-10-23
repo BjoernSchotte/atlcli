@@ -1,6 +1,7 @@
 import { ERROR_CODES, OutputOptions, fail, getFlagValue, output } from "@atlcli/core";
 import { handleAuditJira } from "./audit-jira.js";
 import { handleAuditWiki } from "./audit-wiki.js";
+import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleAudit(
   args: string[],
@@ -33,7 +34,7 @@ export async function handleAudit(
       await handleAuditJira(args.slice(1), flags, opts);
       return;
     default:
-      output(auditHelp(), opts);
+      unknownSubcommand(sub, auditHelp(), opts);
       return;
   }
 }

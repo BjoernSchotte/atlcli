@@ -13,6 +13,7 @@ import type {
   ExportedComment,
   ExportedAttachment,
   ExportData,
+  ExportFetchError,
   ExportOptions,
 } from "./types.js";
 
@@ -150,9 +151,10 @@ export async function collectExportData(
           body: adfToMarkdown(c.body, { baseUrl: client.siteUrl }),
           created: c.created,
         }));
-      } catch {
-        // Skip comments if fetch fails
+      } catch (error) {
+        // Recorded, not hidden: an empty list must mean "no comments" (#293).
         exportedIssue.comments = [];
+        recordError(exportedIssue, { part: "comments", message: errorMessage(error) });
       }
     }
 
@@ -187,13 +189,13 @@ export async function collectExportData(
                 mimeType: att.mimeType,
               });
             }
-          } catch {
-            // Skip individual attachment on error
+          } catch (error) {
+            recordError(exportedIssue, { part: "attachment", filename: att.filename, message: errorMessage(error) });
           }
         }
-      } catch {
-        // Skip attachments if fetch fails
+      } catch (error) {
         exportedIssue.attachments = [];
+        recordError(exportedIssue, { part: "attachments", message: errorMessage(error) });
       }
     }
 
@@ -201,6 +203,14 @@ export async function collectExportData(
   }
 
   return exported;
+}
+
+function recordError(issue: ExportedIssue, error: ExportFetchError): void {
+  (issue.exportErrors ??= []).push(error);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
