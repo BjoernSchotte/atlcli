@@ -700,6 +700,8 @@ atlcli jira board list --name <pattern>
 atlcli jira board get --id <id>         # Get board details
 atlcli jira board backlog --id <id> [--jql <query>] [--limit <n>]  # Backlog issues
 atlcli jira board issues --id <id> [--jql <query>] [--limit <n>]   # Board issues
+atlcli jira board create --name <name> [--type scrum|kanban] [--project <key>] [--filter <id> | --jql <query>]
+atlcli jira board delete --id <id> --confirm [--delete-filter]
 ```
 
 `board list` and `sprint list` page through all results up to `--limit` (default 50) and print `Showing N of M …` on stderr when more exist.

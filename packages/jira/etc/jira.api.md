@@ -464,6 +464,7 @@ export declare class JiraClient {
     }): Promise<Map<string, JiraChangelogEntry[]>>;
     getStatuses(): Promise<JiraStatus[]>;
     getBoardFilterJql(boardId: number): Promise<string>;
+    getBoardFilterId(boardId: number): Promise<string>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -552,6 +553,17 @@ export declare class JiraClient {
             projectKey?: string;
         };
     }>;
+    createBoard(params: {
+        name: string;
+        type: "scrum" | "kanban";
+        filterId: number;
+        projectKeyOrId?: string;
+    }): Promise<{
+        id: number;
+        name: string;
+        type: string;
+    }>;
+    deleteBoard(boardId: number): Promise<void>;
     listSprints(boardId: number, options?: {
         startAt?: number;
         maxResults?: number;
@@ -2183,6 +2195,7 @@ export declare class JiraClient {
     }): Promise<Map<string, JiraChangelogEntry[]>>;
     getStatuses(): Promise<JiraStatus[]>;
     getBoardFilterJql(boardId: number): Promise<string>;
+    getBoardFilterId(boardId: number): Promise<string>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -2271,6 +2284,17 @@ export declare class JiraClient {
             projectKey?: string;
         };
     }>;
+    createBoard(params: {
+        name: string;
+        type: "scrum" | "kanban";
+        filterId: number;
+        projectKeyOrId?: string;
+    }): Promise<{
+        id: number;
+        name: string;
+        type: string;
+    }>;
+    deleteBoard(boardId: number): Promise<void>;
     listSprints(boardId: number, options?: {
         startAt?: number;
         maxResults?: number;
@@ -3897,6 +3921,7 @@ export declare class JiraClient {
     }): Promise<Map<string, JiraChangelogEntry[]>>;
     getStatuses(): Promise<JiraStatus[]>;
     getBoardFilterJql(boardId: number): Promise<string>;
+    getBoardFilterId(boardId: number): Promise<string>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -3985,6 +4010,17 @@ export declare class JiraClient {
             projectKey?: string;
         };
     }>;
+    createBoard(params: {
+        name: string;
+        type: "scrum" | "kanban";
+        filterId: number;
+        projectKeyOrId?: string;
+    }): Promise<{
+        id: number;
+        name: string;
+        type: string;
+    }>;
+    deleteBoard(boardId: number): Promise<void>;
     listSprints(boardId: number, options?: {
         startAt?: number;
         maxResults?: number;
@@ -5616,6 +5652,7 @@ export declare class JiraClient {
     }): Promise<Map<string, JiraChangelogEntry[]>>;
     getStatuses(): Promise<JiraStatus[]>;
     getBoardFilterJql(boardId: number): Promise<string>;
+    getBoardFilterId(boardId: number): Promise<string>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -5704,6 +5741,17 @@ export declare class JiraClient {
             projectKey?: string;
         };
     }>;
+    createBoard(params: {
+        name: string;
+        type: "scrum" | "kanban";
+        filterId: number;
+        projectKeyOrId?: string;
+    }): Promise<{
+        id: number;
+        name: string;
+        type: string;
+    }>;
+    deleteBoard(boardId: number): Promise<void>;
     listSprints(boardId: number, options?: {
         startAt?: number;
         maxResults?: number;

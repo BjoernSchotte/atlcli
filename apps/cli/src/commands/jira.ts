@@ -1833,6 +1833,12 @@ async function handleBoard(
     case "issues":
       await handleBoardIssues(flags, opts);
       return;
+    case "create":
+      await handleBoardCreate(flags, opts);
+      return;
+    case "delete":
+      await handleBoardDelete(flags, opts);
+      return;
     default:
       unknownSubcommand(sub, boardHelp(), opts);
       return;
@@ -1877,6 +1883,61 @@ async function handleBoardGet(
       ["Type", board.type],
       ["Project", board.location?.projectKey],
     ]), opts);
+}
+
+async function handleBoardCreate(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
+  const name = getFlag(flags, "name");
+  const type = getFlag(flags, "type") ?? "scrum";
+  const filterFlag = getFlag(flags, "filter");
+  const jqlFlag = getFlag(flags, "jql");
+  const project = getFlag(flags, "project") ?? defaults.project;
+
+  if (!name) fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
+  if (type !== "scrum" && type !== "kanban") fail(opts, 1, ERROR_CODES.USAGE, "--type must be scrum or kanban.");
+  if (filterFlag !== undefined && jqlFlag !== undefined) fail(opts, 1, ERROR_CODES.USAGE, "Use --filter or --jql, not both.");
+  if (filterFlag !== undefined && !/^\d+$/.test(filterFlag)) fail(opts, 1, ERROR_CODES.USAGE, "--filter must be a filter id.");
+  if (filterFlag === undefined && jqlFlag === undefined && !project) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Give --project (or set a default: atlcli config set global.project <key>), --jql or --filter.");
+  }
+
+  // A board always sits on a saved filter. Without --filter, one is made for it, shared
+  // with the project like Jira's own board wizard does, and removed again if the board fails.
+  let filterId = filterFlag;
+  const created = filterId === undefined;
+  if (filterId === undefined) {
+    const jql = jqlFlag ?? `project = "${project}" ORDER BY Rank ASC`;
+    filterId = String((await client.createFilter({ name, jql })).id);
+  }
+  try {
+    if (created && project) {
+      const { id: projectId } = await client.getProject(project);
+      await client.addFilterPermission(filterId, { type: "project", projectId: String(projectId) });
+    }
+    const board = await client.createBoard({ name, type, filterId: Number(filterId), projectKeyOrId: project });
+    output({ schemaVersion: "1", board, filter: { id: filterId, created } }, opts);
+  } catch (err) {
+    if (created) await client.deleteFilter(filterId).catch(() => {});
+    throw err;
+  }
+}
+
+async function handleBoardDelete(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id || !/^\d+$/.test(id)) fail(opts, 1, ERROR_CODES.USAGE, "--id must be a board id.");
+  if (!hasFlag(flags, "confirm")) fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a board.");
+
+  const client = await getClient(flags, opts);
+  const filterId = hasFlag(flags, "delete-filter") ? await client.getBoardFilterId(Number(id)) : undefined;
+  await client.deleteBoard(Number(id));
+  if (filterId) await client.deleteFilter(filterId);
+  output({ schemaVersion: "1", deleted: Number(id), ...(filterId ? { deletedFilter: filterId } : {}) }, opts);
 }
 
 async function handleBoardBacklog(
@@ -1929,6 +1990,12 @@ Commands:
   get --id <boardId>
   backlog --id <boardId> [--limit <n>] [--jql <query>]
   issues --id <boardId> [--limit <n>] [--jql <query>]
+  create --name <name> [--type scrum|kanban] [--project <key>] [--filter <id> | --jql <query>]
+  delete --id <boardId> --confirm [--delete-filter]
+
+A board needs a saved filter. Without --filter, create makes one from --jql
+(default: project = <key> ORDER BY Rank ASC), shared with --project. delete
+keeps the filter unless --delete-filter is given; issues are never touched.
 
 Options:
   --profile <name>   Use a specific auth profile

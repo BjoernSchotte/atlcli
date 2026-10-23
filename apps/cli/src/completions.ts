@@ -132,7 +132,7 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
   },
   jira: {
     analyze: ["aging", "burndown", "cfd", "flow", "predictability", "scope-change", "velocity"],
-    board: ["backlog", "get", "issues", "list"],
+    board: ["backlog", "create", "delete", "get", "issues", "list"],
     bulk: ["delete", "edit", "label", "link-page", "move", "transition"],
     component: ["create", "delete", "get", "list", "update"],
     epic: ["add", "create", "get", "issues", "list", "progress", "remove"],
@@ -435,6 +435,8 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   // jira board flags
   "jira board list": ["--all-projects", "--limit", "--name", "--project", "--type"],
   "jira board get": ["--id"],
+  "jira board create": ["--filter", "--jql", "--name", "--project", "--type"],
+  "jira board delete": ["--confirm", "--delete-filter", "--id"],
   "jira board backlog": ["--columns", "--csv", "--delimiter", "--id", "--jql", "--limit", "--no-headers", "--plain"],
   "jira board issues": ["--columns", "--csv", "--delimiter", "--id", "--jql", "--limit", "--no-headers", "--plain"],
 

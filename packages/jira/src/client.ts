@@ -1404,6 +1404,16 @@ export class JiraClient {
    * GET /rest/agile/1.0/board/{id}/configuration, then GET /filter/{id}
    */
   async getBoardFilterJql(boardId: number): Promise<string> {
+    const filter = await this.getFilter(await this.getBoardFilterId(boardId));
+    return filter.jql;
+  }
+
+  /**
+   * The id of a board's saved filter.
+   *
+   * GET /rest/agile/1.0/board/{id}/configuration
+   */
+  async getBoardFilterId(boardId: number): Promise<string> {
     const config = await this.request<{ filter?: { id?: string } }>(
       `/board/${boardId}/configuration`,
       { apiBase: this.agilePath }
@@ -1411,8 +1421,7 @@ export class JiraClient {
     if (!config.filter?.id) {
       throw new Error(`Board ${boardId} has no saved filter.`);
     }
-    const filter = await this.getFilter(config.filter.id);
-    return filter.jql;
+    return String(config.filter.id);
   }
 
   // ============ Worklogs ============
@@ -1708,6 +1717,38 @@ export class JiraClient {
    */
   async getBoard(boardId: number): Promise<{ id: number; name: string; type: string; location?: { projectKey?: string } }> {
     return this.request(`/board/${boardId}`, { apiBase: this.agilePath });
+  }
+
+  /**
+   * Create a board on a saved filter, optionally located in a project.
+   *
+   * POST /rest/agile/1.0/board
+   */
+  async createBoard(params: {
+    name: string;
+    type: "scrum" | "kanban";
+    filterId: number;
+    projectKeyOrId?: string;
+  }): Promise<{ id: number; name: string; type: string }> {
+    return this.request("/board", {
+      method: "POST",
+      apiBase: this.agilePath,
+      body: {
+        name: params.name,
+        type: params.type,
+        filterId: params.filterId,
+        ...(params.projectKeyOrId ? { location: { type: "project", projectKeyOrId: params.projectKeyOrId } } : {}),
+      },
+    });
+  }
+
+  /**
+   * Delete a board. Its saved filter and its issues stay.
+   *
+   * DELETE /rest/agile/1.0/board/{boardId}
+   */
+  async deleteBoard(boardId: number): Promise<void> {
+    await this.request(`/board/${boardId}`, { method: "DELETE", apiBase: this.agilePath });
   }
 
   /**

@@ -10,7 +10,7 @@ Manage Scrum and Kanban boards, sprints, and backlogs.
 ## Prerequisites
 
 - Authenticated profile (`atlcli auth login`)
-- **Jira permission**: Browse Projects (read), Manage Sprints (sprint operations)
+- **Jira permission**: Browse Projects (read), Manage Sprints (sprint operations). Creating a board located in a project needs Administer Projects there; deleting one needs board admin rights.
 
 Issue lists (`board issues`, `board backlog`, `sprint issues`) print a table without `--json`; the other commands print JSON, pretty-printed even without `--json`.
 
@@ -106,6 +106,57 @@ Options:
 | `--limit` | Maximum results (default 50) |
 
 Table flags as for `board issues`.
+
+### Create Board
+
+A board always sits on a saved filter, which decides the issues it shows.
+
+```bash
+# Scrum board for a project: atlcli makes the filter
+atlcli jira board create --name "Team AB" --project AB
+
+# Kanban board on a narrower query
+atlcli jira board create --name "AB bugs" --type kanban --project AB \
+  --jql "project = AB AND type = Bug ORDER BY Rank ASC"
+
+# Board on an existing filter
+atlcli jira board create --name "Release board" --filter 10500 --project AB
+```
+
+Options:
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--name` | string | (required) | Board name; also the name of a filter atlcli makes |
+| `--type` | `scrum` \| `kanban` | `scrum` | Board type |
+| `--project` | key | `global.project` | Project the board is located in |
+| `--filter` | filter ID | | Existing saved filter to use as it is |
+| `--jql` | JQL | `project = "<key>" ORDER BY Rank ASC` | Query of the filter atlcli makes; not with `--filter` |
+
+Without `--filter`, atlcli first creates a filter named like the board and shares it with `--project`, as Jira's own board wizard does; without the share only you would see the board. If the board then cannot be created, that filter is deleted again. Without `--project`, `global.project`, `--jql` or `--filter`, the command stops with a usage error.
+
+Output (`--json`):
+
+```json
+{
+  "schemaVersion": "1",
+  "board": { "id": 882, "name": "Team AB", "type": "scrum" },
+  "filter": { "id": "11334", "created": true }
+}
+```
+
+Keep `ORDER BY Rank` in your own `--jql`: a Scrum board needs it to rank its backlog. Jira refuses a filter name you already use; pick another `--name` or pass `--filter`.
+
+### Delete Board
+
+```bash
+atlcli jira board delete --id 882 --confirm
+atlcli jira board delete --id 882 --confirm --delete-filter
+```
+
+Deleting a board leaves its issues and sprints' issues untouched. Its saved filter stays unless you add `--delete-filter`, which reads the filter from the board first and deletes it after the board. Only use it for a filter made for this board: other boards or users may rely on a shared one.
+
+Output (`--json`): `{ "schemaVersion": "1", "deleted": 882, "deletedFilter": "11334" }`.
 
 ## Sprints
 
