@@ -1,6 +1,6 @@
 /**
  * Regression #270: `--help` on a verb of the jira, auth, config, flag, log,
- * plugin or completion groups ran the verb. Real CLI against a stand-in server
+ * plugin or completion groups, and `wiki my`/`wiki recent`, ran the verb. Real CLI against a stand-in server
  * that records every request; a sandboxed HOME whose config must not change.
  */
 import { afterAll, beforeAll, expect, test } from "bun:test";
@@ -54,6 +54,8 @@ const CASES: Array<[string[], string]> = [
   [["completion", "zsh", "--help"], "completion"],
   [["audit", "jira", "--help"], "Usage: atlcli audit jira"],
   [["audit", "wiki", "--help"], "Usage: atlcli audit wiki"],
+  [["wiki", "my", "--help"], "atlcli wiki my"],
+  [["wiki", "recent", "--days", "3", "--help"], "atlcli wiki recent"],
 ];
 
 test.each(CASES)("%p prints help and runs nothing", async (args, helpText) => {
