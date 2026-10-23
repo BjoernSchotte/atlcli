@@ -9,6 +9,11 @@ import {
 } from "./links.js";
 
 describe("extractLinks", () => {
+  test("a user mention is not a link, so docs check does not report it as broken", () => {
+    const links = extractLinks("Owner @[Ann](557058:abc-def) and @[Max \\[extern\\]](acc-1), see [guide](./guide.md).");
+    expect(links.map((l) => l.target)).toEqual(["./guide.md"]);
+  });
+
   test("extracts simple markdown links", () => {
     const markdown = `Check out [this page](./other.md) for more info.`;
     const links = extractLinks(markdown);
