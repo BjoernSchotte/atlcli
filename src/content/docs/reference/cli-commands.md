@@ -615,6 +615,8 @@ atlcli jira search --sprint <id>        # Filter by sprint
 atlcli jira search --watching           # Issues I watch
 atlcli jira search --history            # Issues I viewed recently
 atlcli jira search --created -7d        # Also --updated; today, week, month, year, YYYY-MM-DD
+atlcli jira search --created-before 2026-01-01  # Also --updated-before
+atlcli jira search --status '~Done'     # ~ negates --status, --type, --label, --assignee
 atlcli jira search --limit <n>          # Pages through results above 100
 atlcli jira search --all-results        # All matches, up to 5000
 ```

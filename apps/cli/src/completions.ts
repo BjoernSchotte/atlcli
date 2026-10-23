@@ -364,6 +364,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
     "--assignee",
     "--columns",
     "--created",
+    "--created-before",
     "--csv",
     "--delimiter",
     "--history",
@@ -377,6 +378,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
     "--status",
     "--type",
     "--updated",
+    "--updated-before",
     "--watching",
   ],
 

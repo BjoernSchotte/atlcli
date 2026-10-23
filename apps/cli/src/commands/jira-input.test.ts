@@ -4,8 +4,10 @@ import {
   buildSearchJql,
   cellValue,
   issueCell,
+  jqlBefore,
   jqlIn,
   jqlSince,
+  jqlStatusNames,
   needsFieldList,
   parseReplacements,
   pickUser,
@@ -39,6 +41,34 @@ describe("JQL", () => {
     expect(jqlIn("status", 'Say "hi"')).toBe('status = "Say \\"hi\\""');
   });
 
+  test("negation with ~: != / not in; labels and assignee keep empty issues", () => {
+    expect(jqlIn("status", "~Done")).toBe('status != "Done"');
+    expect(jqlIn("status", "~Done, Closed")).toBe('status not in ("Done", "Closed")');
+    // JQL drops issues without labels from `labels != x`; the negation must keep them.
+    expect(jqlIn("labels", "~ui", true)).toBe('(labels IS EMPTY OR labels != "ui")');
+    expect(buildSearchJql({ assignee: "currentUser()", notAssignee: true })).toBe("(assignee IS EMPTY OR assignee != currentUser())");
+    expect(buildSearchJql({ assignee: "EMPTY", notAssignee: true })).toBe("assignee IS NOT EMPTY");
+  });
+
+  test("jqlStatusNames: localized names become the names JQL matches (live: Fertig matched 0 issues)", () => {
+    const statuses = [
+      { name: "Fertig", untranslatedName: "Done" },
+      { name: "Fertig", untranslatedName: "Done" },
+      { name: "In Arbeit", untranslatedName: "In Progress" },
+      { name: "Backlog" },
+    ];
+    expect(jqlStatusNames("Fertig", statuses)).toBe("Done");
+    expect(jqlStatusNames("~fertig, in arbeit", statuses)).toBe("~Done,In Progress");
+    expect(jqlStatusNames("Done,Backlog,Unknown", statuses)).toBe("Done,Backlog,Unknown");
+  });
+
+  test("jqlBefore", () => {
+    expect(jqlBefore("created", "2026-01-01")).toBe('created < "2026-01-01"');
+    expect(jqlBefore("updated", "-30d")).toBe("updated < -30d");
+    expect(jqlBefore("updated", "month")).toBe("updated < startOfMonth()");
+    expect(jqlBefore("updated", "soon")).toBeUndefined();
+  });
+
   test("jqlSince", () => {
     expect(jqlSince("created", "-7d")).toBe("created >= -7d");
     expect(jqlSince("updated", "week")).toBe("updated >= startOfWeek()");
@@ -56,7 +86,7 @@ describe("JQL", () => {
   });
 
   test("buildSearchJql: raw JQL keeps its ORDER BY and gets the flags ANDed", () => {
-    expect(buildSearchJql({ jql: "project = AB ORDER BY rank", created: "created >= -7d" })).toBe(
+    expect(buildSearchJql({ jql: "project = AB ORDER BY rank", dates: ["created >= -7d"] })).toBe(
       "(project = AB) AND created >= -7d ORDER BY rank"
     );
     expect(buildSearchJql({ jql: "project = AB" })).toBe("project = AB");

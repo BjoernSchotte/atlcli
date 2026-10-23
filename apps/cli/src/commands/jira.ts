@@ -13,8 +13,11 @@ import {
   buildSearchJql,
   editInEditor,
   issueCell,
+  jqlBefore,
   jqlIn,
   jqlSince,
+  jqlStatusNames,
+  splitNegation,
   needsFieldList,
   parseReplacements,
   renderTable,
@@ -4757,18 +4760,25 @@ async function handleSearch(
 
   // Raw JQL (args or --jql) and the filter flags are ANDed.
   const raw = args.join(" ") || getFlag(flags, "jql");
-  const since = (field: string) => {
-    const value = getFlag(flags, field);
-    if (value === undefined) return undefined;
-    const clause = jqlSince(field, value);
-    if (!clause) fail(opts, 1, ERROR_CODES.USAGE, `--${field} takes -7d (h, m, w too), today, week, month, year or YYYY-MM-DD.`);
-    return clause;
-  };
+  const dates: string[] = [];
+  for (const [flag, field, clause] of [
+    ["created", "created", jqlSince],
+    ["updated", "updated", jqlSince],
+    ["created-before", "created", jqlBefore],
+    ["updated-before", "updated", jqlBefore],
+  ] as const) {
+    const value = getFlag(flags, flag);
+    if (value === undefined) continue;
+    const jql = clause(field, value);
+    if (!jql) fail(opts, 1, ERROR_CODES.USAGE, `--${flag} takes -7d (h, m, w too), today, week, month, year or YYYY-MM-DD.`);
+    dates.push(jql);
+  }
   const assigneeFlag = getFlag(flags, "assignee");
+  const { negate: notAssignee, value: assigneeValue } = splitNegation(assigneeFlag ?? "");
   let assignee: string | undefined;
-  if (assigneeFlag === "me") assignee = "currentUser()";
-  else if (assigneeFlag) {
-    const ref = await userFlag(client, assigneeFlag, opts);
+  if (assigneeValue === "me") assignee = "currentUser()";
+  else if (assigneeValue) {
+    const ref = await userFlag(client, assigneeValue, opts);
     assignee = ref === null ? "EMPTY" : JSON.stringify("accountId" in ref ? ref.accountId : ref.name);
   }
   const jql = buildSearchJql({
@@ -4776,18 +4786,24 @@ async function handleSearch(
     // The default project only applies to a search built from flags.
     project: getFlag(flags, "project") ?? (raw ? undefined : defaults.project),
     assignee,
-    status: getFlag(flags, "status"),
+    notAssignee,
+    status: await statusFlag(client, flags),
     type: getFlag(flags, "type"),
     label: getFlag(flags, "label"),
     sprint: getFlag(flags, "sprint"),
     watching: hasFlag(flags, "watching"),
     history: hasFlag(flags, "history"),
-    created: since("created"),
-    updated: since("updated"),
+    dates,
   });
 
   const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
   await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
+}
+
+/** `--status` with localized names translated for JQL (one `/status` read, only when given). */
+async function statusFlag(client: JiraClient, flags: Record<string, string | boolean | string[]>): Promise<string | undefined> {
+  const value = getFlag(flags, "status");
+  return value === undefined ? undefined : jqlStatusNames(value, await client.getStatuses());
 }
 
 /** The JSON of `search`, `my` and `filter run`. */
@@ -4826,7 +4842,7 @@ async function handleMy(
   const jql =
     buildMyIssuesJql({
       project: getFlag(flags, "project") ?? defaults.project,
-      status: getFlag(flags, "status"),
+      status: await statusFlag(client, flags),
       type: getFlag(flags, "type"),
       all: hasFlag(flags, "all"),
     }) + " ORDER BY updated DESC";
