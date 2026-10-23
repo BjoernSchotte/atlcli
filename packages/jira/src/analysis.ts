@@ -95,6 +95,31 @@ export function issueAt(
 }
 
 /**
+ * When an issue joined and left a sprint between `start` and `end`, from its
+ * Sprint changelog: the first join and the last leave in that window.
+ */
+export function sprintMoves(
+  issue: JiraIssue,
+  sprintId: number,
+  start: Date,
+  end: Date
+): { joinedAt?: Date; leftAt?: Date } {
+  const has = (value: string | null | undefined) => (value ?? "").split(",").map((id) => id.trim()).includes(String(sprintId));
+  let joinedAt: Date | undefined;
+  let leftAt: Date | undefined;
+  for (const history of issue.changelog?.histories ?? []) {
+    const at = Date.parse(history.created);
+    if (at <= start.getTime() || at > end.getTime()) continue;
+    for (const item of history.items) {
+      if (item.field !== "Sprint") continue;
+      if (!has(item.from) && has(item.to) && (!joinedAt || at < joinedAt.getTime())) joinedAt = new Date(at);
+      if (has(item.from) && !has(item.to) && (!leftAt || at > leftAt.getTime())) leftAt = new Date(at);
+    }
+  }
+  return { joinedAt, leftAt };
+}
+
+/**
  * An issue at a sprint's start and end (`sprintEnd`). An issue already done at
  * the start is out of the sprint at both: it was finished before, and Jira's
  * sprint report lists it apart ("completed outside this sprint").
@@ -200,19 +225,27 @@ function sprintMetricsAsOfSprint(
   let removedPoints = 0;
   let addedIssues = 0;
   let removedIssues = 0;
+  const start = new Date(sprint.startDate!);
+  const end = sprintEnd(sprint);
   for (const issue of issues) {
     const { start: atStart, end: atEnd } = sprintIssueAt(issue, sprint, pointsField, resolve);
     if (atStart.inSprint) committedPoints += atStart.points;
-    if (atStart.inSprint && !atEnd.inSprint) {
-      removedPoints += atStart.points;
+    // As in Jira's sprint report: added = joined after the start, removed =
+    // in the sprint at some point and out at the end. An issue added and
+    // removed again during the sprint is both.
+    const { joinedAt, leftAt } = issue.fields.issuetype?.subtask ? {} : sprintMoves(issue, sprint.id, start, end);
+    // Created in the sprint has no Sprint change: in at the end, out at the start.
+    const joined = !atStart.inSprint && (atEnd.inSprint || joinedAt !== undefined);
+    if (joined) {
+      addedIssues++;
+      addedPoints += atEnd.inSprint ? atEnd.points : issueAt(issue, sprint.id, joinedAt!, pointsField, resolve).points;
+    }
+    if (!atEnd.inSprint && (atStart.inSprint || joined)) {
       removedIssues++;
+      removedPoints += atStart.inSprint ? atStart.points : issueAt(issue, sprint.id, leftAt ?? end, pointsField, resolve).points;
     }
     if (!atEnd.inSprint) continue;
     totalIssues++;
-    if (!atStart.inSprint) {
-      addedPoints += atEnd.points;
-      addedIssues++;
-    }
     if (atEnd.done) {
       completedIssues++;
       completedPoints += atEnd.points;

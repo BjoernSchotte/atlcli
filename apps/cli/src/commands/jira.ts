@@ -81,7 +81,7 @@ import {
   calculateBurndown,
   calendarDay,
   latestSprints,
-  attachChangelogs,
+  loadSprintHistory,
   generateProgressBar as generateAnalyticsProgressBar,
   collectExportData,
   writeExportFile,
@@ -220,14 +220,6 @@ type ClientWithDefaults = {
   defaults: { project?: string; space?: string; board?: number };
 };
 
-/**
- * A sprint's issues with changelogs and creation dates: what sprint metrics
- * need to count as of the sprint. One bulk changelog read, not one per issue.
- */
-async function sprintIssuesWithHistory(client: JiraClient, sprintId: number, fields: string[]): Promise<JiraIssue[]> {
-  const issues = await client.getAllSprintIssues(sprintId, { fields: [...fields, "created", "issuetype"] });
-  return attachChangelogs(issues, await client.getChangelogs(issues));
-}
 
 /**
  * Up to `limit` values of a paged Agile list (`startAt`): Jira caps each page
@@ -2167,7 +2159,7 @@ async function handleSprintReport(
   const sprint = await client.getSprint(Number(sprintId));
 
   // Get sprint issues
-  const issuesWithChangelog = await sprintIssuesWithHistory(client, Number(sprintId), ["status", "summary", pointsField]);
+  const issuesWithChangelog = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
 
   // Calculate full metrics
   const metrics = calculateSprintMetrics(
@@ -3380,7 +3372,7 @@ async function handleAnalyzeVelocity(
   const resolve = await sprintStatusResolver(client, flags, opts);
 
   for (const sprint of sprintsResult.values) {
-    const issues = await sprintIssuesWithHistory(client, sprint.id, ["status", "summary", pointsField]);
+    const issues = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
     const metrics = calculateSprintMetrics(sprint as JiraSprint, issues, pointsField, issues, resolve);
     sprintMetrics.push(metrics);
   }
@@ -3455,7 +3447,7 @@ async function handleAnalyzeBurndown(
   }
 
   // Get sprint issues with changelog for accurate burndown
-  const issuesWithChangelog = await sprintIssuesWithHistory(client, Number(sprintId), [
+  const issuesWithChangelog = await loadSprintHistory(client, sprint, [
     "status",
     "summary",
     "resolutiondate",
@@ -3521,7 +3513,7 @@ async function handleAnalyzeScopeChange(
   const sprint = await client.getSprint(Number(sprintId));
 
   // Get sprint issues
-  const issuesWithChangelog = await sprintIssuesWithHistory(client, Number(sprintId), ["status", "summary", pointsField]);
+  const issuesWithChangelog = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
 
   // Calculate metrics including scope change
   const metrics = calculateSprintMetrics(
@@ -3613,7 +3605,7 @@ async function handleAnalyzePredictability(
   const resolve = await sprintStatusResolver(client, flags, opts);
 
   for (const sprint of sprintsResult.values) {
-    const issues = await sprintIssuesWithHistory(client, sprint.id, ["status", "summary", pointsField]);
+    const issues = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
     const metrics = calculateSprintMetrics(sprint as JiraSprint, issues, pointsField, issues, resolve);
     sprintMetrics.push(metrics);
   }

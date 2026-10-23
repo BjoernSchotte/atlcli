@@ -27,7 +27,7 @@ import {
 import { ConfluenceClient, hashContent, markdownToStorage } from "@atlcli/confluence";
 import {
   JiraClient,
-  attachChangelogs,
+  loadSprintHistory,
   buildReportData,
   calculateSprintMetrics,
   sprintIssueAt,
@@ -110,12 +110,10 @@ export async function handleSprintReview(args: string[], flags: Flags, opts: Out
   // Points are optional on a review page: use the flag, else detect, else none.
   const pointsField = getFlag(flags, "points-field") ?? (await jira.detectStoryPointsField().catch(() => null)) ?? undefined;
   const sprint = await jira.getSprint(sprintId);
-  const issues = await jira.getAllSprintIssues(sprintId, {
-    fields: [...REPORT_FIELDS, "created", ...(pointsField ? [pointsField] : [])],
-  });
+  // As of its end, removed issues included: one bulk changelog read.
+  const history = await loadSprintHistory(jira, sprint, [...REPORT_FIELDS, ...(pointsField ? [pointsField] : [])]);
+  const issues = history;
   const resolve = await reportStatusResolver(jira, flags, opts);
-  // The page shows the sprint as of its end: one bulk changelog read.
-  const history = attachChangelogs(issues, await jira.getChangelogs(issues));
   const asOf = new Map(history.map((issue) => [issue.key, sprintIssueAt(issue, sprint, pointsField ?? "", resolve).end]));
   const metrics = pointsField ? calculateSprintMetrics(sprint, history, pointsField, history, resolve) : undefined;
   const data = buildReportData({

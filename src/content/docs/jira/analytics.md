@@ -54,7 +54,8 @@ Sprint metrics count the sprint as it was, not as the issues are today. atlcli r
 |---|---|
 | Committed | Issues in the sprint at its exact start, at their estimate then |
 | Completed | Issues in the sprint at its end, in a done status then, at their estimate then |
-| Added / removed | Points that joined after the start / left before the end |
+| Added | Issues that joined after the start, including those removed again |
+| Removed | Issues in the sprint at some point that were out of it at the end |
 | Issues | Issues in the sprint at its end |
 
 Left out, as in Jira's sprint report:
@@ -64,7 +65,9 @@ Left out, as in Jira's sprint report:
 
 Work finished after the sprint no longer counts as completed. An estimate changed during the sprint counts as committed at its old value.
 
-**Limitation:** an issue moved out of the sprint before it closed no longer appears in the sprint's issue list. Its removal therefore stays invisible; Jira lists it as "removed from sprint".
+An issue moved out of the sprint before it closed no longer appears in the sprint's issue list. atlcli reads those issues from Jira's own sprint report ("Issues removed from sprint") and replays them like the others. An issue added and removed again during the sprint counts as added and as removed, as in Jira.
+
+If that report is not available (missing permission on the board), removed issues are left out, as before; nothing fails.
 
 ### Story points detection
 
@@ -198,7 +201,7 @@ atlcli jira sprint report 456
 
 ## Requests
 
-Every sprint metric reads the change history of all sprint issues in one request per 1000 issues on Jira Cloud (`changelog/bulkfetch`); velocity and predictability do so once per sprint. On Data Center they read it per issue, five at a time.
+Every sprint metric reads the change history of all sprint issues in one request per 1000 issues on Jira Cloud (`changelog/bulkfetch`); velocity and predictability do so once per sprint. On Data Center they read it per issue, five at a time. Each sprint also costs one read of Jira's sprint report for the removed issues, plus one search if there are any.
 
 ## Best practices
 

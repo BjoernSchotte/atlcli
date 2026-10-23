@@ -1895,6 +1895,21 @@ export class JiraClient {
   }
 
   /**
+   * Keys of the issues removed from a sprint before it ended. The sprint's
+   * issue list no longer has them; Jira's own sprint report does
+   * (`puntedIssues`). Internal GreenHopper API, the one the report page uses.
+   *
+   * GET /rest/greenhopper/1.0/rapid/charts/sprintreport
+   */
+  async getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]> {
+    const report = await this.request<{ contents?: { puntedIssues?: Array<{ key: string }> } }>("/rapid/charts/sprintreport", {
+      apiBase: "/rest/greenhopper/1.0",
+      query: { rapidViewId: boardId, sprintId },
+    });
+    return (report.contents?.puntedIssues ?? []).map((issue) => issue.key);
+  }
+
+  /**
    * Move issues to a sprint.
    *
    * POST /rest/agile/1.0/sprint/{sprintId}/issue

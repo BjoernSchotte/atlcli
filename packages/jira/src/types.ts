@@ -346,6 +346,8 @@ export interface JiraSprint {
   completeDate?: string;
   goal?: string;
   boardId?: number;
+  /** The board the sprint was created on (Agile API). */
+  originBoardId?: number;
 }
 
 /** Epic (Agile API) */
