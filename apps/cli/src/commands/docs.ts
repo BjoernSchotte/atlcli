@@ -3520,13 +3520,17 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
 
   // Fetch remote page
   const remotePage = await client.getPage(pageId);
-  const remoteMarkdown = storageToMarkdown(remotePage.storage, {
-    ...conversionOptions,
-    mentionNames: await client.mentionNames([remotePage.storage]),
-  });
+  // Shape the remote side like pull writes the file: page-relative attachment paths, normalized.
+  const remoteMarkdown = normalizeMarkdown(replaceAttachmentPaths(
+    storageToMarkdown(remotePage.storage, {
+      ...conversionOptions,
+      mentionNames: await client.mentionNames([remotePage.storage]),
+    }),
+    basename(filePath, ".md")
+  ));
 
   // Generate diff
-  const diff = generateDiff(remoteMarkdown, localMarkdown, {
+  const diff = generateDiff(remoteMarkdown, normalizeMarkdown(localMarkdown), {
     oldLabel: `Remote (v${remotePage.version})`,
     newLabel: "Local",
     context: 3,
