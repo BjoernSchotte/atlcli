@@ -12,7 +12,7 @@ description: "atlcli digest: what changed since your last look and what waits on
 - An authenticated profile with Jira and Confluence access (`atlcli auth login`)
 - **Jira permission**: Browse Projects for the issues you work on
 - **Confluence permission**: View for the spaces you work in
-- For the sprint section: a scrum board, set with `--board` or `defaults.board` (kanban boards have no sprints and are skipped)
+- For the sprint section: a scrum board, set with `--board` or `global.board` (kanban boards have no sprints and are skipped)
 - For the project overview: Jira project keys, set with `--project` or `digest.projects`
 - For `--summarize`: `ANTHROPIC_API_KEY` in the environment
 
@@ -61,7 +61,7 @@ description: "atlcli digest: what changed since your last look and what waits on
 | Confluence | Open inline comments | Unresolved inline comments on your 10 most recently modified pages (`--max-pages`), oldest first. These are not limited to the window: they wait on you. |
 | Confluence | Your pages edited | Your pages that someone else edited |
 | Confluence | Watched pages changed | Pages and blog posts you watch that someone else edited |
-| Confluence | Recently changed in space | Pages changed in `--space` (or `defaults.space`); only when a space is set |
+| Confluence | Recently changed in space | Pages changed in `--space` (or `global.space`); only when a space is set |
 
 A page that matches several sections appears once, in the first one in this order: mentions, your pages, watched, recent. In `--json` output its entry lists the other sections in `alsoIn`.
 
@@ -77,8 +77,8 @@ Empty sections are not printed. If nothing changed, the digest says `Nothing new
 |---|---|---|---|
 | `--since` | `lastrun`, `<n>m`, `<n>h`, `<n>d`, `<n>w`, `today`, `yesterday`, ISO date or datetime | `lastrun` | Start of the window. `m` means **minutes** here (in `jira worklog` it means months). `today` and `yesterday` start at local midnight. At most 30 days back. |
 | `--only` | `jira` or `confluence` | both | Run one product only |
-| `--space` | space key(s), comma-separated | `defaults.space` | Enables "Recently changed in space" |
-| `--board` | board id | `defaults.board` | Enables the sprint section (scrum boards only) |
+| `--space` | space key(s), comma-separated | `global.space` | Enables "Recently changed in space" |
+| `--board` | board id | `global.board` | Enables the sprint section (scrum boards only) |
 | `--project` | project key(s), comma-separated | `digest.projects` | Enables the project overview |
 | `--status-map` | `"<status>=todo\|wip\|done,…"` | `flow.statusMap` | Override status categories, see [Status mapping](jira/flow-metrics.md#status-mapping) |
 | `--limit` | integer ≥ 1 | `10` | Items per section; a cut section is listed under warnings |

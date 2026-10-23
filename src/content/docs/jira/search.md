@@ -82,7 +82,7 @@ Each flag expands to JQL:
 
 | Flag | JQL Equivalent |
 |------|----------------|
-| `--project PROJ` | `project = PROJ` (default: `defaults.project`, only without `--jql`) |
+| `--project PROJ` | `project = PROJ` (default: `global.project`, only without `--jql`) |
 | `--assignee me` | `assignee = currentUser()` |
 | `--assignee alice@example.com` | `assignee = "<account id>"` (looked up by email or name) |
 | `--assignee x` / `none` | `assignee IS EMPTY` |

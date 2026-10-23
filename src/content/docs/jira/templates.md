@@ -55,7 +55,7 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--project` | Target project (required, or `defaults.project`) |
+| `--project` | Target project (required, or `global.project`) |
 | `--summary` | Issue summary (default: the template's summary; required if the template has none) |
 | `--description` | Description instead of the template's |
 | `--assignee` | Assignee (see [Users](issues.md#users)) |

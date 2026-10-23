@@ -448,8 +448,8 @@ Options:
   --since <when>       lastrun (default), 24h, 7d, 90m, today, yesterday, or an ISO date.
                        m means minutes. Without a previous run: 24h. At most 30 days.
   --only <product>     jira or confluence
-  --space <keys>       Space(s) for "Recently changed in space" (default: defaults.space)
-  --board <id>         Board for the active sprint (default: defaults.board; kanban boards
+  --space <keys>       Space(s) for "Recently changed in space" (default: global.space or profiles.<name>.space)
+  --board <id>         Board for the active sprint (default: global.board or profiles.<name>.board; kanban boards
                        have no sprint and are skipped)
   --project <keys>     Projects for the overview, comma-separated (default: digest.projects)
   --status-map <map>   Override status categories, e.g. "Fertig=done" (config flow.statusMap)

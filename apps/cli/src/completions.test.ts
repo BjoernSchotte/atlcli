@@ -47,3 +47,10 @@ describe("jira completions", () => {
     expect(getCompletions(["audit", "jira", "--"])).toContain("--fail-on");
   });
 });
+
+test("root completion offers every root help command (#279)", async () => {
+  const { ROOT_COMMANDS } = await import("./root-commands.js");
+  const roots = getCompletions([""]);
+  for (const [name] of ROOT_COMMANDS) expect(roots).toContain(name);
+  expect(getCompletions(["re"])).toEqual(["release-info", "research"]);
+});

@@ -1088,7 +1088,7 @@ async function handleBatchImport(
  * In-place reimport into one existing page (plan 006 slice).
  *
  * Safety model: page identity/URL/history are preserved (a v2 body PUT, no
- * delete/recreate); `--expect-version` is a mandatory lost-update guard at
+ * delete/recreate); `--expect-version` is an optional extra lost-update guard at
  * confirm time; on failed verification the previous body is restored as a
  * new version. Unrelated attachments are untouched; same-name attachments
  * are updated in place. Inline comments anchored to changed text may lose
@@ -1900,7 +1900,7 @@ Options:
   --dry-run             Preview only; never prompt or write
   --skip-existing   Batch: skip files whose titles already exist (resume)
   --update-page <id>      Reimport INTO this existing page (keeps id/URL/history)
-  --expect-version <n>    Required with --update-page --confirm (lost-update guard)
+  --expect-version <n>    Optional with --update-page: also fail unless the page is at version n
   --restriction <mode>    inherit|private|explicit (default inherit)
   --viewer <principal>    Repeatable; explicit mode: account:<id> | group-id:<id>
   --editor <principal>    Repeatable; explicit mode: account:<id> | group-id:<id>

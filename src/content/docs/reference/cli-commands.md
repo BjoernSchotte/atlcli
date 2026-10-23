@@ -54,27 +54,27 @@ atlcli auth delete <name> --delete-keychain  # Also delete keychain creds (macOS
 ```bash
 # View configuration
 atlcli config list                           # Show all config (redacted)
-atlcli config get defaults.project           # Get a specific value
+atlcli config get global.project           # Get a specific value
 
 # Set defaults (avoids repetitive flags)
-atlcli config set defaults.project PROJ      # Default Jira project
-atlcli config set defaults.space DOCS        # Default Confluence space
-atlcli config set defaults.board 123         # Default Jira board ID
+atlcli config set global.project PROJ      # Default Jira project
+atlcli config set global.space DOCS        # Default Confluence space
+atlcli config set global.board 123         # Default Jira board ID
 
 # Logging settings
 atlcli config set logging.level debug        # Set log level
 atlcli config set logging.global true        # Enable global logs
 
 # Remove settings
-atlcli config unset defaults.project         # Remove a value
+atlcli config unset global.project         # Remove a value
 ```
 
 **Available keys:**
 | Key | Type | Description |
 |-----|------|-------------|
-| `defaults.project` | string | Default Jira project key |
-| `defaults.space` | string | Default Confluence space key |
-| `defaults.board` | number | Default Jira board ID |
+| `global.project` | string | Default Jira project key |
+| `global.space` | string | Default Confluence space key |
+| `global.board` | number | Default Jira board ID |
 | `logging.level` | string | off, error, warn, info, debug |
 | `logging.global` | boolean | Enable global logs |
 | `logging.project` | boolean | Enable project logs |
@@ -707,7 +707,7 @@ atlcli jira board issues --id <id> [--jql <query>] [--limit <n>]   # Board issue
 ### Sprints
 
 ```bash
-atlcli jira sprint list --board <id> [--state active|future|closed] [--limit <n>]  # --board defaults to defaults.board
+atlcli jira sprint list --board <id> [--state active|future|closed] [--limit <n>]  # --board defaults to global.board
 atlcli jira sprint get --id <id>
 atlcli jira sprint create --board <id> --name <name>
 atlcli jira sprint create --board <id> --name <name> \
@@ -875,7 +875,7 @@ atlcli jira analyze cfd --project <key> --group-by category # Cumulative flow pe
 atlcli jira analyze flow --project <key> --status-map "Code Review=wip"
 ```
 
-Selection: `--jql` > `--board` (its saved filter) > `--project` > `defaults.board` > `defaults.project`. `--limit` (default 1000) caps the issues read. See [Flow Metrics](../jira/flow-metrics.md).
+Selection: `--jql` > `--board` (its saved filter) > `--project` > `global.board` > `global.project`. `--limit` (default 1000) caps the issues read. See [Flow Metrics](../jira/flow-metrics.md).
 
 ### Jira Audit
 

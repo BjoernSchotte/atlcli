@@ -480,7 +480,7 @@ On Data Center, `--lead` (components, projects) and `template apply --assignee` 
 ```bash
 atlcli jira open PROJ-123   # an issue
 atlcli jira open PROJ       # a project
-atlcli jira open            # defaults.project, or the site
+atlcli jira open            # global.project, or the site
 ```
 
 The URL is printed first, so it also works over SSH. `atlcli jira issue open <key>` does the same for an issue.

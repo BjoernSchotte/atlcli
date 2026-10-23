@@ -30,7 +30,7 @@ All of them print JSON (`schemaVersion: "1"`), with or without `--json`.
 
 | Flag | Type | Default | Used by |
 |---|---|---|---|
-| `--board` | board id | `defaults.board` | velocity, predictability |
+| `--board` | board id | `global.board` | velocity, predictability |
 | `--sprint` | sprint id | required | burndown, scope-change |
 | `--sprints` | integer | `5` | velocity, predictability: the most recently closed sprints, listed oldest first |
 | `--points-field` | field id | auto-detected | all |

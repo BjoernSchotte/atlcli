@@ -10,8 +10,11 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-/** Env-based auth that would otherwise reach every client a test builds. */
-export const CREDENTIAL_VARIABLES = ["ATLCLI_API_TOKEN", "ATLCLI_EMAIL", "ATLCLI_SITE", "ATLCLI_BASE_URL", "ATLCLI_AUTH_TYPE"];
+/** Env-based auth and profile selection that would otherwise reach every client a test builds. */
+export const CREDENTIAL_VARIABLES = [
+  "ATLCLI_API_TOKEN", "ATLCLI_EMAIL", "ATLCLI_SITE", "ATLCLI_BASE_URL", "ATLCLI_AUTH_TYPE",
+  "ATLCLI_PROFILE", "ATLCLI_CONFIG", "ATLCLI_LOG_LEVEL",
+];
 
 /**
  * The test environment: credentials removed, HOME a fresh directory. A live E2E

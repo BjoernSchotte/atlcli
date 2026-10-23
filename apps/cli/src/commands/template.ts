@@ -1758,7 +1758,7 @@ async function handleUpdate(
 function templateHelp(): string {
   return `atlcli wiki template <command>
 
-Template management with hierarchical storage (global > profile > space).
+Template management with hierarchical storage; the most specific level wins (space > profile > global).
 
 Commands:
   list        List available templates

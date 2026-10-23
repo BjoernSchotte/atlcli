@@ -35,7 +35,9 @@ import {
   handleResearch,
   researchHelp,
 } from "./commands/research.js";
-import { handleAudit } from "./commands/audit.js";
+import { auditHelp, handleAudit } from "./commands/audit.js";
+import { auditJiraHelp } from "./commands/audit-jira.js";
+import { auditWikiHelp } from "./commands/audit-wiki.js";
 import { digestHelp, handleDigest } from "./commands/digest.js";
 import {
   handlePdfTemplate,
@@ -44,6 +46,7 @@ import {
 } from "./commands/pdf-template.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
 import { unknownSubcommand } from "./commands/unknown-subcommand.js";
+import { ROOT_COMMANDS } from "./root-commands.js";
 
 const VERSION = getCurrentVersion();
 
@@ -62,7 +65,7 @@ async function main(): Promise<void> {
     try {
       const config = await loadConfig();
       configureLogging({
-        level: config.logging?.level ?? "info",
+        level: logLevelFromEnv() ?? config.logging?.level ?? "info",
         enableGlobal: config.logging?.global ?? true,
         enableProject: config.logging?.project ?? true,
         projectDir: process.cwd(),
@@ -70,7 +73,7 @@ async function main(): Promise<void> {
     } catch {
       // Ignore config load errors for logging
       configureLogging({
-        level: "info",
+        level: logLevelFromEnv() ?? "info",
         enableGlobal: true,
         enableProject: true,
         projectDir: process.cwd(),
@@ -287,6 +290,10 @@ function showCommandHelp(
     case "digest":
       output(digestHelp(), opts);
       break;
+    case "audit":
+      // `audit jira --help` / `audit wiki --help` print the target's help (#286).
+      output(subArgs[0] === "jira" ? auditJiraHelp() : subArgs[0] === "wiki" ? auditWikiHelp() : auditHelp(), opts);
+      break;
     case "chat":
       output(chatHelp(), opts);
       break;
@@ -401,23 +408,7 @@ ${pluginCommands.map((c) => `  ${c.name.padEnd(12)} ${c.command.description}`).j
 atlcli <command>
 
 Commands:
-  auth        Authenticate and manage profiles
-  completion  Generate shell completion scripts
-  config      Manage CLI configuration
-  doctor      Diagnose common issues
-  flag        Manage feature flags
-  wiki        Confluence operations (page, space, docs, search)
-  jira        Jira operations (issue, board, sprint, epic)
-  digest      What changed since your last look, across Jira and Confluence
-  research    Run bounded read-only Jira + Confluence research
-  chat        Ask a read-only Jira or Confluence question
-  pdf-template Create reviewed PDF template packs from Word documents
-  log         Query and manage logs
-  models      Optional local models (table structure for PDF import)
-  plugin      Manage plugins
-  update      Check for and install updates
-  version     Show version
-  release-info Show versioned build provenance
+${ROOT_COMMANDS.map(([name, description]) => `  ${name.padEnd(12)} ${description}`).join("\n")}
 ${pluginSection}
 Global options:
   --profile <name>   Use specific auth profile
@@ -472,4 +463,10 @@ await main().catch((err) => {
 function printVersion(opts: { json: boolean }): void {
   if (opts.json) process.stdout.write(`${JSON.stringify(versionInfo())}\n`);
   else output(versionInfo(), opts);
+}
+
+/** `ATLCLI_LOG_LEVEL` overrides `logging.level` (#282); an unknown value is ignored. */
+function logLevelFromEnv(): "off" | "error" | "warn" | "info" | "debug" | undefined {
+  const level = process.env.ATLCLI_LOG_LEVEL?.trim().toLowerCase();
+  return level === "off" || level === "error" || level === "warn" || level === "info" || level === "debug" ? level : undefined;
 }
