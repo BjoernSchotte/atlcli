@@ -383,14 +383,16 @@ it("migrates a recovered WAL and preserves databases larger than a reduced limit
     const db=new Database(${JSON.stringify(path)});
     db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=0;");
     db.run("INSERT INTO files VALUES (?, ?, ?, 1, 1, 0, NULL)", ["1", "/DOCSY/a", new Uint8Array(100_000).fill(7)]);
-    console.log("ACK");setInterval(()=>{},1000);`;
+    console.log("ACK " + JSON.stringify({ mode: db.query("PRAGMA journal_mode").get(), ver: db.query("select sqlite_version() v").get(), files: require("node:fs").readdirSync(${JSON.stringify(dirname(path))}) }));setInterval(()=>{},1000);`;
   const child = Bun.spawn([process.execPath, "-e", source], { stdout: "pipe", stderr: "pipe" });
   try {
     const reader = child.stdout.getReader();
     const ack = await Promise.race([reader.read(), Bun.sleep(5000).then(() => { throw new Error("No legacy ACK"); })]);
     expect(Buffer.from(ack.value!).toString()).toContain("ACK");
     reader.releaseLock();
+    console.error("DIAG-WAL", Buffer.from(ack.value!).toString(), process.versions.bun, process.versions.sqlite);
     child.kill("SIGKILL"); await child.exited;
+    console.error("DIAG-WAL after kill", require("node:fs").readdirSync(dirname(path)));
     expect(statSync(path + "-wal").size).toBeGreaterThan(100_000);
   } finally { child.kill(); await child.exited; }
   const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 200_000, 120_000, 4, 65536);
