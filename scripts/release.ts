@@ -70,7 +70,7 @@ interface Acknowledgment {
   numbers: number[];
 }
 
-interface ReleaseAcknowledgments {
+export interface ReleaseAcknowledgments {
   prContributors: Acknowledgment[];
   issueReporters: Acknowledgment[];
 }
@@ -322,11 +322,11 @@ async function findNewContributors(previousTag: string): Promise<ContributorInfo
 
   for (const prNumber of prNumbers) {
     try {
-      const prData = await $`gh pr view ${prNumber} --json author,title`.json();
+      const prData = await $`gh pr view ${prNumber} --json author,title`.quiet().json();
       const pr = prData as { author: { login: string; name?: string }; title: string };
       const login = pr.author.login;
 
-      if (login === REPO_OWNER || seen.has(login)) continue;
+      if (login === REPO_OWNER || isBotLogin(login) || seen.has(login)) continue;
       seen.add(login);
 
       const allMergedRaw =
@@ -343,8 +343,7 @@ async function findNewContributors(previousTag: string): Promise<ContributorInfo
         });
       }
     } catch {
-      // Skip PRs that can't be fetched (e.g., from forks that were deleted)
-      console.log(`  Warning: Could not fetch PR #${prNumber}, skipping`);
+      // A squashed subject's "(#276)" can name an issue rather than a PR.
     }
   }
 
@@ -411,57 +410,83 @@ async function injectNewContributors(
   console.log("  New Contributors section added");
 }
 
-/** Regex matching GitHub issue-closing keywords (fixes #4, closes #12, …). */
-const CLOSING_KEYWORD_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
+/** Bot accounts (Renovate, Dependabot, …) are never thanked. */
+export function isBotLogin(login: string): boolean {
+  return login.startsWith("app/") || login.endsWith("[bot]");
+}
+
+/** Every `#N` a PR body mentions: closing keywords, tables and lists alike. */
+export function mentionedNumbers(text: string): number[] {
+  return [...new Set([...text.matchAll(/(?<![\w/])#(\d+)\b/g)].map((m) => Number(m[1])))];
+}
+
+/**
+ * One "Thanks" line per person, merging authored PRs and reported issues, so a
+ * contributor who did both appears once.
+ */
+export function formatThanksEntries(acks: ReleaseAcknowledgments): string[] {
+  const byLogin = new Map<string, { prs: number[]; issues: number[] }>();
+  const entry = (login: string) => byLogin.get(login) ?? byLogin.set(login, { prs: [], issues: [] }).get(login)!;
+  for (const c of acks.prContributors) entry(c.login).prs.push(...c.numbers);
+  for (const r of acks.issueReporters) entry(r.login).issues.push(...r.numbers);
+  const refs = (nums: number[]) => nums.map((n) => `#${n}`).join(", ");
+  return [...byLogin.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([login, { prs, issues }]) => {
+      const parts = [
+        prs.length ? `${prs.length > 1 ? "PRs" : "PR"} ${refs(prs)}` : "",
+        issues.length ? `reported ${issues.length > 1 ? "issues" : "issue"} ${refs(issues)}` : "",
+      ].filter(Boolean);
+      return `- [@${login}](https://github.com/${login}) — ${parts.join("; ")}`;
+    });
+}
 
 /**
  * Collects everyone worth thanking for a release: authors of PRs merged since
- * `previousTag`, and reporters of the issues those PRs closed. The repo owner
- * is excluded from both lists (you don't thank yourself), but issues the owner's
- * own PRs closed are still credited to whoever reported them.
+ * `previousTag`, and reporters of the issues those PRs fixed. An issue counts
+ * when a merged PR mentions it (or links it as closing) and it was closed as
+ * completed after `previousTag`. The repo owner and bots are excluded from both
+ * lists, but issues the owner's own PRs fixed are still credited to whoever
+ * reported them.
  */
 async function findReleaseAcknowledgments(previousTag: string): Promise<ReleaseAcknowledgments> {
-  const prNumbers = await getMergedPrNumbers(previousTag);
+  // Squashed subjects like "fix: … (#276)" may name an issue, not a PR.
+  const candidates = await getMergedPrNumbers(previousTag);
+  const since = (await $`git log -1 --format=%cI ${previousTag}`.text()).trim();
 
   const prByLogin = new Map<string, Set<number>>();
   const issueByLogin = new Map<string, Set<number>>();
-  const seenIssues = new Set<number>();
+  const prNumbers = new Set<number>();
+  const issueCandidates = new Set<number>();
+  const add = (map: Map<string, Set<number>>, login: string, n: number) =>
+    map.set(login, (map.get(login) ?? new Set<number>()).add(n));
 
-  for (const prNumber of prNumbers) {
-    let pr: { author: { login: string }; body: string | null };
+  for (const number of candidates) {
+    let pr: { author: { login: string }; body: string | null; closingIssuesReferences: { number: number }[] };
     try {
-      pr = await $`gh pr view ${prNumber} --json author,body`.json();
+      pr = await $`gh pr view ${number} --json author,body,closingIssuesReferences`.quiet().json();
     } catch {
-      console.log(`  Warning: Could not fetch PR #${prNumber}, skipping`);
+      issueCandidates.add(number);
       continue;
     }
-
+    prNumbers.add(number);
     const login = pr.author?.login;
-    if (login && login !== REPO_OWNER) {
-      const set = prByLogin.get(login) ?? new Set<number>();
-      set.add(prNumber);
-      prByLogin.set(login, set);
-    }
+    if (login && login !== REPO_OWNER && !isBotLogin(login)) add(prByLogin, login, number);
+    for (const ref of pr.closingIssuesReferences ?? []) issueCandidates.add(ref.number);
+    for (const n of mentionedNumbers(pr.body ?? "")) issueCandidates.add(n);
+  }
 
-    // Credit reporters of the issues this PR closed.
-    for (const m of (pr.body ?? "").matchAll(CLOSING_KEYWORD_RE)) {
-      const issueNumber = Number(m[1]);
-      if (issueNumber === prNumber || seenIssues.has(issueNumber)) continue;
-      seenIssues.add(issueNumber);
-      try {
-        const issue = (await $`gh issue view ${issueNumber} --json author`.json()) as {
-          author: { login: string };
-        };
-        const reporter = issue.author?.login;
-        if (reporter && reporter !== REPO_OWNER) {
-          const set = issueByLogin.get(reporter) ?? new Set<number>();
-          set.add(issueNumber);
-          issueByLogin.set(reporter, set);
-        }
-      } catch {
-        console.log(`  Warning: Could not fetch issue #${issueNumber}, skipping`);
-      }
+  for (const issueNumber of issueCandidates) {
+    if (prNumbers.has(issueNumber)) continue;
+    let issue: { author: { login: string }; state: string; stateReason: string; closedAt: string | null };
+    try {
+      issue = await $`gh issue view ${issueNumber} --json author,state,stateReason,closedAt`.quiet().json();
+    } catch {
+      continue; // a PR number or an issue from another repository
     }
+    if (issue.state !== "CLOSED" || issue.stateReason !== "COMPLETED" || !issue.closedAt || issue.closedAt < since) continue;
+    const reporter = issue.author?.login;
+    if (reporter && reporter !== REPO_OWNER && !isBotLogin(reporter)) add(issueByLogin, reporter, issueNumber);
   }
 
   const toSortedList = (map: Map<string, Set<number>>): Acknowledgment[] =>
@@ -487,24 +512,13 @@ async function injectThanks(_newVersion: string, changelogPath = "CHANGELOG.md")
     return;
   }
 
-  const { prContributors, issueReporters } = await findReleaseAcknowledgments(previousTag);
+  const acks = await findReleaseAcknowledgments(previousTag);
+  const { prContributors, issueReporters } = acks;
 
   if (prContributors.length === 0 && issueReporters.length === 0) {
     console.log("  No external contributors or reporters to thank");
     return;
   }
-
-  const refs = (nums: number[]) => nums.map((n) => `#${n}`).join(", ");
-  const entries = [
-    ...prContributors.map(
-      (c) =>
-        `- [@${c.login}](https://github.com/${c.login}) — ${c.numbers.length > 1 ? "PRs" : "PR"} ${refs(c.numbers)}`,
-    ),
-    ...issueReporters.map(
-      (r) =>
-        `- [@${r.login}](https://github.com/${r.login}) — reported ${r.numbers.length > 1 ? "issues" : "issue"} ${refs(r.numbers)}`,
-    ),
-  ];
 
   const lines = [
     "",
@@ -512,7 +526,7 @@ async function injectThanks(_newVersion: string, changelogPath = "CHANGELOG.md")
     "",
     "A big thank you to everyone who helped shape this release 🙏",
     "",
-    ...entries,
+    ...formatThanksEntries(acks),
   ];
 
   const changelog = await readFile(changelogPath, "utf8");
