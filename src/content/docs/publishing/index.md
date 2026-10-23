@@ -35,7 +35,7 @@ format in the Astro pipeline.
 ## Prerequisites
 
 - an authenticated profile with read access to the selected Confluence scope;
-- Node `22.12.0` or newer and Bun for the repository scripts;
+- Node `22.23.4` or newer and Bun for the repository scripts;
 - an Astro project using Astro `7.1.6` through the supported 7.x range;
 - a project file (normally `.atlcli/publish.json`) and a private workspace;
 - an explicit acknowledgement when publishing is public or intentionally

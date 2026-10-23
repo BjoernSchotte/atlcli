@@ -872,6 +872,8 @@ describe("CI workflow policy", () => {
 
     expect(tests).not.toBeNull();
     expect(tests).toContain("if: inputs.run_tests");
+    // Astro builds inside the tests refuse a Node below the engines floor.
+    expect(tests).toContain("uses: actions/setup-node@v7");
     expect(tests).toContain("fail-fast: false");
     for (const group of ["general-1", "general-2", "general-3", "general-4", "general-5", "general-6", "pdf-typst"]) {
       expect(tests).toContain(`group: ${group}`);
@@ -1024,8 +1026,8 @@ describe("CI workflow policy", () => {
         if (node) floors.add(node);
       }
     }
-    expect([...floors]).toEqual([">=22.12.0"]);
-    expect(reusable).toMatch(/node-version: "22\.12\.0"/);
+    expect([...floors]).toEqual([">=22.23.4"]);
+    expect(reusable).toMatch(/node-version: "22\.23\.4"/);
   });
 
   it("does not let a non-blocking benchmark mask M1 acceptance", async () => {

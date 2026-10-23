@@ -312,11 +312,10 @@ describe("pack-check (spec 009)", () => {
     }
     expect(runtime).toContain('import("@shikijs/langs/typescript")');
     expect(runtime).toContain('import("@shikijs/themes/github-light")');
-    expect(manifest.dependencies).toMatchObject({
-      shiki: "4.4.3",
-      "@shikijs/langs": "4.4.3",
-      "@shikijs/themes": "4.4.3",
-    });
+    // The three Shiki packages ship in lockstep, pinned to one exact version.
+    const deps = manifest.dependencies as Record<string, string>;
+    expect(deps.shiki).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(deps).toMatchObject({ "@shikijs/langs": deps.shiki, "@shikijs/themes": deps.shiki });
   });
 
   it("packed DOCX/PDF entries keep the concrete highlighter behind the lazy contract", () => {
