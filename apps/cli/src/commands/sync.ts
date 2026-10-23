@@ -724,7 +724,11 @@ class SyncEngine {
         }
       });
 
-      await this.poller.initialize();
+      // Baseline at the versions the initial sync pulled, not at whatever the
+      // remote holds now: an edit landing in between must still be reported.
+      await this.poller.initialize(
+        new Map(Object.entries(this.state?.pages ?? {}).map(([id, page]) => [id, page.version]))
+      );
       this.poller.start();
     }
 

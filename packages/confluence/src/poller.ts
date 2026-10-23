@@ -66,14 +66,21 @@ export class ConfluencePoller {
     }
   }
 
-  /** Initialize state with current pages and folders (call before starting) */
-  async initialize(): Promise<void> {
-    // Initialize pages
+  /**
+   * Initialize state with current pages and folders (call before starting).
+   *
+   * `synced` holds the versions the caller already has locally. Content can
+   * change between the caller's last pull and this fetch; baselining at the
+   * fetched version would swallow that change for good, so the baseline is the
+   * older of the two and the first poll reports it.
+   */
+  async initialize(synced?: ReadonlyMap<string, number>): Promise<void> {
+    const baseline = (id: string, version: number) => Math.min(version, synced?.get(id) ?? version);    // Initialize pages
     const pages = await this.client.getAllPages({ scope: this.scope });
     this.state.knownPages.clear();
     for (const page of pages) {
       this.state.knownPages.set(page.id, {
-        version: page.version,
+        version: baseline(page.id, page.version),
         title: page.title,
       });
     }
@@ -84,7 +91,7 @@ export class ConfluencePoller {
       const folders = await this.client.getAllFoldersWithVersions({ scope: this.scope });
       for (const folder of folders) {
         this.state.knownFolders.set(folder.id, {
-          version: folder.version,
+          version: baseline(folder.id, folder.version),
           title: folder.title,
         });
       }
