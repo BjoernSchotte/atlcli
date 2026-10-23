@@ -300,7 +300,7 @@ jobs:
         include:
           - lane: minimum-astro
             os: ubuntu-latest
-            node: "22.12.0"
+            node: "22.23.4"
             astro: "7.1.6"
     steps:
       - uses: actions/checkout@v7

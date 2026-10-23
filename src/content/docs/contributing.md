@@ -12,7 +12,7 @@ Guidelines for contributing to atlcli.
 ### Prerequisites
 
 - [Bun](https://bun.sh) 1.3.14 (the version declared in `package.json`)
-- Node.js 22.12+ (for documentation tooling)
+- Node.js 22.23.4+ (for documentation tooling)
 - An Atlassian Cloud account for testing
 
 ### Clone and Build
