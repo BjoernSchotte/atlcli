@@ -872,6 +872,8 @@ describe("CI workflow policy", () => {
 
     expect(tests).not.toBeNull();
     expect(tests).toContain("if: inputs.run_tests");
+    // Astro builds inside the tests refuse a Node below the engines floor.
+    expect(tests).toContain("uses: actions/setup-node@v7");
     expect(tests).toContain("fail-fast: false");
     for (const group of ["general-1", "general-2", "general-3", "general-4", "general-5", "general-6", "pdf-typst"]) {
       expect(tests).toContain(`group: ${group}`);
