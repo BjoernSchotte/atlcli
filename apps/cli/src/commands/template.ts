@@ -1140,7 +1140,7 @@ async function handleInit(
     }
 
     // Convert storage format to markdown
-    content = storageToMarkdown(page.storage);
+    content = storageToMarkdown(page.storage, { mentionNames: await client.mentionNames([page.storage]) });
     sourceDescription = `page: ${page.title} (${page.id})`;
   }
 

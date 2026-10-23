@@ -34,7 +34,7 @@ import {
 import type { ResolvedVfsOptions, VfsOptions } from "./options.js";
 import { resolveVfsOptions } from "./options.js";
 import { mapClientError } from "./errors.js";
-import { PageStore } from "./page-store.js";
+import { PageStore, mentionNamesFor } from "./page-store.js";
 import { AuditLog } from "./audit-log.js";
 import { ConflictStore } from "./conflict-store.js";
 import { assertWritable, type ModeGuard } from "./mode.js";
@@ -942,7 +942,8 @@ export class ConfluenceVfsImpl implements ConfluenceVfs {
       type: "page", spaceKey: target.spaceKey, version: page.version, lastModified: page.lastModified });
     // The confirmed initial image is the merge base for edits saved while POST was uncertain.
     this.cache?.putBody({ pageId: page.id, version: 1, storageHash: hashStorage(initial.storage),
-      markdown: renderPageMarkdown({ ...node, version: 1, lastModified: initial.lastModified }, initial.storage, this.runtime!.instanceUrl) });
+      markdown: renderPageMarkdown({ ...node, version: 1, lastModified: initial.lastModified }, initial.storage, this.runtime!.instanceUrl,
+        undefined, await mentionNamesFor(this.opts.client, initial.storage)) });
     return { path, pageId: page.id, version: 1, created: true };
   }
 
