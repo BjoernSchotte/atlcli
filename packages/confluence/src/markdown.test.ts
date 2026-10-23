@@ -1589,6 +1589,56 @@ More content
     });
   });
 
+  // Regression #289
+  describe("toc and expand parameters", () => {
+    test("toc passes its parameters to storage", () => {
+      const html = markdownToStorage(`:::toc minLevel=2 maxlevel=3 style="none" bogus=1\n:::`);
+      expect(html).toContain('<ac:parameter ac:name="minLevel">2</ac:parameter>');
+      expect(html).toContain('<ac:parameter ac:name="maxLevel">3</ac:parameter>');
+      expect(html).toContain('<ac:parameter ac:name="style">none</ac:parameter>');
+      expect(html).not.toContain("bogus");
+    });
+
+    test("toc without parameters stays a bare macro", () => {
+      expect(markdownToStorage(`:::toc\n:::`)).toContain('<ac:structured-macro ac:name="toc"/>');
+    });
+
+    test("toc parameters round-trip markdown -> storage -> markdown", () => {
+      const original = `:::toc minLevel=2 maxLevel=3 include="^Intro.*"\n:::`;
+      expect(storageToMarkdown(markdownToStorage(original)).trim()).toBe(original);
+    });
+
+    test("storage toc parameters become :::toc parameters", () => {
+      const storage = `<ac:structured-macro ac:name="toc" ac:schema-version="1"><ac:parameter ac:name="maxLevel">3</ac:parameter><ac:parameter ac:name="minLevel">2</ac:parameter></ac:structured-macro>`;
+      // Confluence reorders stored parameters; pull emits them in a stable order.
+      expect(storageToMarkdown(storage).trim()).toBe(`:::toc minLevel=2 maxLevel=3\n:::`);
+    });
+
+    test("storage toc parameter order as Confluence stores it pulls canonically", () => {
+      const storage = `<ac:structured-macro ac:name="toc"><ac:parameter ac:name="minLevel">2</ac:parameter><ac:parameter ac:name="include">^(Intro|Second)$</ac:parameter><ac:parameter ac:name="style">none</ac:parameter></ac:structured-macro>`;
+      expect(storageToMarkdown(storage).trim()).toBe(`:::toc minLevel=2 style=none include="^(Intro|Second)$"\n:::`);
+    });
+
+    test("expand takes only the quoted title, not trailing parameters", () => {
+      const html = markdownToStorage(`:::expand "Details" expanded=true\nHidden.\n:::`);
+      expect(html).toContain('<ac:parameter ac:name="title">Details</ac:parameter>');
+      expect(html).not.toContain("expanded");
+    });
+
+    test("unquoted and fully quoted titles are unchanged", () => {
+      expect(markdownToStorage(`:::expand Click me now\nx\n:::`)).toContain(">Click me now</ac:parameter>");
+      expect(markdownToStorage(`:::info "Say "hi" twice"\nx\n:::`)).toContain(">Say &quot;hi&quot; twice</ac:parameter>");
+    });
+
+    test("expand round-trips and a title starting with a quote survives", () => {
+      const original = `:::expand Details\nHidden.\n:::`;
+      expect(storageToMarkdown(markdownToStorage(original)).trim()).toBe(original);
+      const legacy = `<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">"Details" expanded=true</ac:parameter><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>`;
+      const pulled = storageToMarkdown(legacy);
+      expect(markdownToStorage(pulled)).toContain(">&quot;Details&quot; expanded=true</ac:parameter>");
+    });
+  });
+
   describe("page-properties macro", () => {
     test("converts page-properties to storage format", () => {
       const md = `:::page-properties id="project-info"

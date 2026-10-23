@@ -90,7 +90,7 @@ const file = () => join(tree, `${SLUG}.md`);
 /** Someone edits the page in Confluence after our pull. */
 function remoteEdit(): void {
   version += 1;
-  storage = "<p>Colleague's edit.</p>";
+  storage = "<p>Colleague edit.</p>";
 }
 
 beforeEach(async () => {
@@ -112,7 +112,7 @@ it("refuses to push a locally edited file over a remote edit", async () => {
   const error = JSON.parse(push.stdout).error;
   expect(error.details.conflicts).toEqual([{ file: expect.stringContaining(`${SLUG}.md`), pageId: PAGE_ID, baseVersion: 2, remoteVersion: 3 }]);
   expect(puts).toEqual([]);
-  expect(storage).toBe("<p>Colleague's edit.</p>");
+  expect(storage).toBe("<p>Colleague edit.</p>");
 }, 90_000);
 
 it("skips an unchanged file when the page changed remotely", async () => {
@@ -136,4 +136,78 @@ it("pushes a local edit when the page did not change remotely, and again after t
   await writeFile(file(), (await readFile(file(), "utf8")).replace("My edit.", "My second edit."));
   expect((await runCli(["wiki", "docs", "push", "--json"])).exitCode).toBe(0);
   expect(puts).toEqual([3, 4]);
+}, 90_000);
+
+/** The file as `docs sync` leaves it after a failed merge: frontmatter, then markers. */
+async function writeConflict(): Promise<void> {
+  const frontmatter = (await readFile(file(), "utf8")).split("\n---\n")[0] + "\n---\n\n";
+  await writeFile(file(), `${frontmatter}<<<<<<< LOCAL\nMy edit.\n=======\nColleague edit.\n>>>>>>> REMOTE\n`);
+}
+
+it("resolve finds the page through the workspace state, and the resolution pushes (#275)", async () => {
+  remoteEdit();
+  await writeConflict();
+  const resolve = await runCli(["wiki", "docs", "resolve", file(), "--accept", "local", "--json"]);
+  expect(resolve.exitCode, resolve.stdout + resolve.stderr).toBe(0);
+  expect(JSON.parse(resolve.stdout)).toMatchObject({ resolved: true, accept: "local", baseAdvanced: true });
+  expect(await readFile(file(), "utf8")).toContain("My edit.");
+  const push = await runCli(["wiki", "docs", "push", "--json"]);
+  expect(push.exitCode, push.stdout).toBe(0);
+  expect(puts).toEqual([4]);
+  expect(storage).toContain("My edit.");
+}, 90_000);
+
+it("a remote edit after the conflict keeps the old base, so push still refuses (#275, #285)", async () => {
+  remoteEdit();
+  await writeConflict();
+  version += 1;
+  storage = "<p>Another colleague edit.</p>";
+  const resolve = await runCli(["wiki", "docs", "resolve", file(), "--accept", "local", "--json"]);
+  expect(JSON.parse(resolve.stdout)).toMatchObject({ resolved: true, baseAdvanced: false });
+  const push = await runCli(["wiki", "docs", "push", "--json"]);
+  expect(push.exitCode).toBe(1);
+  expect(puts).toEqual([]);
+}, 90_000);
+
+it("--accept merged closes a conflict whose markers were removed by hand (#275)", async () => {
+  remoteEdit();
+  await writeConflict();
+  // A sync run would mark the page as conflicted; emulate its state entry.
+  const { createSyncDb, getAtlcliPath } = await import("@atlcli/confluence/internal");
+  const db = await createSyncDb(getAtlcliPath(tree), { autoMigrate: false });
+  const page = await db.getPage(PAGE_ID);
+  await db.upsertPage({ ...page!, syncState: "conflict" });
+  await db.close();
+  const text = await readFile(file(), "utf8");
+  await writeFile(file(), text.replace(/<<<<<<< LOCAL\n|=======\n|>>>>>>> REMOTE\n/g, ""));
+  const resolve = await runCli(["wiki", "docs", "resolve", file(), "--accept", "merged", "--json"]);
+  expect(resolve.exitCode, resolve.stdout + resolve.stderr).toBe(0);
+  expect(JSON.parse(resolve.stdout)).toMatchObject({ resolved: true, accept: "merged" });
+}, 90_000);
+
+it("docs sync does not overwrite a local edit when it starts (initial sync)", async () => {
+  remoteEdit();
+  await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
+  const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "wiki", "docs", "sync", ".", "--poll-interval", "60000"], {
+    cwd: tree,
+    env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "stub-token", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  let out = "";
+  const reader = proc.stdout.getReader();
+  const deadline = Date.now() + 30_000;
+  while (!out.includes("Initial sync complete") && Date.now() < deadline) {
+    const chunk = await Promise.race([reader.read(), Bun.sleep(1000).then(() => undefined)]);
+    if (chunk?.value) out += new TextDecoder().decode(chunk.value);
+  }
+  proc.kill();
+  await proc.exited;
+  expect(out, out).toContain("Initial sync complete");
+  // Merged or marked as a conflict, but the local edit survives, and so does the frontmatter
+  // that ties the file to its page.
+  const after = await readFile(file(), "utf8");
+  expect(after).toContain("My edit.");
+  expect(after).toMatch(/^---\n[\s\S]*id: "?80001"?[\s\S]*\n---\n/);
+  expect(puts).toEqual([]);
 }, 90_000);

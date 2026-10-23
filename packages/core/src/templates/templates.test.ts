@@ -219,6 +219,18 @@ describe("engine", () => {
     expect(result.usedVariables).toContain("title");
   });
 
+  test("render reports missing required and undeclared variables (#298)", () => {
+    const engine = new TemplateEngine();
+    const template: Template = {
+      metadata: { name: "t", variables: [{ name: "owner", type: "string", required: true }, { name: "title", type: "string" }] },
+      content: "# {{title}}\nOwner: {{owner}}\nTypo: {{ownr}}\n{{@date}}",
+      source: { level: "global", path: "" },
+    };
+    const result = engine.render(template, { variables: { title: "Sprint" }, builtins: {} });
+    expect(result.missingVariables).toEqual(["owner"]);
+    expect(result.undeclaredVariables).toEqual(["ownr"]);
+  });
+
   test("render with inline defaults", () => {
     const engine = new TemplateEngine();
     const template: Template = {

@@ -57,7 +57,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--key` | Issue key, if you prefer it over the positional form |
-| `--comment` | Post a comment on the issue after the upload |
+| `--comment` | Post a comment on the issue after the upload. Markdown, converted like `jira issue comments add` |
 | `--json` | JSON output |
 
 :::note[Partial failures]

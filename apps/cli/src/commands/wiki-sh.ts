@@ -30,6 +30,7 @@ import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl, isVfsError, type VfsMode } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
 import type { WikiShell } from "../vfs/wiki-shell.js";
+import { stderrVfsLogger } from "../vfs/stderr-logger.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -159,6 +160,7 @@ export async function handleWikiSh(
     ...(resolved.prefetchMax !== undefined ? { prefetchMaxPages: resolved.prefetchMax } : {}),
     ...(resolved.cacheMaxMb !== undefined ? { cacheMaxMb: resolved.cacheMaxMb } : {}),
     cqlGrep: resolved.cqlGrep,
+    logger: stderrVfsLogger,
   });
 
   const diagnostics: string[] = [];

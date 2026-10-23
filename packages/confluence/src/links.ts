@@ -55,8 +55,8 @@ export function extractLinks(markdown: string): MarkdownLink[] {
     );
 
     // Match markdown links: [text](target)
-    // But NOT images: ![alt](src)
-    const linkRegex = /(?<!!)\[([^\]]*)\]\(([^)]+)\)/g;
+    // But NOT images: ![alt](src), and NOT user mentions: @[Name](accountId)
+    const linkRegex = /(?<![!@])\[([^\]]*)\]\(([^)]+)\)/g;
     let match: RegExpExecArray | null;
 
     while ((match = linkRegex.exec(lineWithoutInlineCode)) !== null) {

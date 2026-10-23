@@ -615,14 +615,19 @@ This endpoint returns user data. Response format is JSON.
 ### Resolving Conflicts
 
 ```bash
-# Edit file to resolve conflicts manually
-vim docs/api.md
-
-# Then resolve with chosen strategy
+# Keep one side of every conflict region
 atlcli wiki docs resolve docs/api.md --accept local
 atlcli wiki docs resolve docs/api.md --accept remote
-atlcli wiki docs resolve docs/api.md --accept merged  # After manual edit
+
+# Or remove the markers by hand, then mark the file as resolved
+vim docs/api.md
+atlcli wiki docs resolve docs/api.md --accept merged
+
+# Push the resolution
+atlcli wiki docs push docs/api.md
 ```
+
+`resolve` finds the page through the file's frontmatter and the workspace state in `.atlcli/`. With `--accept local` or `--accept remote` it checks that the Confluence page still has the content the conflict was made from; then the resolution becomes the base for the next push. If the page changed again in the meantime, `resolve` says so, and `push` refuses until you run `atlcli wiki docs sync` again.
 
 :::tip[Stuck in merge conflicts?]
 Reset to remote version with `atlcli wiki docs pull ./docs --force`, or force your local version with `--accept local` followed by push.

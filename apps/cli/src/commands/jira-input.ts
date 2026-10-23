@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { adfToMarkdown, calendarDay, escapeCsvValue, type JiraClient, type JiraField, type JiraIssue, type JiraStatus, type JiraUser } from "@atlcli/jira";
+import { adfToMarkdown, calendarDay, escapeCsvValue, type JiraChangelogEntry, type JiraClient, type JiraField, type JiraIssue, type JiraStatus, type JiraUser } from "@atlcli/jira";
 import { stripOrderBy } from "./jira-flow.js";
 
 // ============ Users ============
@@ -274,7 +274,23 @@ export function renderDetails(
 /** Markdown for reading: ADF kept only for round trips (`<!--adf:…-->`) shows as `[…]`. */
 const readable = (markdown: string) => markdown.replace(/<!--adf:[\s\S]*?-->/g, "[…]");
 
-/** `issue get` as text: fields, description, links and the last comments. */
+/** Changelog entries as one row per changed field, newest first (`issue history`, `issue get --expand changelog`). */
+export function changelogRows(entries: JiraChangelogEntry[]) {
+  return entries
+    .flatMap((entry) =>
+      entry.items.map((item) => ({
+        id: entry.id,
+        created: entry.created,
+        author: entry.author?.displayName,
+        field: item.field,
+        from: Object.hasOwn(item, "fromString") ? item.fromString : item.from,
+        to: Object.hasOwn(item, "toString") ? item.toString : item.to,
+      }))
+    )
+    .sort((a, b) => b.created.localeCompare(a.created));
+}
+
+/** `issue get` as text: fields, description, links, the last comments and, when expanded, the history. */
 export function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount = 3): string {
   const f = issue.fields;
   const day = (iso?: string) => (iso ? calendarDay(iso) : "");
@@ -290,6 +306,11 @@ export function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount 
     .map((c) => `${c.author?.displayName ?? "?"} · ${day(c.created)}\n${readable(adfToMarkdown(c.body, { baseUrl })).trim()}`)
     .join("\n\n");
   const total = f.comment?.total ?? comments.length;
+  const history = issue.changelog
+    ? changelogRows(issue.changelog.histories ?? [])
+        .map((row) => `${day(row.created)}  ${row.author ?? "?"}  ${row.field}: ${row.from ?? ""} → ${row.to ?? ""}`)
+        .join("\n")
+    : undefined;
   return renderDetails(
     `${issue.key}  ${f.summary ?? ""}`,
     [
@@ -311,6 +332,7 @@ export function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount 
       ["Description", readable(adfToMarkdown(f.description, { baseUrl }))],
       [`Links (${links.length})`, links.join("\n")],
       [`Comments (${recent.length < total ? `last ${recent.length} of ${total}` : total})`, commentText],
+      ["History", history],
     ]
   );
 }

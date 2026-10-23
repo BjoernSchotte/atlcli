@@ -140,6 +140,7 @@ import type { Ignore } from "@atlcli/confluence/internal";
 import { readAttachmentFile, resolveAttachmentFile } from "./docs-attachments.js";
 import { handleSync, syncHelp } from "./sync.js";
 import { unknownSubcommand } from "./unknown-subcommand.js";
+import { checkTemplateRender } from "./template-render-check.js";
 
 /** Sync state for bidirectional sync tracking */
 export type SyncState = "synced" | "local-modified" | "remote-modified" | "conflict";
@@ -2195,6 +2196,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
     // Render template
     const engine = new TemplateEngine();
     const rendered = engine.render(template, { variables, builtins });
+    checkTemplateRender(rendered, opts);
     markdownContent = rendered.content;
     labels = template.metadata.labels;
   }
@@ -3460,26 +3462,30 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
   const accept = getFlag(flags, "accept") as "local" | "remote" | "merged" | undefined;
 
   const content = await readTextFile(filePath);
+  const { frontmatter } = parseFrontmatter(content);
   const meta = await readMeta(filePath);
+  // A page is tracked through its frontmatter id and the workspace state, or a legacy .meta.json (#275).
+  const atlcliDir = findAtlcliDir(dirname(filePath));
+  const state = atlcliDir ? await readState(atlcliDir) : undefined;
+  const pageId = frontmatter?.id ?? meta?.id;
+  const pageState = pageId ? state?.pages[pageId] : undefined;
 
-  if (!meta) {
-    fail(opts, 1, ERROR_CODES.USAGE, "File is not tracked (no metadata).");
+  if (!pageId || (!pageState && !meta)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "File is not tracked: no page id in its frontmatter, and no sync state for it.");
   }
 
-  // Check if file has conflict markers
+  const inConflict = pageState?.syncState === "conflict" || (!!meta && isEnhancedMeta(meta) && meta.syncState === "conflict");
   const hasMarkers = content.includes("<<<<<<< LOCAL") &&
                      content.includes("=======") &&
                      content.includes(">>>>>>> REMOTE");
 
-  if (!hasMarkers) {
-    // No markers but marked as conflict - might have been manually edited
-    const staleConflict = isEnhancedMeta(meta) && meta.syncState === "conflict";
-    const message = staleConflict
-      ? "File was marked as conflict but has no conflict markers."
+  if (!hasMarkers && !(accept === "merged" && inConflict)) {
+    const message = inConflict
+      ? "File was marked as conflict but has no conflict markers. Run with --accept merged to keep it as it is."
       : "File has no conflicts to resolve.";
     output(
       opts.json
-        ? { schemaVersion: "1", file: filePath, resolved: false, staleConflict, message }
+        ? { schemaVersion: "1", file: filePath, resolved: false, staleConflict: inConflict, message }
         : message,
       opts
     );
@@ -3490,32 +3496,60 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
     fail(opts, 1, ERROR_CODES.USAGE, "Specify --accept local|remote|merged");
   }
 
-  if (accept === "merged") {
-    // User should have manually resolved - just verify no markers remain
+  if (accept === "merged" && hasMarkers) {
     fail(opts, 1, ERROR_CODES.USAGE, "For 'merged', edit the file to remove conflict markers first.");
   }
 
-  // Resolve by choosing a side
-  const resolved = resolveConflicts(content, accept);
-  await writeTextFile(filePath, resolved);
+  // `merged`: the user's edit is the resolution; otherwise pick a side of every marker.
+  const resolved = accept === "merged" ? content : resolveConflicts(content, accept);
+  if (resolved !== content) await writeTextFile(filePath, resolved);
+  const resolvedBody = normalizeMarkdown(parseFrontmatter(resolved).content);
+  const localHash = hashContent(resolvedBody);
 
-  // Update metadata
-  if (isEnhancedMeta(meta)) {
-    const updatedMeta: EnhancedMeta = {
-      ...meta,
-      syncState: "local-modified",
-      localHash: hashContent(normalizeMarkdown(resolved)),
-    };
-    await writeMeta(filePath, updatedMeta);
+  let baseAdvanced = false;
+  if (atlcliDir && state && pageState) {
+    const update: Partial<PageState> = { syncState: "local-modified", localHash };
+    // The markers' REMOTE side is the remote page the conflict was made from. If the page
+    // is still at that content, the resolution already contains it: it becomes the push base,
+    // so push does not report the same conflict again. A newer remote edit keeps the old base.
+    if (hasMarkers) {
+      try {
+        const client = await getClient(flags, opts);
+        const remote = await client.getPage(pageId);
+        const dirConfig = await readConfig(atlcliDir);
+        const remoteBody = normalizeMarkdown(replaceAttachmentPaths(
+          storageToMarkdown(remote.storage, { ...buildConversionOptions(dirConfig?.baseUrl), mentionNames: await client.mentionNames([remote.storage]) }),
+          basename(filePath, ".md")
+        ));
+        const conflictRemote = normalizeMarkdown(parseFrontmatter(resolveConflicts(content, "remote")).content);
+        if (remoteBody === conflictRemote) {
+          const remoteHash = hashContent(remoteBody);
+          Object.assign(update, { version: remote.version ?? pageState.version, remoteHash, baseHash: remoteHash });
+          if (localHash === remoteHash) update.syncState = "synced";
+          baseAdvanced = true;
+        }
+      } catch {
+        // Offline or no access: keep the old base; push will ask for a sync.
+      }
+    }
+    updatePageState(state, pageId, { ...pageState, ...update });
+    await writeState(atlcliDir, state);
+  } else if (meta && isEnhancedMeta(meta)) {
+    await writeMeta(filePath, { ...meta, syncState: "local-modified", localHash } as EnhancedMeta);
   }
 
   if (opts.json) {
-    output({ schemaVersion: "1", file: filePath, resolved: true, accept }, opts);
+    output({ schemaVersion: "1", file: filePath, resolved: true, accept, baseAdvanced }, opts);
     return;
   }
 
   output(`Resolved conflicts in ${filePath} using ${accept} version.`, opts);
-  output("Run 'atlcli wiki docs push' to push the resolved version.", opts);
+  output(
+    baseAdvanced || !atlcliDir
+      ? "Run 'atlcli wiki docs push' to push the resolved version."
+      : "Run 'atlcli wiki docs sync' to merge it with the current remote page, or push with --force.",
+    opts
+  );
 }
 
 async function handleDocsDiff(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {

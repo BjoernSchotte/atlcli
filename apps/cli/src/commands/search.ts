@@ -5,6 +5,7 @@ import {
   fail,
   getActiveProfile,
   getFlag,
+  getFlags,
   hasFlag,
   loadConfig,
   output,
@@ -102,7 +103,7 @@ function hasFilters(flags: Record<string, string | boolean | string[]>, defaultS
 /**
  * Build CQL query from text search and flags.
  */
-function buildCql(query: string, flags: Record<string, string | boolean | string[]>, defaultSpace?: string): string {
+export function buildCql(query: string, flags: Record<string, string | boolean | string[]>, defaultSpace?: string): string {
   const conditions: string[] = [];
 
   // Text search (full-text)
@@ -128,20 +129,8 @@ function buildCql(query: string, flags: Record<string, string | boolean | string
     conditions.push(`type = ${type}`);
   }
 
-  // Filter: label
-  const label = getFlag(flags, "label");
-  if (label) {
-    // Support comma-separated labels
-    const labels = label.split(",").map((l) => l.trim());
-    if (labels.length === 1) {
-      conditions.push(`label = "${labels[0]}"`);
-    } else {
-      // Multiple labels: use AND (all required)
-      for (const l of labels) {
-        conditions.push(`label = "${l}"`);
-      }
-    }
-  }
+  // Filter: labels, all required; repeated `--label` and comma lists combine (#295).
+  for (const l of labelList(flags)) conditions.push(`label = "${escapeQuotes(l)}"`);
 
   // Filter: title (contains)
   const title = getFlag(flags, "title");
@@ -519,4 +508,9 @@ export async function handleMy(
     formatTable(result.results, opts);
     output(`\n${result.results.length} pages`, opts);
   }
+}
+
+/** Every `--label` value, repeated or comma-separated. */
+export function labelList(flags: Record<string, string | boolean | string[]>): string[] {
+  return getFlags(flags, "label").flatMap((value) => value.split(",")).map((l) => l.trim()).filter(Boolean);
 }

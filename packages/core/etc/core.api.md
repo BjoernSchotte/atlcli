@@ -1106,6 +1106,7 @@ export interface RenderResult {
     content: string;
     usedVariables: string[];
     missingVariables: string[];
+    undeclaredVariables: string[];
 }
 
 // export: resolveAndLoadTemplate
@@ -2649,6 +2650,7 @@ export interface RenderResult {
     content: string;
     usedVariables: string[];
     missingVariables: string[];
+    undeclaredVariables: string[];
 }
 
 // export: resolveAndLoadTemplate
