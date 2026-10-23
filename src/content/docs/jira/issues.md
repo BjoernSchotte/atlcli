@@ -16,7 +16,10 @@ Create, read, update, and delete Jira issues.
 
 ```bash
 atlcli jira issue get --key PROJ-123
+atlcli jira issue get PROJ-123
 ```
+
+Every `issue` command that takes `--key` also takes the key as the first argument after the command: `issue transitions PROJ-123`, `issue history PROJ-123`.
 
 Options:
 
@@ -272,6 +275,8 @@ atlcli jira issue clone PROJ-123 --project OTHER --assignee me
 ```
 
 The clone gets the source's summary, description, type and labels. In the same project it also gets the components and the parent. Priority, assignee, sprint, versions and custom fields are not copied: they may not fit the target project.
+
+Like a clone made in Jira, the new issue gets a **Cloners** link: it "clones" the source, and the source "is cloned by" it. If the site has no Cloners link type, the clone is kept and the output carries a `warning`.
 
 | Flag | Description |
 |------|-------------|
