@@ -16,17 +16,17 @@ import {
   getFlagValue,
 } from "@atlcli/core";
 import type { CommandContext } from "@atlcli/plugin-api";
-import { handleAuth } from "./commands/auth.js";
-import { handleCompletion } from "./commands/completion.js";
-import { handleConfig } from "./commands/config.js";
+import { handleAuth, authHelp } from "./commands/auth.js";
+import { handleCompletion, completionHelp } from "./commands/completion.js";
+import { handleConfig, configHelp } from "./commands/config.js";
 import { handleDoctor } from "./commands/doctor.js";
-import { handleFlag } from "./commands/flag.js";
+import { handleFlag, flagHelp } from "./commands/flag.js";
 import { handleUpdate } from "./commands/update.js";
 import { handleWiki } from "./commands/wiki.js";
-import { handleLog } from "./commands/log.js";
+import { handleLog, logHelp } from "./commands/log.js";
 import { handleModels } from "./commands/models.js";
-import { handlePlugin } from "./commands/plugin.js";
-import { handleJira } from "./commands/jira.js";
+import { handlePlugin, pluginHelp } from "./commands/plugin.js";
+import { handleJira, jiraHelpFor } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
 import {
   chatHelp,
@@ -254,29 +254,30 @@ function showCommandHelp(
   registry: import("./plugins/loader.js").PluginRegistry,
   opts: { json: boolean }
 ): void {
+  // Groups whose handlers ignore `help` print their help text directly: dispatching would run the verb (#270).
   const helpFlags = { help: true };
 
   switch (command) {
     case "auth":
-      handleAuth(subArgs, helpFlags, opts);
+      output(authHelp(), opts);
       break;
     case "completion":
-      handleCompletion(subArgs, helpFlags, opts);
+      output(completionHelp(), opts);
       break;
     case "config":
-      handleConfig(subArgs, helpFlags, opts);
+      output(configHelp(), opts);
       break;
     case "doctor":
       handleDoctor(subArgs, helpFlags, opts);
       break;
     case "flag":
-      handleFlag(subArgs, helpFlags, opts);
+      output(flagHelp(), opts);
       break;
     case "wiki":
       handleWiki(subArgs, helpFlags, opts);
       break;
     case "jira":
-      handleJira(subArgs, helpFlags, opts);
+      output(jiraHelpFor(subArgs), opts);
       break;
     case "research":
       output(researchHelp(), opts);
@@ -291,13 +292,13 @@ function showCommandHelp(
       output(pdfTemplateHelp(), opts);
       break;
     case "log":
-      handleLog(subArgs, helpFlags, opts);
+      output(logHelp(), opts);
       break;
     case "models":
       handleModels(subArgs, helpFlags, opts);
       break;
     case "plugin":
-      handlePlugin(subArgs, helpFlags, opts);
+      output(pluginHelp(), opts);
       break;
     case "update":
       handleUpdate(subArgs, helpFlags, opts);
