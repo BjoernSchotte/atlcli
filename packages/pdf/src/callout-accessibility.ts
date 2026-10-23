@@ -4,8 +4,8 @@ function typstString(value: string): string {
 
 /** P1 candidate 1: visible content that is excluded from the PDF structure tree. */
 export function decorativeCalloutIcon(contentExpression: string): string {
-  // Typst 0.14.2 (the pinned compiler) supports the PDF 1.7-compatible
-  // `other` kind. Newer Typst releases also expose the more specific `layout`.
+  // `other` is the PDF 1.7-compatible artifact kind. Typst 0.15 (the pinned
+  // compiler) also has the more specific `layout`; `other` keeps the output stable.
   return `pdf.artifact(kind: "other", ${contentExpression})`;
 }
 
