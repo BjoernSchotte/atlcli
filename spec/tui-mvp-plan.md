@@ -237,5 +237,8 @@ All milestones are implemented and live-tested (profile `mayflower`, writes in A
 ### Known limits
 
 - **Data Center:** the Wiki's space tree uses the Cloud v2 root-page listing. On Data Center the tree shows the error, while search and lists from CQL work.
-- **Windows:** the binary is built and embeds the library but was not run (no Windows machine). Linux glibc and musl binaries ran in Docker.
+- **Windows:** the binary is built and embeds the library but was not run (no Windows machine).
+- **Linux:** both binaries ran in Docker under a TTY: they drew the shell and ended on SIGTERM.
+  - **glibc:** Debian 12, arm64.
+  - **musl:** Alpine 3.20, arm64. This build needs `libstdc++`, which is a Bun runtime requirement, and atlcli ships no musl build.
 - **Sprint moves:** tested with stubs only. The writable test project ATLCLI has no scrum board.
