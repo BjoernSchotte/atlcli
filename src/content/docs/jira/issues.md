@@ -62,7 +62,7 @@ Descriptions, comments and worklog comments are written and read as markdown. at
 | ```` ```ts ```` fenced code | Code block with language |
 | GFM table with a header row | Table |
 | `> quote`, `---` | Quote, divider |
-| `@[Jane Doe](557058:abc…)` | Mention (account ID required) |
+| `@[Jane Doe](557058:abc…)` | Mention (account ID required; escape brackets in a name: `@[Max \[extern\]](…)`) |
 | `{jira:PROJ-123}` or a bare `…/browse/PROJ-123` URL | Issue smart link |
 | `<https://…>` | Smart link |
 | `{date:2026-12-31}` | Date |

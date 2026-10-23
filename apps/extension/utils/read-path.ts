@@ -90,14 +90,15 @@ export interface ReadPathDeps {
   makeClient: (profile: Profile) => Pick<
     ConfluenceClient,
     "getPageDetails" | "listAttachments"
-  >;
+  > &
+    Partial<Pick<ConfluenceClient, "mentionNames">>;
   /** storage → markdown converter (defaults to the shared one). */
-  toMarkdown: (storage: string) => string;
+  toMarkdown: (storage: string, mentionNames?: ReadonlyMap<string, string>) => string;
 }
 
 const defaultDeps: ReadPathDeps = {
   makeClient: (profile) => new ConfluenceClient(profile),
-  toMarkdown: (storage) => storageToMarkdown(storage),
+  toMarkdown: (storage, mentionNames) => storageToMarkdown(storage, { mentionNames }),
 };
 
 /**
@@ -141,7 +142,9 @@ export async function loadConfluencePage(
     );
   }
 
-  const markdown = toMarkdown(details.storage ?? "");
+  // Best-effort like the attachments: an unnamed mention shows its id.
+  const mentionNames = await client.mentionNames?.([details.storage ?? ""]).catch(() => undefined);
+  const markdown = toMarkdown(details.storage ?? "", mentionNames);
   const wordCount = countWords(markdown);
 
   let attachments: AttachmentMeta[] = [];

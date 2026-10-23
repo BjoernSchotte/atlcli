@@ -12,6 +12,8 @@ import { encodeBase64, decodeBase64 } from "@atlcli/core";
 import { stripFrontmatter } from "./frontmatter.js";
 import { normalizeEmojiShortName } from "./emoji-projection.js";
 import { parseXml, type XmlElement } from "./export-blocks.js";
+import { decodeHTML } from "entities";
+import { mentionIdFromAttributes, STORAGE_MENTION_PATTERN, USERKEY_MENTION_PREFIX } from "./mention-ids.js";
 
 // ============ Smart Link Types and Utilities ============
 
@@ -26,6 +28,11 @@ export interface ConversionOptions {
   emitWarnings?: boolean;
   /** Callback for deprecation warnings */
   onWarning?: (message: string) => void;
+  /**
+   * Display names by mention id (`ConfluenceClient.mentionNames`), used when a
+   * mention's storage carries no link body. Without a name the id is shown.
+   */
+  mentionNames?: ReadonlyMap<string, string>;
 }
 
 /** URL patterns for detecting Atlassian product URLs */
@@ -243,9 +250,16 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
   });
 
   // Handle user mentions: @[Display Name](account-id)
-  processed = processed.replace(MENTION_REGEX, (_, displayName, accountId) => {
+  processed = processed.replace(MENTION_REGEX, (_, escapedName: string, id: string) => {
+    // `\[` and `\]` let a name carry brackets ("Max Muster [extern]"); an empty name is unnamed.
+    const displayName = escapedName.replace(/\\(.)/g, "$1") || id;
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
-    const html = `<ac:link><ri:user ri:account-id="${escapeHtml(accountId)}" /><ac:plain-text-link-body><![CDATA[${displayName}]]></ac:plain-text-link-body></ac:link>`;
+    const user = id.startsWith(USERKEY_MENTION_PREFIX)
+      ? `ri:userkey="${escapeHtml(id.slice(USERKEY_MENTION_PREFIX.length))}"`
+      : `ri:account-id="${escapeHtml(id)}"`;
+    // An unnamed mention (`@[id](id)`) gets no link body, so Confluence shows the live name.
+    const body = displayName === id ? "" : `<ac:plain-text-link-body><![CDATA[${displayName}]]></ac:plain-text-link-body>`;
+    const html = `<ac:link><ri:user ${user} />${body}</ac:link>`;
     macros.push({ placeholder, html });
     return placeholder;
   });
@@ -1238,7 +1252,7 @@ const EMOTICON_REGEX = /:([a-z0-9_][-a-z0-9_]*|[+-]1):/gi;
  * Regex for user mentions: @[Display Name](account-id)
  * The account-id is typically in format like "123456:abcd-efgh-ijkl" or "admin"
  */
-const MENTION_REGEX = /@\[([^\]]+)\]\(([^)]+)\)/g;
+const MENTION_REGEX = /@\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
 
 /**
  * Regex for colored text: {color:red}text{color} or {color:#FF0000}text{color}
@@ -1681,22 +1695,15 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     }
   );
 
-  // Convert user mentions: <ac:link><ri:user ri:account-id="..." />...</ac:link>
-  // With display name in plain-text-link-body
-  storage = storage.replace(
-    /<ac:link>\s*<ri:user\s+ri:account-id="([^"]+)"[^>]*\/>\s*<ac:plain-text-link-body>(?:<!\[CDATA\[)?([^\]<]+)(?:\]\]>)?<\/ac:plain-text-link-body>\s*<\/ac:link>/gi,
-    (_, accountId, displayName) => {
-      return `<span data-mention="true" data-account-id="${escapeHtml(accountId)}" data-display-name="${escapeHtml(displayName.trim())}">@${escapeHtml(displayName.trim())}</span>`;
-    }
-  );
-
-  // Convert user mentions without display name
-  storage = storage.replace(
-    /<ac:link>\s*<ri:user\s+ri:account-id="([^"]+)"[^>]*\/>\s*<\/ac:link>/gi,
-    (_, accountId) => {
-      return `<span data-mention="true" data-account-id="${escapeHtml(accountId)}">@${escapeHtml(accountId)}</span>`;
-    }
-  );
+  // Convert user mentions. The name is the link body, else the looked-up name, else the id.
+  storage = storage.replace(STORAGE_MENTION_PATTERN, (match, attrs: string, plainBody?: string, richBody?: string) => {
+    const id = mentionIdFromAttributes(attrs);
+    if (!id) return match;
+    const body = plainBody !== undefined ? mentionBodyText(plainBody) : richBody !== undefined ? decodeHTML(richBody.replace(/<[^>]*>/g, "")) : "";
+    const displayName = body.trim() || options?.mentionNames?.get(id);
+    const name = displayName ? ` data-display-name="${escapeHtml(displayName)}"` : "";
+    return `<span data-mention="true" data-account-id="${escapeHtml(id)}"${name}>@${escapeHtml(displayName ?? id)}</span>`;
+  });
 
   // Convert colored spans to placeholder for turndown
   storage = storage.replace(
@@ -2596,7 +2603,7 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const accountId = (node as any).getAttribute?.("data-account-id") || "";
       const displayName = (node as any).getAttribute?.("data-display-name") || accountId;
       if (!accountId) return "";
-      return `@[${displayName}](${accountId})`;
+      return `@[${displayName.replace(/[\\[\]]/g, "\\$&")}](${accountId})`;
     },
   });
 
@@ -3240,4 +3247,9 @@ export function normalizeMarkdown(markdown: string): string {
  */
 export function hashContent(content: string): string {
   return sha256HexOfUtf8(content);
+}
+
+/** A plain-text link body: CDATA sections verbatim, other text entity-decoded. */
+function mentionBodyText(body: string): string {
+  return body.replace(/<!\[CDATA\[([\s\S]*?)\]\]>|([^<]+)/g, (_, cdata?: string, text?: string) => cdata ?? decodeHTML(text ?? ""));
 }

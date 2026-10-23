@@ -846,11 +846,16 @@ class SyncEngine {
     }
   }
 
+  /** The conversion options for one page, with its mentioned users' names. */
+  private async pageConversionOptions(storage: string): Promise<ConversionOptions> {
+    return { ...this.conversionOptions, mentionNames: await this.client.mentionNames([storage]) };
+  }
+
   /** Pull a page from Confluence using nested hierarchy paths */
   private async pullPage(pageId: string, existingFile?: string): Promise<void> {
     try {
       const page = await this.client.getPage(pageId);
-      const markdown = storageToMarkdown(page.storage, this.conversionOptions);
+      const markdown = storageToMarkdown(page.storage, await this.pageConversionOptions(page.storage));
 
       // Get page ancestors for hierarchy-based path
       const ancestors = page.ancestors || [];
@@ -1710,7 +1715,7 @@ class SyncEngine {
     try {
       // Get remote content
       const remotePage = await this.client.getPage(pageId);
-      const remoteContent = storageToMarkdown(remotePage.storage, this.conversionOptions);
+      const remoteContent = storageToMarkdown(remotePage.storage, await this.pageConversionOptions(remotePage.storage));
 
       // Get base content from .atlcli/cache/
       const baseContent = await readBaseContent(this.atlcliDir, pageId);

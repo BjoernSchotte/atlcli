@@ -1044,8 +1044,11 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const pullComments = hasFlag(flags, "comments");
   let commentsPulled = 0;
 
-  // Build conversion options using baseUrl from dirConfig
-  const conversionOptions = buildConversionOptions(dirConfig?.baseUrl);
+  // Build conversion options using baseUrl from dirConfig, with the mentioned users' names
+  const conversionOptions = {
+    ...buildConversionOptions(dirConfig?.baseUrl),
+    mentionNames: await client.mentionNames(pageDetails.map((detail) => detail.storage)),
+  };
 
   for (const detail of pageDetails) {
     // Convert storage to markdown, then apply page-specific attachment paths
@@ -1538,15 +1541,15 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           version: detail.version,
           lastSyncedAt: new Date().toISOString(),
           localHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            storageToMarkdown(detail.storage, conversionOptions),
             basename(pagePath, ".md")
           ))),
           remoteHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            storageToMarkdown(detail.storage, conversionOptions),
             basename(pagePath, ".md")
           ))),
           baseHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            storageToMarkdown(detail.storage, conversionOptions),
             basename(pagePath, ".md")
           ))),
           syncState: "synced",
@@ -3517,10 +3520,17 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
 
   // Fetch remote page
   const remotePage = await client.getPage(pageId);
-  const remoteMarkdown = storageToMarkdown(remotePage.storage, conversionOptions);
+  // Shape the remote side like pull writes the file: page-relative attachment paths, normalized.
+  const remoteMarkdown = normalizeMarkdown(replaceAttachmentPaths(
+    storageToMarkdown(remotePage.storage, {
+      ...conversionOptions,
+      mentionNames: await client.mentionNames([remotePage.storage]),
+    }),
+    basename(filePath, ".md")
+  ));
 
   // Generate diff
-  const diff = generateDiff(remoteMarkdown, localMarkdown, {
+  const diff = generateDiff(remoteMarkdown, normalizeMarkdown(localMarkdown), {
     oldLabel: `Remote (v${remotePage.version})`,
     newLabel: "Local",
     context: 3,

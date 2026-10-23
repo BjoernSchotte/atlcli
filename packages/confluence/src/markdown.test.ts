@@ -103,6 +103,16 @@ describe("markdownToStorage", () => {
     expect(html).toContain("</ac:plain-text-link-body></ac:link>");
   });
 
+  test("mention round trip: userkey ids, unnamed mentions without a body", () => {
+    expect(markdownToStorage("@[Server User](userkey:8a7f)")).toContain('<ac:link><ri:user ri:userkey="8a7f" /><ac:plain-text-link-body><![CDATA[Server User]]>');
+    expect(markdownToStorage("@[acc-1](acc-1)")).toContain('<ac:link><ri:user ri:account-id="acc-1" /></ac:link>');
+    const bracketed = storageToMarkdown('<p><ac:link><ri:user ri:account-id="acc-1" /><ac:plain-text-link-body><![CDATA[Max Muster [extern]]]></ac:plain-text-link-body></ac:link></p>');
+    expect(bracketed).toContain("@[Max Muster \\[extern\\]](acc-1)");
+    expect(markdownToStorage(bracketed)).toContain('<ri:user ri:account-id="acc-1" /><ac:plain-text-link-body><![CDATA[Max Muster [extern]]]>');
+    const storage = '<p>x <ac:link><ri:user ri:userkey="8a7f" /></ac:link></p>';
+    expect(markdownToStorage(storageToMarkdown(storage))).toContain('<ri:user ri:userkey="8a7f" />');
+  });
+
   test("converts colored text to span with style", () => {
     const md = "This is {color:red}important{color} text";
     const html = markdownToStorage(md);
@@ -348,6 +358,26 @@ describe("storageToMarkdown", () => {
     const storage = '<p>CC <ac:link><ri:user ri:account-id="123456:abcd-efgh" /></ac:link></p>';
     const md = storageToMarkdown(storage);
     expect(md).toContain("@[123456:abcd-efgh](123456:abcd-efgh)");
+  });
+
+  test("names an unnamed mention from mentionNames", () => {
+    const storage = '<p>CC <ac:link><ri:user ri:account-id="123456:abcd-efgh" /></ac:link></p>';
+    const md = storageToMarkdown(storage, { mentionNames: new Map([["123456:abcd-efgh", "Ann Example"]]) });
+    expect(md).toContain("@[Ann Example](123456:abcd-efgh)");
+  });
+
+  test("converts mention shapes the old pattern dropped: userkey, attribute order, closing tag, link bodies", () => {
+    const names = new Map([["userkey:8a7f", "Server User"]]);
+    const cases: Array<[string, string]> = [
+      ['<ac:link><ri:user ri:userkey="8a7f" /></ac:link>', "@[Server User](userkey:8a7f)"],
+      ['<ac:link><ri:user ri:local-id="l1" ri:account-id="acc-1" /></ac:link>', "@[acc-1](acc-1)"],
+      ['<ac:link ac:anchor="x"><ri:user ri:account-id="acc-1"></ri:user></ac:link>', "@[acc-1](acc-1)"],
+      ['<ac:link><ri:user ri:account-id="acc-1" /><ac:link-body><strong>Rich &amp; Bold</strong></ac:link-body></ac:link>', "@[Rich & Bold](acc-1)"],
+      ['<ac:link><ri:user ri:account-id="acc-1" /><ac:plain-text-link-body>Tom &amp; Co</ac:plain-text-link-body></ac:link>', "@[Tom & Co](acc-1)"],
+    ];
+    for (const [mention, expected] of cases) {
+      expect(storageToMarkdown(`<p>x ${mention} y</p>`, { mentionNames: names })).toContain(expected);
+    }
   });
 
   test("converts colored span to markdown syntax", () => {

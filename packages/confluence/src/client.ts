@@ -1,4 +1,5 @@
 import { decodeHTML } from "entities";
+import { storageMentionIds, USERKEY_MENTION_PREFIX } from "./mention-ids.js";
 import { parseRetryAfterMs } from "./retry-after.js";
 import {
   SessionRedirectBlockedError,
@@ -613,6 +614,8 @@ export class ConfluenceClient {
   private authHeader: string;
   private useSession: boolean;
   private maxRetries = 3;
+  /** Mention display names by mention id, for this client's lifetime. */
+  private mentionNameCache = new Map<string, Promise<string | null>>();
   private baseDelayMs = 1000;
   private tlsOptions: TlsOptions | undefined;
   private guardTransport: ((event: ConfluenceTransportEvent) => void) | undefined;
@@ -5062,6 +5065,38 @@ export class ConfluenceClient {
    * @param options - Options for batch processing
    * @returns Map of accountId to UserInfo (missing users have null value)
    */
+  /**
+   * Display names for the user mentions in storage bodies, keyed by mention id
+   * (`ConversionOptions.mentionNames`). Each id is looked up once per client: an
+   * account id via `?accountId=`, a Server/Data Center `userkey:` id via `?key=`.
+   * An unknown user or a failed lookup leaves the mention without a name.
+   */
+  async mentionNames(storages: readonly string[], options: { signal?: AbortSignal } = {}): Promise<Map<string, string>> {
+    const ids = storageMentionIds(storages);
+    const names = new Map<string, string>();
+    // ponytail: fixed batches of 5 like getUsersBulk; a shared limiter if lookups start competing.
+    for (let i = 0; i < ids.length; i += 5) {
+      await Promise.all(
+        ids.slice(i, i + 5).map(async (id) => {
+          let lookup = this.mentionNameCache.get(id);
+          if (!lookup) {
+            lookup = this.lookupMentionName(id, options.signal).catch(() => null);
+            this.mentionNameCache.set(id, lookup);
+          }
+          const name = await lookup;
+          if (name) names.set(id, name);
+        })
+      );
+    }
+    return names;
+  }
+
+  private async lookupMentionName(id: string, signal?: AbortSignal): Promise<string | null> {
+    if (!id.startsWith(USERKEY_MENTION_PREFIX)) return (await this.getUser(id, { signal }))?.displayName ?? null;
+    const data = (await this.request("/user", { query: { key: id.slice(USERKEY_MENTION_PREFIX.length) }, signal })) as any;
+    return data?.displayName ?? data?.publicName ?? null;
+  }
+
   async getUsersBulk(
     accountIds: string[],
     options: { concurrency?: number; signal?: AbortSignal } = {},
