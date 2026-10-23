@@ -275,7 +275,7 @@ it("recovers an acknowledged write and publication intent after SIGKILL", async 
     j.recordCreated(draft.id,draftImage.revision,"123",1);
     j.admit("2","/DOCSY/second/_index.md",Buffer.from("safe backup"),1);
     j.backupPage("2","/DOCSY/second-backup");
-    console.log("ACK");setInterval(()=>{},1000);`;
+    console.log("ACK");setInterval(()=>j,1000);`;
   const child = Bun.spawn([process.execPath, "--conditions=development", "-e", source], { stdout: "pipe", stderr: "pipe" });
   try {
     const reader = child.stdout.getReader();
@@ -379,20 +379,23 @@ it("reuses bounded database pages over repeated overwrites and publication inten
 
 it("migrates a recovered WAL and preserves databases larger than a reduced limit", async () => {
   const { path, journal } = fixture(); journal.close();
+  // The crash children's timers reference their connection on purpose: once the
+  // script ends an unreferenced Database is garbage, and its finalizer closes it
+  // cleanly (checkpointing and deleting the WAL, rolling back an open
+  // transaction) before the SIGKILL lands. Bun 1.4.4 on Linux CI collects it
+  // within milliseconds, so the "crash" left no WAL to recover.
   const source = `import { Database } from "bun:sqlite";
     const db=new Database(${JSON.stringify(path)});
     db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=0;");
     db.run("INSERT INTO files VALUES (?, ?, ?, 1, 1, 0, NULL)", ["1", "/DOCSY/a", new Uint8Array(100_000).fill(7)]);
-    console.log("ACK " + JSON.stringify({ mode: db.query("PRAGMA journal_mode").get(), ver: db.query("select sqlite_version() v").get(), files: require("node:fs").readdirSync(${JSON.stringify(dirname(path))}) }));setInterval(()=>{},1000);`;
+    console.log("ACK");setInterval(()=>db,1000);`;
   const child = Bun.spawn([process.execPath, "-e", source], { stdout: "pipe", stderr: "pipe" });
   try {
     const reader = child.stdout.getReader();
     const ack = await Promise.race([reader.read(), Bun.sleep(5000).then(() => { throw new Error("No legacy ACK"); })]);
     expect(Buffer.from(ack.value!).toString()).toContain("ACK");
     reader.releaseLock();
-    console.error("DIAG-WAL", Buffer.from(ack.value!).toString(), process.versions.bun, process.versions.sqlite);
     child.kill("SIGKILL"); await child.exited;
-    console.error("DIAG-WAL after kill", require("node:fs").readdirSync(dirname(path)));
     expect(statSync(path + "-wal").size).toBeGreaterThan(100_000);
   } finally { child.kill(); await child.exited; }
   const recovered = new NfsJournal(path, "synthetic-account:DOCSY", 200_000, 120_000, 4, 65536);
@@ -413,7 +416,7 @@ it("recovers the previous acknowledgement after a crash inside an uncommitted ro
     const db=new Database(${JSON.stringify(path)});
     db.exec("PRAGMA cache_size=1; PRAGMA synchronous=EXTRA; BEGIN IMMEDIATE;");
     db.run("UPDATE files SET bytes=?, revision=revision+1 WHERE id='1'", [new Uint8Array(100_000).fill(8)]);
-    console.log("UNCOMMITTED");setInterval(()=>{},1000);`;
+    console.log("UNCOMMITTED");setInterval(()=>db,1000);`;
   const child = Bun.spawn([process.execPath, "-e", source], { stdout: "pipe", stderr: "pipe" });
   try {
     const reader = child.stdout.getReader();
