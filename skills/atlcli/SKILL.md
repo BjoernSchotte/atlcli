@@ -127,8 +127,11 @@ jira  project issue board sprint worklog epic analyze bulk filter export
 wiki  page space docs search my recent template export import publish
       sh mount vfs
 top   auth completion config doctor flag log models plugin update version
-      release-info research chat pdf-template digest audit skill
+      release-info research chat pdf-template digest audit skill tui
 ```
+
+`atlcli tui` is an interactive fullscreen browser for people; it fails without
+a terminal, so agents use the commands above instead.
 
 Some commands are gated behind feature flags: without its flag
 `atlcli audit` fails with `Audit feature is not enabled`, although the root

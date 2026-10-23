@@ -275,16 +275,16 @@ async function sprintStatusResolver(
   return (await loadStatusResolver({ client, config, profile }, flags, opts)).resolve;
 }
 
-async function getClient(
+export async function getClient(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<JiraClient>;
-async function getClient(
+export async function getClient(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
   withDefaults: true
 ): Promise<ClientWithDefaults>;
-async function getClient(
+export async function getClient(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
   withDefaults?: boolean
@@ -1603,7 +1603,7 @@ async function handleIssueClone(
   output({ schemaVersion: "1", cloned: result }, opts);
 }
 
-async function openUrl(url: string): Promise<void> {
+export async function openUrl(url: string): Promise<void> {
   const { spawn } = await import("node:child_process");
   const platform = process.platform;
 

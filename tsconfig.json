@@ -5,12 +5,14 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "strict": true,
+    "skipLibCheck": true,
     "noEmit": true,
     "types": ["bun-types"],
     "customConditions": ["development"]
   },
   "include": [
     "apps/**/src/**/*.ts",
+    "apps/cli/src/**/*.tsx",
     "packages/**/src/**/*.ts",
     "packages/**/src/**/*.tsx",
     "scripts/**/*.ts"
