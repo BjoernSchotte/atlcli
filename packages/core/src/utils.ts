@@ -41,6 +41,21 @@ export function describeError(err: unknown): { code: string; message: string; de
   return { code: HTTP_ERROR_CODES[status] ?? ERROR_CODES.API, message, details: { status } };
 }
 
+/**
+ * Long flags that never take a value, so `--json PROJ-1` keeps `PROJ-1` as a
+ * positional. Only flags that every command reads as a switch belong here.
+ */
+const SWITCHES = new Set([
+  "all", "all-projects", "all-results", "confirm", "csv", "debug", "delete-folders", "details", "dry-run", "edit",
+  "force", "help", "history", "internal", "json", "markdown", "no-color", "no-headers", "no-log", "plain", "quiet",
+  "refresh-users", "skip-user-check", "system", "validate", "verbose", "watching", "yes",
+]);
+
+/** A token that starts a new flag; anything else after a flag is its value ("- item", "-5", "-"). */
+function isFlagToken(token: string): boolean {
+  return /^(--|-[A-Za-z])/.test(token);
+}
+
 export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   const flags: Record<string, string | boolean | string[]> = {};
@@ -62,18 +77,17 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const token = argv[i];
     if (!token) continue;
     if (token.startsWith("--")) {
-      // Long flag: --key or --key=value
-      const [keyRaw, valueRaw] = token.slice(2).split("=", 2);
-      const key = keyRaw.trim();
+      // Long flag: --key or --key=value; the value is everything after the first "=".
+      const body = token.slice(2);
+      const eq = body.indexOf("=");
+      const key = (eq === -1 ? body : body.slice(0, eq)).trim();
       if (!key) continue;
-      if (valueRaw !== undefined) {
-        addFlag(key, valueRaw);
+      if (eq !== -1) {
+        addFlag(key, body.slice(eq + 1));
         continue;
       }
       const next = argv[i + 1];
-      // A lone "-" is a value (stdin/stdout), not a flag: `--body-file -`;
-      // so is a dash before a digit: `--updated -7d`, `--offset -2`.
-      if (next && (next === "-" || !next.startsWith("-") || /^-\d/.test(next))) {
+      if (!SWITCHES.has(key) && next !== undefined && next !== "" && !isFlagToken(next)) {
         addFlag(key, next);
         i += 1;
       } else {
@@ -84,8 +98,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       const flags_part = token.slice(1);
       // Check if it's a single letter followed by =
       if (flags_part.includes("=")) {
-        const [keyRaw, valueRaw] = flags_part.split("=", 2);
-        addFlag(keyRaw, valueRaw);
+        const eq = flags_part.indexOf("=");
+        addFlag(flags_part.slice(0, eq), flags_part.slice(eq + 1));
         continue;
       }
       // Check if single letter with next arg as value

@@ -421,7 +421,7 @@ async function handleClear(
   }
 }
 
-function logHelp(): string {
+export function logHelp(): string {
   return `atlcli log <command>
 
 Query and manage CLI activity logs.

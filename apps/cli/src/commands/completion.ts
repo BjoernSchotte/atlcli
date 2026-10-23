@@ -70,7 +70,7 @@ export async function handleCompletion(
   }
 }
 
-function completionHelp(): string {
+export function completionHelp(): string {
   return `atlcli completion <shell>
 
 Generate shell completion scripts for tab completion.

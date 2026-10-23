@@ -259,7 +259,7 @@ function formatConfig(config: any): string {
   return lines.join("\n");
 }
 
-function configHelp(): string {
+export function configHelp(): string {
   return `atlcli config <command>
 
 Manage CLI configuration settings.
