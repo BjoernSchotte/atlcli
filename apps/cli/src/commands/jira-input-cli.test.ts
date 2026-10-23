@@ -1,0 +1,203 @@
+/**
+ * User resolution, search flags, the issue table, clone, web links, internal
+ * comments, `filter run`/`share --user` and `field list --system`, through the
+ * real CLI against a local Bun server that speaks Jira Cloud.
+ */
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
+
+type Req = { method: string; path: string; query: URLSearchParams; body: any };
+let requests: Req[] = [];
+let server: ReturnType<typeof Bun.serve>;
+let home: string;
+
+const USERS = [
+  { accountId: "acc-ann", displayName: "Ann Lee", emailAddress: "ann@example.com", active: true },
+  { accountId: "acc-anna", displayName: "Anna Lee", emailAddress: "anna@example.com", active: true },
+];
+const ISSUE = {
+  id: "1",
+  key: "AB-1",
+  fields: {
+    project: { key: "AB" },
+    summary: "Fix it, v1",
+    status: { name: "To Do" },
+    issuetype: { name: "Bug" },
+    priority: { id: "3", name: "Medium" },
+    labels: ["x"],
+    components: [{ id: "10", name: "Core" }],
+    customfield_10016: 3,
+    description: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "see v1" }] }] },
+  },
+};
+
+beforeAll(async () => {
+  server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+      const path = url.pathname;
+      const body = req.method === "GET" || req.method === "DELETE" ? undefined : await req.json().catch(() => undefined);
+      requests.push({ method: req.method, path, query: url.searchParams, body });
+
+      if (path === "/rest/api/3/myself") return Response.json({ accountId: "acc-me", displayName: "Me" });
+      if (path === "/rest/api/3/user/search") {
+        const q = url.searchParams.get("query")!.toLowerCase();
+        return Response.json(USERS.filter((u) => u.displayName.toLowerCase().includes(q) || u.emailAddress.includes(q)));
+      }
+      if (path === "/rest/api/3/search/jql") return Response.json({ issues: [ISSUE] });
+      if (path === "/rest/api/3/field") return Response.json([{ id: "customfield_10016", name: "Story Points", custom: true }, { id: "summary", name: "Summary", custom: false }]);
+      if (path === "/rest/api/3/filter/7") return Response.json({ id: "7", name: "Mine", jql: "project = AB ORDER BY rank" });
+      // Jira answers with all of the filter's permissions, the new one among them.
+      if (path === "/rest/api/3/filter/7/permission") {
+        return Response.json([
+          { id: 1, type: "group", group: { name: "devs" } },
+          { id: 2, type: "user", user: { accountId: body.accountId, displayName: "Anna Lee" } },
+          { id: 3, type: "global" },
+        ]);
+      }
+      if (path === "/rest/api/3/issue" && req.method === "POST") return Response.json({ id: "2", key: "AB-2" });
+      if (path === "/rest/api/3/issue/AB-1/assignee") return new Response(null, { status: 204 });
+      if (path === "/rest/api/3/issue/AB-1/comment") return Response.json({ id: "9", body: body.body });
+      if (path === "/rest/api/3/issue/AB-1/remotelink" && req.method === "POST") return Response.json({ id: 77, self: "" });
+      if (path === "/rest/api/3/issue/AB-1/remotelink/77") return new Response(null, { status: 204 });
+      if (path.startsWith("/rest/api/3/issue/")) return Response.json(ISSUE);
+      return new Response(JSON.stringify({ message: `stub: no route for ${path}` }), { status: 404 });
+    },
+  });
+  home = await mkdtemp(join(tmpdir(), "atlcli-jira-input-"));
+  await mkdir(join(home, ".atlcli"), { recursive: true });
+  await writeFile(
+    join(home, ".atlcli", "config.json"),
+    JSON.stringify({
+      currentProfile: "p",
+      profiles: { p: { name: "p", baseUrl: server.url.origin, deploymentType: "cloud", auth: { type: "bearer" } } },
+    })
+  );
+});
+
+afterAll(async () => {
+  server?.stop(true);
+  if (home) await rm(home, { recursive: true, force: true });
+});
+
+beforeEach(() => {
+  requests = [];
+});
+
+async function run(args: string[]) {
+  const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "jira", ...args], {
+    cwd: home,
+    env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "t", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  return { stdout, stderr, exitCode };
+}
+const sent = (path: string) => requests.find((r) => r.path === path && r.method !== "GET")?.body;
+
+describe("users", () => {
+  test("search --assignee by email resolves to the account id", async () => {
+    const { exitCode } = await run(["search", "--assignee", "ann@example.com", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(sent("/rest/api/3/search/jql").jql).toBe('assignee = "acc-ann"');
+  });
+
+  test("an ambiguous name is a usage error listing the candidates", async () => {
+    const { exitCode, stdout } = await run(["issue", "assign", "--key", "AB-1", "--assignee", "lee", "--json"]);
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout).error.message).toContain("Ann Lee <ann@example.com>, Anna Lee");
+  });
+
+  test("assign default and create --assignee me", async () => {
+    await run(["issue", "assign", "--key", "AB-1", "--assignee", "default", "--json"]);
+    expect(sent("/rest/api/3/issue/AB-1/assignee")).toEqual({ accountId: "-1" });
+    await run(["issue", "create", "--project", "AB", "--type", "Task", "--summary", "s", "--assignee", "me", "--json"]);
+    expect(sent("/rest/api/3/issue").fields.assignee).toEqual({ accountId: "acc-me" });
+  });
+});
+
+describe("search", () => {
+  test("list flags, watching and relative dates build one JQL", async () => {
+    await run(["search", "--project", "AB", "--type", "Bug,Task", "--watching", "--updated", "-7d", "--json"]);
+    expect(sent("/rest/api/3/search/jql").jql).toBe(
+      'project = AB AND issuetype in ("Bug", "Task") AND watcher = currentUser() AND updated >= -7d'
+    );
+  });
+
+  test("a bad --created is a usage error", async () => {
+    const { exitCode } = await run(["search", "--created", "yesterday"]);
+    expect(exitCode).toBe(1);
+  });
+
+  test("text output is a table; --columns with a field name and --csv", async () => {
+    const table = await run(["search", "--project", "AB"]);
+    expect(table.stdout).toBe("key   type  status  assignee  summary\nAB-1  Bug   To Do             Fix it, v1\n");
+    const csv = await run(["search", "--project", "AB", "--columns", "key,Story Points,summary", "--csv", "--no-headers"]);
+    expect(csv.stdout).toBe('AB-1,3,"Fix it, v1"\n');
+  });
+
+  test("filter run searches the filter's JQL", async () => {
+    const { stdout } = await run(["filter", "run", "7", "--json"]);
+    expect(sent("/rest/api/3/search/jql").jql).toBe("project = AB ORDER BY rank");
+    expect(JSON.parse(stdout).issues[0].key).toBe("AB-1");
+  });
+});
+
+describe("issue", () => {
+  test("clone copies fields and applies --replace to summary and description", async () => {
+    const { exitCode } = await run(["issue", "clone", "AB-1", "--replace", "v1:v2", "--json"]);
+    expect(exitCode).toBe(0);
+    const fields = sent("/rest/api/3/issue").fields;
+    expect(fields).toMatchObject({
+      project: { key: "AB" },
+      issuetype: { name: "Bug" },
+      summary: "Fix it, v2",
+      labels: ["x"],
+      components: [{ id: "10" }],
+    });
+    expect(fields.description.content[0].content[0].text).toBe("see v2");
+    // Not copied: the source's priority may be outside the target's scheme (live: 400).
+    expect(fields.priority).toBeUndefined();
+  });
+
+  test("web link add and remove", async () => {
+    const add = await run(["issue", "link", "--key", "AB-1", "--url", "https://example.com", "--title", "Spec", "--json"]);
+    expect(JSON.parse(add.stdout).linked.linkId).toBe(77);
+    expect(sent("/rest/api/3/issue/AB-1/remotelink")).toEqual({ object: { url: "https://example.com", title: "Spec" } });
+    await run(["issue", "unlink", "--key", "AB-1", "--remote", "77", "--json"]);
+    expect(requests.some((r) => r.method === "DELETE" && r.path === "/rest/api/3/issue/AB-1/remotelink/77")).toBe(true);
+  });
+
+  test("comments add --internal sets the JSM property", async () => {
+    await run(["issue", "comments", "add", "--key", "AB-1", "hello", "--internal", "--json"]);
+    expect(sent("/rest/api/3/issue/AB-1/comment").properties).toEqual([{ key: "sd.public.comment", value: { internal: true } }]);
+  });
+
+  test("--edit without a terminal is a usage error", async () => {
+    const { exitCode, stdout } = await run(["issue", "comments", "add", "--key", "AB-1", "--edit", "--json"]);
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout).error.message).toContain("--edit needs a terminal");
+  });
+});
+
+describe("filters and fields (regressions: documented, missing)", () => {
+  test("filter share --user shares with the resolved account", async () => {
+    const { exitCode, stdout } = await run(["filter", "share", "7", "--user", "anna@example.com", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(sent("/rest/api/3/filter/7/permission")).toEqual({ type: "user", accountId: "acc-anna" });
+    // Regression (live): the answer is a list; the output showed an empty permission.
+    expect(JSON.parse(stdout).shared.permission).toMatchObject({ id: 2, type: "user", user: "Anna Lee" });
+  });
+
+  test("field list --system leaves out custom fields", async () => {
+    const { stdout } = await run(["field", "list", "--system", "--json"]);
+    expect(JSON.parse(stdout).fields.map((f: { id: string }) => f.id)).toEqual(["summary"]);
+  });
+});

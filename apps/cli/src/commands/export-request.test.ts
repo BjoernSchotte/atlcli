@@ -171,7 +171,7 @@ describe("parseExportRequest — rejected combinations", () => {
       match: /deprecated alias for --scope tree/i,
     },
     { name: "max-pages 0", argv: ["12345", "--scope", "tree", "--engine", "ts", "--max-pages", "0"], match: /at least 1/i },
-    { name: "max-depth negative (valueless)", argv: ["12345", "--scope", "tree", "--engine", "ts", "--max-depth", "-1"], match: /requires a non-negative integer/i },
+    { name: "max-depth negative", argv: ["12345", "--scope", "tree", "--engine", "ts", "--max-depth", "-1"], match: /must be a non-negative integer \(got "-1"\)/i },
     { name: "max-depth non-numeric", argv: ["12345", "--scope", "tree", "--engine", "ts", "--max-depth", "abc"], match: /must be a non-negative integer/i },
     {
       name: "max-pages absurd",

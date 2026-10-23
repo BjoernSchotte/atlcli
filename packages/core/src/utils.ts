@@ -49,8 +49,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
       const next = argv[i + 1];
-      // A lone "-" is a value (stdin/stdout), not a flag: `--body-file -`.
-      if (next && (next === "-" || !next.startsWith("-"))) {
+      // A lone "-" is a value (stdin/stdout), not a flag: `--body-file -`;
+      // so is a dash before a digit: `--updated -7d`, `--offset -2`.
+      if (next && (next === "-" || !next.startsWith("-") || /^-\d/.test(next))) {
         addFlag(key, next);
         i += 1;
       } else {
