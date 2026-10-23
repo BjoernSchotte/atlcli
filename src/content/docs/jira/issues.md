@@ -87,6 +87,8 @@ Descriptions, comments and worklog comments are written and read as markdown. at
 |----------|-------------|
 | `# Heading` … `######` | Heading 1–6 |
 | `**bold**`, `*italic*`, `~~strike~~`, `` `code` `` | Text formatting |
+| `<u>under</u>`, `H<sub>2</sub>O`, `x<sup>2</sup>` | Underline, subscript, superscript |
+| `<span style="color: #ff5630">red</span>` | Text colour (hex colour, exactly this form) |
 | `[text](https://…)` | Link |
 | `-` / `1.` lists, nested by indentation | Bullet / numbered list |
 | `- [ ] open` / `- [x] done` | Action items (task list) |
@@ -107,7 +109,7 @@ Descriptions, comments and worklog comments are written and read as markdown. at
 | Jira content | In markdown | Written back |
 |--------------|-------------|--------------|
 | Images and attachments, macros/extensions, layouts, tables without a header row or with merged cells | An invisible `<!--adf:…-->` marker | Unchanged. Leave the marker in place when editing. |
-| Text colour, underline, sub/superscript | Text only | The formatting is lost |
+| Background colour and other marks without a markdown form | Text only | The formatting is lost |
 | Card or embed appearance of a smart link | `<url>` | Becomes an inline smart link |
 | Local images such as `![shot](./a.png)` | — | Kept as a link, with a warning. Upload the file with `jira issue attach`. |
 
