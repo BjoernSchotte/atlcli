@@ -6,6 +6,37 @@ import sup from "markdown-it-sup";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { KNOWN_MACROS } from "./known-macros.js";
+import {
+  MACRO_REGEX,
+  CONFLUENCE_MACRO_REGEX,
+  PANEL_MACRO_REGEX,
+  EXCERPT_MACRO_REGEX,
+  EXCERPT_INCLUDE_REGEX,
+  INCLUDE_MACRO_REGEX,
+  GALLERY_MACRO_REGEX,
+  ATTACHMENTS_MACRO_REGEX,
+  MULTIMEDIA_MACRO_REGEX,
+  WIDGET_MACRO_REGEX,
+  SECTION_MACRO_REGEX,
+  SECTION_COLUMN_REGEX,
+  CHILDREN_MACRO_REGEX,
+  CONTENT_BY_LABEL_REGEX,
+  RECENTLY_UPDATED_REGEX,
+  PAGETREE_MACRO_REGEX,
+  TOC_ZONE_MACRO_REGEX,
+  PAGE_PROPERTIES_MACRO_REGEX,
+  PAGE_PROPERTIES_REPORT_REGEX,
+  TASK_REPORT_MACRO_REGEX,
+  LABELS_LIST_MACRO_REGEX,
+  POPULAR_LABELS_MACRO_REGEX,
+  RELATED_LABELS_MACRO_REGEX,
+  BLOG_POSTS_MACRO_REGEX,
+  SPACES_LIST_MACRO_REGEX,
+  PAGE_INDEX_MACRO_REGEX,
+  CONTRIBUTORS_MACRO_REGEX,
+  CHANGE_HISTORY_MACRO_REGEX,
+  LOREMIPSUM_MACRO_REGEX,
+} from "./macro-syntax.js";
 export { KNOWN_MACROS } from "./known-macros.js";
 import { sha256HexOfUtf8 } from "./sha256.js";
 import { encodeBase64, decodeBase64 } from "@atlcli/core";
@@ -148,11 +179,7 @@ md.renderer.rules.fence = (tokens, idx) => {
  * Supported Confluence macro types for ::: syntax
  */
 const PANEL_MACROS = ["info", "note", "warning", "tip"];
-// Use [ \t]+ instead of \s+ to avoid matching newlines in the title capture
-const MACRO_REGEX = /^:::(info|note|warning|tip|expand|toc)(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
 
-// Regex for preserved confluence macros (unknown/3rd-party)
-const CONFLUENCE_MACRO_REGEX = /^:::confluence\s+(\S+)\n([\s\S]*?)^:::\s*$/gm;
 
 // Draw.io macro names. Single source of truth so both regexes below stay in
 // sync when a new variant is added.
@@ -495,10 +522,10 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
     // Process columns inside the section
     let columnsHtml = "";
-    const columnRegex = /:::column(?:[ \t]+(.+))?\n([\s\S]*?):::column-end/gm;
     let columnMatch;
+    SECTION_COLUMN_REGEX.lastIndex = 0;
 
-    while ((columnMatch = columnRegex.exec(content)) !== null) {
+    while ((columnMatch = SECTION_COLUMN_REGEX.exec(content)) !== null) {
       const columnParams = columnMatch[1] || "";
       const columnContent = columnMatch[2].trim();
 
@@ -1265,155 +1292,6 @@ const COLOR_REGEX = /\{color:([^}]+)\}([\s\S]*?)\{color\}/gi;
  * Supports CSS color names and hex codes
  */
 const BG_COLOR_REGEX = /\{bg:([^}]+)\}([\s\S]*?)\{bg\}/gi;
-
-/**
- * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
- */
-const PANEL_MACRO_REGEX = /^:::panel(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
-
-/**
- * Regex for excerpt macro: :::excerpt name="name" hidden
- */
-const EXCERPT_MACRO_REGEX = /^:::excerpt(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
-
-/**
- * Regex for excerpt-include macro: :::excerpt-include page="id" name="name"
- */
-const EXCERPT_INCLUDE_REGEX = /^:::excerpt-include(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for include macro: :::include page="id"
- */
-const INCLUDE_MACRO_REGEX = /^:::include(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for gallery macro: :::gallery columns=3
- */
-const GALLERY_MACRO_REGEX = /^:::gallery(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for attachments macro: :::attachments patterns="*.pdf"
- */
-const ATTACHMENTS_MACRO_REGEX = /^:::attachments(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for multimedia macro: :::multimedia url="..."
- */
-const MULTIMEDIA_MACRO_REGEX = /^:::multimedia(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for widget macro: :::widget url="..."
- */
-const WIDGET_MACRO_REGEX = /^:::widget(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for section macro with nested columns: :::section ... :::column ... ::: ... :::
- * Uses a special delimiter :::section-end to avoid ambiguity with nested ::: blocks
- */
-const SECTION_MACRO_REGEX = /^:::section(?:[ \t]+(.+))?\n([\s\S]*?)^:::section-end\s*$/gm;
-
-/**
- * Regex for column macro inside section: :::column width="50%"
- */
-const COLUMN_MACRO_REGEX = /^:::column(?:[ \t]+(.+))?\n([\s\S]*?)^:::column-end\s*$/gm;
-
-/**
- * Regex for children macro: :::children depth=2 sort="title"
- */
-const CHILDREN_MACRO_REGEX = /^:::children(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for content-by-label macro: :::content-by-label labels="label1,label2"
- */
-const CONTENT_BY_LABEL_REGEX = /^:::content-by-label(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for recently-updated macro: :::recently-updated max=10
- */
-const RECENTLY_UPDATED_REGEX = /^:::recently-updated(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for pagetree macro: :::pagetree root="PageName"
- */
-const PAGETREE_MACRO_REGEX = /^:::pagetree(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for toc-zone macro: :::toc-zone minLevel=2 maxLevel=4
- * Has body content for the zone
- */
-const TOC_ZONE_MACRO_REGEX = /^:::toc-zone(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
-
-/**
- * Regex for page-properties macro: :::page-properties id="info"
- * Has body content (key-value table). Confluence calls this "details" internally.
- */
-const PAGE_PROPERTIES_MACRO_REGEX = /^:::page-properties(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
-
-/**
- * Regex for page-properties-report macro: :::page-properties-report labels="status"
- * No body content. Confluence calls this "detailssummary" internally.
- */
-const PAGE_PROPERTIES_REPORT_REGEX = /^:::page-properties-report(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for task-report macro: :::task-report spaces="DEV" labels="sprint-1"
- * No body content. Confluence calls this "tasks-report-macro" internally.
- */
-const TASK_REPORT_MACRO_REGEX = /^:::task-report(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for labels-list macro: :::labels
- * No parameters. Shows labels on current page.
- */
-const LABELS_LIST_MACRO_REGEX = /^:::labels\n?:::\s*$/gm;
-
-/**
- * Regex for popular-labels macro: :::popular-labels count=20 spaces="DEV"
- * Shows a tag cloud of popular labels.
- */
-const POPULAR_LABELS_MACRO_REGEX = /^:::popular-labels(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for related-labels macro: :::related-labels labels="api,docs"
- * Shows content related by labels.
- */
-const RELATED_LABELS_MACRO_REGEX = /^:::related-labels(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for blog-posts macro: :::blog-posts max=10 spaces="TEAM"
- * Lists blog posts from specified spaces.
- */
-const BLOG_POSTS_MACRO_REGEX = /^:::blog-posts(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for spaces-list macro: :::spaces-list spaces="DEV,OPS"
- * Lists Confluence spaces.
- */
-const SPACES_LIST_MACRO_REGEX = /^:::spaces-list(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for page-index macro: :::page-index
- * Shows alphabetical index of pages.
- */
-const PAGE_INDEX_MACRO_REGEX = /^:::page-index\n?:::\s*$/gm;
-
-/**
- * Regex for contributors macro: :::contributors mode=list limit=10
- * Shows page contributors.
- */
-const CONTRIBUTORS_MACRO_REGEX = /^:::contributors(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for change-history macro: :::change-history limit=10
- * Shows page version history.
- */
-const CHANGE_HISTORY_MACRO_REGEX = /^:::change-history(?:[ \t]+(.+))?\n?:::\s*$/gm;
-
-/**
- * Regex for loremipsum macro: :::loremipsum paragraphs=3
- * Generates placeholder Lorem Ipsum text.
- */
-const LOREMIPSUM_MACRO_REGEX = /^:::loremipsum(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Regex for local attachment image references: ![alt](./path.attachments/image.png)

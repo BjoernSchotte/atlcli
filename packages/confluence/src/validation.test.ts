@@ -10,6 +10,7 @@ import {
   type ValidationResult,
 } from "./validation.js";
 import type { AtlcliState } from "./atlcli-dir.js";
+import { markdownToStorage } from "./markdown.js";
 
 const TEST_DIR = "/tmp/validation-test";
 
@@ -180,7 +181,7 @@ More text.`;
     expect(issues).toHaveLength(0);
   });
 
-  test("handles nested macros", () => {
+  test("flags nested macros, which push renders as literal text", () => {
     const content = `:::info
 Outer macro
 :::note
@@ -190,7 +191,96 @@ Inner macro
 
     const issues = validateMacros(content, "test.md");
 
-    expect(issues).toHaveLength(0);
+    // The info block closes at the first `:::`; `:::note` sits in its body and
+    // the trailing `:::` is stray.
+    expect(issues.map((i) => i.line)).toEqual([3, 6]);
+  });
+
+  // Regression #288: check must accept exactly what push converts.
+  test("accepts section/column closed with -end markers", () => {
+    const content = `# Section
+
+:::section
+:::column
+Left
+:::column-end
+:::section-end`;
+    expect(validateMacros(content, "test.md")).toEqual([]);
+  });
+
+  test("accepts toc-zone, recently-updated and content-by-label", () => {
+    const content = `:::toc-zone minLevel=2
+## Heading
+:::
+
+:::recently-updated max=5
+:::
+
+:::content-by-label labels="docs"
+:::`;
+    expect(validateMacros(content, "test.md")).toEqual([]);
+  });
+
+  test("flags an unclosed toc-zone", () => {
+    const issues = validateMacros(`:::toc-zone minLevel=2\n## Heading\n`, "test.md");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ code: "MACRO_UNCLOSED", line: 1 });
+    expect(issues[0].message).toContain(":::toc-zone");
+  });
+
+  test("flags a section closed with bare ::: lines", () => {
+    const content = `:::section
+:::column
+Left
+:::
+:::`;
+    const issues = validateMacros(content, "test.md");
+    expect(issues.map((i) => i.line)).toEqual([1, 2, 4, 5]);
+  });
+
+  test("ignores ::: lines inside fenced code", () => {
+    const content = "```markdown\n:::section\n:::\n```";
+    expect(validateMacros(content, "test.md")).toEqual([]);
+  });
+
+  test("flags macros nested in a column body", () => {
+    const content = `:::section
+:::column
+:::info
+Hi
+:::
+:::column-end
+:::section-end`;
+    const issues = validateMacros(content, "test.md");
+    expect(issues.map((i) => i.line)).toEqual([3, 5]);
+  });
+
+  test("agrees with markdownToStorage on which ::: lines survive as text", () => {
+    const samples = [
+      ":::section\n:::column\nLeft\n:::column-end\n:::section-end",
+      ":::section border\n:::column width=\"50%\"\nA\n:::column-end\n:::column\nB\n:::column-end\n:::section-end",
+      ":::section\n:::column\nLeft\n:::\n:::",
+      ":::toc-zone minLevel=2\n## H\n:::",
+      ":::toc-zone minLevel=2\n## H\n",
+      ":::recently-updated\n:::",
+      ":::content-by-label labels=\"a\"\n:::",
+      ":::info\nx\n:::",
+      ":::info\nOuter\n:::note\nInner\n:::\n:::",
+      ":::expand \"Details\"\nHidden.\n:::",
+      ":::toc\n:::",
+      ":::children\n:::",
+      ":::pagetree\n:::",
+      ":::unknown\nx\n:::",
+      ":::panel title=\"T\"\nbody\n:::",
+      ":::page-properties\n| a | b |\n|---|---|\n| 1 | 2 |\n:::",
+      "text\n:::\n",
+      ":::column-end",
+    ];
+    for (const sample of samples) {
+      const literal = /:::/.test(markdownToStorage(sample));
+      const flagged = validateMacros(sample, "t.md").length > 0;
+      expect({ sample, flagged }).toEqual({ sample, flagged: literal });
+    }
   });
 
   test("reports unexpected close without open", () => {

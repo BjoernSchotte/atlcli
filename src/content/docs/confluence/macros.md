@@ -800,7 +800,7 @@ Some complex macros render to placeholder text with a note:
 
 **Cause**: Unclosed macro block or incorrect syntax.
 
-**Fix**: Ensure every `:::macro` has a matching `:::` closing tag. Validate with:
+**Fix**: Ensure every `:::macro` has a matching `:::` closing tag (`:::section` and `:::column` close with `:::section-end` and `:::column-end`). Macros cannot be nested inside another macro body. Validate with:
 ```bash
 atlcli wiki docs check ./docs/page.md
 ```
