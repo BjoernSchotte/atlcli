@@ -1,4 +1,5 @@
 import { verifyNfsCompanion } from "./build-nfs-helper.js";
+import { assertNativeFor, missingNativeExternals } from "../apps/cli/build-tui-natives.js";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -134,6 +135,7 @@ export async function buildCliArchive(input: {
         releaseTag: input.identity.releaseTag,
         homebrewVersion: input.identity.homebrewVersion,
       });
+      assertNativeFor(input.target);
       run([
         "bun",
         "build",
@@ -142,6 +144,7 @@ export async function buildCliArchive(input: {
         "--conditions=development",
         "--target",
         `bun-${input.target}`,
+        ...missingNativeExternals(),
         ...releaseInfoBunDefineArgs(releaseInfo),
         "--outfile",
         binaryPath,

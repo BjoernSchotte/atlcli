@@ -9,6 +9,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { materializeQuickJsCliRuntimeAsset } from "./build-assets.js";
 import { releaseInfoBunDefineArgs, resolveBuildReleaseInfo } from "./build-release-info.js";
+import { missingNativeExternals } from "./build-tui-natives.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +38,8 @@ const args = [
   // `development` condition to `src/*.ts` (spec 009), so this build does not
   // depend on the packages' `dist/` output existing.
   "--conditions=development",
+  // OpenTUI's platform packages this install lacks stay external (see build-tui-natives.ts).
+  ...missingNativeExternals(),
   ...releaseInfoBunDefineArgs(releaseInfo),
 ];
 
