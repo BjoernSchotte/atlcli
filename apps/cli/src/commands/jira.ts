@@ -13,8 +13,11 @@ import {
   buildSearchJql,
   editInEditor,
   issueCell,
+  jqlBefore,
   jqlIn,
   jqlSince,
+  jqlStatusNames,
+  splitNegation,
   needsFieldList,
   parseReplacements,
   renderTable,
@@ -78,7 +81,7 @@ import {
   calculateBurndown,
   calendarDay,
   latestSprints,
-  attachChangelogs,
+  loadSprintHistory,
   generateProgressBar as generateAnalyticsProgressBar,
   collectExportData,
   writeExportFile,
@@ -217,14 +220,6 @@ type ClientWithDefaults = {
   defaults: { project?: string; space?: string; board?: number };
 };
 
-/**
- * A sprint's issues with changelogs and creation dates: what sprint metrics
- * need to count as of the sprint. One bulk changelog read, not one per issue.
- */
-async function sprintIssuesWithHistory(client: JiraClient, sprintId: number, fields: string[]): Promise<JiraIssue[]> {
-  const issues = await client.getAllSprintIssues(sprintId, { fields: [...fields, "created", "issuetype"] });
-  return attachChangelogs(issues, await client.getChangelogs(issues));
-}
 
 /**
  * Up to `limit` values of a paged Agile list (`startAt`): Jira caps each page
@@ -2164,7 +2159,7 @@ async function handleSprintReport(
   const sprint = await client.getSprint(Number(sprintId));
 
   // Get sprint issues
-  const issuesWithChangelog = await sprintIssuesWithHistory(client, Number(sprintId), ["status", "summary", pointsField]);
+  const issuesWithChangelog = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
 
   // Calculate full metrics
   const metrics = calculateSprintMetrics(
@@ -3377,7 +3372,7 @@ async function handleAnalyzeVelocity(
   const resolve = await sprintStatusResolver(client, flags, opts);
 
   for (const sprint of sprintsResult.values) {
-    const issues = await sprintIssuesWithHistory(client, sprint.id, ["status", "summary", pointsField]);
+    const issues = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
     const metrics = calculateSprintMetrics(sprint as JiraSprint, issues, pointsField, issues, resolve);
     sprintMetrics.push(metrics);
   }
@@ -3452,7 +3447,7 @@ async function handleAnalyzeBurndown(
   }
 
   // Get sprint issues with changelog for accurate burndown
-  const issuesWithChangelog = await sprintIssuesWithHistory(client, Number(sprintId), [
+  const issuesWithChangelog = await loadSprintHistory(client, sprint, [
     "status",
     "summary",
     "resolutiondate",
@@ -3518,7 +3513,7 @@ async function handleAnalyzeScopeChange(
   const sprint = await client.getSprint(Number(sprintId));
 
   // Get sprint issues
-  const issuesWithChangelog = await sprintIssuesWithHistory(client, Number(sprintId), ["status", "summary", pointsField]);
+  const issuesWithChangelog = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
 
   // Calculate metrics including scope change
   const metrics = calculateSprintMetrics(
@@ -3610,7 +3605,7 @@ async function handleAnalyzePredictability(
   const resolve = await sprintStatusResolver(client, flags, opts);
 
   for (const sprint of sprintsResult.values) {
-    const issues = await sprintIssuesWithHistory(client, sprint.id, ["status", "summary", pointsField]);
+    const issues = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
     const metrics = calculateSprintMetrics(sprint as JiraSprint, issues, pointsField, issues, resolve);
     sprintMetrics.push(metrics);
   }
@@ -4757,18 +4752,25 @@ async function handleSearch(
 
   // Raw JQL (args or --jql) and the filter flags are ANDed.
   const raw = args.join(" ") || getFlag(flags, "jql");
-  const since = (field: string) => {
-    const value = getFlag(flags, field);
-    if (value === undefined) return undefined;
-    const clause = jqlSince(field, value);
-    if (!clause) fail(opts, 1, ERROR_CODES.USAGE, `--${field} takes -7d (h, m, w too), today, week, month, year or YYYY-MM-DD.`);
-    return clause;
-  };
+  const dates: string[] = [];
+  for (const [flag, field, clause] of [
+    ["created", "created", jqlSince],
+    ["updated", "updated", jqlSince],
+    ["created-before", "created", jqlBefore],
+    ["updated-before", "updated", jqlBefore],
+  ] as const) {
+    const value = getFlag(flags, flag);
+    if (value === undefined) continue;
+    const jql = clause(field, value);
+    if (!jql) fail(opts, 1, ERROR_CODES.USAGE, `--${flag} takes -7d (h, m, w too), today, week, month, year or YYYY-MM-DD.`);
+    dates.push(jql);
+  }
   const assigneeFlag = getFlag(flags, "assignee");
+  const { negate: notAssignee, value: assigneeValue } = splitNegation(assigneeFlag ?? "");
   let assignee: string | undefined;
-  if (assigneeFlag === "me") assignee = "currentUser()";
-  else if (assigneeFlag) {
-    const ref = await userFlag(client, assigneeFlag, opts);
+  if (assigneeValue === "me") assignee = "currentUser()";
+  else if (assigneeValue) {
+    const ref = await userFlag(client, assigneeValue, opts);
     assignee = ref === null ? "EMPTY" : JSON.stringify("accountId" in ref ? ref.accountId : ref.name);
   }
   const jql = buildSearchJql({
@@ -4776,18 +4778,24 @@ async function handleSearch(
     // The default project only applies to a search built from flags.
     project: getFlag(flags, "project") ?? (raw ? undefined : defaults.project),
     assignee,
-    status: getFlag(flags, "status"),
+    notAssignee,
+    status: await statusFlag(client, flags),
     type: getFlag(flags, "type"),
     label: getFlag(flags, "label"),
     sprint: getFlag(flags, "sprint"),
     watching: hasFlag(flags, "watching"),
     history: hasFlag(flags, "history"),
-    created: since("created"),
-    updated: since("updated"),
+    dates,
   });
 
   const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
   await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
+}
+
+/** `--status` with localized names translated for JQL (one `/status` read, only when given). */
+async function statusFlag(client: JiraClient, flags: Record<string, string | boolean | string[]>): Promise<string | undefined> {
+  const value = getFlag(flags, "status");
+  return value === undefined ? undefined : jqlStatusNames(value, await client.getStatuses());
 }
 
 /** The JSON of `search`, `my` and `filter run`. */
@@ -4826,7 +4834,7 @@ async function handleMy(
   const jql =
     buildMyIssuesJql({
       project: getFlag(flags, "project") ?? defaults.project,
-      status: getFlag(flags, "status"),
+      status: await statusFlag(client, flags),
       type: getFlag(flags, "type"),
       all: hasFlag(flags, "all"),
     }) + " ORDER BY updated DESC";

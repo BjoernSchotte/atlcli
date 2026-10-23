@@ -108,7 +108,10 @@ export interface JiraPriority {
 /** Issue status */
 export interface JiraStatus {
   id: string;
+  /** In the user's language ("Fertig"). */
   name: string;
+  /** The name JQL matches ("Done"); Cloud only. */
+  untranslatedName?: string;
   description?: string;
   /** Status category: new, indeterminate, done */
   statusCategory?: {
@@ -343,6 +346,8 @@ export interface JiraSprint {
   completeDate?: string;
   goal?: string;
   boardId?: number;
+  /** The board the sprint was created on (Agile API). */
+  originBoardId?: number;
 }
 
 /** Epic (Agile API) */

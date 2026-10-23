@@ -95,8 +95,23 @@ Each flag expands to JQL:
 | `--history` | `issuekey IN issueHistory()`, ordered by `lastViewed DESC` |
 | `--created -7d` | `created >= -7d` |
 | `--updated week` | `updated >= startOfWeek()` |
+| `--created-before 2026-01-01` | `created < "2026-01-01"` |
+| `--updated-before -30d` | `updated < -30d` |
+| `--status '~Done'` | `status != "Done"` |
+| `--status '~Done,Closed'` | `status not in ("Done", "Closed")` |
+| `--label '~ui'` | `(labels IS EMPTY OR labels != "ui")` |
+| `--assignee '~me'` | `(assignee IS EMPTY OR assignee != currentUser())` |
+| `--assignee '~x'` | `assignee IS NOT EMPTY` |
 
-`--created` and `--updated` take a relative time (`-30m`, `-4h`, `-7d`, `-2w`), `today`, `week`, `month`, `year`, or a date (`2026-10-01`).
+`--created`, `--updated`, `--created-before` and `--updated-before` take a relative time (`-30m`, `-4h`, `-7d`, `-2w`), `today`, `week`, `month`, `year` (their start), or a date (`2026-10-01`).
+
+### Negation
+
+A leading `~` turns `--status`, `--type`, `--label` and `--assignee` into "anything but". For labels and the assignee, issues with no value count as "anything but", so `--label '~ui'` also finds issues without labels. Quote the value: a shell may expand `~name` to a home directory.
+
+### Status names
+
+Jira shows status names in your language ("Fertig"), but JQL matches the untranslated name ("Done"). `--status` takes either and translates it, so `--status Fertig` finds the issues the table shows as "Fertig". In raw `--jql`, use the untranslated name.
 
 A name for `--assignee` must match one active user: an exact email or display name wins, otherwise the only hit. Several hits fail and list the candidates.
 
@@ -181,6 +196,8 @@ atlcli jira search --watching --plain --no-headers --columns key
 | `"lee" matches several users` | The name fits more than one user | Use the email, the full display name or the account id |
 | `Unknown column "Points"` | No field has that id or name | `atlcli jira field search points` lists the exact names |
 | `--history` returns nothing | Jira records views from the browser, not from API calls | Open the issues in Jira first |
+| `--jql 'status = Fertig'` finds nothing, but the table shows "Fertig" | JQL matches the untranslated status name | Use `--status Fertig`, or the untranslated name (`status = Done`) |
+| `--status ~me` matches the wrong value | The shell expanded `~me` to a home directory | Quote it: `--status '~me'` |
 | A just-changed issue still matches the old value | Jira's search index lags a few seconds behind writes | Search again |
 
 ## Related Topics

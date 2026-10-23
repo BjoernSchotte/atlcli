@@ -603,6 +603,7 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraIssue[]>;
+    getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -932,12 +933,14 @@ export interface JiraSprint {
     completeDate?: string;
     goal?: string;
     boardId?: number;
+    originBoardId?: number;
 }
 
 // export: JiraStatus
 export interface JiraStatus {
     id: string;
     name: string;
+    untranslatedName?: string;
     description?: string;
     statusCategory?: {
         id: number;
@@ -2308,6 +2311,7 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraIssue[]>;
+    getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -2637,12 +2641,14 @@ export interface JiraSprint {
     completeDate?: string;
     goal?: string;
     boardId?: number;
+    originBoardId?: number;
 }
 
 // export: JiraStatus
 export interface JiraStatus {
     id: string;
     name: string;
+    untranslatedName?: string;
     description?: string;
     statusCategory?: {
         id: number;
@@ -2927,6 +2933,9 @@ export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "
 // export: listTemplates
 // @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead
 export declare function listTemplates(): Promise<JiraTemplateInfo[]>;
+
+// export: loadSprintHistory
+export declare function loadSprintHistory(client: JiraClient, sprint: Pick<JiraSprint, "id" | "originBoardId">, fields: string[]): Promise<JiraIssue[]>;
 
 // export: loadTemplate
 // @deprecated loadTemplate — Use JiraTemplateResolver.resolve() instead
@@ -3239,6 +3248,12 @@ export interface SprintMetrics {
     scopeChangePercent: number;
     sayDoRatio: number;
 }
+
+// export: sprintMoves
+export declare function sprintMoves(issue: JiraIssue, sprintId: number, start: Date, end: Date): {
+    joinedAt?: Date;
+    leftAt?: Date;
+};
 
 // export: startTimer
 export declare function startTimer(issueKey: string, profile: string, comment?: string): TimerState;
@@ -3999,6 +4014,7 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraIssue[]>;
+    getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -4328,12 +4344,14 @@ export interface JiraSprint {
     completeDate?: string;
     goal?: string;
     boardId?: number;
+    originBoardId?: number;
 }
 
 // export: JiraStatus
 export interface JiraStatus {
     id: string;
     name: string;
+    untranslatedName?: string;
     description?: string;
     statusCategory?: {
         id: number;
@@ -5704,6 +5722,7 @@ export declare class JiraClient {
         jql?: string;
         fields?: string[];
     }): Promise<JiraIssue[]>;
+    getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
     getEpicIssues(epicKeyOrId: string, options?: {
@@ -6033,12 +6052,14 @@ export interface JiraSprint {
     completeDate?: string;
     goal?: string;
     boardId?: number;
+    originBoardId?: number;
 }
 
 // export: JiraStatus
 export interface JiraStatus {
     id: string;
     name: string;
+    untranslatedName?: string;
     description?: string;
     statusCategory?: {
         id: number;
@@ -6323,6 +6344,9 @@ export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "
 // export: listTemplates
 // @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead
 export declare function listTemplates(): Promise<JiraTemplateInfo[]>;
+
+// export: loadSprintHistory
+export declare function loadSprintHistory(client: JiraClient, sprint: Pick<JiraSprint, "id" | "originBoardId">, fields: string[]): Promise<JiraIssue[]>;
 
 // export: loadTemplate
 // @deprecated loadTemplate — Use JiraTemplateResolver.resolve() instead
@@ -6635,6 +6659,12 @@ export interface SprintMetrics {
     scopeChangePercent: number;
     sayDoRatio: number;
 }
+
+// export: sprintMoves
+export declare function sprintMoves(issue: JiraIssue, sprintId: number, start: Date, end: Date): {
+    joinedAt?: Date;
+    leftAt?: Date;
+};
 
 // export: startTimer
 export declare function startTimer(issueKey: string, profile: string, comment?: string): TimerState;

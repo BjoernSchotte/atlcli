@@ -46,7 +46,7 @@ A new pure function `sprintSnapshot(sprint, issuesWithChangelog, pointsField, re
 
 `parseSprintIds` reads `from`/`to` (ids). The burndown keeps its own logic, but uses the same membership.
 
-**Limitation:** an issue removed from the sprint before it closed no longer appears in `sprint/{id}/issue`. Its removal therefore stays invisible. Jira's report shows it as "punted"; we do not (it would need a JQL history search).
+**Limitation (resolved 2026-10-23):** an issue removed from the sprint before it closed no longer appears in `sprint/{id}/issue`. JQL `sprint WAS` is not supported (400). `loadSprintHistory` now adds the keys from Jira's own sprint report (`greenhopper/1.0/rapid/charts/sprintreport`, `puntedIssues`), best effort. Added and removed follow Jira: added = joined after the start (also if removed again), removed = in the sprint at some point and out at the end. Live: TCW 811 shows 2 added / 2 removed (TCW-201, TCW-202), as Jira does.
 
 ## Alternative: Jira's sprint report endpoint
 

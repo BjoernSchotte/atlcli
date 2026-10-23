@@ -57,6 +57,30 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
+describe("mention names", () => {
+  const MENTION = '<p>Ask <ac:link><ri:user ri:account-id="acc-1" /></ac:link> first.</p>';
+
+  it("reads mentions with display names from the client", async () => {
+    const client = seeded(0).seedPage({ id: "300", title: "Who", spaceKey: "DOCSY", parentId: "100", storage: MENTION });
+    client.mentionNames = async () => new Map([["acc-1", "Ann Lee"]]);
+    const vfs = await openVfs(client);
+    expect(await vfs.readFile("/DOCSY/who-300.md")).toContain("@[Ann Lee](acc-1)");
+    await vfs.close();
+  });
+
+  it("still reads when the lookup fails, and the written mention keeps its account id", async () => {
+    const client = seeded(0).seedPage({ id: "300", title: "Who", spaceKey: "DOCSY", parentId: "100", storage: MENTION });
+    client.mentionNames = async () => {
+      throw new Error("user lookup down");
+    };
+    const vfs = await openVfs(client);
+    const text = await vfs.readFile("/DOCSY/who-300.md");
+    expect(text).toContain("(acc-1)");
+    expect(toStorage("Ask @[Ann Lee](acc-1) first.")).toContain('ri:account-id="acc-1"');
+    await vfs.close();
+  });
+});
+
 describe("readFile", () => {
   it("converts storage to Markdown and prepends the frontmatter", async () => {
     const client = seeded();

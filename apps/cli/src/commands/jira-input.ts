@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { adfToMarkdown, escapeCsvValue, type JiraClient, type JiraField, type JiraIssue, type JiraUser } from "@atlcli/jira";
+import { adfToMarkdown, escapeCsvValue, type JiraClient, type JiraField, type JiraIssue, type JiraStatus, type JiraUser } from "@atlcli/jira";
 import { stripOrderBy } from "./jira-flow.js";
 
 // ============ Users ============
@@ -43,20 +43,67 @@ export function pickUser(users: JiraUser[], query: string): JiraUser {
 
 const quote = (value: string) => JSON.stringify(value);
 
-/** `field = "a"`, or `field in ("a", "b")` for a comma-separated list. */
-export function jqlIn(field: string, value: string): string {
+/** A leading `~` negates a filter value: `--status ~Done`. */
+export function splitNegation(value: string): { negate: boolean; value: string } {
+  return value.startsWith("~") ? { negate: true, value: value.slice(1).trim() } : { negate: false, value };
+}
+
+/**
+ * `field = "a"`, or `field in ("a", "b")` for a comma-separated list; a
+ * leading `~` gives `!=` / `not in`. For a field that can be empty (labels),
+ * `nullable` keeps empty issues in the negation, which JQL would drop.
+ */
+export function jqlIn(field: string, raw: string, nullable = false): string {
+  const { negate, value } = splitNegation(raw);
   const values = value.split(",").map((v) => v.trim()).filter(Boolean);
-  return values.length === 1 ? `${field} = ${quote(values[0]!)}` : `${field} in (${values.map(quote).join(", ")})`;
+  const one = values.length === 1;
+  const clause = one
+    ? `${field} ${negate ? "!=" : "="} ${quote(values[0]!)}`
+    : `${field} ${negate ? "not in" : "in"} (${values.map(quote).join(", ")})`;
+  return negate && nullable ? `(${field} IS EMPTY OR ${clause})` : clause;
+}
+
+/**
+ * `--status` values as JQL knows them. Jira shows status names in the user's
+ * language ("Fertig"), but JQL matches the untranslated name ("Done"), so a
+ * localized name would match nothing. Unknown names pass through; `~` stays.
+ */
+export function jqlStatusNames(raw: string, statuses: Array<Pick<JiraStatus, "name" | "untranslatedName">>): string {
+  const { negate, value } = splitNegation(raw);
+  const names = value.split(",").map((v) => v.trim()).filter(Boolean).flatMap((v) => {
+    const lower = v.toLowerCase();
+    const hits = statuses.filter((s) => s.name.toLowerCase() === lower || s.untranslatedName?.toLowerCase() === lower);
+    return hits.length > 0 ? [...new Set(hits.map((s) => s.untranslatedName ?? s.name))] : [v];
+  });
+  return `${negate ? "~" : ""}${[...new Set(names)].join(",")}`;
+}
+
+/** The assignee clause; `user` is `currentUser()`, `EMPTY` or a quoted id. */
+export function jqlAssignee(user: string, negate: boolean): string {
+  if (user === "EMPTY") return negate ? "assignee IS NOT EMPTY" : "assignee IS EMPTY";
+  return negate ? `(assignee IS EMPTY OR assignee != ${user})` : `assignee = ${user}`;
 }
 
 const PERIOD_START: Record<string, string> = { today: "startOfDay()", week: "startOfWeek()", month: "startOfMonth()", year: "startOfYear()" };
 
-/** `--created`/`--updated`: `-7d` (also h, m, w), `today|week|month|year` or `YYYY-MM-DD` → `field >= …`. */
-export function jqlSince(field: string, value: string): string | undefined {
-  if (PERIOD_START[value]) return `${field} >= ${PERIOD_START[value]}`;
-  if (/^-\d+[mhdw]$/.test(value)) return `${field} >= ${value}`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${field} >= ${quote(value)}`;
+/** A JQL time: `-7d` (also m, h, w), `today|week|month|year` (their start) or `YYYY-MM-DD`. */
+function jqlTime(value: string): string | undefined {
+  if (PERIOD_START[value]) return PERIOD_START[value];
+  if (/^-\d+[mhdw]$/.test(value)) return value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return quote(value);
   return undefined;
+}
+
+/** `--created`/`--updated` → `field >= …`. */
+export function jqlSince(field: string, value: string): string | undefined {
+  const time = jqlTime(value);
+  return time && `${field} >= ${time}`;
+}
+
+/** `--created-before`/`--updated-before` → `field < …`. */
+export function jqlBefore(field: string, value: string): string | undefined {
+  const time = jqlTime(value);
+  return time && `${field} < ${time}`;
 }
 
 export interface SearchFilters {
@@ -64,14 +111,16 @@ export interface SearchFilters {
   project?: string;
   /** Already resolved: `currentUser()`, `EMPTY` or a quoted id. */
   assignee?: string;
+  /** `--assignee ~…`: anyone but that user. */
+  notAssignee?: boolean;
   status?: string;
   type?: string;
   label?: string;
   sprint?: string;
   watching?: boolean;
   history?: boolean;
-  created?: string;
-  updated?: string;
+  /** Ready clauses from `jqlSince` / `jqlBefore`. */
+  dates?: string[];
 }
 
 /**
@@ -81,15 +130,14 @@ export interface SearchFilters {
 export function buildSearchJql(f: SearchFilters): string {
   const parts: string[] = [];
   if (f.project) parts.push(`project = ${f.project}`);
-  if (f.assignee) parts.push(f.assignee === "EMPTY" ? "assignee IS EMPTY" : `assignee = ${f.assignee}`);
+  if (f.assignee) parts.push(jqlAssignee(f.assignee, f.notAssignee ?? false));
   if (f.status) parts.push(jqlIn("status", f.status));
   if (f.type) parts.push(jqlIn("issuetype", f.type));
-  if (f.label) parts.push(jqlIn("labels", f.label));
+  if (f.label) parts.push(jqlIn("labels", f.label, true));
   if (f.sprint) parts.push(f.sprint === "current" || f.sprint === "active" ? "sprint IN openSprints()" : `sprint = ${quote(f.sprint)}`);
   if (f.watching) parts.push("watcher = currentUser()");
   if (f.history) parts.push("issuekey IN issueHistory()");
-  if (f.created) parts.push(f.created);
-  if (f.updated) parts.push(f.updated);
+  parts.push(...(f.dates ?? []));
 
   const raw = f.jql?.trim() ?? "";
   const where = stripOrderBy(raw);

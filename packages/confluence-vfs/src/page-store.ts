@@ -143,12 +143,25 @@ function unquote(value: string): string {
   return value;
 }
 
+/**
+ * Display names for the mentions in `storage`. Names are cosmetic: a client
+ * without `mentionNames`, or a failed lookup, gives an empty map, never an error.
+ */
+export async function mentionNamesFor(client: VfsClient, storage: string): Promise<Map<string, string>> {
+  try {
+    return (await client.mentionNames?.([storage])) ?? new Map();
+  } catch {
+    return new Map();
+  }
+}
+
 /** Markdown plus the frontmatter header, exactly as a reader sees it. */
 export function renderPageMarkdown(
   node: TreeNode,
   storage: string,
   instanceUrl: string,
   labels?: string[],
+  mentionNames?: ReadonlyMap<string, string>,
 ): string {
   const frontmatter: VfsFrontmatter = {
     id: node.id,
@@ -159,7 +172,7 @@ export function renderPageMarkdown(
     ...(node.lastModified ? { lastModified: node.lastModified } : {}),
     url: `${instanceUrl}/spaces/${node.spaceKey}/pages/${node.id}`,
   };
-  return `${renderFrontmatter(frontmatter)}\n${storageToMarkdown(storage).trim()}\n`;
+  return `${renderFrontmatter(frontmatter)}\n${storageToMarkdown(storage, { mentionNames }).trim()}\n`;
 }
 
 /** The inverse, for the write path. Frontmatter never reaches Confluence. */
@@ -235,7 +248,8 @@ export class PageStore {
       parentId: page.parentId ?? node.parentId,
     });
     const refreshed = this.opts.index.node(node.id) ?? node;
-    const markdown = renderPageMarkdown(refreshed, page.storage, this.opts.instanceUrl);
+    const names = await mentionNamesFor(this.opts.client, page.storage);
+    const markdown = renderPageMarkdown(refreshed, page.storage, this.opts.instanceUrl, undefined, names);
     this.opts.cache.putBody({
       pageId: node.id,
       version,
@@ -265,8 +279,9 @@ export class PageStore {
     );
     // Only version-owned metadata belongs in a reproducible snapshot. Current
     // parent/space/location may change without modifying this historic version.
+    const mentionNames = await mentionNamesFor(this.opts.client, page.storage);
     const markdown = `${renderFrontmatter({ id: node.id, title: page.title, version,
-      lastModified: page.lastModified })}\n${storageToMarkdown(page.storage).trim()}\n`;
+      lastModified: page.lastModified })}\n${storageToMarkdown(page.storage, { mentionNames }).trim()}\n`;
     this.opts.cache.putBody({
       pageId: cacheId,
       version,
@@ -351,7 +366,7 @@ export class PageStore {
         this.opts.cache.putBody({
           pageId: page.id,
           version,
-          markdown: renderPageMarkdown(node, page.storage, this.opts.instanceUrl),
+          markdown: renderPageMarkdown(node, page.storage, this.opts.instanceUrl, undefined, await mentionNamesFor(this.opts.client, page.storage)),
           storageHash: hashStorage(page.storage),
         });
         fetched += 1;
