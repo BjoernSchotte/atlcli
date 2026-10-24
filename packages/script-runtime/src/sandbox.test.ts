@@ -66,7 +66,7 @@ describe("runScript", () => {
       expectedTeardownLeaks++;
     }
     expect((await run(`export default 1`)).value).toBe(1); // the next run gets a fresh instance
-  });
+  }, 60_000); // two runs plus two fresh WASM instances; CI runners take ~6 s
 
   it("calls namespaced host functions with JSON-copied arguments", async () => {
     const seen: unknown[][] = [];
