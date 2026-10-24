@@ -29,6 +29,23 @@ atlcli jira board backlog --id 123 --limit 100 --json
 atlcli jira board issues --id 123 --jql 'status != Done' --json
 ```
 
+Writes:
+
+```bash
+atlcli jira board create --name 'Team AB' --project AB --json
+atlcli jira board create --name 'AB bugs' --type kanban --project AB \
+  --jql 'project = AB AND type = Bug ORDER BY Rank ASC' --json
+atlcli jira board create --name 'Release' --filter 10500 --project AB --json
+atlcli jira board delete --id 882 --confirm --delete-filter --json
+```
+
+A board sits on a saved filter. Without `--filter`, `create` makes one (named
+like the board, from `--jql` or `project = "<key>" ORDER BY Rank ASC`), shares
+it with `--project`, and deletes it again if the board fails; the output names
+it under `filter` with `created: true`. `--type` defaults to `scrum`.
+`delete` needs `--confirm` and keeps the filter; add `--delete-filter` only
+for a filter made for that board.
+
 `board list` takes `--limit` (default 50); `backlog` and `issues` take `--limit`
 (default 50) and an extra `--jql` filter. Board IDs come from `board list`.
 `sprint list`, `sprint create`, `epic list`, `analyze velocity` and
@@ -60,11 +77,14 @@ atlcli jira sprint start --id 456 --end 2026-08-24 --goal 'Ship the exporter' --
 atlcli jira sprint close --id 456 --json
 atlcli jira sprint add PROJ-101 PROJ-102 --sprint 456 --json
 atlcli jira sprint remove PROJ-101 --json          # moves issues to the backlog
+atlcli jira issue rank PROJ-7 PROJ-8 --before PROJ-1 --json   # reorder (or --after)
 atlcli jira sprint delete --id 456 --confirm --json
 ```
 
 Issue keys are positional and variadic on `add`/`remove`. `remove` needs no
 sprint ID because it moves the issues to the backlog wherever they are.
+`issue rank` puts the issues, in the given order, directly before or after the
+target; the order is global across boards.
 `start` also accepts `--start`, `--end` and `--goal`. Starting or closing a
 sprint is visible to the whole team, so confirm first.
 

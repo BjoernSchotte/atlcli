@@ -677,6 +677,9 @@ async function handleIssue(
     case "unlink-page":
       await handleIssueUnlinkPage(flags, opts);
       return;
+    case "rank":
+      await handleIssueRank(args.slice(1), flags, opts);
+      return;
     default:
       unknownSubcommand(sub, issueHelp(), opts);
       return;
@@ -1665,6 +1668,7 @@ Commands:
   link-page --key <key> --page <id>    Link to Confluence page
   pages --key <key>                    List linked Confluence pages
   unlink-page --key <key> --link <id>  Remove link to Confluence page
+  rank <key> [key...] (--before <key> | --after <key>)   Reorder on boards and in the backlog
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -1684,6 +1688,31 @@ Content without a markdown form is kept as <!--adf:...--> markers; leave them in
                          numbers → number, JSON strings → parsed, plain text → string.
                          Example: --field customfield_10028=5 --field customfield_10077={"value":"Bug"}
 `;
+}
+
+/** `issue rank <key...> --before|--after <key>`: the issues keep their given order. */
+async function handleIssueRank(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const issues = args.length > 0 ? args : getFlag(flags, "issues")?.split(",");
+  const before = getFlag(flags, "before");
+  const after = getFlag(flags, "after");
+  if (!issues || issues.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue keys are required (as args or --issues).");
+  }
+  if (Boolean(before) === Boolean(after)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Give exactly one of --before <key> or --after <key>.");
+  }
+
+  const client = await getClient(flags, opts);
+  const failed = await client.rankIssues({ issues, before, after });
+  if (failed.length > 0) {
+    const detail = failed.map((f) => `${f.issueKey}: ${f.errors.join("; ") || "not ranked"}`).join(", ");
+    fail(opts, 1, ERROR_CODES.API, `Jira could not rank ${failed.length} of ${issues.length} issues: ${detail}`);
+  }
+  output({ schemaVersion: "1", ranked: { issues, ...(before ? { before } : { after }) } }, opts);
 }
 
 // ============ Cross-Product Linking (Jira → Confluence) ============
@@ -1833,6 +1862,12 @@ async function handleBoard(
     case "issues":
       await handleBoardIssues(flags, opts);
       return;
+    case "create":
+      await handleBoardCreate(flags, opts);
+      return;
+    case "delete":
+      await handleBoardDelete(flags, opts);
+      return;
     default:
       unknownSubcommand(sub, boardHelp(), opts);
       return;
@@ -1877,6 +1912,50 @@ async function handleBoardGet(
       ["Type", board.type],
       ["Project", board.location?.projectKey],
     ]), opts);
+}
+
+async function handleBoardCreate(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
+  const name = getFlag(flags, "name");
+  const type = getFlag(flags, "type") ?? "scrum";
+  const filterFlag = getFlag(flags, "filter");
+  const jqlFlag = getFlag(flags, "jql");
+  const project = getFlag(flags, "project") ?? defaults.project;
+
+  if (!name) fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
+  if (type !== "scrum" && type !== "kanban") fail(opts, 1, ERROR_CODES.USAGE, "--type must be scrum or kanban.");
+  if (filterFlag !== undefined && jqlFlag !== undefined) fail(opts, 1, ERROR_CODES.USAGE, "Use --filter or --jql, not both.");
+  if (filterFlag !== undefined && !/^\d+$/.test(filterFlag)) fail(opts, 1, ERROR_CODES.USAGE, "--filter must be a filter id.");
+  if (filterFlag === undefined && jqlFlag === undefined && !project) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Give --project (or set a default: atlcli config set global.project <key>), --jql or --filter.");
+  }
+
+  const { filterId, filterCreated, ...board } = await client.createBoard({
+    name,
+    type,
+    filterId: filterFlag === undefined ? undefined : Number(filterFlag),
+    jql: jqlFlag,
+    projectKeyOrId: project,
+  });
+  output({ schemaVersion: "1", board, filter: { id: String(filterId), created: filterCreated } }, opts);
+}
+
+async function handleBoardDelete(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id || !/^\d+$/.test(id)) fail(opts, 1, ERROR_CODES.USAGE, "--id must be a board id.");
+  if (!hasFlag(flags, "confirm")) fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a board.");
+
+  const client = await getClient(flags, opts);
+  const filterId = hasFlag(flags, "delete-filter") ? await client.getBoardFilterId(Number(id)) : undefined;
+  await client.deleteBoard(Number(id));
+  if (filterId) await client.deleteFilter(filterId);
+  output({ schemaVersion: "1", deleted: Number(id), ...(filterId ? { deletedFilter: filterId } : {}) }, opts);
 }
 
 async function handleBoardBacklog(
@@ -1929,6 +2008,12 @@ Commands:
   get --id <boardId>
   backlog --id <boardId> [--limit <n>] [--jql <query>]
   issues --id <boardId> [--limit <n>] [--jql <query>]
+  create --name <name> [--type scrum|kanban] [--project <key>] [--filter <id> | --jql <query>]
+  delete --id <boardId> --confirm [--delete-filter]
+
+A board needs a saved filter. Without --filter, create makes one from --jql
+(default: project = <key> ORDER BY Rank ASC), shared with --project. delete
+keeps the filter unless --delete-filter is given; issues are never touched.
 
 Options:
   --profile <name>   Use a specific auth profile

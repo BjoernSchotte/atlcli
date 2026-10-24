@@ -700,6 +700,8 @@ atlcli jira board list --name <pattern>
 atlcli jira board get --id <id>         # Get board details
 atlcli jira board backlog --id <id> [--jql <query>] [--limit <n>]  # Backlog issues
 atlcli jira board issues --id <id> [--jql <query>] [--limit <n>]   # Board issues
+atlcli jira board create --name <name> [--type scrum|kanban] [--project <key>] [--filter <id> | --jql <query>]
+atlcli jira board delete --id <id> --confirm [--delete-filter]
 ```
 
 `board list` and `sprint list` page through all results up to `--limit` (default 50) and print `Showing N of M …` on stderr when more exist.
@@ -718,6 +720,7 @@ atlcli jira sprint delete --id <id> --confirm
 atlcli jira sprint issues --id <id> [--jql <query>] [--limit <n>]  # Issue table
 atlcli jira sprint add <issues...> --sprint <id>
 atlcli jira sprint remove <issues...>   # Move to backlog
+atlcli jira issue rank <issues...> (--before <key> | --after <key>)  # Reorder
 atlcli jira sprint report <id> [--points-field <id>] [--status-map <map>]  # Sprint metrics (JSON)
 atlcli jira sprint review <id> --space <key> [--export <file>]  # Sprint review page
 ```
