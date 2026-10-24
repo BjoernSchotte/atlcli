@@ -12,6 +12,10 @@
     pip install pywinpty==2.0.15
     python scripts/ci/tui-smoke-windows.py path\\to\\atlcli.exe
 
+`--notepad` (needs pywinauto and a desktop session, as GitHub's Windows
+runners have) leaves $VISUAL/$EDITOR unset, so atlcli falls back to Notepad,
+and drives Notepad itself: append a line, save, close.
+
 `python scripts/ci/tui-smoke-windows.py --stub` only serves the stub (to
 develop the scenario against a local build on any OS).
 """
@@ -83,7 +87,22 @@ def serve() -> ThreadingHTTPServer:
     return server
 
 
-def main(binary: str) -> int:
+def edit_in_notepad(marker: str) -> None:
+    """Finds the Notepad that atlcli opened on AB-1.md, appends `marker`, saves and closes it."""
+    from pywinauto import Application
+
+    app = Application(backend="win32").connect(title_re=r".*AB-1.*Notepad.*", timeout=30)
+    win = app.top_window()
+    win.wait("ready", timeout=30)
+    edit = win.child_window(class_name="Edit")
+    edit.set_edit_text(edit.window_text() + f"\r\n\r\n{marker}\r\n")
+    win.type_keys("^s")
+    time.sleep(1)
+    win.close()
+    print("tui-smoke-windows: typed into Notepad, saved and closed it")
+
+
+def main(binary: str, notepad: bool = False) -> int:
     from winpty import PtyProcess
 
     server = serve()
@@ -97,7 +116,8 @@ def main(binary: str) -> int:
         editor = os.path.join(tmp, "editor.py")
         with open(editor, "w") as f:
             f.write("import sys\nopen(sys.argv[1], 'a', encoding='utf-8').write('\\n\\nEdited on Windows.\\n')\n")
-        env = dict(os.environ, ATLCLI_CONFIG=config, ATLCLI_API_TOKEN="x", ATLCLI_DISABLE_UPDATE_CHECK="1", EDITOR=f'"{sys.executable}" "{editor}"', VISUAL="")
+        marker = "Edited in Notepad." if notepad else "Edited on Windows."
+        env = dict(os.environ, ATLCLI_CONFIG=config, ATLCLI_API_TOKEN="x", ATLCLI_DISABLE_UPDATE_CHECK="1", EDITOR="" if notepad else f'"{sys.executable}" "{editor}"', VISUAL="")
         proc = PtyProcess.spawn([binary, "tui", "--jql", "key = AB-1"], env=env, dimensions=(30, 120))
         out = {"text": ""}
 
@@ -139,11 +159,13 @@ def main(binary: str) -> int:
         proc.write("e")
         pos = wait_for("Summary of AB-1", pos, "e asked for the summary")
         proc.write("\r")
+        if notepad:
+            edit_in_notepad(marker)
         pos = wait_for("Save AB-1?", pos, "the editor ran and the diff came up")
         proc.write("y")
         pos = wait_for("AB-1 saved", pos, "y saved the edit")
         sent = json.dumps(PUTS[-1] if PUTS else {})
-        if "Edited on Windows." not in sent:
+        if marker not in sent:
             fail(f"the PUT lacks the edited description: {sent[:300]}")
         print("tui-smoke-windows: the stub received the edited description")
 
@@ -168,4 +190,4 @@ if __name__ == "__main__":
         print(f"http://127.0.0.1:{s.server_port}", flush=True)
         while True:
             time.sleep(60)
-    sys.exit(main(sys.argv[1]))
+    sys.exit(main(sys.argv[-1], notepad="--notepad" in sys.argv))
