@@ -18,11 +18,61 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The tag points at the release merge commit, which usually differs from a
+  # main commit CI already proved only by package.json's version and the new
+  # CHANGELOG entry. Reusing that proof skips a duplicate quality suite; any
+  # doubt (other files, unfinished or partial CI) keeps the full suite.
+  proof:
+    name: Reuse CI proof of an equivalent commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      reuse: ${{ steps.proof.outputs.reuse }}
+      proven_sha: ${{ steps.proof.outputs.proven_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          # The tag, its parents and grandparents are the candidates.
+          fetch-depth: 3
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Find a proved commit that differs only in release bookkeeping
+        id: proof
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun scripts/ci/release-proof-reuse.ts --sha "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+  # With a reused proof only the exact-SHA security attestation runs here.
   preflight:
     name: SHA-bound release preflight
+    needs: proof
     uses: ./.github/workflows/reusable-quality.yml
     with:
+      run_static_quality: ${{ needs.proof.outputs.reuse != 'true' }}
+      run_tests: ${{ needs.proof.outputs.reuse != 'true' }}
+      run_astro_platform: ${{ needs.proof.outputs.reuse != 'true' }}
       emit_security_attestation: true
+
+  # Tag-only Astro canaries never run on main, so a reused proof does not
+  # cover them. They run beside the artifact builds and gate publication.
+  tag-canaries:
+    name: Tag-only Astro canaries
+    needs: proof
+    if: needs.proof.outputs.reuse == 'true'
+    uses: ./.github/workflows/reusable-quality.yml
+    with:
+      run_static_quality: false
+      run_tests: false
+      run_astro_platform: true
+      emit_security_attestation: false
 
   resolve:
     name: Freeze stable release identity
@@ -327,7 +377,13 @@ jobs:
 
   publish-draft:
     name: Publish verified stable draft
-    needs: [resolve, create-draft, verify-downloaded-draft, native-cli-consumer]
+    needs: [resolve, create-draft, verify-downloaded-draft, native-cli-consumer, tag-canaries]
+    # tag-canaries is skipped when the full preflight ran them already.
+    if: >-
+      !cancelled()
+      && needs.verify-downloaded-draft.result == 'success'
+      && needs.native-cli-consumer.result == 'success'
+      && (needs.tag-canaries.result == 'success' || needs.tag-canaries.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -366,6 +422,8 @@ jobs:
   verify-published:
     name: Verify published stable release
     needs: [resolve, create-draft, publish-draft]
+    # Explicit: the default would skip this whenever tag-canaries was skipped upstream.
+    if: ${{ !cancelled() && needs.publish-draft.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

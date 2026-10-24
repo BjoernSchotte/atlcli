@@ -431,7 +431,14 @@ bun scripts/release.ts --dry-run
 4. Prepends the changelog from the previous reachable stable tag, carries reviewed **Unreleased** notes into the new entry, and credits contributors/reporters
 5. Creates the release commit, pushes a commit-bound preparation branch and opens a ready release PR; waits for `required` to succeed and merges through GitHub's protected merge path
 6. Creates an annotated tag on that exact merge commit and pushes only the tag (triggers GitHub release workflow)
-7. Waits for the SHA-bound CI preflight and security attestation
+7. Waits for the SHA-bound CI preflight and security attestation. When a
+   parent or grandparent of the tag differs from it only in the root
+   `package.json` version and `CHANGELOG.md`, and its CI completed with the
+   typecheck, Bun test and Astro platform lanes green, the preflight reuses
+   that proof (`scripts/ci/release-proof-reuse.ts`) and runs only the exact-SHA
+   attestation. The tag-only Astro canaries then run beside the artifact builds
+   and gate publication. Any other difference, or unfinished CI, runs the full
+   suite
 8. Waits for release artifacts
 9. Triggers Homebrew tap update
 
@@ -535,6 +542,11 @@ installation instructions. Historical changelog entries are preserved.
   and the release tag before recovering manually.
 - **Failed publication:** preserve the source commit/tag and inspect Actions and
   any draft. Do not treat a draft or asset upload as a completed public release.
+- **Tagged but never published:** when the release workflow fails before a
+  draft exists and the cause is in the tagged code (a rerun fails the same way),
+  the version stays reserved. Fix the cause on main, turn the unpublished
+  CHANGELOG entry into `## [Unreleased]` with a one-line note, and release the
+  next version; the script carries those notes into it.
 
 After publication, verify the GitHub release, all CLI/extension assets and checksums,
 the exact build identity, the Homebrew update result and `brew info atlcli`.

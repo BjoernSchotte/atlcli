@@ -2,7 +2,7 @@
  * `atlcli script` through the real CLI against a local Bun server that speaks
  * enough Jira Cloud (v3) and Confluence (v1 REST) for the script verbs.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +10,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
+
+// Every test spawns the real CLI, several do so up to six times (and the
+// export test a nested child). Bun's 5 s default is too tight on CI runners.
+setDefaultTimeout(60_000);
 
 type Issue = {
   id: string;
