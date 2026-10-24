@@ -385,6 +385,52 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
     - Gegen einen Stub verifiziert: ohne Login „No active profile“, `auth login` liest die
       Variablen ohne Rückfrage, danach läuft der Befehl.
   - **Offen:** Data Center live verifizieren.
+- **Verb-Erweiterung (umgesetzt am 2026-10-24):**
+  - **Jira:**
+    - `link(from, type, to)`: Typname oder eine der beiden Phrasen; die inward-Phrase dreht
+      die Richtung um.
+    - `assign(key, user | null)`: Benutzer werden beim Planen über `resolveUser` aufgelöst.
+    - `addLabels`/`removeLabels`, `attach`
+    - `boards`/`sprints` als Iteratoren
+    - `createSprint`, `updateSprint` (Start nur mit beiden Daten, Schließen nur aus active)
+    - `moveToSprint`
+  - **Confluence:**
+    - `removeLabels`: ein fehlendes Label gilt als entfernt.
+    - `comments`/`comment` (Footer)
+    - `movePage` (nur im selben Space)
+    - `deletePage` (in den Papierkorb; spätere Writes darauf werfen)
+    - `attachments`/`attach` (gleicher Name ergibt eine neue Version)
+    - `export` (PDF/DOCX)
+  - **Entscheidungen:**
+    - Anhänge kommen als Inhalt aus dem Skript (utf8/base64, max. 10 MB), nie aus dem
+      Dateisystem. So kann ein geteiltes oder generiertes Skript keine lokalen Dateien
+      abgreifen.
+    - Export schreibt nur relativ unter das Apply-Verzeichnis. Der Pfad wird beim Planen und
+      vor dem Schreiben erneut geprüft, weil eine Plan-Datei editierbar ist.
+    - Die CLI führt den Export als Kindprozess `atlcli wiki export` aus, weil `fail()` den
+      Prozess beendet.
+    - Neue Vorbedingung `jira-sprint-unchanged` (Sprint-State).
+    - No-op-Skips für `assign`, Labels und `movePage`.
+  - **Bugs, die dabei mitbehoben wurden:**
+    - `addLabels` vor `updatePage` auf derselben Seite nahm dem Update die
+      Version-Vorbedingung, und Apply scheiterte mit „No known version“. Labels, Kommentare
+      und Anhänge belegen das Seitenobjekt jetzt nicht mehr.
+    - Jedes Skript, das nach einem `await` viel allokiert (GC während einer
+      fortgesetzten async-Funktion), brach beim Dispose an QuickJS' Leak-Assertion
+      (`gc_obj_list`) ab. Reproduziert mit QuickJS und quickjs-ng unter
+      quickjs-emscripten 0.32.
+    - Jetzt wird die WASM-Instanz verworfen und das Ergebnis bleibt erhalten. Ein Zähler hält
+      die Bridge-Leak-Prüfung der Tests scharf.
+  - **Live in ATLCLI/DOCSY geprüft (alles wieder gelöscht):**
+    - Ein Plan mit 17 Operationen: zwei Issues, Link, Assign, Labels, Anhang, Sprint und
+      Move, zwei Seiten mit Move, Labels, Kommentar, zwei Anhängen sowie PDF- und
+      DOCX-Export. Platzhalter wurden im Seitentext und im Kommentar aufgelöst.
+    - Re-Run: sechs Writes wurden als unverändert übersprungen; Anhangsversion v3; der
+      Sprint wurde umbenannt und gestartet.
+    - Löschen per Skript.
+    - Zwei Live-Befunde als Regressionstests:
+      - Sprint-Start ohne Daten liefert HTTP 400. Das wird jetzt beim Planen geprüft.
+      - Ein fehlendes Confluence-Label liefert 404.
 
 ## Abnahme
 

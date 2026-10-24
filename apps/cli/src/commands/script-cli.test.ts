@@ -11,12 +11,18 @@ import { fileURLToPath } from "node:url";
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 
-type Issue = { id: string; key: string; fields: { summary: string; updated: string; status: { name: string } }; comments: string[] };
+type Issue = {
+  id: string;
+  key: string;
+  fields: { summary: string; updated: string; status: { name: string }; labels?: string[] };
+  comments: string[];
+};
 type Page = { id: string; title: string; space: string; version: number; storage: string; labels: string[]; parentId?: string };
 
 let server: ReturnType<typeof Bun.serve>;
 let home: string;
 let writes: string[] = [];
+let links: unknown[] = [];
 let issues = new Map<string, Issue>();
 let pages = new Map<string, Page>();
 let clock = 0;
@@ -26,6 +32,7 @@ const tick = () => `2026-10-24T10:00:${String(clock++).padStart(2, "0")}.000+000
 
 function reset(): void {
   writes = [];
+  links = [];
   clock = 0;
   nextId = 100;
   issues = new Map(
@@ -72,6 +79,10 @@ beforeAll(async () => {
         if (!issue) return Response.json({ errorMessages: ["Issue does not exist"] }, { status: 404 });
         if (req.method === "PUT") {
           if (body.fields?.summary) issue.fields.summary = body.fields.summary;
+          for (const change of body.update?.labels ?? []) {
+            const labels = (issue.fields.labels ?? []).filter((l) => l !== change.remove);
+            issue.fields.labels = change.add ? [...labels, change.add] : labels;
+          }
           issue.fields.updated = tick();
           return new Response(null, { status: 204 });
         }
@@ -84,6 +95,13 @@ beforeAll(async () => {
         issue.fields.status = { name: body.transition.id === "31" ? "Done" : "Won't Do" };
         issue.fields.updated = tick();
         return new Response(null, { status: 204 });
+      }
+      if (path === "/rest/api/3/issueLinkType") {
+        return Response.json({ issueLinkTypes: [{ id: "1", name: "Blocks", inward: "is blocked by", outward: "blocks" }] });
+      }
+      if (path === "/rest/api/3/issueLink" && req.method === "POST") {
+        links.push(body);
+        return new Response(null, { status: 201 });
       }
       if ((m = /^\/rest\/api\/3\/issue\/([A-Z]+-\d+)\/comment$/.exec(path))) {
         const issue = issues.get(m[1]!)!;
@@ -110,12 +128,25 @@ beforeAll(async () => {
       if ((m = /^\/wiki\/rest\/api\/content\/(\d+)$/.exec(path))) {
         const page = pages.get(m[1]!);
         if (!page) return Response.json({ message: "No content found" }, { status: 404 });
+        if (req.method === "DELETE") {
+          pages.delete(page.id);
+          return new Response(null, { status: 204 });
+        }
         if (req.method === "PUT") {
           if (body.version.number !== page.version + 1) return Response.json({ message: "Version conflict" }, { status: 409 });
           Object.assign(page, { title: body.title, storage: body.body.storage.value, version: body.version.number });
           return Response.json(pageJson(page));
         }
         return Response.json(pageJson(page));
+      }
+      if ((m = /^\/wiki\/rest\/api\/content\/(\d+)\/label\/([^/]+)$/.exec(path)) && req.method === "DELETE") {
+        const page = pages.get(m[1]!)!;
+        const label = decodeURIComponent(m[2]!);
+        if (!page.labels.includes(label)) {
+          return Response.json({ statusCode: 404, message: `NotFoundException: No label found with name: ${label}` }, { status: 404 });
+        }
+        page.labels = page.labels.filter((l) => l !== label);
+        return new Response(null, { status: 204 });
       }
       if ((m = /^\/wiki\/rest\/api\/content\/(\d+)\/label$/.exec(path))) {
         const page = pages.get(m[1]!)!;
@@ -242,6 +273,32 @@ await atlcli.jira.transition(issue.key, "Done");`,
     expect(exitCode, stderr).toBe(0);
     expect(stdout).toContain("Applied 2 operations. Created: ATLCLI-100");
     expect(issues.get("ATLCLI-100")!.fields.status.name).toBe("Done");
+  });
+
+  test("applies links, labels and deletes; a failing export stops the run with the child's error", async () => {
+    pages.get("900")!.labels = ["old"];
+    pages.set("901", { id: "901", title: "Obsolete", space: "DOCSY", version: 2, storage: "<p>x</p>", labels: [] });
+    const file = await script(
+      "more.ts",
+      `await atlcli.jira.link("ATLCLI-1", "is blocked by", "ATLCLI-2");
+await atlcli.jira.addLabels("ATLCLI-1", ["triaged"]);
+await atlcli.confluence.removeLabels("900", ["old", "never-set"]);
+await atlcli.confluence.deletePage("901");
+await atlcli.confluence.export("900", { format: "pdf", path: "out/notes.pdf" });`,
+    );
+    const { exitCode, stdout, stderr } = await run(["run", "--apply", file, "--yes"]);
+    expect(stdout).toContain("jira link        ATLCLI-2 Blocks ATLCLI-1");
+    expect(stdout).toContain('page DELETE      901 "Obsolete" (to trash)');
+    expect(stdout).toContain("page export      900 → out/notes.pdf");
+    expect(exitCode).toBe(1);
+    // The export runs this CLI as a child process; its error comes back as the operation's.
+    expect(stderr).toContain(
+      "Operation #5 failed: wiki export failed (exit 4): Export failed (exit 4): The Confluence export source could not be resolved. 4 of 5 operations were applied",
+    );
+    expect(links).toEqual([{ type: { name: "Blocks" }, inwardIssue: { key: "ATLCLI-2" }, outwardIssue: { key: "ATLCLI-1" } }]);
+    expect(issues.get("ATLCLI-1")!.fields.labels).toEqual(["triaged"]);
+    expect(pages.get("900")!.labels).toEqual([]);
+    expect(pages.has("901")).toBe(false);
   });
 
   test("--apply without a terminal requires --yes", async () => {

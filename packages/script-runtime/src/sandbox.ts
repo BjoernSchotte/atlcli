@@ -301,9 +301,33 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
       runtime.dispose();
     } catch (error) {
       forgetModule(options.variant);
-      if (failure?.kind !== "memory") throw error;
+      if (failure?.kind !== "memory" && !isTeardownLeak(error)) throw error;
+      if (failure?.kind !== "memory") teardownLeaks++;
     }
   }
+}
+
+/**
+ * QuickJS checks at runtime teardown that no object is left
+ * (`list_empty(&rt->gc_obj_list)`). That check fails, with both QuickJS and
+ * quickjs-ng 0.32 under quickjs-emscripten, once a garbage collection ran
+ * while an async function was resumed, e.g. a script that collects a few
+ * hundred thousand objects after its first `await`. The run itself finished;
+ * dropping the WASM instance frees everything it held.
+ *
+ * ponytail: tolerated rather than fixed upstream; the count lets tests tell
+ * this from a handle the bridge forgot to dispose. Revisit on a
+ * quickjs-emscripten upgrade.
+ */
+let teardownLeaks = 0;
+
+/** Runs whose teardown hit the QuickJS leak check (tests only). */
+export function teardownLeakCount(): number {
+  return teardownLeaks;
+}
+
+function isTeardownLeak(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("list_empty(&rt->gc_obj_list)");
 }
 
 async function callWithTimeout(

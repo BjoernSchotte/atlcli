@@ -117,7 +117,7 @@ atlcli script run -e 'export default (await atlcli.jira.get("ATLCLI-1")).fields.
 
 ## Plan and apply
 
-Every write verb (`create`, `update`, `transition`, `comment`, `createPage`, `updatePage`, `upsertPage`, `addLabels`) adds one operation to the plan instead of writing. Reads go live.
+Every write verb adds one operation to the plan instead of writing; reads go live. Writes cover issues (create, update, transition, comment, link, assign, labels, attachments), sprints (create, start, close, move issues), pages (create, update, upsert, move, delete to trash, labels, comments, attachments) and page exports to PDF or DOCX. The [Script API reference](reference/scripts.md#verbs) lists them all.
 
 **Objects the plan creates** have placeholder ids, `plan:<n>`, where `n` is the operation number. Use them like real ids: as a parent page, as the issue to comment on, or inside text. On apply each placeholder becomes the real key or id, inside Markdown as well:
 
@@ -128,7 +128,9 @@ await atlcli.confluence.createPage({ space: "DOCS", title: "Release 2026.10", ma
 
 The plan lists the page as `(after #1)`. Once applied, the page says `Tracked in ATLCLI-187`.
 
-**Updates that change nothing are left out.** When `updatePage` or `upsertPage` would write the body and title the page already has, the plan skips it and lists it under `Unchanged, not planned`. Re-running a report script therefore plans nothing when the report did not change. This applies to the first write to a page in a run: a later write that restores an earlier state is kept.
+**Updates that change nothing are left out.** When `updatePage` or `upsertPage` would write the body and title the page already has, the plan skips it and lists it under `Unchanged, not planned`. The same goes for assigning an issue to its current assignee, label changes that change nothing and moving a page to the parent it already has. Re-running a report script therefore plans nothing when the report did not change. This applies to the first write to an object in a run: a later write that restores an earlier state is kept.
+
+**Attachments and exports.** Scripts cannot read local files, so `attach` takes content the script builds (text, or base64). `confluence.export` writes a PDF or DOCX file when the plan is applied, below the directory you apply in.
 
 **Three ways to apply:**
 
@@ -234,6 +236,37 @@ atlcli script run release-notes.ts --param version=2026.10 --apply
 
 Run it twice: the second run updates the same page instead of creating a new one. If nothing changed since the last run, the update is left out of the plan, and the output lists the page under `Unchanged, not planned`. For running scripts from CI, see [Scripts in CI](recipes/scripts-in-ci.md).
 
+### Advanced: sprint rollover with a status report
+
+Moves every unfinished issue of the active sprint into the next one, attaches a CSV of what moved, and exports the report page as PDF:
+
+```ts
+export const meta = {
+  name: "sprint-rollover",
+  permissions: ["jira:read", "jira:write:ATLCLI", "confluence:read", "confluence:write:DOCS"],
+  params: { board: { type: "number" }, report: { type: "string" } },
+};
+
+const { board, report } = atlcli.params;
+const sprints: Record<string, JiraSprint | undefined> = {};
+for await (const s of atlcli.jira.sprints(board)) if (s.state !== "closed") sprints[s.state] ??= s;
+const { active, future: next } = sprints;
+if (!active || !next) throw new Error("Needs an active and a future sprint");
+
+const rows = ["key,summary"];
+const keys: string[] = [];
+for await (const issue of atlcli.jira.search(`sprint = ${active.id} AND statusCategory != Done`, { fields: ["summary"] })) {
+  keys.push(issue.key);
+  rows.push(`${issue.key},"${String(issue.fields.summary).replaceAll('"', '""')}"`);
+}
+if (keys.length) await atlcli.jira.moveToSprint(next.id, keys);
+await atlcli.confluence.attach(report, { name: `rollover-${active.name}.csv`, content: rows.join("\n") });
+await atlcli.confluence.export(report, { format: "pdf", path: `reports/${active.name}.pdf` });
+export default { moved: keys.length, into: next.name };
+```
+
+Closing the old sprint is a separate step on purpose: `updateSprint(active.id, { state: "closed" })` cannot be undone.
+
 ## Limits
 
 By default a script gets 64 MB of memory, 5 minutes per run, 10,000 Jira or Confluence calls and 100 planned writes. A script that hits a limit ends with an error that names it. Raise or lower the limits per run:
@@ -260,6 +293,15 @@ The run hit a limit. If the size is expected (a migration, a large space), raise
 
 **`Script failed (permission-denied): Script meta.permissions does not grant "jira:write:OPS"`**
 The script's `meta.permissions` does not include that project or space. Add the grant, or remove `permissions` to allow everything.
+
+**`Starting sprint 1349 needs a startDate and an endDate`**
+Jira starts a sprint only with both dates. Pass them with `state: "active"`, or set them on the sprint first.
+
+**`Unknown link type "duplicates" (available: blocks / is blocked by, …)`**
+Link types are the site's own and may be renamed or localized. Use one of the listed phrases, or the type's name.
+
+**`Export path must be relative and stay inside the output directory`**
+`confluence.export` writes only below the directory `apply` runs in. Use a relative path such as `reports/q3.pdf`.
 
 **`Applying needs confirmation: pass --yes`**
 There is no terminal to ask in (CI, a pipe) or `--json` is set. Add `--yes` once you have reviewed the plan.

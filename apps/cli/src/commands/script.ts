@@ -64,6 +64,8 @@ Limits for run (defaults in parentheses):
   --max-calls <n>        Jira/Confluence calls per run (10000)
   --memory <MB>          Script memory (64)
 
+atlcli.confluence.export writes its files below the directory the plan is applied in.
+
 Exit codes: 0 ok · 1 error · 2 drift (target changed since the plan; nothing written)
 `;
 }
@@ -346,7 +348,7 @@ function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions): v
   if (report.status === "failed") {
     const failed = report.operations.find((o) => o.status === "failed")!;
     const done = report.operations.filter((o) => o.status === "applied").length;
-    fail(opts, 1, ERROR_CODES.API, `Operation #${failed.seq} failed: ${failed.error}. ${done} of ${plan.operations.length} operations were applied; the rest were skipped.`, {
+    fail(opts, 1, ERROR_CODES.API, `Operation #${failed.seq} failed: ${failed.error?.replace(/\.$/, "")}. ${done} of ${plan.operations.length} operations were applied; the rest were skipped.`, {
       report,
     });
   }
@@ -356,9 +358,10 @@ function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions): v
 
 function createdSummary(report: ApplyReport): string {
   const created = report.operations
-    .filter((o) => o.status === "applied" && (o.verb === "jira.create" || o.verb === "confluence.createPage"))
-    .map((o) => String(o.result?.key ?? o.result?.id));
-  return created.length ? ` Created: ${created.join(", ")}` : "";
+    .filter((o) => o.status === "applied" && (o.verb === "jira.create" || o.verb === "jira.createSprint" || o.verb === "confluence.createPage"))
+    .map((o) => `${o.verb === "jira.createSprint" ? "sprint " : ""}${String(o.result?.key ?? o.result?.id)}`);
+  const exported = report.operations.filter((o) => o.status === "applied" && o.verb === "confluence.export").map((o) => String(o.result?.path));
+  return `${created.length ? ` Created: ${created.join(", ")}.` : ""}${exported.length ? ` Exported: ${exported.join(", ")}.` : ""}`;
 }
 
 export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, applying: boolean): string {
@@ -371,7 +374,17 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
   }
   if (plan.skipped.length > 0) {
     lines.push(`Unchanged, not planned: ${plan.skipped.length}`);
-    for (const skip of plan.skipped) lines.push(`       page ${skip.target}${skip.title ? ` ${JSON.stringify(skip.title)}` : ""} (same content)`);
+    const why: Partial<Record<string, string>> = {
+      "confluence.updatePage": "same content",
+      "confluence.movePage": "already there",
+      "jira.assign": "already assigned",
+      "jira.addLabels": "labels already set",
+      "jira.removeLabels": "labels not set",
+    };
+    for (const skip of plan.skipped) {
+      const what = skip.verb.startsWith("confluence.") ? `page ${skip.target}` : skip.target;
+      lines.push(`       ${what}${skip.title ? ` ${JSON.stringify(skip.title)}` : ""} (${why[skip.verb] ?? "no change"})`);
+    }
   }
   if (plan.value !== null) lines.push(`Result: ${JSON.stringify(plan.value)}`);
   if (planOut) lines.push(`Plan written to ${planOut} (digest ${plan.digest.slice(0, 12)})`);
@@ -402,13 +415,49 @@ function describeOperation(op: PlannedOperation): string {
       return `page update      ${ref(a.id)} ${text(a.title)}${after}`;
     case "confluence.addLabels":
       return `page labels      ${ref(a.pageId)} + ${(a.labels as string[]).join(", ")}${after}`;
+    case "confluence.removeLabels":
+      return `page labels      ${ref(a.pageId)} - ${(a.labels as string[]).join(", ")}${after}`;
+    case "confluence.comment":
+      return `page comment     ${ref(a.pageId)} ${text(a.markdown)}${after}`;
+    case "confluence.movePage":
+      return `page move        ${ref(a.id)} under ${ref(a.parentId)}${after}`;
+    case "confluence.deletePage":
+      return `page DELETE      ${ref(a.id)} ${text(a.title)} (to trash)${after}`;
+    case "confluence.attach":
+      return `page attach      ${ref(a.pageId)} ${a.name} (${size(a)})${after}`;
+    case "confluence.export":
+      return `page export      ${ref(a.pageId)} → ${a.path}${after}`;
+    case "jira.link":
+      return `jira link        ${ref(a.from)} ${a.type} ${ref(a.to)}${after}`;
+    case "jira.assign":
+      return `jira assign      ${ref(a.key)} → ${a.assignee ? (a.user ?? "user") : "(unassigned)"}${after}`;
+    case "jira.addLabels":
+      return `jira labels      ${ref(a.key)} + ${(a.labels as string[]).join(", ")}${after}`;
+    case "jira.removeLabels":
+      return `jira labels      ${ref(a.key)} - ${(a.labels as string[]).join(", ")}${after}`;
+    case "jira.attach":
+      return `jira attach      ${ref(a.key)} ${a.name} (${size(a)})${after}`;
+    case "jira.createSprint":
+      return `sprint create    board ${a.boardId} ${text(a.name)}${after}`;
+    case "jira.updateSprint":
+      return `sprint update    ${ref(a.id)} ${a.state ? `→ ${a.state}` : Object.keys(a).filter((k) => k !== "id").join(", ")}${after}`;
+    case "jira.moveToSprint":
+      return `sprint add       ${ref(a.sprintId)} ← ${(a.keys as string[]).map(ref).join(", ")}${after}`;
   }
+}
+
+/** Decoded attachment size for the plan listing. */
+function size(a: Record<string, any>): string {
+  const bytes = a.encoding === "base64" ? Buffer.from(a.content, "base64").length : Buffer.byteLength(a.content);
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 }
 
 function describePrecondition(pre: ScriptPlanV1["operations"][number]["precondition"] & {}): string {
   switch (pre.kind) {
     case "jira-issue-unchanged":
       return `${pre.key} last updated ${pre.updated}`;
+    case "jira-sprint-unchanged":
+      return `sprint ${pre.id} ${pre.state}`;
     case "confluence-page-unchanged":
       return `page ${pre.id} at version ${pre.version}`;
     case "confluence-title-absent":

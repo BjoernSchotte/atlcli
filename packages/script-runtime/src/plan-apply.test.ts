@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import DEBUG_VARIANT from "@jitl/quickjs-ng-wasmfile-debug-sync";
 import { applyScriptPlan } from "./apply.js";
 import { createScriptPlan, parseScriptPlan, ScriptPlanError, serializeScriptPlan, type ScriptPlanV1 } from "./plan.js";
-import type { ConfluencePageView, JiraIssueView, ScriptPort } from "./port.js";
+import type { ConfluencePageView, JiraIssueView, JiraSprintView, ScriptPort } from "./port.js";
 import { planScript } from "./verbs.js";
 
 const BASE_URL = "https://example.atlassian.net";
@@ -97,6 +97,102 @@ class StatefulPort implements ScriptPort {
   async confluenceAddLabels(pageId: string, labels: string[]) {
     this.guard("confluenceAddLabels");
     this.pages.get(pageId)!.labels.push(...labels);
+  }
+
+  links: string[] = [];
+  assignees = new Map<string, unknown>();
+  labels = new Map<string, string[]>();
+  attachments: string[] = [];
+  sprints = new Map<number, JiraSprintView & { issues: string[] }>();
+  comments: string[] = [];
+  exports: string[] = [];
+  async jiraLinkTypes() {
+    return [{ name: "Blocks", outward: "blocks", inward: "is blocked by" }];
+  }
+  async jiraLinkIssues(input: { type: string; from: string; to: string }) {
+    this.guard("jiraLinkIssues");
+    this.links.push(`${input.from} ${input.type} ${input.to}`);
+  }
+  async jiraFindUser(query: string) {
+    return { accountId: `acc-${query}` };
+  }
+  async jiraAssignIssue(key: string, user: unknown) {
+    this.guard("jiraAssignIssue");
+    this.assignees.set(key, user);
+  }
+  async jiraEditLabels(key: string, change: { add?: string[]; remove?: string[] }) {
+    this.guard("jiraEditLabels");
+    const current = (this.labels.get(key) ?? []).filter((l) => !change.remove?.includes(l));
+    this.labels.set(key, [...current, ...(change.add ?? [])]);
+  }
+  async jiraAttach(key: string, file: { name: string; content: string; encoding: string }) {
+    this.guard("jiraAttach");
+    this.attachments.push(`${key}/${file.name}:${file.encoding}:${file.content}`);
+    return { id: `a${this.attachments.length}` };
+  }
+  async jiraBoards() {
+    return { boards: [{ id: 7, name: "ATLCLI board", type: "scrum", projectKey: "ATLCLI" }] };
+  }
+  async jiraGetBoard(id: number) {
+    return { id, name: "ATLCLI board", type: "scrum", projectKey: "ATLCLI" };
+  }
+  async jiraSprints() {
+    return { sprints: [...this.sprints.values()] };
+  }
+  async jiraGetSprint(id: number) {
+    const sprint = this.sprints.get(id);
+    if (!sprint) throw new Error(`Sprint does not exist: ${id}`);
+    return sprint;
+  }
+  async jiraCreateSprint(input: { boardId: number; name: string }) {
+    this.guard("jiraCreateSprint");
+    const id = 40 + this.sprints.size;
+    this.sprints.set(id, { id, name: input.name, state: "future", boardId: input.boardId, issues: [] });
+    return { id };
+  }
+  async jiraUpdateSprint(id: number, input: { state?: "active" | "closed" }) {
+    this.guard("jiraUpdateSprint");
+    if (input.state) this.sprints.get(id)!.state = input.state;
+  }
+  async jiraMoveToSprint(sprintId: number, keys: string[]) {
+    this.guard("jiraMoveToSprint");
+    this.sprints.get(sprintId)!.issues.push(...keys);
+  }
+  async confluenceRemoveLabels(pageId: string, labels: string[]) {
+    this.guard("confluenceRemoveLabels");
+    const page = this.pages.get(pageId)!;
+    page.labels = page.labels.filter((l) => !labels.includes(l));
+  }
+  async confluenceComments() {
+    return [];
+  }
+  async confluenceAddComment(pageId: string, markdown: string) {
+    this.guard("confluenceAddComment");
+    this.comments.push(`${pageId}:${markdown}`);
+    return { id: `pc${this.comments.length}` };
+  }
+  async confluenceMovePage(id: string, parentId: string) {
+    this.guard("confluenceMovePage");
+    const page = this.pages.get(id)!;
+    Object.assign(page, { parentId, version: page.version + 1 });
+    return { id, version: page.version };
+  }
+  async confluenceDeletePage(id: string) {
+    this.guard("confluenceDeletePage");
+    this.pages.delete(id);
+  }
+  async confluenceAttachments() {
+    return [];
+  }
+  async confluenceAttach(pageId: string, file: { name: string; content: string; encoding: string }) {
+    this.guard("confluenceAttach");
+    this.attachments.push(`${pageId}/${file.name}:${file.encoding}:${file.content}`);
+    return { id: `att${this.attachments.length}` };
+  }
+  async confluenceExport(input: { pageId: string; format: string; path: string }) {
+    this.guard("confluenceExport");
+    this.exports.push(`${input.pageId}:${input.format}:${input.path}`);
+    return { path: input.path, bytes: 42 };
   }
 }
 
@@ -256,5 +352,73 @@ await atlcli.confluence.createPage({ space: "DOCSY", title: "Notes", markdown: "
     ]);
     expect(report.operations[2]!.error).toBe("jiraTransitionIssue rejected by server");
     expect(port.writes).toEqual(["jiraCreateIssue", "jiraAddComment", "jiraTransitionIssue"]);
+  });
+
+  it("applies links, assignments, labels, attachments, sprints, moves, deletes and exports", async () => {
+    const port = new StatefulPort();
+    port.issues.set("ATLCLI-2", { id: "2", key: "ATLCLI-2", fields: { summary: "Other", updated: port.tick() }, status: "To Do", comments: [] });
+    port.pages.set("200", { id: "200", title: "Archive", spaceKey: "DOCSY", version: 1, markdown: "", labels: [] });
+    port.pages.set("300", { id: "300", title: "Obsolete", spaceKey: "DOCSY", version: 4, markdown: "", labels: [] });
+    const source = `
+const sprint = await atlcli.jira.createSprint({ board: 7, name: "Sprint 1", startDate: "2026-11-02T09:00:00Z", endDate: "2026-11-16T17:00:00Z" });
+await atlcli.jira.moveToSprint(sprint.id, ["ATLCLI-1", "ATLCLI-2"]);
+await atlcli.jira.updateSprint(sprint.id, { state: "active" });
+await atlcli.jira.link("ATLCLI-1", "is blocked by", "ATLCLI-2");
+await atlcli.jira.assign("ATLCLI-1", "ada@example.com");
+await atlcli.jira.addLabels("ATLCLI-1", ["triaged"]);
+await atlcli.jira.attach("ATLCLI-1", { name: "report.csv", content: "a,b" });
+await atlcli.confluence.addLabels("100", ["generated"]);
+await atlcli.confluence.updatePage("100", { markdown: "# New" });
+await atlcli.confluence.movePage("100", { parentId: "200" });
+await atlcli.confluence.comment("100", "Moved to the archive");
+await atlcli.confluence.attach("100", { name: "logo.png", content: "aGk=", encoding: "base64" });
+await atlcli.confluence.export("100", { format: "pdf", path: "out/notes.pdf" });
+await atlcli.confluence.deletePage("300");`;
+    const run = await planScript(source, { port, variant: DEBUG_VARIANT });
+    // Labels do not occupy the page: the later update keeps its version precondition.
+    expect(run.operations.find((o) => o.verb === "confluence.updatePage")!.precondition).toEqual({
+      kind: "confluence-page-unchanged",
+      id: "100",
+      version: 7,
+    });
+    const plan = await parseScriptPlan(serializeScriptPlan(await createScriptPlan(run, { source, baseUrl: BASE_URL })));
+    expect(port.writes).toEqual([]);
+
+    const report = await applyScriptPlan(plan, { port, baseUrl: BASE_URL });
+
+    expect(report.status).toBe("applied");
+    expect(port.sprints.get(40)).toMatchObject({ name: "Sprint 1", state: "active", issues: ["ATLCLI-1", "ATLCLI-2"] });
+    expect(port.links).toEqual(["ATLCLI-2 Blocks ATLCLI-1"]);
+    expect(port.assignees.get("ATLCLI-1")).toEqual({ accountId: "acc-ada@example.com" });
+    expect(port.labels.get("ATLCLI-1")).toEqual(["triaged"]);
+    expect(port.attachments).toEqual(["ATLCLI-1/report.csv:utf8:a,b", "100/logo.png:base64:aGk="]);
+    // update 7 → 8, move 8 → 9
+    expect(port.pages.get("100")).toMatchObject({ version: 9, parentId: "200", markdown: "# New", labels: ["generated"] });
+    expect(port.comments).toEqual(["100:Moved to the archive"]);
+    expect(port.exports).toEqual(["100:pdf:out/notes.pdf"]);
+    expect(port.pages.has("300")).toBe(false);
+  });
+
+  it("checks sprint state as a precondition", async () => {
+    const port = new StatefulPort();
+    port.sprints.set(41, { id: 41, name: "Running", state: "active", boardId: 7, issues: [] });
+    const source = `await atlcli.jira.updateSprint(41, { state: "closed" });`;
+    const plan = await createScriptPlan(await planScript(source, { port, variant: DEBUG_VARIANT }), { source, baseUrl: BASE_URL });
+    port.sprints.get(41)!.state = "closed";
+    const report = await applyScriptPlan(plan, { port, baseUrl: BASE_URL });
+    expect(report.drift.map((d) => d.actual)).toEqual(["state closed"]);
+    expect(port.writes).toEqual([]);
+  });
+
+  it("re-checks export paths when applying, since a plan file is editable", async () => {
+    const port = new StatefulPort();
+    const source = `await atlcli.confluence.export("100", { format: "docx" });`;
+    const plan = await createScriptPlan(await planScript(source, { port, variant: DEBUG_VARIANT }), { source, baseUrl: BASE_URL });
+    expect(plan.operations[0]!.args.path).toBe("100.docx");
+    plan.operations[0]!.args.path = "../../.ssh/authorized_keys.docx";
+    const report = await applyScriptPlan(plan, { port, baseUrl: BASE_URL });
+    expect(report.status).toBe("failed");
+    expect(report.operations[0]!.error).toContain("must be relative and stay inside the output directory");
+    expect(port.exports).toEqual([]);
   });
 });

@@ -52,12 +52,25 @@ case.
 | `atlcli.jira.update(key, { summary?, description?, fields? })` | |
 | `atlcli.jira.transition(key, to)` | checked against available transitions when planning (not for issues the plan creates) |
 | `atlcli.jira.comment(key, markdown)` | |
+| `atlcli.jira.link(from, type, to)` | reads as a sentence: `link("A-1", "blocks", "A-2")`; type name or either phrase, checked when planning |
+| `atlcli.jira.assign(key, user)` | `"me"`, email, display name or account id, resolved when planning; `null` unassigns |
+| `atlcli.jira.addLabels(key, labels)` / `removeLabels` | |
+| `atlcli.jira.attach(key, { name, content, encoding? })` | content comes from the script (text, or `encoding: "base64"`), max 10 MB |
+| `atlcli.jira.boards({ project?, name? })` / `sprints(boardId, { state? })` | async iterators |
+| `atlcli.jira.createSprint({ board, name, goal?, startDate?, endDate? })` | scrum boards only |
+| `atlcli.jira.updateSprint(id, { name?, goal?, startDate?, endDate?, state? })` | `state: "active"` needs both dates; `"closed"` only from active |
+| `atlcli.jira.moveToSprint(sprintId, keys)` | |
 | `atlcli.confluence.search(cql, { limit? })` | async iterator of `{ id, title, spaceKey }` |
 | `atlcli.confluence.getPage(id)` | `{ id, title, spaceKey, version, parentId?, markdown }` |
 | `atlcli.confluence.createPage({ space, title, markdown, parentId? })` | |
 | `atlcli.confluence.updatePage(id, { title?, markdown })` | replaces the whole body |
 | `atlcli.confluence.upsertPage({ space, title, markdown, parentId? })` | updates the page with that exact title, else creates it |
-| `atlcli.confluence.addLabels(pageId, labels)` | |
+| `atlcli.confluence.addLabels(pageId, labels)` / `removeLabels` | removing an absent label is fine |
+| `atlcli.confluence.comments(pageId)` / `comment(pageId, markdown)` | footer comments |
+| `atlcli.confluence.movePage(id, { parentId })` | within the page's space |
+| `atlcli.confluence.deletePage(id)` | to the space's trash; later writes to it in the plan throw |
+| `atlcli.confluence.attachments(pageId)` / `attach(pageId, { name, content, encoding? })` | same name → new version |
+| `atlcli.confluence.export(pageId, { format: "pdf" \| "docx", path? })` | file written below the apply directory when applied |
 
 Objects the plan creates are referenced as `plan:<n>`, also inside text (a page
 body naming a new issue key gets the real key at apply). Reads of such objects
@@ -84,10 +97,13 @@ atlcli script run cleanup.ts --apply --yes                         # plan + appl
 - **First failure stops the run.** Earlier operations stay written, and the
   report says which ran.
 
-- **Unchanged pages are skipped.** An `updatePage` or `upsertPage` that would
-  leave body and title as they are is not planned. It is listed under
-  `Unchanged, not planned` and in `plan.skipped`. "No changes planned" after a
-  re-run is the expected result.
+- **Unchanged writes are skipped.** An `updatePage` or `upsertPage` that would
+  leave body and title as they are is not planned; so are an `assign` to the
+  current assignee, label changes that change nothing and a `movePage` to the
+  current parent. They are listed under `Unchanged, not planned` and in
+  `plan.skipped`. "No changes planned" after a re-run is the expected result.
+- **`deletePage` is a write like any other** but the plan shows it as
+  `page DELETE`. Point it out to the user before applying.
 - **Limits:** the defaults are 5 minutes, 10,000 calls, 100 writes and 64 MB.
   Raise them only for a run the user expects to be large: `--timeout 30m`,
   `--max-calls`, `--max-writes` (overrides `meta.limits.maxWrites`),

@@ -28,7 +28,7 @@ describe("skill completions", () => {
   });
 
   test("completes a partial reference path", () => {
-    const completions = getCompletions(["skill", "references/s"]);
+    const completions = getCompletions(["skill", "references/sa"]);
     expect(completions).toEqual(["references/safety.md"]);
   });
 

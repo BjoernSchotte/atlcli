@@ -1,11 +1,15 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import DEBUG_VARIANT from "@jitl/quickjs-ng-wasmfile-debug-sync";
-import { runScript, ScriptError, type HostFunction, type RunScriptOptions } from "./sandbox.js";
+import { runScript, ScriptError, teardownLeakCount, type HostFunction, type RunScriptOptions } from "./sandbox.js";
 
-// The debug build asserts on leaked handles when the runtime is disposed, so
-// every test below doubles as a lifetime/leak check.
+// QuickJS asserts on leaked objects when the runtime is disposed. runScript
+// tolerates that check only for a known upstream case and counts it, so every
+// test below doubles as a lifetime/leak check of the bridge.
 const run = (js: string, options: RunScriptOptions = {}) =>
   runScript(js, { variant: DEBUG_VARIANT, ...options });
+
+let expectedTeardownLeaks = teardownLeakCount();
+afterEach(() => expect(teardownLeakCount()).toBe(expectedTeardownLeaks));
 
 async function scriptError(promise: Promise<unknown>): Promise<ScriptError> {
   try {
@@ -47,6 +51,21 @@ describe("runScript", () => {
       });
       expect(result.value).toBe(i);
     }
+  });
+
+  // Regression: a garbage collection while an async function is resumed trips
+  // QuickJS's teardown leak check; the finished run's result must survive it.
+  it("returns the result of scripts that allocate a lot after an await", async () => {
+    const echo: HostFunction = async ([v]) => v;
+    const script = `const big = await atlcli.echo("x".repeat(4 * 1024 * 1024));
+      const items = []; for (let i = 0; i < 300000; i++) items.push({ i });
+      export default [big.length, items.length];`;
+    for (const variant of [DEBUG_VARIANT, undefined]) {
+      const result = await runScript(script, { host: { echo }, variant, limits: { memoryBytes: 256 * 1024 * 1024 } });
+      expect(result.value).toEqual([4 * 1024 * 1024, 300000]);
+      expectedTeardownLeaks++;
+    }
+    expect((await run(`export default 1`)).value).toBe(1); // the next run gets a fresh instance
   });
 
   it("calls namespaced host functions with JSON-copied arguments", async () => {

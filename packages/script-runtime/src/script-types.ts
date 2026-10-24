@@ -58,6 +58,52 @@ interface ConfluencePage extends ConfluencePageRef {
 /** Ids and keys of objects a plan creates read \`plan:<n>\` until the plan is applied. */
 type PlannedRef = string;
 
+interface JiraBoard {
+  id: number;
+  name: string;
+  /** "scrum", "kanban" or "simple" */
+  type: string;
+  projectKey?: string;
+}
+
+interface JiraSprint {
+  id: number;
+  name: string;
+  state: "future" | "active" | "closed";
+  boardId?: number;
+  startDate?: string;
+  endDate?: string;
+  goal?: string;
+}
+
+interface ConfluenceComment {
+  id: string;
+  authorId?: string;
+  created?: string;
+  status: string;
+  markdown: string;
+  replies: ConfluenceComment[];
+}
+
+interface ConfluenceAttachment {
+  id: string;
+  name: string;
+  mediaType: string;
+  size: number;
+  version: number;
+}
+
+/** File content made by the script (up to 10 MB); there is no file system access. */
+interface AttachmentInput {
+  name: string;
+  /** Text, or base64 with \`encoding: "base64"\`. */
+  content: string;
+  encoding?: "utf8" | "base64";
+}
+
+/** ISO 8601 with offset, e.g. "2026-11-02T09:00:00.000Z". */
+type IsoDate = string;
+
 /** Output goes to the terminal (stderr), not into the plan. */
 const console: {
   log(...values: unknown[]): void;
@@ -86,6 +132,23 @@ const atlcli: {
     transition(key: string, to: string): Promise<null>;
     /** \`markdown\` becomes the comment body. */
     comment(key: string, markdown: string): Promise<{ id: PlannedRef }>;
+    /** Reads as a sentence: link("A-1", "blocks", "A-2"). \`type\` is a link type name or either of its phrases. */
+    link(from: string, type: string, to: string): Promise<null>;
+    /** "me", an email, a display name or an account id; \`null\` unassigns. */
+    assign(key: string, user: string | null): Promise<null>;
+    addLabels(key: string, labels: string[]): Promise<null>;
+    removeLabels(key: string, labels: string[]): Promise<null>;
+    attach(key: string, file: AttachmentInput): Promise<{ id: PlannedRef }>;
+    boards(options?: { project?: string; name?: string; limit?: number }): AsyncIterable<JiraBoard>;
+    sprints(boardId: number, options?: { state?: "future" | "active" | "closed"; limit?: number }): AsyncIterable<JiraSprint>;
+    /** Needs a scrum board. */
+    createSprint(input: { board: number; name: string; goal?: string; startDate?: IsoDate; endDate?: IsoDate }): Promise<{ id: PlannedRef }>;
+    /** \`state: "active"\` starts a future sprint, \`"closed"\` completes an active one. */
+    updateSprint(
+      id: number | PlannedRef,
+      input: { name?: string; goal?: string; startDate?: IsoDate; endDate?: IsoDate; state?: "active" | "closed" },
+    ): Promise<null>;
+    moveToSprint(sprintId: number | PlannedRef, keys: string[]): Promise<null>;
   };
   readonly confluence: {
     /** All pages matching \`cql\`, paged transparently. */
@@ -97,6 +160,20 @@ const atlcli: {
     /** Updates the page with this exact title in \`space\`, or creates it. */
     upsertPage(input: { space: string; title: string; markdown: string; parentId?: string }): Promise<{ id: PlannedRef; created: boolean }>;
     addLabels(pageId: string, labels: string[]): Promise<null>;
+    removeLabels(pageId: string, labels: string[]): Promise<null>;
+    /** Footer comments with replies. */
+    comments(pageId: string): Promise<ConfluenceComment[]>;
+    /** Adds a footer comment; \`markdown\` is converted. */
+    comment(pageId: string, markdown: string): Promise<{ id: PlannedRef }>;
+    /** Within the page's space. */
+    movePage(id: string, input: { parentId: string }): Promise<{ id: string }>;
+    /** Moves the page to the space's trash. */
+    deletePage(id: string): Promise<null>;
+    attachments(pageId: string): Promise<ConfluenceAttachment[]>;
+    /** Replaces an attachment of the same name with a new version. */
+    attach(pageId: string, file: AttachmentInput): Promise<{ id: PlannedRef }>;
+    /** Writes a local file when the plan is applied; \`path\` is relative (default "<id>.<format>"). */
+    export(pageId: string, options: { format: "pdf" | "docx"; path?: string }): Promise<{ path: string }>;
   };
 };
 }

@@ -17,6 +17,9 @@ class FakePort implements ScriptPort {
       this.issues.set(key, { id: String(n), key, fields: { summary: `Issue ${n}`, updated: `2026-10-0${(n % 9) + 1}T00:00:00Z` } });
     }
     this.pages.set("100", { id: "100", title: "Release Notes", spaceKey: "DOCSY", version: 7, markdown: "# Old" });
+    this.pages.set("101", { id: "101", title: "Child", spaceKey: "DOCSY", version: 2, parentId: "100", markdown: "" });
+    this.pages.set("200", { id: "200", title: "Elsewhere", spaceKey: "OTHER", version: 1, markdown: "" });
+    Object.assign(this.issues.get("ATLCLI-2")!.fields, { assignee: { accountId: "acc-ada" }, labels: ["triaged"] });
     this.transitions["ATLCLI-1"] = ["Done", "Won't Do"];
   }
 
@@ -57,13 +60,74 @@ class FakePort implements ScriptPort {
   confluenceNormalizeMarkdown(markdown: string) {
     return markdown.replace(/\s+$/, "");
   }
+  async jiraLinkTypes() {
+    this.calls.push("jiraLinkTypes");
+    return [
+      { name: "Blocks", outward: "blocks", inward: "is blocked by" },
+      { name: "Relates", outward: "relates to", inward: "relates to" },
+    ];
+  }
+  async jiraFindUser(query: string) {
+    this.calls.push(`jiraFindUser:${query}`);
+    if (query === "nobody") throw new Error(`No user matches "${query}".`);
+    return { accountId: query === "me" ? "acc-me" : `acc-${query}` };
+  }
+  boards = [
+    { id: 1, name: "Scrum", type: "scrum", projectKey: "ATLCLI" },
+    { id: 2, name: "Kanban", type: "kanban", projectKey: "ATLCLI" },
+    { id: 3, name: "Loose", type: "scrum" },
+  ];
+  sprints = [
+    { id: 10, name: "Old", state: "closed" as const, boardId: 1 },
+    { id: 11, name: "Now", state: "active" as const, boardId: 1 },
+    { id: 12, name: "Next", state: "future" as const, boardId: 1 },
+    { id: 13, name: "Loose", state: "future" as const, boardId: 3 },
+  ];
+  async jiraBoards(o: { startAt: number; maxResults: number }) {
+    this.calls.push(`jiraBoards:${o.startAt}`);
+    // two per page, to exercise paging
+    const page = this.boards.slice(o.startAt, o.startAt + 2);
+    return { boards: page, ...(o.startAt + 2 < this.boards.length ? { next: o.startAt + 2 } : {}) };
+  }
+  async jiraGetBoard(id: number) {
+    const board = this.boards.find((b) => b.id === id);
+    if (!board) throw new Error(`Board does not exist: ${id}`);
+    return board;
+  }
+  async jiraSprints(boardId: number, o: { state?: string }) {
+    return { sprints: this.sprints.filter((s) => s.boardId === boardId && (!o.state || s.state === o.state)) };
+  }
+  async jiraGetSprint(id: number) {
+    const sprint = this.sprints.find((s) => s.id === id);
+    if (!sprint) throw new Error(`Sprint does not exist: ${id}`);
+    return sprint;
+  }
+  async confluenceComments(pageId: string) {
+    return [{ id: "c1", status: "open", markdown: `on ${pageId}`, replies: [] }];
+  }
+  async confluenceAttachments() {
+    return [{ id: "att1", name: "a.txt", mediaType: "text/plain", size: 3, version: 1 }];
+  }
   jiraCreateIssue = this.write;
   jiraUpdateIssue = this.write;
   jiraTransitionIssue = this.write;
   jiraAddComment = this.write;
+  jiraLinkIssues = this.write;
+  jiraAssignIssue = this.write;
+  jiraEditLabels = this.write;
+  jiraAttach = this.write;
+  jiraCreateSprint = this.write;
+  jiraUpdateSprint = this.write;
+  jiraMoveToSprint = this.write;
   confluenceCreatePage = this.write;
   confluenceUpdatePage = this.write;
   confluenceAddLabels = this.write;
+  confluenceRemoveLabels = this.write;
+  confluenceAddComment = this.write;
+  confluenceMovePage = this.write;
+  confluenceDeletePage = this.write;
+  confluenceAttach = this.write;
+  confluenceExport = this.write;
   private async write(): Promise<never> {
     throw new Error("planScript must never write");
   }
@@ -141,7 +205,7 @@ describe("planScript", () => {
       meta(["confluence:read"]) +
         `export default async () => { const t = []; for await (const p of atlcli.confluence.search("space = DOCSY")) t.push(p.title); return t; }`,
     );
-    expect(result.value).toEqual(["Release Notes"]);
+    expect(result.value).toEqual(["Release Notes", "Child", "Elsewhere"]);
   });
 
   it("denies verbs not granted by meta.permissions, even when caught", async () => {
@@ -189,7 +253,8 @@ describe("planScript", () => {
         precondition: { kind: "confluence-page-unchanged", id: "100", version: 7 },
         dependsOn: [],
       },
-      { seq: 5, verb: "confluence.addLabels", args: { pageId: "100", labels: ["release"] }, dependsOn: [4] },
+      // labels do not change the page version, so they do not chain on the update
+      { seq: 5, verb: "confluence.addLabels", args: { pageId: "100", labels: ["release"] }, dependsOn: [] },
     ]);
   });
 
@@ -350,6 +415,261 @@ describe("planScript", () => {
   });
 });
 
+/** Runs `body` and returns the message of what it throws, or "ok". */
+const attempt = (body: string) => `try { ${body}; return "ok"; } catch (e) { return e.message; }`;
+
+describe("jira verbs beyond issues", () => {
+  it("records links in the outward direction and checks the type at plan time", async () => {
+    const result = await plan(
+      `await atlcli.jira.link("ATLCLI-1", "blocks", "ATLCLI-2");
+       await atlcli.jira.link("ATLCLI-1", "is blocked by", "ATLCLI-3");
+       await atlcli.jira.link("ATLCLI-1", "Relates", "ATLCLI-4");
+       export default await (async () => { ${attempt(`await atlcli.jira.link("ATLCLI-1", "duplicates", "ATLCLI-2")`)} })();`,
+    );
+    expect(result.operations.map((o) => o.args)).toEqual([
+      { from: "ATLCLI-1", type: "Blocks", to: "ATLCLI-2" },
+      { from: "ATLCLI-3", type: "Blocks", to: "ATLCLI-1" },
+      { from: "ATLCLI-1", type: "Relates", to: "ATLCLI-4" },
+    ]);
+    expect(result.value).toBe('Unknown link type "duplicates" (available: blocks / is blocked by, relates to / relates to)');
+  });
+
+  it("needs write grants on both linked projects", async () => {
+    const error = await scriptError(plan(meta(ALL) + `await atlcli.jira.link("ATLCLI-1", "blocks", "OTHER-1");`));
+    expect(error.message).toContain('"jira:write:OTHER"');
+  });
+
+  it("resolves assignees at plan time, unassigns with null and skips no-ops", async () => {
+    const port = new FakePort();
+    const result = await plan(
+      `await atlcli.jira.assign("ATLCLI-1", "me");
+       await atlcli.jira.assign("ATLCLI-2", "ada");
+       await atlcli.jira.assign("ATLCLI-3", null);
+       await atlcli.jira.assign("ATLCLI-2", null);
+       export default await (async () => { ${attempt(`await atlcli.jira.assign("ATLCLI-4", "nobody")`)} })();`,
+      { port },
+    );
+    expect(result.operations.map((o) => [o.args, o.precondition?.kind])).toEqual([
+      [{ key: "ATLCLI-1", assignee: { accountId: "acc-me" }, user: "me" }, "jira-issue-unchanged"],
+      [{ key: "ATLCLI-2", assignee: null }, "jira-issue-unchanged"],
+    ]);
+    // ATLCLI-2 already has ada, ATLCLI-3 has nobody
+    expect(result.skipped.map((s) => s.target)).toEqual(["ATLCLI-2", "ATLCLI-3"]);
+    expect(result.value).toBe('No user matches "nobody".');
+  });
+
+  it("skips label changes that change nothing", async () => {
+    const result = await plan(
+      `await atlcli.jira.addLabels("ATLCLI-2", ["triaged"]);
+       await atlcli.jira.removeLabels("ATLCLI-2", ["missing"]);
+       await atlcli.jira.addLabels("ATLCLI-2", ["triaged", "new"]);
+       await atlcli.jira.removeLabels("ATLCLI-2", ["triaged"]);`,
+    );
+    expect(result.operations.map((o) => [o.verb, o.args.labels, o.dependsOn])).toEqual([
+      ["jira.addLabels", ["triaged", "new"], []],
+      // after a planned write the pre-plan labels no longer tell, so it is kept
+      ["jira.removeLabels", ["triaged"], [1]],
+    ]);
+    expect(result.skipped.map((s) => s.verb)).toEqual(["jira.addLabels", "jira.removeLabels"]);
+  });
+
+  it("validates attachments made by the script", async () => {
+    const result = await plan(
+      `const out = [];
+       for (const file of [
+         { name: "report.csv", content: "a,b\\n1,2" },
+         { name: "logo.png", content: "aGk=", encoding: "base64" },
+         { name: "bad.png", content: "not base64!", encoding: "base64" },
+         { name: "../x.txt", content: "x" },
+       ]) { try { await atlcli.jira.attach("ATLCLI-1", file); out.push("ok"); } catch (e) { out.push(e.message.slice(0, 50)); } }
+       export default out;`,
+    );
+    expect(result.value).toEqual([
+      "ok",
+      "ok",
+      "Attachment bad.png: content is not valid base64",
+      "Invalid arguments for atlcli.jira.attach: 1.name: ",
+    ]);
+    expect(result.operations.map((o) => o.args.encoding)).toEqual(["utf8", "base64"]);
+  });
+
+  it("limits attachment size", async () => {
+    // Release build: the debug build of quickjs-ng 0.32 asserts on a leak after
+    // JSON.stringify of strings from about 4 MB, which the release build tolerates.
+    const result = await planScript(
+      `export default await atlcli.jira.attach("ATLCLI-1", { name: "big.txt", content: "x".repeat(10 * 1024 * 1024 + 1) }).catch((e) => e.message);`,
+      { port: new FakePort(), limits: { memoryBytes: 128 * 1024 * 1024 } },
+    );
+    expect(result.value).toBe("Attachment big.txt is 10485761 bytes; the limit is 10485760 bytes");
+  });
+
+  it("iterates boards and sprints", async () => {
+    const port = new FakePort();
+    const result = await plan(
+      `const boards = []; for await (const b of atlcli.jira.boards()) boards.push(b.id);
+       const sprints = []; for await (const s of atlcli.jira.sprints(1, { state: "future" })) sprints.push(s.name);
+       export default [boards, sprints];`,
+      { port },
+    );
+    expect(result.value).toEqual([[1, 2, 3], ["Next"]]);
+    expect(port.calls.filter((c) => c.startsWith("jiraBoards"))).toEqual(["jiraBoards:0", "jiraBoards:2"]);
+  });
+
+  it("plans sprints: create on scrum boards, start and close in order, move issues", async () => {
+    const result = await plan(
+      meta(ALL) +
+        `const s = await atlcli.jira.createSprint({ board: 1, name: "Sprint 9", startDate: "2026-11-02T09:00:00.000Z", endDate: "2026-11-16T17:00:00.000Z" });
+         await atlcli.jira.moveToSprint(s.id, ["ATLCLI-1", "ATLCLI-1", "ATLCLI-2"]);
+         await atlcli.jira.updateSprint(s.id, { state: "active" });
+         await atlcli.jira.updateSprint("11", { state: "closed" });
+         const out = [];
+         for (const f of [
+           () => atlcli.jira.createSprint({ board: 2, name: "x" }),
+           () => atlcli.jira.updateSprint(12, { state: "closed" }),
+           () => atlcli.jira.updateSprint(11, { goal: "late" }),
+           () => atlcli.jira.moveToSprint(10, ["ATLCLI-3"]),
+           () => atlcli.jira.updateSprint(s.id, { state: "active" }),
+           () => atlcli.jira.createSprint({ board: 1, name: "x", startDate: "next monday" }),
+           // regression (live): Jira answers 400 when a sprint is started without dates
+           () => atlcli.jira.updateSprint(12, { state: "active" }),
+           () => atlcli.jira.updateSprint(12, { state: "active", startDate: "2026-11-02T09:00:00.000Z" }),
+         ]) { try { await f(); out.push("ok"); } catch (e) { out.push(e.message); } }
+         export default out;`,
+    );
+    expect(result.operations.map((o) => [o.verb, o.args, o.dependsOn, o.precondition])).toEqual([
+      [
+        "jira.createSprint",
+        { boardId: 1, name: "Sprint 9", startDate: "2026-11-02T09:00:00.000Z", endDate: "2026-11-16T17:00:00.000Z" },
+        [],
+        undefined,
+      ],
+      ["jira.moveToSprint", { sprintId: "plan:1", keys: ["ATLCLI-1", "ATLCLI-2"] }, [1], undefined],
+      ["jira.updateSprint", { id: "plan:1", state: "active" }, [1], undefined],
+      ["jira.updateSprint", { id: 11, state: "closed" }, [], { kind: "jira-sprint-unchanged", id: 11, state: "active" }],
+    ]);
+    expect(result.value).toEqual([
+      "Board 2 is a kanban board; sprints need a scrum board",
+      "Sprint 12 is future; only a active sprint can become closed",
+      "Sprint 11 is closed and cannot be changed",
+      "Sprint 10 is closed; issues cannot be moved into it",
+      "Sprint plan:1 is active; only a future sprint can become active",
+      expect.stringContaining("Invalid arguments for atlcli.jira.createSprint: 0.startDate"),
+      "Starting sprint 12 needs a startDate and an endDate",
+      "Starting sprint 12 needs a startDate and an endDate",
+    ]);
+  });
+
+  it("denies sprint writes on boards outside any project once permissions are declared", async () => {
+    const error = await scriptError(plan(meta(ALL) + `await atlcli.jira.updateSprint(13, { name: "x" });`));
+    expect(error.kind).toBe("permission-denied");
+    expect(error.message).toBe("Sprint 13 belongs to no project, so meta.permissions cannot grant writes to it");
+    const ok = await plan(`await atlcli.jira.updateSprint(13, { name: "x" });`);
+    expect(ok.operations).toHaveLength(1);
+  });
+});
+
+describe("confluence verbs beyond pages", () => {
+  it("reads comments and attachments", async () => {
+    const result = await plan(
+      meta(["confluence:read"]) + `export default [await atlcli.confluence.comments("100"), await atlcli.confluence.attachments("100")]`,
+    );
+    expect(result.value).toEqual([
+      [{ id: "c1", status: "open", markdown: "on 100", replies: [] }],
+      [{ id: "att1", name: "a.txt", mediaType: "text/plain", size: 3, version: 1 }],
+    ]);
+  });
+
+  it("plans comments, label removal and attachments without taking the page's precondition", async () => {
+    const result = await plan(
+      meta(ALL) +
+        `await atlcli.confluence.comment("100", "Reviewed");
+         await atlcli.confluence.removeLabels("100", ["draft"]);
+         await atlcli.confluence.attach("100", { name: "data.json", content: "{}" });
+         await atlcli.confluence.updatePage("100", { markdown: "# New" });`,
+    );
+    expect(result.operations.map((o) => [o.verb, o.precondition?.kind])).toEqual([
+      ["confluence.comment", undefined],
+      ["confluence.removeLabels", undefined],
+      ["confluence.attach", undefined],
+      ["confluence.updatePage", "confluence-page-unchanged"],
+    ]);
+  });
+
+  it("moves pages within their space and skips moves to the current parent", async () => {
+    const result = await plan(
+      `await atlcli.confluence.movePage("101", { parentId: "100" });
+       const p = await atlcli.confluence.createPage({ space: "DOCSY", title: "New parent", markdown: "" });
+       await atlcli.confluence.movePage("101", { parentId: p.id });
+       export default await (async () => { ${attempt(`await atlcli.confluence.movePage("100", { parentId: "200" })`)} })();`,
+    );
+    expect(result.skipped).toEqual([{ verb: "confluence.movePage", target: "101", title: "Child", reason: "unchanged" }]);
+    expect(result.operations.map((o) => [o.verb, o.args, o.dependsOn, o.precondition?.kind])).toEqual([
+      ["confluence.createPage", { spaceKey: "DOCSY", title: "New parent", markdown: "" }, [], "confluence-title-absent"],
+      ["confluence.movePage", { id: "101", parentId: "plan:1" }, [1], "confluence-page-unchanged"],
+    ]);
+    expect(result.value).toBe("Page 100 is in DOCSY and cannot move under 200 in OTHER");
+  });
+
+  it("deletes pages and rejects later writes to them", async () => {
+    const result = await plan(
+      `await atlcli.confluence.deletePage("101");
+       const out = [];
+       for (const f of [
+         () => atlcli.confluence.updatePage("101", { markdown: "x" }),
+         () => atlcli.confluence.comment("101", "x"),
+         () => atlcli.confluence.createPage({ space: "DOCSY", title: "Orphan", markdown: "", parentId: "101" }),
+         async () => atlcli.confluence.deletePage((await atlcli.confluence.createPage({ space: "DOCSY", title: "T", markdown: "" })).id),
+       ]) { try { await f(); out.push("ok"); } catch (e) { out.push(e.message); } }
+       export default out;`,
+    );
+    expect(result.operations[0]).toEqual({
+      seq: 1,
+      verb: "confluence.deletePage",
+      args: { id: "101", title: "Child" },
+      precondition: { kind: "confluence-page-unchanged", id: "101", version: 2 },
+      dependsOn: [],
+    });
+    expect(result.value).toEqual([
+      "Page 101 is deleted by this plan",
+      "Page 101 is deleted by this plan",
+      "Page 101 is deleted by this plan",
+      "plan:2 is created by this plan; leave out the createPage instead",
+    ]);
+  });
+
+  it("plans exports with safe relative paths", async () => {
+    const result = await plan(
+      meta(["confluence:read"]) +
+        `const out = [await atlcli.confluence.export("100", { format: "pdf" }), await atlcli.confluence.export("100", { format: "docx", path: "./out/notes.docx" })];
+         for (const path of ["/etc/x.pdf", "../x.pdf", "a//b.pdf", "C:/x.pdf", "~/x.pdf", "notes.docx", "out/notes.docx"]) {
+           try { await atlcli.confluence.export("100", { format: path.endsWith("docx") ? "docx" : "pdf", path }); out.push("ok"); } catch (e) { out.push(e.message.split(":")[0]); }
+         }
+         export default out;`,
+    );
+    expect(result.value).toEqual([
+      { path: "100.pdf" },
+      { path: "out/notes.docx" },
+      "Export path must be relative and stay inside the output directory",
+      "Export path must be relative and stay inside the output directory",
+      "Export path must be relative and stay inside the output directory",
+      "Export path must be relative and stay inside the output directory",
+      "Export path must be relative and stay inside the output directory",
+      "ok",
+      "out/notes.docx is already exported by this plan",
+    ]);
+    expect(result.operations.map((o) => o.args)).toEqual([
+      { pageId: "100", format: "pdf", path: "100.pdf" },
+      { pageId: "100", format: "docx", path: "out/notes.docx" },
+      { pageId: "100", format: "docx", path: "notes.docx" },
+    ]);
+  });
+
+  it("rejects an export path with the wrong extension", async () => {
+    const result = await plan(`export default await (async () => { ${attempt(`await atlcli.confluence.export("100", { format: "pdf", path: "a.docx" })`)} })();`);
+    expect(result.value).toBe('Export path "a.docx" must end in .pdf');
+  });
+});
+
 describe("inspectScript", () => {
   it("returns meta without running the default export", async () => {
     const got = await inspectScript(meta(["jira:read"]) + `export default () => { throw new Error("default ran"); }`, {
@@ -366,19 +686,37 @@ describe("inspectScript", () => {
   });
 });
 
-it("exposes the MVP verb set", () => {
+it("exposes the verb set", () => {
   expect([...SCRIPT_VERBS].sort()).toEqual([
     "confluence.addLabels",
+    "confluence.attach",
+    "confluence.attachments",
+    "confluence.comment",
+    "confluence.comments",
     "confluence.createPage",
+    "confluence.deletePage",
+    "confluence.export",
     "confluence.getPage",
+    "confluence.movePage",
+    "confluence.removeLabels",
     "confluence.search",
     "confluence.updatePage",
     "confluence.upsertPage",
+    "jira.addLabels",
+    "jira.assign",
+    "jira.attach",
+    "jira.boards",
     "jira.comment",
     "jira.create",
+    "jira.createSprint",
     "jira.get",
+    "jira.link",
+    "jira.moveToSprint",
+    "jira.removeLabels",
     "jira.search",
+    "jira.sprints",
     "jira.transition",
     "jira.update",
+    "jira.updateSprint",
   ]);
 });

@@ -1,11 +1,23 @@
-import { ConfluenceClient, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
+import { mkdir, stat } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { ConfluenceClient, type FooterComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
 import type { Profile } from "@atlcli/core";
-import { findTransition, JiraClient, type JiraIssue, toJiraRichText } from "@atlcli/jira";
-import type { JiraIssueView, ScriptPort } from "@atlcli/script-runtime";
+import { findTransition, JiraClient, type JiraIssue, type JiraSprint, resolveUser, toJiraRichText } from "@atlcli/jira";
+import type {
+  AttachmentInput,
+  ConfluenceCommentView,
+  JiraBoardView,
+  JiraIssueView,
+  JiraSprintView,
+  ScriptPort,
+} from "@atlcli/script-runtime";
 
 /** A port whose clients are created on first use: a Confluence-only script never builds a Jira client. */
-export function createLazyCliScriptPort(profile: Profile): ScriptPort {
-  return createCliScriptPort(once(() => new JiraClient(profile)), once(() => new ConfluenceClient(profile)), profile.baseUrl);
+export function createLazyCliScriptPort(profile: Profile, outDir = process.cwd()): ScriptPort {
+  return createCliScriptPort(once(() => new JiraClient(profile)), once(() => new ConfluenceClient(profile)), profile.baseUrl, {
+    profileName: profile.name,
+    outDir,
+  });
 }
 
 function once<T>(make: () => T): () => T {
@@ -17,7 +29,12 @@ function once<T>(make: () => T): () => T {
  * ScriptPort over the CLI's REST clients: paging, retries and Markdown ↔
  * Storage/ADF conversion are the clients' and converters' existing behaviour.
  */
-export function createCliScriptPort(jira: () => JiraClient, confluence: () => ConfluenceClient, baseUrl: string): ScriptPort {
+export function createCliScriptPort(
+  jira: () => JiraClient,
+  confluence: () => ConfluenceClient,
+  baseUrl: string,
+  { profileName, outDir = process.cwd() }: { profileName: string; outDir?: string },
+): ScriptPort {
   const conversion = { baseUrl };
   const richText = (markdown: string) => toJiraRichText(jira(), markdown);
 
@@ -70,6 +87,59 @@ export function createCliScriptPort(jira: () => JiraClient, confluence: () => Co
       const comment = await jira().addComment(key, richText(markdown));
       return { id: String(comment.id) };
     },
+    async jiraLinkTypes() {
+      return (await jira().getIssueLinkTypes()).issueLinkTypes.map(({ name, inward, outward }) => ({ name, inward, outward }));
+    },
+    async jiraLinkIssues({ type, from, to }) {
+      // Jira reads the pair as "inwardIssue <outward phrase> outwardIssue", as `jira issue link` sends it.
+      await jira().createIssueLink({ type: { name: type }, inwardIssue: { key: from }, outwardIssue: { key: to } });
+    },
+    async jiraFindUser(query) {
+      const user = await resolveUser(jira(), query);
+      if (!user) throw new Error(`"${query}" names no user; pass null to unassign`);
+      return user;
+    },
+    async jiraAssignIssue(key, user) {
+      await jira().assignIssue(key, user);
+    },
+    async jiraEditLabels(key, { add = [], remove = [] }) {
+      await jira().updateIssue(key, {
+        update: { labels: [...add.map((label) => ({ add: label })), ...remove.map((label) => ({ remove: label }))] },
+      });
+    },
+    async jiraAttach(key, file) {
+      const [attachment] = await jira().uploadAttachment(key, file.name, Buffer.from(decode(file)));
+      return { id: String(attachment?.id ?? "") };
+    },
+    async jiraBoards({ project, name, startAt, maxResults }) {
+      const page = await jira().listBoards({ startAt, maxResults, ...(project ? { projectKeyOrId: project } : {}), ...(name ? { name } : {}) });
+      const boards = page.values.map((b) => boardView(b));
+      const next = startAt + page.values.length;
+      return { boards, ...(page.values.length > 0 && next < page.total ? { next } : {}) };
+    },
+    async jiraGetBoard(id) {
+      return boardView(await jira().getBoard(id));
+    },
+    async jiraSprints(boardId, { state, startAt, maxResults }) {
+      const page = await jira().listSprints(boardId, { startAt, maxResults, ...(state ? { state } : {}) });
+      const sprints = page.values.map((s) => sprintView({ ...s, originBoardId: boardId } as JiraSprint));
+      const next = startAt + page.values.length;
+      return { sprints, ...(page.values.length > 0 && next < page.total ? { next } : {}) };
+    },
+    async jiraGetSprint(id) {
+      return sprintView(await jira().getSprint(id));
+    },
+    async jiraCreateSprint({ boardId, ...input }) {
+      const sprint = await jira().createSprint({ ...input, name: input.name, originBoardId: boardId });
+      return { id: sprint.id };
+    },
+    async jiraUpdateSprint(id, input) {
+      await jira().updateSprint(id, input.state === "closed" ? { ...input, completeDate: new Date().toISOString() } : input);
+    },
+    async jiraMoveToSprint(sprintId, keys) {
+      // The Agile API takes at most 50 issues per call.
+      for (let i = 0; i < keys.length; i += 50) await jira().moveIssuesToSprint(sprintId, keys.slice(i, i + 50));
+    },
 
     async confluenceSearch(cql, { cursor, limit, signal }) {
       const start = cursor ? Number(cursor) : 0;
@@ -114,6 +184,61 @@ export function createCliScriptPort(jira: () => JiraClient, confluence: () => Co
     async confluenceAddLabels(pageId, labels) {
       await confluence().addLabels(pageId, labels);
     },
+    async confluenceRemoveLabels(pageId, labels) {
+      for (const label of labels) {
+        try {
+          await confluence().removeLabel(pageId, label);
+        } catch (error) {
+          // Confluence answers 404 for a label the page does not have; removing it is then done.
+          if (!/No label found/.test(String(error))) throw error;
+        }
+      }
+    },
+    async confluenceComments(pageId) {
+      const view = (c: FooterComment): ConfluenceCommentView => ({
+        id: c.id,
+        ...(c.author?.accountId ? { authorId: c.author.accountId } : {}),
+        ...(c.created ? { created: c.created } : {}),
+        status: c.status,
+        markdown: storageToMarkdown(c.body, conversion),
+        replies: (c.replies ?? []).map(view),
+      });
+      return (await confluence().getFooterComments(pageId)).map(view);
+    },
+    async confluenceAddComment(pageId, markdown) {
+      const comment = await confluence().createFooterComment({ pageId, body: markdownToStorage(markdown, conversion) });
+      return { id: comment.id };
+    },
+    async confluenceMovePage(id, parentId) {
+      const page = await confluence().movePage(id, parentId);
+      return { id: page.id, version: page.version ?? 1 };
+    },
+    async confluenceDeletePage(id) {
+      await confluence().deletePage(id);
+    },
+    async confluenceAttachments(pageId, { signal }) {
+      return (await confluence().listAttachments(pageId, { signal })).map((a) => ({
+        id: a.id,
+        name: a.filename,
+        mediaType: a.mediaType,
+        size: a.fileSize,
+        version: a.version,
+      }));
+    },
+    async confluenceAttach(pageId, file) {
+      const data = decode(file);
+      const existing = (await confluence().listAttachments(pageId)).find((a) => a.filename === file.name);
+      const attachment = existing
+        ? await confluence().updateAttachment({ attachmentId: existing.id, pageId, filename: file.name, data })
+        : await confluence().uploadAttachment({ pageId, filename: file.name, data });
+      return { id: attachment.id };
+    },
+    async confluenceExport({ pageId, format, path }) {
+      const target = resolve(outDir, path);
+      await mkdir(dirname(target), { recursive: true });
+      await runSelf(["wiki", "export", pageId, "--format", format, "--output", target, "--profile", profileName]);
+      return { path, bytes: (await stat(target)).size };
+    },
     confluenceNormalizeMarkdown(markdown) {
       return storageToMarkdown(markdownToStorage(markdown, conversion), conversion);
     },
@@ -129,4 +254,43 @@ function withUpdated(fields: string[] | undefined): string[] | undefined {
 function issueView(issue: JiraIssue): JiraIssueView {
   const fields = (issue.fields ?? {}) as unknown as Record<string, unknown> & { updated?: string };
   return { id: issue.id, key: issue.key, fields: { ...fields, updated: String(fields.updated ?? "") } };
+}
+
+function boardView(board: { id: number; name: string; type: string; location?: { projectKey?: string } }): JiraBoardView {
+  return { id: board.id, name: board.name, type: board.type, ...(board.location?.projectKey ? { projectKey: board.location.projectKey } : {}) };
+}
+
+function sprintView(s: JiraSprint): JiraSprintView {
+  const boardId = s.originBoardId ?? s.boardId;
+  return {
+    id: s.id,
+    name: s.name,
+    state: s.state,
+    ...(boardId !== undefined ? { boardId } : {}),
+    ...(s.startDate ? { startDate: s.startDate } : {}),
+    ...(s.endDate ? { endDate: s.endDate } : {}),
+    ...(s.goal ? { goal: s.goal } : {}),
+  };
+}
+
+function decode(file: AttachmentInput): Uint8Array {
+  return file.encoding === "base64" ? Buffer.from(file.content, "base64") : new TextEncoder().encode(file.content);
+}
+
+/**
+ * Runs this CLI as a child process. Export already exists as a command with
+ * its own templates, engines and error handling, and `fail()` ends the
+ * process, so a child keeps a failed export from ending the apply mid-plan.
+ */
+async function runSelf(args: string[]): Promise<void> {
+  const entry = process.argv[1] ?? "";
+  // A compiled binary's entry lives in Bun's embedded file system; the binary is the CLI.
+  const compiled = entry.startsWith("/$bunfs/") || /^[A-Za-z]:[\\/]~BUN[\\/]/.test(entry);
+  const command = compiled ? [process.execPath, ...args] : [process.execPath, ...process.execArgv, entry, ...args];
+  const child = Bun.spawn(command, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+  const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  if (code === 0) return;
+  // The command's own error is its last line; earlier lines are progress.
+  const message = (stderr.trim() || stdout.trim()).split("\n").at(-1)?.replace(/\.$/, "");
+  throw new Error(`${args.slice(0, 2).join(" ")} failed (exit ${code}): ${message || "no output"}`);
 }

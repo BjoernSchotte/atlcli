@@ -1,7 +1,7 @@
 import { canonicalJsonV1, digestCanonicalJsonV1, sha256HexV1 } from "@atlcli/change-set";
 import { z } from "zod";
 import { scriptMetaSchema, type ScriptMeta, type ScriptParams } from "./meta.js";
-import type { PlannedOperation, ScriptRunPlan, SkippedWrite } from "./verbs.js";
+import { WRITE_VERBS, type PlannedOperation, type ScriptRunPlan, type SkippedWrite } from "./verbs.js";
 
 export const SCRIPT_PLAN_SCHEMA_V1 = "atlcli.script-plan/1" as const;
 
@@ -47,20 +47,13 @@ const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const key = z.string().min(1);
 const precondition = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("jira-issue-unchanged"), key, updated: key }),
+  z.strictObject({ kind: z.literal("jira-sprint-unchanged"), id: z.number().int().positive(), state: z.enum(["future", "active", "closed"]) }),
   z.strictObject({ kind: z.literal("confluence-page-unchanged"), id: key, version: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("confluence-title-absent"), spaceKey: key, title: key }),
 ]);
 const operation = z.strictObject({
   seq: z.number().int().positive(),
-  verb: z.enum([
-    "jira.create",
-    "jira.update",
-    "jira.transition",
-    "jira.comment",
-    "confluence.createPage",
-    "confluence.updatePage",
-    "confluence.addLabels",
-  ]),
+  verb: z.enum(WRITE_VERBS),
   args: z.record(z.string(), z.unknown()),
   precondition: precondition.optional(),
   dependsOn: z.array(z.number().int().positive()),

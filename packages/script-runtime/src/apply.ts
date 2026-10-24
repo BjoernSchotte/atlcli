@@ -1,6 +1,6 @@
 import { normalizeBaseUrl, ScriptPlanError, type ScriptPlanV1 } from "./plan.js";
-import type { ScriptPort } from "./port.js";
-import { PLAN_REFERENCE, type PlannedOperation, type Precondition } from "./verbs.js";
+import type { AttachmentInput, ScriptPort } from "./port.js";
+import { checkExportPath, PLAN_REFERENCE, type PlannedOperation, type Precondition } from "./verbs.js";
 
 export interface ApplyScriptPlanOptions {
   port: ScriptPort;
@@ -76,7 +76,7 @@ export async function applyScriptPlan(plan: ScriptPlanV1, options: ApplyScriptPl
       const args = resolve(op.args, resolved) as Record<string, any>;
       const value = await execute(port, op, args, versions);
       if (op.verb === "jira.create") resolved.set(op.seq, value.key as string);
-      if (op.verb === "confluence.createPage") resolved.set(op.seq, value.id as string);
+      if (op.verb === "jira.createSprint" || op.verb === "confluence.createPage") resolved.set(op.seq, String(value.id));
       result = { seq: op.seq, verb: op.verb, status: "applied", result: value };
     } catch (error) {
       result = { seq: op.seq, verb: op.verb, status: "failed", error: error instanceof Error ? error.message : String(error) };
@@ -97,6 +97,10 @@ async function checkPrecondition(port: ScriptPort, pre: Precondition): Promise<s
       case "jira-issue-unchanged": {
         const issue = await port.jiraGetIssue(pre.key, { fields: ["updated"] });
         return issue.fields.updated === pre.updated ? undefined : `updated ${issue.fields.updated}`;
+      }
+      case "jira-sprint-unchanged": {
+        const sprint = await port.jiraGetSprint(pre.id, {});
+        return sprint.state === pre.state ? undefined : `state ${sprint.state}`;
       }
       case "confluence-page-unchanged": {
         const page = await port.confluenceGetPage(pre.id, {});
@@ -146,8 +150,55 @@ async function execute(
     case "confluence.addLabels":
       await port.confluenceAddLabels(args.pageId, args.labels);
       return { pageId: args.pageId };
+    case "jira.link":
+      await port.jiraLinkIssues({ type: args.type, from: args.from, to: args.to });
+      return { from: args.from, to: args.to };
+    case "jira.assign":
+      await port.jiraAssignIssue(args.key, args.assignee);
+      return { key: args.key };
+    case "jira.addLabels":
+      await port.jiraEditLabels(args.key, { add: args.labels });
+      return { key: args.key };
+    case "jira.removeLabels":
+      await port.jiraEditLabels(args.key, { remove: args.labels });
+      return { key: args.key };
+    case "jira.attach":
+      return { key: args.key, ...(await port.jiraAttach(args.key, attachment(args))) };
+    case "jira.createSprint": {
+      const { boardId, ...input } = args;
+      return port.jiraCreateSprint({ boardId: Number(boardId), ...input } as never);
+    }
+    case "jira.updateSprint": {
+      const { id, ...input } = args;
+      await port.jiraUpdateSprint(Number(id), input);
+      return { id: Number(id) };
+    }
+    case "jira.moveToSprint":
+      await port.jiraMoveToSprint(Number(args.sprintId), args.keys);
+      return { sprintId: Number(args.sprintId) };
+    case "confluence.removeLabels":
+      await port.confluenceRemoveLabels(args.pageId, args.labels);
+      return { pageId: args.pageId };
+    case "confluence.comment":
+      return { pageId: args.pageId, ...(await port.confluenceAddComment(args.pageId, args.markdown)) };
+    case "confluence.movePage": {
+      const page = await port.confluenceMovePage(args.id, args.parentId);
+      versions.set(page.id, page.version);
+      return page;
+    }
+    case "confluence.deletePage":
+      await port.confluenceDeletePage(args.id);
+      versions.delete(args.id);
+      return { id: args.id };
+    case "confluence.attach":
+      return { pageId: args.pageId, ...(await port.confluenceAttach(args.pageId, attachment(args))) };
+    case "confluence.export":
+      // A plan file is editable, so the path is checked again right before writing.
+      return port.confluenceExport({ pageId: args.pageId, format: args.format, path: checkExportPath(args.path, args.format) });
   }
 }
+
+const attachment = (args: Record<string, any>): AttachmentInput => ({ name: args.name, content: args.content, encoding: args.encoding });
 
 /** Replaces `plan:<seq>` references to created objects, also inside text; other text stays as written. */
 function resolve(value: unknown, resolved: Map<number, string>): unknown {

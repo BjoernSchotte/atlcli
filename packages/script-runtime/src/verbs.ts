@@ -1,24 +1,51 @@
 import { z } from "zod";
 import { extractScriptMeta, maxWritesOf, parseScriptMeta, resolveScriptParams, type ScriptMeta, type ScriptParams } from "./meta.js";
-import type { ConfluencePageView, ScriptPort } from "./port.js";
+import type {
+  AttachmentInput,
+  ConfluencePageView,
+  ExportFormat,
+  JiraBoardView,
+  JiraLinkType,
+  JiraSprintState,
+  JiraUserRef,
+  ScriptPort,
+} from "./port.js";
 import { runScript, ScriptError, type HostFunction, type RunScriptOptions } from "./sandbox.js";
 
 /**
  * Write verbs are never executed while a script runs. They are recorded as
  * operations of a plan; applying the plan is a separate step. Reads go live.
  */
-export type WriteVerb =
-  | "jira.create"
-  | "jira.update"
-  | "jira.transition"
-  | "jira.comment"
-  | "confluence.createPage"
-  | "confluence.updatePage"
-  | "confluence.addLabels";
+export const WRITE_VERBS = [
+  "jira.create",
+  "jira.update",
+  "jira.transition",
+  "jira.comment",
+  "jira.link",
+  "jira.assign",
+  "jira.addLabels",
+  "jira.removeLabels",
+  "jira.attach",
+  "jira.createSprint",
+  "jira.updateSprint",
+  "jira.moveToSprint",
+  "confluence.createPage",
+  "confluence.updatePage",
+  "confluence.addLabels",
+  "confluence.removeLabels",
+  "confluence.comment",
+  "confluence.movePage",
+  "confluence.deletePage",
+  "confluence.attach",
+  "confluence.export",
+] as const;
+
+export type WriteVerb = (typeof WRITE_VERBS)[number];
 
 /** State the target must still be in when the plan is applied. */
 export type Precondition =
   | { kind: "jira-issue-unchanged"; key: string; updated: string }
+  | { kind: "jira-sprint-unchanged"; id: number; state: JiraSprintState }
   | { kind: "confluence-page-unchanged"; id: string; version: number }
   | { kind: "confluence-title-absent"; spaceKey: string; title: string };
 
@@ -66,9 +93,17 @@ const PLACEHOLDER = /^plan:(\d+)$/;
 const PLANNED_OBJECT = /:plan:\d+$/;
 const ISSUE_KEY = /^([A-Z][A-Z0-9_]*)-\d+$/;
 const SEARCH_PAGE_SIZE = 100;
+const AGILE_PAGE_SIZE = 50;
+/** Decoded size per attachment; the content travels through the plan file. */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 const str = z.string().min(1);
+const id = z.number().int().positive();
 const fieldsOpt = z.strictObject({ fields: z.array(str).optional() });
+const startAt = z.number().int().nonnegative().optional();
+const isoDate = z.iso.datetime({ offset: true });
+const label = str.regex(/^\S+$/, "labels cannot contain whitespace");
+const labels = z.array(label).min(1);
 const jiraCreate = z.strictObject({
   project: str,
   type: str,
@@ -84,6 +119,20 @@ const jiraUpdate = z
   })
   .refine((u) => Object.keys(u).length > 0, "nothing to update");
 const pageInput = z.strictObject({ space: str, title: str, markdown: z.string(), parentId: str.optional() });
+const attachmentInput = z.strictObject({
+  name: str.max(255).refine((n) => !/[\\/]/.test(n), "name cannot contain path separators"),
+  content: z.string(),
+  encoding: z.enum(["utf8", "base64"]).optional(),
+});
+/** A sprint id: a number, a numeric string (e.g. from params), or `plan:<n>` of a created sprint. */
+const sprintRef = z.union([id, z.string().regex(/^\d+$/).transform(Number), z.string().regex(PLACEHOLDER)]);
+const sprintFields = {
+  name: str.optional(),
+  goal: z.string().optional(),
+  startDate: isoDate.optional(),
+  endDate: isoDate.optional(),
+};
+const exportOptions = z.strictObject({ format: z.enum(["pdf", "docx"]), path: str.optional() });
 
 /** One plan recording session; every verb closes over it. */
 class Recorder {
@@ -91,6 +140,14 @@ class Recorder {
   readonly skipped: SkippedWrite[] = [];
   /** Object identity → seq of the last operation that wrote it. */
   private readonly touched = new Map<string, number>();
+  /** Pages this plan deletes; later writes to them are mistakes. */
+  private readonly deleted = new Set<string>();
+  /** Sprint ref → state after the plan's writes so far. */
+  readonly sprintStates = new Map<string, JiraSprintState>();
+  /** Sprint ref → dates after the plan's writes so far (starting needs both). */
+  readonly sprintDates = new Map<string, { startDate?: string; endDate?: string }>();
+  readonly exportPaths = new Set<string>();
+  private linkTypeList?: Promise<JiraLinkType[]>;
 
   constructor(
     readonly port: ScriptPort,
@@ -102,6 +159,14 @@ class Recorder {
   require(permission: string): void {
     if (this.meta.permissions && !this.meta.permissions.includes(permission as never)) {
       throw new ScriptError("permission-denied", `Script meta.permissions does not grant "${permission}"`);
+    }
+  }
+
+  /** Write grants name a project; a board outside any project cannot be granted. */
+  requireBoardWrite(board: JiraBoardView | undefined, what: string): void {
+    if (board?.projectKey) return this.require(`jira:write:${board.projectKey}`);
+    if (this.meta.permissions) {
+      throw new ScriptError("permission-denied", `${what} belongs to no project, so meta.permissions cannot grant writes to it`);
     }
   }
 
@@ -136,8 +201,13 @@ class Recorder {
     return match[1]!;
   }
 
+  linkTypes(signal: AbortSignal): Promise<JiraLinkType[]> {
+    return (this.linkTypeList ??= this.port.jiraLinkTypes({ signal }));
+  }
+
   /** Space of a page, from the plan for placeholders or read live. */
   async confluencePage(id: string, signal: AbortSignal): Promise<{ spaceKey: string; title: string; live?: ConfluencePageView }> {
+    this.notDeleted(id);
     const ref = PLACEHOLDER.exec(id);
     if (ref) {
       const op = this.operation(Number(ref[1]));
@@ -148,9 +218,20 @@ class Recorder {
     return { spaceKey: live.spaceKey, title: live.title, live };
   }
 
+  markDeleted(id: string): void {
+    this.deleted.add(id);
+  }
+
+  notDeleted(id: string): void {
+    if (this.deleted.has(id)) throw new Error(`Page ${id} is deleted by this plan`);
+  }
+
   /**
    * Records a write. `object` identifies the target for chaining; `precondition`
    * is computed lazily and only for the first write to an existing object.
+   * Writes that do not change the object's own state (comments, labels,
+   * attachments) pass no object, so they never take the precondition away
+   * from a later update.
    */
   async record(
     verb: WriteVerb,
@@ -181,8 +262,8 @@ class Recorder {
   }
 }
 
-/** Operations whose result a `plan:<seq>` reference stands for (issue key, page id). */
-export const PRODUCERS: ReadonlySet<WriteVerb> = new Set(["jira.create", "confluence.createPage"]);
+/** Operations whose result a `plan:<seq>` reference stands for (issue key, page or sprint id). */
+export const PRODUCERS: ReadonlySet<WriteVerb> = new Set(["jira.create", "jira.createSprint", "confluence.createPage"]);
 
 /** `plan:<seq>` references, whole values or embedded in text (e.g. a page body naming a new issue). */
 export const PLAN_REFERENCE = /\bplan:(\d+)\b/g;
@@ -241,6 +322,109 @@ const VERBS: Record<string, Verb> = {
     const seq = await r.record("jira.comment", { key, markdown });
     return { id: `plan:${seq}` };
   }),
+  "jira.link": verb(z.tuple([str, str, str]), async (r, [from, type, to], signal) => {
+    r.require(`jira:write:${r.jiraProject(from)}`);
+    r.require(`jira:write:${r.jiraProject(to)}`);
+    const types = await r.linkTypes(signal);
+    const t = type.toLowerCase();
+    const outward = types.find((l) => l.name.toLowerCase() === t || l.outward.toLowerCase() === t);
+    const inward = outward ? undefined : types.find((l) => l.inward.toLowerCase() === t);
+    if (!outward && !inward) {
+      throw new Error(`Unknown link type "${type}" (available: ${types.map((l) => `${l.outward} / ${l.inward}`).join(", ") || "none"})`);
+    }
+    // Stored in the outward direction: "from <outward> to".
+    const args = outward ? { from, type: outward.name, to } : { from: to, type: inward!.name, to: from };
+    await r.record("jira.link", args);
+    return null;
+  }),
+  "jira.assign": verb(z.tuple([str, str.optional()]), async (r, [key, user], signal) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const assignee = user === undefined ? null : await r.port.jiraFindUser(user, { signal });
+    const issue = await untouchedIssue(r, key, ["assignee"], signal);
+    if (issue && sameUser(issue.fields.assignee, assignee)) {
+      r.skipped.push({ verb: "jira.assign", target: key, reason: "unchanged" });
+      return null;
+    }
+    await r.record("jira.assign", { key, assignee, ...(user !== undefined ? { user } : {}) }, `jira:${key}`, async () =>
+      issue ? { kind: "jira-issue-unchanged", key, updated: issue.fields.updated } : undefined,
+    );
+    return null;
+  }),
+  "jira.addLabels": verb(z.tuple([str, labels]), (r, [key, list], signal) => editIssueLabels(r, "jira.addLabels", key, list, signal)),
+  "jira.removeLabels": verb(z.tuple([str, labels]), (r, [key, list], signal) =>
+    editIssueLabels(r, "jira.removeLabels", key, list, signal),
+  ),
+  "jira.attach": verb(z.tuple([str, attachmentInput]), async (r, [key, file]) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const seq = await r.record("jira.attach", { key, ...checkAttachment(file) });
+    return { id: `plan:${seq}` };
+  }),
+  "jira.boards": verb(
+    z.tuple([z.strictObject({ project: str.optional(), name: str.optional(), startAt }).optional()]),
+    async (r, [options], signal) => {
+      r.require("jira:read");
+      const { startAt = 0, ...rest } = options ?? {};
+      return r.port.jiraBoards({ ...rest, startAt, maxResults: AGILE_PAGE_SIZE, signal });
+    },
+  ),
+  "jira.sprints": verb(
+    z.tuple([id, z.strictObject({ state: z.enum(["future", "active", "closed"]).optional(), startAt }).optional()]),
+    async (r, [boardId, options], signal) => {
+      r.require("jira:read");
+      const { startAt = 0, ...rest } = options ?? {};
+      return r.port.jiraSprints(boardId, { ...rest, startAt, maxResults: AGILE_PAGE_SIZE, signal });
+    },
+  ),
+  "jira.createSprint": verb(
+    z.tuple([z.strictObject({ board: id, ...sprintFields, name: str })]),
+    async (r, [{ board: boardId, ...input }], signal) => {
+      const board = await r.port.jiraGetBoard(boardId, { signal });
+      r.requireBoardWrite(board, `Board ${boardId}`);
+      if (board.type !== "scrum") throw new Error(`Board ${boardId} is a ${board.type} board; sprints need a scrum board`);
+      const seq = await r.record("jira.createSprint", { boardId, ...input });
+      r.sprintStates.set(`plan:${seq}`, "future");
+      r.sprintDates.set(`plan:${seq}`, { startDate: input.startDate, endDate: input.endDate });
+      return { id: `plan:${seq}` };
+    },
+  ),
+  "jira.updateSprint": verb(
+    z.tuple([
+      sprintRef,
+      z
+        .strictObject({ ...sprintFields, state: z.enum(["active", "closed"]).optional() })
+        .refine((u) => Object.keys(u).length > 0, "nothing to update"),
+    ]),
+    async (r, [ref, input], signal) => {
+      const sprint = await sprintFor(r, ref, signal);
+      const next = input.state;
+      const allowed = { active: "future", closed: "active" } as const;
+      if (next && sprint.state !== allowed[next]) {
+        throw new Error(`Sprint ${ref} is ${sprint.state}; only a ${allowed[next]} sprint can become ${next}`);
+      }
+      if (sprint.state === "closed") throw new Error(`Sprint ${ref} is closed and cannot be changed`);
+      // Jira refuses to start a sprint without both dates.
+      if (next === "active" && !((input.startDate ?? sprint.startDate) && (input.endDate ?? sprint.endDate))) {
+        throw new Error(`Starting sprint ${ref} needs a startDate and an endDate`);
+      }
+      await r.record("jira.updateSprint", { id: ref, ...input }, `jira-sprint:${ref}`, async () =>
+        sprint.live ? { kind: "jira-sprint-unchanged", id: ref as number, state: sprint.state } : undefined,
+      );
+      if (next) r.sprintStates.set(String(ref), next);
+      r.sprintDates.set(String(ref), {
+        startDate: input.startDate ?? sprint.startDate,
+        endDate: input.endDate ?? sprint.endDate,
+      });
+      return null;
+    },
+  ),
+  "jira.moveToSprint": verb(z.tuple([sprintRef, z.array(str).min(1)]), async (r, [ref, keys], signal) => {
+    const sprint = await sprintFor(r, ref, signal);
+    for (const key of keys) r.require(`jira:write:${r.jiraProject(key)}`);
+    if (sprint.state === "closed") throw new Error(`Sprint ${ref} is closed; issues cannot be moved into it`);
+    await r.record("jira.moveToSprint", { sprintId: ref, keys: [...new Set(keys)] });
+    return null;
+  }),
+
   "confluence.search": verb(
     z.tuple([str, z.strictObject({ cursor: str.optional() }).optional()]),
     async (r, [cql, options], signal) => {
@@ -252,7 +436,15 @@ const VERBS: Record<string, Verb> = {
     r.require("confluence:read");
     return r.port.confluenceGetPage(r.readable(id), { signal });
   }),
-  "confluence.createPage": verb(z.tuple([pageInput]), async (r, [input], signal) => {
+  "confluence.comments": verb(z.tuple([str]), async (r, [pageId], signal) => {
+    r.require("confluence:read");
+    return r.port.confluenceComments(r.readable(pageId), { signal });
+  }),
+  "confluence.attachments": verb(z.tuple([str]), async (r, [pageId], signal) => {
+    r.require("confluence:read");
+    return r.port.confluenceAttachments(r.readable(pageId), { signal });
+  }),
+  "confluence.createPage": verb(z.tuple([pageInput]), async (r, [input]) => {
     r.require(`confluence:write:${input.space}`);
     return { id: `plan:${await createPage(r, input)}` };
   }),
@@ -274,15 +466,66 @@ const VERBS: Record<string, Verb> = {
     }
     const existing = await r.port.confluenceFindPage(input.space, input.title, { signal });
     if (!existing) return { id: `plan:${await createPage(r, input)}`, created: true };
-    const live = await r.port.confluenceGetPage(existing.id, { signal });
-    await updatePage(r, existing.id, input.title, input.markdown, live);
+    const page = await r.confluencePage(existing.id, signal);
+    await updatePage(r, existing.id, input.title, input.markdown, page.live);
     return { id: existing.id, created: false };
   }),
-  "confluence.addLabels": verb(z.tuple([str, z.array(str).min(1)]), async (r, [pageId, labels], signal) => {
+  "confluence.addLabels": verb(z.tuple([str, labels]), async (r, [pageId, list], signal) => {
     const page = await r.confluencePage(pageId, signal);
     r.require(`confluence:write:${page.spaceKey}`);
-    await r.record("confluence.addLabels", { pageId, labels }, `confluence:${pageId}`);
+    await r.record("confluence.addLabels", { pageId, labels: list });
     return null;
+  }),
+  "confluence.removeLabels": verb(z.tuple([str, labels]), async (r, [pageId, list], signal) => {
+    const page = await r.confluencePage(pageId, signal);
+    r.require(`confluence:write:${page.spaceKey}`);
+    await r.record("confluence.removeLabels", { pageId, labels: list });
+    return null;
+  }),
+  "confluence.comment": verb(z.tuple([str, z.string().min(1)]), async (r, [pageId, markdown], signal) => {
+    const page = await r.confluencePage(pageId, signal);
+    r.require(`confluence:write:${page.spaceKey}`);
+    const seq = await r.record("confluence.comment", { pageId, markdown });
+    return { id: `plan:${seq}` };
+  }),
+  "confluence.movePage": verb(z.tuple([str, z.strictObject({ parentId: str })]), async (r, [id, { parentId }], signal) => {
+    const page = await r.confluencePage(id, signal);
+    const parent = await r.confluencePage(parentId, signal);
+    r.require(`confluence:write:${page.spaceKey}`);
+    if (parent.spaceKey !== page.spaceKey) {
+      throw new Error(`Page ${id} is in ${page.spaceKey} and cannot move under ${parentId} in ${parent.spaceKey}`);
+    }
+    if (parentId === id) throw new Error(`Page ${id} cannot be its own parent`);
+    const untouched = page.live && r.lastWrite(`confluence:${id}`) === undefined;
+    if (untouched && page.live!.parentId === parentId) {
+      r.skipped.push({ verb: "confluence.movePage", target: id, title: page.title, reason: "unchanged" });
+      return { id };
+    }
+    await r.record("confluence.movePage", { id, parentId }, `confluence:${id}`, async () => pageUnchanged(page.live));
+    return { id };
+  }),
+  "confluence.deletePage": verb(z.tuple([str]), async (r, [id], signal) => {
+    if (PLACEHOLDER.test(id)) throw new Error(`${id} is created by this plan; leave out the createPage instead`);
+    const page = await r.confluencePage(id, signal);
+    r.require(`confluence:write:${page.spaceKey}`);
+    await r.record("confluence.deletePage", { id, title: page.title }, `confluence:${id}`, async () => pageUnchanged(page.live));
+    r.markDeleted(id);
+    return null;
+  }),
+  "confluence.attach": verb(z.tuple([str, attachmentInput]), async (r, [pageId, file], signal) => {
+    const page = await r.confluencePage(pageId, signal);
+    r.require(`confluence:write:${page.spaceKey}`);
+    const seq = await r.record("confluence.attach", { pageId, ...checkAttachment(file) });
+    return { id: `plan:${seq}` };
+  }),
+  "confluence.export": verb(z.tuple([str, exportOptions]), async (r, [pageId, { format, path }], signal) => {
+    r.require("confluence:read");
+    await r.confluencePage(pageId, signal);
+    const file = checkExportPath(path ?? `${pageId.replace(":", "-")}.${format}`, format);
+    if (r.exportPaths.has(file)) throw new Error(`${file} is already exported by this plan`);
+    r.exportPaths.add(file);
+    await r.record("confluence.export", { pageId, format, path: file });
+    return { path: file };
   }),
 };
 
@@ -291,12 +534,110 @@ async function issueUnchanged(r: Recorder, key: string, signal: AbortSignal): Pr
   return { kind: "jira-issue-unchanged", key, updated: issue.fields.updated };
 }
 
+/** The live issue when this plan has not written it yet (so its state is comparable), else undefined. */
+async function untouchedIssue(r: Recorder, key: string, fields: string[], signal: AbortSignal) {
+  if (PLACEHOLDER.test(key) || r.lastWrite(`jira:${key}`) !== undefined) return undefined;
+  return r.port.jiraGetIssue(key, { fields: ["updated", ...fields], signal });
+}
+
+function sameUser(current: unknown, next: JiraUserRef | null): boolean {
+  const user = current as { accountId?: string; name?: string } | null | undefined;
+  if (!user || !next) return !user && !next;
+  return "accountId" in next ? user.accountId === next.accountId : user.name === next.name;
+}
+
+async function editIssueLabels(
+  r: Recorder,
+  verb: "jira.addLabels" | "jira.removeLabels",
+  key: string,
+  list: string[],
+  signal: AbortSignal,
+): Promise<null> {
+  r.require(`jira:write:${r.jiraProject(key)}`);
+  const issue = await untouchedIssue(r, key, ["labels"], signal);
+  if (issue) {
+    const current = new Set((issue.fields.labels as string[] | undefined) ?? []);
+    const effective = list.filter((l) => current.has(l) === (verb === "jira.removeLabels"));
+    if (effective.length === 0) {
+      r.skipped.push({ verb, target: key, reason: "unchanged" });
+      return null;
+    }
+  }
+  await r.record(verb, { key, labels: [...new Set(list)] }, `jira:${key}`, async () =>
+    issue ? { kind: "jira-issue-unchanged", key, updated: issue.fields.updated } : undefined,
+  );
+  return null;
+}
+
+/** A sprint's state and dates as the plan leaves them, plus write permission on its board's project. */
+async function sprintFor(
+  r: Recorder,
+  ref: number | string,
+  signal: AbortSignal,
+): Promise<{ state: JiraSprintState; live: boolean; startDate?: string; endDate?: string }> {
+  const placeholder = PLACEHOLDER.exec(String(ref));
+  if (placeholder) {
+    const op = r.operation(Number(placeholder[1]));
+    if (op.verb !== "jira.createSprint") throw new Error(`${ref} is not a sprint created by this plan`);
+    const boardId = op.args.boardId as number;
+    r.requireBoardWrite(await r.port.jiraGetBoard(boardId, { signal }), `Board ${boardId}`);
+    return { state: r.sprintStates.get(String(ref)) ?? "future", live: false, ...r.sprintDates.get(String(ref)) };
+  }
+  const sprint = await r.port.jiraGetSprint(ref as number, { signal });
+  const board = sprint.boardId === undefined ? undefined : await r.port.jiraGetBoard(sprint.boardId, { signal });
+  r.requireBoardWrite(board, `Sprint ${ref}`);
+  const planned = r.sprintStates.get(String(ref));
+  const dates = r.sprintDates.get(String(ref)) ?? { startDate: sprint.startDate, endDate: sprint.endDate };
+  return { state: planned ?? sprint.state, live: planned === undefined, ...dates };
+}
+
+const pageUnchanged = async (live: ConfluencePageView | undefined): Promise<Precondition | undefined> =>
+  live ? { kind: "confluence-page-unchanged", id: live.id, version: live.version } : undefined;
+
+/** Decoded size check; base64 must be well-formed. */
+function checkAttachment(file: z.output<typeof attachmentInput>): AttachmentInput {
+  const encoding = file.encoding ?? "utf8";
+  let bytes: number;
+  if (encoding === "base64") {
+    const clean = file.content.replace(/\s+/g, "");
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(clean) || clean.length % 4 !== 0) throw new Error(`Attachment ${file.name}: content is not valid base64`);
+    bytes = (clean.length / 4) * 3 - (clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0);
+  } else {
+    bytes = new TextEncoder().encode(file.content).length;
+  }
+  if (bytes > MAX_ATTACHMENT_BYTES) {
+    throw new Error(`Attachment ${file.name} is ${bytes} bytes; the limit is ${MAX_ATTACHMENT_BYTES} bytes`);
+  }
+  return { name: file.name, content: file.content, encoding };
+}
+
+/**
+ * An export target must stay below the host's output directory: relative,
+ * forward slashes, no `..` or empty segments, extension matching the format.
+ * Checked when planning and again by the host before writing, because a plan
+ * file is editable.
+ */
+export function checkExportPath(path: string, format: ExportFormat): string {
+  const segments = path.split("/");
+  const bad =
+    path.startsWith("/") ||
+    path.includes("\\") ||
+    /^[A-Za-z]:/.test(path) ||
+    path.startsWith("~") ||
+    segments.some((s) => s === "" || s === "..") ||
+    /[\u0000-\u001f]/.test(path);
+  if (bad) throw new Error(`Export path must be relative and stay inside the output directory: ${JSON.stringify(path)}`);
+  if (!path.toLowerCase().endsWith(`.${format}`)) throw new Error(`Export path ${JSON.stringify(path)} must end in .${format}`);
+  return segments.filter((s) => s !== ".").join("/");
+}
+
 const titleObject = (space: string, title: string) => `confluence-title:${space}\u0000${title}`;
 
 function createPage(r: Recorder, input: z.output<typeof pageInput>): Promise<number> {
   if (r.lastWrite(titleObject(input.space, input.title))) {
     throw new Error(`Page "${input.title}" in ${input.space} is already created by this plan; use updatePage or upsertPage`);
   }
+  if (input.parentId) r.notDeleted(input.parentId);
   const args = { spaceKey: input.space, title: input.title, markdown: input.markdown, ...(input.parentId ? { parentId: input.parentId } : {}) };
   return r.record("confluence.createPage", args, titleObject(input.space, input.title), async () => ({
     kind: "confluence-title-absent",
@@ -313,23 +654,24 @@ async function updatePage(r: Recorder, id: string, title: string, markdown: stri
     r.skipped.push({ verb: "confluence.updatePage", target: id, title, reason: "unchanged" });
     return;
   }
-  await r.record("confluence.updatePage", { id, title, markdown }, `confluence:${id}`, async () =>
-    live ? { kind: "confluence-page-unchanged", id, version: live.version } : undefined,
-  );
+  await r.record("confluence.updatePage", { id, title, markdown }, `confluence:${id}`, () => pageUnchanged(live));
 }
 
-/** Guest-side shims: search verbs become async iterators with an optional `limit`. */
+/** Guest-side shims: list verbs become async iterators with an optional `limit`. */
 const WRAPPERS: Record<string, string> = {
   "jira.search": pagedIterator("issues", "pageToken", "nextPageToken"),
+  "jira.boards": pagedIterator("boards", "startAt", "next", false),
+  "jira.sprints": pagedIterator("sprints", "startAt", "next"),
   "confluence.search": pagedIterator("results", "cursor", "nextCursor"),
 };
 
-function pagedIterator(items: string, tokenIn: string, tokenOut: string): string {
-  return `(page) => async function* (query, options) {
+function pagedIterator(items: string, tokenIn: string, tokenOut: string, positional = true): string {
+  const call = positional ? "page(query, token === undefined ? rest : { ...rest, $IN: token })" : "page(token === undefined ? rest : { ...rest, $IN: token })";
+  return `(page) => async function* (${positional ? "query, options" : "options"}) {
   const { limit = Infinity, ...rest } = options ?? {};
   let token, n = 0;
   do {
-    const r = await page(query, token === undefined ? rest : { ...rest, ${tokenIn}: token });
+    const r = await ${call.replace("$IN", tokenIn)};
     for (const item of r.${items}) { if (n >= limit) return; n++; yield item; }
     token = r.${tokenOut} ?? undefined;
   } while (token !== undefined && n < limit);

@@ -13,6 +13,8 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 - [Globals](#globals)
 - [meta](#meta)
 - [Verbs](#verbs)
+- [Attachments](#attachments)
+- [Exports](#exports)
 - [Placeholders](#placeholders)
 - [Preconditions](#preconditions)
 - [Sandbox limits](#sandbox-limits)
@@ -106,8 +108,20 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 | `jira.update(key, { summary?, description?, fields? })` | `null` | `jira:write:<project of key>` | update; issue unchanged |
 | `jira.transition(key, to)` | `null` | `jira:write:<project of key>` | transition; issue unchanged. `to` is matched by name, ignoring case; checked against the issue's transitions when the issue exists |
 | `jira.comment(key, markdown)` | `{ id }` placeholder | `jira:write:<project of key>` | comment; no precondition |
+| `jira.link(from, type, to)` | `null` | `jira:write` for both projects | link; no precondition. Reads as a sentence: `link("A-1", "blocks", "A-2")`. `type` is the link type's name or either phrase (`"is blocked by"` swaps the issues); checked at plan time |
+| `jira.assign(key, user)` | `null` | `jira:write:<project of key>` | assignment; issue unchanged. `user` is `"me"`, an email, a display name or an account id, resolved at plan time; `null` unassigns. Left out when already assigned so |
+| `jira.addLabels(key, labels)` | `null` | `jira:write:<project of key>` | labels; issue unchanged. Left out when every label is already set |
+| `jira.removeLabels(key, labels)` | `null` | `jira:write:<project of key>` | labels; issue unchanged. Left out when none of the labels is set |
+| `jira.attach(key, { name, content, encoding? })` | `{ id }` placeholder | `jira:write:<project of key>` | attachment; no precondition. See [Attachments](#attachments) |
+| `jira.boards({ project?, name?, limit? })` | async iterator of `{ id, name, type, projectKey? }` | `jira:read` | read; pages of 50 |
+| `jira.sprints(boardId, { state?, limit? })` | async iterator of `{ id, name, state, boardId?, startDate?, endDate?, goal? }` | `jira:read` | read; pages of 50 |
+| `jira.createSprint({ board, name, goal?, startDate?, endDate? })` | `{ id }` placeholder | `jira:write:<project of board>` | create; no precondition. Scrum boards only |
+| `jira.updateSprint(id, { name?, goal?, startDate?, endDate?, state? })` | `null` | `jira:write:<project of board>` | update; sprint state unchanged. `state: "active"` starts a future sprint and needs both dates; `"closed"` completes an active one |
+| `jira.moveToSprint(sprintId, keys)` | `null` | `jira:write` for the board's and every issue's project | move; no precondition. Not into a closed sprint |
 
-`description` and comment bodies are Markdown. They become Atlassian Document Format on Cloud and stay text on Data Center. `fields` passes raw Jira field values through (`{ labels: ["x"], priority: { name: "High" } }`).
+`description` and comment bodies are Markdown. They become Atlassian Document Format on Cloud and stay text on Data Center. `fields` passes raw Jira field values through (`{ labels: ["x"], priority: { name: "High" } }`). Dates are ISO 8601 with an offset, e.g. `"2026-11-02T09:00:00.000Z"`. Sprint ids may be numbers, numeric strings or placeholders of `createSprint`.
+
+Once `meta.permissions` is declared, sprint writes on a board that belongs to no project are denied, because no grant can name it.
 
 ### Confluence
 
@@ -119,8 +133,34 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 | `confluence.updatePage(id, { title?, markdown })` | `{ id }` | `confluence:write:<space of page>` | replaces the body; page version unchanged. Keeps the title unless given. Left out when body and title would not change |
 | `confluence.upsertPage({ space, title, markdown, parentId? })` | `{ id, created }` | `confluence:write:<space>` | becomes an update of the page with that exact title, else a create |
 | `confluence.addLabels(pageId, labels)` | `null` | `confluence:write:<space of page>` | labels; no precondition |
+| `confluence.removeLabels(pageId, labels)` | `null` | `confluence:write:<space of page>` | labels; no precondition. A label the page does not have counts as removed |
+| `confluence.comments(pageId)` | `[{ id, authorId?, created?, status, markdown, replies }]` | `confluence:read` | read; footer comments |
+| `confluence.comment(pageId, markdown)` | `{ id }` placeholder | `confluence:write:<space of page>` | footer comment; no precondition |
+| `confluence.movePage(id, { parentId })` | `{ id }` | `confluence:write:<space of page>` | move; page version unchanged. Within the page's space. Left out when the page already has that parent |
+| `confluence.deletePage(id)` | `null` | `confluence:write:<space of page>` | moves the page to the space's trash; page version unchanged. Later writes to it in the same plan throw |
+| `confluence.attachments(pageId)` | `[{ id, name, mediaType, size, version }]` | `confluence:read` | read |
+| `confluence.attach(pageId, { name, content, encoding? })` | `{ id }` placeholder | `confluence:write:<space of page>` | attachment; no precondition. An attachment of the same name gets a new version |
+| `confluence.export(pageId, { format, path? })` | `{ path }` | `confluence:read` | writes a local `pdf` or `docx` file when applied. See [Exports](#exports) |
 
 Creating the same title twice in one plan is an error; use `upsertPage`, which also finds pages the plan itself creates.
+
+Comments, labels and attachments do not change a page's version, so they never take the version precondition away from a later `updatePage` on the same page.
+
+### Attachments
+
+Scripts have no file system access, so attachment content comes from the script: text by default, or base64 with `encoding: "base64"`. The limit is 10 MB per attachment after decoding. The content is stored in the plan file, so a plan with attachments grows by their size.
+
+```ts
+const rows = ["key,status"];
+for await (const issue of atlcli.jira.search("project = ATLCLI AND sprint in openSprints()", { fields: ["status"] })) {
+  rows.push(`${issue.key},${(issue.fields.status as { name: string }).name}`);
+}
+await atlcli.confluence.attach("123456", { name: "sprint-status.csv", content: rows.join("\n") });
+```
+
+### Exports
+
+`confluence.export` runs `atlcli wiki export` when the plan is applied, with the same profile and the export's defaults. `path` is relative, uses `/`, must not contain `..` and must end in `.pdf` or `.docx`; it defaults to `<pageId>.<format>`. Files land below the directory `apply` runs in; missing folders are created and an existing file is overwritten. Because a plan file can be edited, the path is checked again right before writing. Two exports to the same path in one plan are an error.
 
 ## Placeholders
 
@@ -138,8 +178,9 @@ The first write to an existing object records the state the plan saw. Later writ
 
 | Precondition | Recorded by | Checked on apply |
 |---|---|---|
-| Issue unchanged | `jira.update`, `jira.transition` | `fields.updated` is the same |
-| Page unchanged | `confluence.updatePage`, `upsertPage` on an existing page | `version` is the same |
+| Issue unchanged | `jira.update`, `jira.transition`, `jira.assign`, `jira.addLabels`, `jira.removeLabels` | `fields.updated` is the same |
+| Sprint unchanged | `jira.updateSprint` on an existing sprint | `state` is the same |
+| Page unchanged | `confluence.updatePage`, `upsertPage` on an existing page, `movePage`, `deletePage` | `version` is the same |
 | Title absent | `confluence.createPage`, `upsertPage` on a new page | no page with that title in the space |
 
 All preconditions are checked before the first write. If any fails, nothing is written. Between that check and each write there is a short window. A concurrent page edit in it makes the update fail on the version check. A concurrent issue edit in it is overwritten, because Jira has no conditional update.
@@ -161,6 +202,17 @@ All preconditions are checked before the first write. If any fails, nothing is w
 
 The first `updatePage` to a page in a run, or the `upsertPage` that turns into one, is compared with the page as it is now. Both bodies go through the same Markdown → Storage → Markdown conversion. If title and body are equal, no operation is planned. The write appears in `skipped` instead, and the text output lists it as `Unchanged, not planned`. Later writes to a page the plan already changed are always kept, because reads show the state before the plan.
 
+The same applies to the first write of these verbs to an object:
+
+| Verb | Left out when |
+|---|---|
+| `jira.assign` | the issue already has that assignee (or none, for `null`) |
+| `jira.addLabels` | every label is already set |
+| `jira.removeLabels` | none of the labels is set |
+| `confluence.movePage` | the page already has that parent |
+
+Other verbs are always planned. Re-running a script that only uses verbs from this section and `updatePage`/`upsertPage` therefore plans nothing once its work is done.
+
 ## Plan file
 
 `--plan-out` writes canonical JSON (sorted keys), so equal plans are equal bytes.
@@ -177,7 +229,7 @@ The first `updatePage` to a page in a run, or the `upsertPage` that turns into o
 | `target.baseUrl` | URL | site the plan was made for |
 | `target.profile` | string | profile name; never credentials |
 | `operations[]` | array | `{ seq, verb, args, precondition?, dependsOn }` |
-| `skipped[]` | array | `{ verb, target, title?, reason: "unchanged" }`; writes left out, see [Unchanged updates](#unchanged-updates) |
+| `skipped[]` | array | `{ verb, target, title?, reason: "unchanged" }`; writes left out, see [Unchanged updates](#unchanged-updates). `target` is a page id or issue key |
 | `value` | JSON | the script's result |
 | `digest` | hex | SHA-256 over the canonical JSON of all other fields |
 
