@@ -225,6 +225,22 @@ describe("labels", () => {
     expect(t.calls.find((c) => c.method === "addLabels")?.args).toEqual(["AB-1", ["new"]]);
     expect(t.calls.find((c) => c.method === "removeLabels")?.args).toEqual(["AB-1", ["b"]]);
   });
+
+  // Regression: with every mark removed, enter took the label under the cursor again ("No changes").
+  test("unmarking the last label removes it", async () => {
+    const t = setup({
+      search: () => ({ issues: [issue("AB-1", { labels: ["a"] })] }),
+      getIssue: (k: string) => issue(k, { labels: ["a"] }),
+      removeLabels: () => undefined,
+    });
+    await listed(t, []);
+    press(t, "L", "tab", "return");
+    const confirm = topOverlay(t.ctx.store.get());
+    expect(confirm?.kind === "confirm" && confirm.lines).toEqual(["- a"]);
+    press(t, "y");
+    await t.settle();
+    expect(t.calls.find((c) => c.method === "removeLabels")?.args).toEqual(["AB-1", ["a"]]);
+  });
 });
 
 describe("edit", () => {

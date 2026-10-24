@@ -16,7 +16,7 @@ It should feel like a first-class terminal app: alternate screen, no flicker, mo
 
 ## Non-goals (MVP)
 
-- Kanban board, dashboards, charts, burndown.
+- Kanban board, dashboards, charts, burndown. (The board view came later: [tui-board-log-refresh-plan.md](tui-board-log-refresh-plan.md).)
 - Attachments: upload, download, preview.
 - Creating spaces, page restrictions, Confluence comments.
 - Jira admin (fields, workflows, webhooks).

@@ -7,6 +7,7 @@ import { expandNode, updateNav } from "./commands.js";
 import { confirmWrite } from "./jira-actions.js";
 import { jira, targetIssues } from "./jira.js";
 import type { Command, Ctx } from "./keymap.js";
+import { logged } from "./log.js";
 import { pushOverlay, visibleNodes, withItems, type AppState, type TreeNode } from "./state.js";
 
 const open = (ctx: Ctx, overlay: Parameters<typeof pushOverlay>[1]) => ctx.store.set((s) => pushOverlay(s, overlay));
@@ -68,6 +69,7 @@ function newBoard(ctx: Ctx): void {
               `Create this ${type} board?`,
               [name.trim(), `In ${key}, on a new filter "project = ${key} ORDER BY Rank ASC" shared with the project`],
               [],
+              [["jira", "board", "create", "--name", name.trim(), "--type", type!, "--project", key]],
               async () => {
                 const board = await ctx.opts.jira.createBoard({ name: name.trim(), type: type as "scrum" | "kanban", projectKeyOrId: key });
                 await reload(ctx, "g:boards");
@@ -104,12 +106,13 @@ function deleteBoard(ctx: Ctx, node: TreeNode): void {
         double: true,
         step: 0,
         onConfirm: async () => {
-          const done = await ctx.task("Deleting…", async () => {
+          const argv = ["jira", "board", "delete", "--id", String(id), "--confirm", ...(what === "filter" ? ["--delete-filter"] : [])];
+          const done = await ctx.task("Deleting…", () => logged(ctx, [argv], async () => {
             const filterId = what === "filter" ? await ctx.opts.jira.getBoardFilterId(id) : undefined;
             await ctx.opts.jira.deleteBoard(id);
             if (filterId) await ctx.opts.jira.deleteFilter(filterId);
             return `Board ${node.label} deleted`;
-          });
+          }));
           if (!done) return;
           updateNav(ctx, (t) => ({ ...t, selected: "g:boards" }));
           await reload(ctx, "g:boards");
@@ -130,7 +133,7 @@ function newSprint(ctx: Ctx): void {
     placeholder: "Sprint 12",
     onSubmit: (name) => {
       if (!name.trim()) return ctx.toast("error", "The name cannot be empty.");
-      confirmWrite(ctx, `Create the sprint "${name.trim()}"?`, [`On ${board.label}, not started`], [], async () => {
+      confirmWrite(ctx, `Create the sprint "${name.trim()}"?`, [`On ${board.label}, not started`], [], [["jira", "sprint", "create", "--board", String(board.data!.boardId), "--name", name.trim()]], async () => {
         await ctx.opts.jira.createSprint({ name: name.trim(), originBoardId: Number(board.data!.boardId) });
         await reload(ctx, board.id);
         return `Sprint "${name.trim()}" created`;
@@ -144,7 +147,7 @@ function startOrClose(ctx: Ctx, node: TreeNode): void {
   const id = Number(node.data!.sprintId);
   const name = String(node.data!.name);
   if (node.data!.state === "active") {
-    confirmWrite(ctx, `Complete the sprint "${name}"?`, ["Open issues stay in the closed sprint until you move them (s)."], [], async () => {
+    confirmWrite(ctx, `Complete the sprint "${name}"?`, ["Open issues stay in the closed sprint until you move them (s)."], [], [["jira", "sprint", "close", "--id", String(id)]], async () => {
       await ctx.opts.jira.closeSprint(id);
       await reload(ctx, board.id);
       return `Sprint "${name}" completed`;
@@ -160,7 +163,7 @@ function startOrClose(ctx: Ctx, node: TreeNode): void {
     onSubmit: (endDate) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate.trim())) return ctx.toast("error", "The end date must be YYYY-MM-DD.");
       const startDate = isoDay(new Date());
-      confirmWrite(ctx, `Start the sprint "${name}"?`, [`${startDate} → ${endDate.trim()}`], [], async () => {
+      confirmWrite(ctx, `Start the sprint "${name}"?`, [`${startDate} → ${endDate.trim()}`], [], [["jira", "sprint", "start", "--id", String(id), "--start", startDate, "--end", endDate.trim()]], async () => {
         await ctx.opts.jira.startSprint(id, { startDate, endDate: endDate.trim() });
         await reload(ctx, board.id);
         return `Sprint "${name}" started`;
@@ -179,10 +182,13 @@ function deleteSprint(ctx: Ctx, node: TreeNode): void {
     double: true,
     step: 0,
     onConfirm: async () => {
-      const done = await ctx.task("Deleting…", async () => {
-        await ctx.opts.jira.deleteSprint(Number(node.data!.sprintId));
-        return `Sprint "${name}" deleted`;
-      });
+      const argv = ["jira", "sprint", "delete", "--id", String(node.data!.sprintId), "--confirm"];
+      const done = await ctx.task("Deleting…", () =>
+        logged(ctx, [argv], async () => {
+          await ctx.opts.jira.deleteSprint(Number(node.data!.sprintId));
+          return `Sprint "${name}" deleted`;
+        })
+      );
       if (!done) return;
       updateNav(ctx, (t) => ({ ...t, selected: board.id }));
       await reload(ctx, board.id);
@@ -250,7 +256,7 @@ function rank(ctx: Ctx): void {
       const items = ctx.store.get().jira.list.items;
       const plan = rankPlan(items, keys, move as RankMove);
       if (!plan) return ctx.toast("info", `${label} is already there.`);
-      confirmWrite(ctx, `Move ${label} ${plan.before ? `above ${plan.before}` : `below ${plan.after}`}?`, keys, [], async () => {
+      confirmWrite(ctx, `Move ${label} ${plan.before ? `above ${plan.before}` : `below ${plan.after}`}?`, keys, [], [["jira", "issue", "rank", ...keys, ...(plan.before ? ["--before", plan.before] : ["--after", plan.after!])]], async () => {
         const failed = await ctx.opts.jira.rankIssues({ issues: keys, before: plan.before, after: plan.after });
         if (failed.length) throw new Error(`Not moved: ${failed.map((f) => `${f.issueKey} (${f.errors.join("; ") || "refused"})`).join(", ")}`);
         // Jira's search shows a new rank only after a few seconds: reorder here instead of reloading.

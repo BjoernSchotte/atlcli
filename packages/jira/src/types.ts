@@ -552,6 +552,12 @@ export interface CreateFilterInput {
   favourite?: boolean;
 }
 
+/** A column of a board: its name and the ids of the statuses it shows. */
+export interface JiraBoardColumn {
+  name: string;
+  statusIds: string[];
+}
+
 /** Input for updating a filter */
 export interface UpdateFilterInput {
   name?: string;

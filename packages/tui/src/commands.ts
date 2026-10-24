@@ -32,8 +32,8 @@ export interface AreaModule {
   open(ctx: Ctx, node: TreeNode): Promise<void>;
   /** The list selection changed: load the detail. */
   select(ctx: Ctx): void;
-  /** Reloads the list and the open detail. */
-  refresh(ctx: Ctx): Promise<void>;
+  /** Reloads the list and the open detail; `quiet` keeps the detail on screen while it reloads (auto-refresh). */
+  refresh(ctx: Ctx, quiet?: boolean): Promise<void>;
   /** Id of a list item (issue key, page id). */
   itemId(state: AppState, index: number): string | undefined;
   /** Browser URL of the selected item. */

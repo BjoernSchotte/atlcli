@@ -46,15 +46,19 @@ a navigator, a list and a detail pane, with the keyboard or the mouse.
   favourite filters. Filter with `jira search` flags or JQL, sort, mark issues
   for bulk changes. Transition, assign, comment, edit in `$EDITOR`, label, move
   to a sprint, set the epic, create and clone.
-- **Agile:** create boards and sprints from the navigator, start and complete
-  sprints, and reorder the backlog with `R`.
+- **Agile:** see a sprint as a board and move cards across its columns; create
+  boards and sprints from the navigator, start and complete sprints, and reorder
+  the backlog with `R`.
 - **Confluence:** spaces and their page trees, CQL search, every page as the same
   Markdown `wiki docs pull` writes. Edit in `$EDITOR`, add child pages, labels,
   move pages, compare versions.
 - **Safe by design:** every write lists what it changes and asks first; a page
   someone saved meanwhile is never overwritten.
+- **Learn the CLI as you go:** `!` lists every change you made as the `atlcli`
+  command that does the same, ready to paste into a script.
 - **Yours:** `?` shows the keys of the focused pane, `:` finds every command by
-  name; light and dark themes, configurable keys and columns.
+  name; saved views, lists that refresh while you look, light and dark themes,
+  configurable keys and columns.
 
 | The active sprint, with comments | One palette for every command |
 |---|---|

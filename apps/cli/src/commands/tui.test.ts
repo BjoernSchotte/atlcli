@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { tuiConfig } from "./tui.js";
+import { tuiConfig, tuiViews, withProfileViews } from "./tui.js";
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 
@@ -20,6 +20,41 @@ describe("tuiConfig", () => {
     expect(() => tuiConfig({ area: "confluence" })).toThrow("tui.area");
     expect(() => tuiConfig({ keymap: { x: "t" as never } })).toThrow("tui.keymap");
     expect(() => tuiConfig({ columns: ["key", "sumary"] })).toThrow("not sumary");
+  });
+});
+
+describe("tui.refresh", () => {
+  test("whole seconds; 0 turns it off, small values become 10", () => {
+    expect(tuiConfig({ refresh: 30 })).toEqual({ refresh: 30 });
+    expect(tuiConfig({ refresh: 0 })).toEqual({ refresh: 0 });
+    expect(tuiConfig({ refresh: 2 })).toEqual({ refresh: 10 });
+    expect(() => tuiConfig({ refresh: -1 })).toThrow("tui.refresh");
+    expect(() => tuiConfig({ refresh: "60" as never })).toThrow("tui.refresh");
+  });
+});
+
+describe("tui.views", () => {
+  const all = [
+    { profile: "work", area: "jira", name: "Bugs", query: "type = Bug" },
+    { profile: "home", area: "wiki", name: "Howtos", query: 'label = "howto"' },
+  ];
+
+  test("the profile's views only", () => {
+    expect(tuiViews({ views: all }, "work")).toEqual([{ area: "jira", name: "Bugs", query: "type = Bug" }]);
+    expect(tuiViews(undefined, "work")).toEqual([]);
+  });
+
+  test("a broken entry says so", () => {
+    expect(() => tuiViews({ views: [{ profile: "work", area: "confluence", name: "x", query: "y" }] }, "work")).toThrow("tui.views");
+    expect(() => tuiViews({ views: [{ area: "jira", name: "x", query: "y" } as never] }, "work")).toThrow("tui.views");
+  });
+
+  test("saving replaces the profile's views and keeps the others'", () => {
+    expect(withProfileViews(all, "work", [{ area: "jira", name: "Mine", query: "assignee = currentUser()" }])).toEqual([
+      { profile: "home", area: "wiki", name: "Howtos", query: 'label = "howto"' },
+      { profile: "work", area: "jira", name: "Mine", query: "assignee = currentUser()" },
+    ]);
+    expect(withProfileViews(undefined, "work", [])).toEqual([]);
   });
 });
 

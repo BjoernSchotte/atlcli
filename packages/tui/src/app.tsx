@@ -10,8 +10,11 @@ import type { TuiOptions } from "../index.js";
 import { coreCommands, MIN_PANE, type AreaModule } from "./commands.js";
 import { jira } from "./jira.js";
 import { JiraDetail, JiraRow } from "./jira-view.js";
+import { KanbanPane } from "./kanban-view.js";
 import { keyString, resolveCommand, type Command, type Ctx, type KeyLike } from "./keymap.js";
+import { logCommands } from "./log.js";
 import { overlayKey } from "./overlays.js";
+import { viewCommands } from "./saved-views.js";
 import { initialState, topOverlay, type AppState, type WikiPageRow } from "./state.js";
 import { createStore, type Store } from "./store.js";
 import { syntaxStyleFor, THEMES } from "./theme.js";
@@ -23,7 +26,7 @@ import { WikiDetail, WikiRow } from "./wiki-view.js";
 export const AREAS: Record<AppState["area"], AreaModule> = { jira, wiki };
 
 export function allCommands(areas: Record<AppState["area"], AreaModule> = AREAS): Command[] {
-  return [...areas.jira.commands, ...areas.wiki.commands, ...coreCommands(areas)];
+  return [...areas.jira.commands, ...areas.wiki.commands, ...logCommands, ...viewCommands, ...coreCommands(areas)];
 }
 
 let toastSeq = 0;
@@ -66,6 +69,37 @@ export function createCtx(store: Store<AppState>, opts: TuiOptions, renderer: Cl
   return ctx;
 }
 
+/** Auto-refresh default, in seconds; `tui.refresh: 0` turns it off. */
+export const REFRESH_SECONDS = 60;
+
+/** Whether an auto-refresh may run: idle long enough, nothing open, nothing loading or saving. */
+export function refreshDue(state: AppState, idleMs: number, intervalMs: number): boolean {
+  return intervalMs > 0 && idleMs >= intervalMs && state.overlays.length === 0 && !state.busy && !state[state.area].list.loading;
+}
+
+/**
+ * Reloads the current area quietly after `seconds` without a key press, and
+ * again every `seconds` while it stays idle. `activity()` restarts the wait.
+ */
+export function startAutoRefresh(ctx: Ctx, areas: Record<AppState["area"], AreaModule>, seconds: number, now: () => number = Date.now, tickMs = 1000): { activity(): void; stop(): void } {
+  let last = now();
+  let running = false;
+  const timer = setInterval(() => {
+    if (running || !refreshDue(ctx.store.get(), now() - last, seconds * 1000)) return;
+    running = true;
+    // Errors show where they belong (the list, the detail); a failed auto-refresh does not toast.
+    void areas[ctx.store.get().area]
+      .refresh(ctx, true)
+      .catch(() => {})
+      .finally(() => {
+        last = now();
+        running = false;
+      });
+  }, tickMs);
+  timer.unref?.();
+  return { activity: () => (last = now()), stop: () => clearInterval(timer) };
+}
+
 /** Hands a key to the top overlay or the command for the focused pane. */
 export function handleKey(env: Pick<Env, "ctx" | "commands" | "keymap">, event: KeyLike): void {
   const key = keyString(event);
@@ -102,7 +136,11 @@ export function Shell() {
   const navOpen = useApp((s) => s.navOpen);
   const zoom = useApp((s) => s.zoom);
   const focus = useApp((s) => s.focus);
-  useKeyboard((event) => handleKey(env, event));
+  const board = useApp((s) => s.area === "jira" && s.jira.view === "board");
+  useKeyboard((event) => {
+    env.onActivity?.();
+    handleKey(env, event);
+  });
 
   const userNav = useApp((s) => s.navWidth);
   const userList = useApp((s) => s.listWidth);
@@ -120,9 +158,14 @@ export function Shell() {
         {showNav && !compact ? <NavPane width={navWidth} /> : null}
         {showNav && compact ? <NavPane width={width} /> : null}
         {!zoom && !(compact && showNav) ? (
-          <ListPane width={listWidth} height={compact ? Math.floor(bodyHeight * 0.45) : undefined} idOf={view.idOf} Row={view.Row} />
+          board ? (
+            // The board takes the list's and the detail's room; Enter (or z) shows the detail.
+            <KanbanPane width={compact ? width : width - (showNav ? navWidth : 0)} />
+          ) : (
+            <ListPane width={listWidth} height={compact ? Math.floor(bodyHeight * 0.45) : undefined} idOf={view.idOf} Row={view.Row} />
+          )
         ) : null}
-        {!(compact && showNav) ? <view.Detail /> : null}
+        {!(compact && showNav) && !(board && !zoom) ? <view.Detail /> : null}
       </box>
       <StatusBar width={width} />
       <Overlays width={width} height={height} />
@@ -134,11 +177,12 @@ export async function runTui(opts: TuiOptions): Promise<void> {
   const renderer = await createCliRenderer({ exitOnCtrlC: false, useMouse: true, screenMode: "alternate-screen", targetFps: 30 });
   const theme = THEMES[opts.config?.theme ?? "dark"];
   const syntax = syntaxStyleFor(theme, renderer.nativeScene);
-  const store = createStore(initialState(opts.area ?? opts.config?.area ?? "jira"));
+  const store = createStore({ ...initialState(opts.area ?? opts.config?.area ?? "jira"), views: opts.views ?? [] });
   let quit!: () => void;
   const done = new Promise<void>((resolve) => (quit = resolve));
   const ctx = createCtx(store, opts, renderer, () => quit());
-  const env: Env = { ctx, theme, syntax, commands: allCommands(), areas: AREAS, keymap: opts.config?.keymap ?? {} };
+  const refresh = startAutoRefresh(ctx, AREAS, opts.config?.refresh ?? REFRESH_SECONDS);
+  const env: Env = { ctx, theme, syntax, commands: allCommands(), areas: AREAS, keymap: opts.config?.keymap ?? {}, onActivity: refresh.activity };
   // `kill` or a closed terminal ends the TUI and restores the terminal, instead of leaving it running.
   const onSignal = () => quit();
   const signals = ["SIGTERM", "SIGHUP", "SIGINT"] as const;
@@ -153,6 +197,7 @@ export async function runTui(opts: TuiOptions): Promise<void> {
     await done;
   } finally {
     for (const signal of signals) process.off(signal, onSignal);
+    refresh.stop();
     renderer.destroy();
     await renderer.closed;
     syntax.destroy();

@@ -19,6 +19,15 @@ export interface TuiConfig {
   keymap?: Record<string, string[]>;
   /** Issue list columns, in order; the summary always comes last. Default: key, status, assignee. */
   columns?: TuiColumn[];
+  /** Seconds without a key press before the list and detail reload (default 60; 0 = off). */
+  refresh?: number;
+}
+
+/** A list saved under a name: JQL in Jira, CQL in the wiki. Kept per profile in `tui.views`. */
+export interface TuiView {
+  area: TuiArea;
+  name: string;
+  query: string;
 }
 
 export type TuiColumn = "key" | "type" | "status" | "priority" | "assignee" | "updated";
@@ -45,6 +54,10 @@ export interface TuiOptions {
   openUrl(url: string): Promise<void>;
   /** Edits text in `$VISUAL`/`$EDITOR`; the TUI suspends while it runs. */
   editText(initial: string, fileName: string): Promise<string>;
+  /** This profile's saved views (`tui.views`). */
+  views?: TuiView[];
+  /** Stores this profile's saved views; without it views last for the session. */
+  saveViews?(views: TuiView[]): Promise<void>;
 }
 
 /** Runs the TUI until the user quits, then restores the terminal. */

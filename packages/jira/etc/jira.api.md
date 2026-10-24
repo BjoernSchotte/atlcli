@@ -248,6 +248,12 @@ export interface JiraBoard {
     };
 }
 
+// export: JiraBoardColumn
+export interface JiraBoardColumn {
+    name: string;
+    statusIds: string[];
+}
+
 // export: JiraChangelogEntry
 export interface JiraChangelogEntry {
     id: string;
@@ -465,6 +471,7 @@ export declare class JiraClient {
     getStatuses(): Promise<JiraStatus[]>;
     getBoardFilterJql(boardId: number): Promise<string>;
     getBoardFilterId(boardId: number): Promise<string>;
+    getBoardColumns(boardId: number): Promise<JiraBoardColumn[]>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -2020,6 +2027,12 @@ export interface JiraBoard {
     };
 }
 
+// export: JiraBoardColumn
+export interface JiraBoardColumn {
+    name: string;
+    statusIds: string[];
+}
+
 // export: JiraChangelogEntry
 export interface JiraChangelogEntry {
     id: string;
@@ -2237,6 +2250,7 @@ export declare class JiraClient {
     getStatuses(): Promise<JiraStatus[]>;
     getBoardFilterJql(boardId: number): Promise<string>;
     getBoardFilterId(boardId: number): Promise<string>;
+    getBoardColumns(boardId: number): Promise<JiraBoardColumn[]>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -3897,6 +3911,12 @@ export interface JiraBoard {
     };
 }
 
+// export: JiraBoardColumn
+export interface JiraBoardColumn {
+    name: string;
+    statusIds: string[];
+}
+
 // export: JiraChangelogEntry
 export interface JiraChangelogEntry {
     id: string;
@@ -4114,6 +4134,7 @@ export declare class JiraClient {
     getStatuses(): Promise<JiraStatus[]>;
     getBoardFilterJql(boardId: number): Promise<string>;
     getBoardFilterId(boardId: number): Promise<string>;
+    getBoardColumns(boardId: number): Promise<JiraBoardColumn[]>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -5669,6 +5690,12 @@ export interface JiraBoard {
     };
 }
 
+// export: JiraBoardColumn
+export interface JiraBoardColumn {
+    name: string;
+    statusIds: string[];
+}
+
 // export: JiraChangelogEntry
 export interface JiraChangelogEntry {
     id: string;
@@ -5886,6 +5913,7 @@ export declare class JiraClient {
     getStatuses(): Promise<JiraStatus[]>;
     getBoardFilterJql(boardId: number): Promise<string>;
     getBoardFilterId(boardId: number): Promise<string>;
+    getBoardColumns(boardId: number): Promise<JiraBoardColumn[]>;
     getWorklogs(keyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;

@@ -7,6 +7,8 @@ import { markdownToStorage, storageToMarkdown, type ConfluenceClient } from "@at
 import type { AreaModule } from "./commands.js";
 import { expandNode, updateNav } from "./commands.js";
 import type { Command, Ctx } from "./keymap.js";
+import { logged, record, type Argv } from "./log.js";
+import { VIEWS_GROUP, viewNodes, viewsGroup } from "./saved-views.js";
 import { pushOverlay, setChildren, withItems, type AppState, type Overlay, type PageDetail, type PickerItem, type TreeNode, type WikiPageRow } from "./state.js";
 
 const MAX = 100;
@@ -127,7 +129,8 @@ export const selectedPage = (s: AppState): WikiPageRow | undefined => s.wiki.lis
 
 const open = (ctx: Ctx, overlay: Overlay) => ctx.store.set((s) => pushOverlay(s, overlay));
 
-function confirm(ctx: Ctx, title: string, lines: string[], apply: () => Promise<string>, reload: string[]): void {
+/** Asks, runs `apply`, logs it with `argvs` (the CLI commands that do the same), reloads `reload`. */
+function confirm(ctx: Ctx, title: string, lines: string[], argvs: Argv[], apply: () => Promise<string>, reload: string[]): void {
   open(ctx, {
     kind: "confirm",
     title,
@@ -135,7 +138,7 @@ function confirm(ctx: Ctx, title: string, lines: string[], apply: () => Promise<
     double: false,
     step: 0,
     onConfirm: async () => {
-      const done = await ctx.task("Saving…", apply);
+      const done = await ctx.task("Saving…", () => logged(ctx, argvs, apply));
       await Promise.all(reload.map((id) => loadPage(ctx, id, true)));
       if (done) ctx.toast("success", done);
     },
@@ -182,6 +185,7 @@ async function save(ctx: Ctx, id: string, title: string, baseVersion: number, be
     } catch (err) {
       // Someone saved between our check and the write: Confluence rejects the stale version.
       if (/\b409\b|conflict|version/i.test(err instanceof Error ? err.message : "")) return { conflict: (await client.getPage(id)).version ?? baseVersion + 1 };
+      record(ctx, false, err instanceof Error ? err.message : String(err), [["wiki", "page", "update", "--id", id, "--body", `${id}.md`]]);
       throw err;
     }
     return { saved: baseVersion + 1, notes };
@@ -191,6 +195,7 @@ async function save(ctx: Ctx, id: string, title: string, baseVersion: number, be
     conflict(ctx, id, title, baseVersion, result.conflict!, before, after);
     return;
   }
+  record(ctx, true, `Saved "${title}" as v${result.saved}`, [["wiki", "page", "update", "--id", id, "--body", `${id}.md`]]);
   await loadPage(ctx, id, true);
   ctx.toast("success", `Saved "${title}" as v${result.saved}${result.notes?.length ? ` (${result.notes.join(" ")})` : ""}`);
 }
@@ -254,6 +259,7 @@ async function newPage(ctx: Ctx): Promise<void> {
         ctx,
         `Create "${title.trim()}" ${where}?`,
         body.split("\n").slice(0, 12),
+        [["wiki", "page", "create", "--space", spaceKey, "--title", title.trim(), "--body", "new-page.md", ...(parent ? ["--parent", parent.id] : [])]],
         async () => {
           const client = ctx.opts.confluence;
           const page = await client.createPage({ spaceKey, title: title.trim(), storage: markdownToStorage(body, { baseUrl: client.getInstanceUrl() }), parentId: parent?.id });
@@ -287,7 +293,10 @@ function labels(ctx: Ctx): void {
       const add = wanted.filter((l) => !own.includes(l));
       const remove = own.filter((l) => !wanted.includes(l));
       if (add.length + remove.length === 0) return ctx.toast("info", "No changes.");
-      confirm(ctx, `Change the labels of "${row.title}"?`, [...add.map((l) => `+ ${l}`), ...remove.map((l) => `- ${l}`)], async () => {
+      confirm(ctx, `Change the labels of "${row.title}"?`, [...add.map((l) => `+ ${l}`), ...remove.map((l) => `- ${l}`)], [
+        ...(add.length ? [["wiki", "page", "label", "add", ...add, "--id", row.id]] : []),
+        ...remove.map((l) => ["wiki", "page", "label", "remove", l, "--id", row.id]),
+      ], async () => {
         if (add.length) await ctx.opts.confluence.addLabels(row.id, add);
         for (const l of remove) await ctx.opts.confluence.removeLabel(row.id, l);
         return `Labels of "${row.title}" updated`;
@@ -322,7 +331,7 @@ function move(ctx: Ctx): void {
       });
     },
     onSubmit: ([parentId]) =>
-      confirm(ctx, `Move "${row.title}" under "${titles.get(parentId!) ?? parentId}"?`, [`${row.title} → ${titles.get(parentId!) ?? parentId}`], async () => {
+      confirm(ctx, `Move "${row.title}" under "${titles.get(parentId!) ?? parentId}"?`, [`${row.title} → ${titles.get(parentId!) ?? parentId}`], [["wiki", "page", "move", "--id", row.id, "--parent", parentId!]], async () => {
         await ctx.opts.confluence.movePage(row.id, parentId!);
         return `Moved "${row.title}"`;
       }, [row.id]),
@@ -405,6 +414,7 @@ export const wiki: AreaModule = {
         query("q:recent", space ? `Recently updated (${space})` : "Recently updated", recent),
         query("q:mine", "My pages", "type = page AND contributor = currentUser() ORDER BY lastmodified DESC"),
         { id: "g:spaces", label: "Spaces", kind: "group", expandable: true },
+        viewsGroup(),
       ])
     );
     const list = loadSearch(ctx, space ? `Recently updated (${space})` : "Recently updated", recent);
@@ -425,8 +435,39 @@ export const wiki: AreaModule = {
   },
 
   async open(ctx, node) {
-    const client = ctx.opts.confluence;
     ctx.store.set((s) => ({ ...s, focus: "list" }));
+    return showNode(ctx, node);
+  },
+
+  select(ctx) {
+    const row = selectedPage(ctx.store.get());
+    if (row) void loadPage(ctx, row.id);
+  },
+
+  async refresh(ctx, quiet = false) {
+    const s = ctx.store.get();
+    // Quiet (auto-refresh): the detail stays until its new version is there.
+    if (!quiet) setWiki(ctx, () => ({ details: {} }));
+    // The node the list came from (the navigator may have moved on since).
+    const [kind, id] = s.wiki.list.query.split(":", 2) as [string, string | undefined];
+    const children = kind === "children" || kind === "space";
+    const node = children ? s.wiki.nav.nodes[kind === "space" ? `sp:${id}` : `p:${id}`] : undefined;
+    if (children && node) await showNode(ctx, node);
+    else if (!children) await loadSearch(ctx, s.wiki.list.title, s.wiki.list.query);
+    const row = selectedPage(ctx.store.get());
+    if (quiet && row) await loadPage(ctx, row.id, true);
+  },
+
+  itemId: (s, i) => s.wiki.list.items[i]?.id,
+  url: (ctx) => {
+    const row = selectedPage(ctx.store.get());
+    return row ? pageUrl(ctx, row) : undefined;
+  },
+};
+
+/** Shows what a navigator node stands for in the list: a search, a space's top pages, a page's children. */
+async function showNode(ctx: Ctx, node: TreeNode): Promise<void> {
+  const client = ctx.opts.confluence;
     if (typeof node.data?.cql === "string") return loadSearch(ctx, node.label, node.data.cql);
     if (node.kind === "space") {
       return loadRows(ctx, `${node.label}: top pages`, `space:${node.data?.key}`, async () =>
@@ -440,32 +481,11 @@ export const wiki: AreaModule = {
       const page = node.kind === "page" ? { id: String(node.data?.id), title: node.label, spaceKey: node.data?.spaceKey as string | undefined } : undefined;
       return loadRows(ctx, node.label, `children:${node.data?.id}`, (signal) => childRows(client, page, String(node.data?.id), signal));
     }
-  },
-
-  select(ctx) {
-    const row = selectedPage(ctx.store.get());
-    if (row) void loadPage(ctx, row.id);
-  },
-
-  async refresh(ctx) {
-    const s = ctx.store.get();
-    setWiki(ctx, () => ({ details: {} }));
-    const node = s.wiki.nav.selected ? s.wiki.nav.nodes[s.wiki.nav.selected] : undefined;
-    if (s.wiki.list.query.startsWith("children:") || s.wiki.list.query.startsWith("space:")) {
-      if (node) return wiki.open(ctx, node);
-    }
-    return loadSearch(ctx, s.wiki.list.title, s.wiki.list.query);
-  },
-
-  itemId: (s, i) => s.wiki.list.items[i]?.id,
-  url: (ctx) => {
-    const row = selectedPage(ctx.store.get());
-    return row ? pageUrl(ctx, row) : undefined;
-  },
-};
+}
 
 async function childNodes(ctx: Ctx, node: TreeNode): Promise<Omit<TreeNode, "depth" | "parent">[]> {
   const client = ctx.opts.confluence;
+  if (node.id === VIEWS_GROUP) return viewNodes(ctx.store.get().views, "wiki");
   if (node.id === "g:spaces") {
     const spaces = await client.listSpaces(250);
     const def = ctx.opts.space;
