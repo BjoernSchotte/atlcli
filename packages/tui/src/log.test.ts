@@ -20,9 +20,24 @@ describe("shell quoting", () => {
     expect(shellQuote("In Arbeit")).toBe("'In Arbeit'");
     expect(shellQuote("it's")).toBe(`'it'\\''s'`);
     expect(shellQuote("")).toBe("''");
+    // zsh expands a leading = to a command path.
+    expect(shellQuote("=ls")).toBe("'=ls'");
     expect(formatCommand(["jira", "issue", "transition", "--key", "A-1", "--to", "In Arbeit"], "work")).toBe(
-      "atlcli jira issue transition --key A-1 --to 'In Arbeit' --profile work"
+      "atlcli jira issue transition --key=A-1 '--to=In Arbeit' --profile=work"
     );
+  });
+
+  // Regression: Jira data starting with "-" became flags of the pasted line (a summary "--profile=prod" switched the profile).
+  test("values from Jira cannot become flags of the pasted line", () => {
+    expect(formatCommand(["jira", "issue", "clone", "K-1", "--summary", "--profile=prod"], "work")).toBe(
+      "atlcli jira issue clone K-1 --summary=--profile=prod --profile=work"
+    );
+    expect(formatCommand(["jira", "board", "delete", "--id", "7", "--confirm", "--delete-filter"], "work")).toBe(
+      "atlcli jira board delete --id=7 --confirm --delete-filter --profile=work"
+    );
+    // A positional value (label, comment) starting with "-" has no safe form: no line.
+    expect(formatCommand(["jira", "bulk", "label", "add", "--jql=project=ACME", "--jql", "key in (A-1)"], "work")).toBeUndefined();
+    expect(formatCommand(["jira", "issue", "comment", "--key", "A-1", "- a list item"], "work")).toBeUndefined();
   });
 });
 
@@ -41,8 +56,8 @@ describe("command log", () => {
     await t.settle();
     const log = t.ctx.store.get().log;
     expect(log.map((e) => [e.ok, e.text, e.commands])).toEqual([
-      [true, "A-1 updated", ["atlcli jira issue transition --key A-1 --to Start --profile test"]],
-      [true, "2 issues updated", ["atlcli jira bulk transition --jql 'key in (A-1, A-2)' --to Start --profile test"]],
+      [true, "A-1 updated", ["atlcli jira issue transition --key=A-1 --to=Start --profile=test"]],
+      [true, "2 issues updated", ["atlcli jira bulk transition '--jql=key in (A-1, A-2)' --to=Start --profile=test"]],
     ]);
   });
 
@@ -78,7 +93,7 @@ describe("command log", () => {
     press(t, "!");
     expect(topOverlay(t.ctx.store.get())).toEqual({ kind: "log", selected: 0 });
     press(t, "y");
-    expect(copied).toEqual(["atlcli jira issue transition --key A-1 --to Start --profile test"]);
+    expect(copied).toEqual(["atlcli jira issue transition --key=A-1 --to=Start --profile=test"]);
     press(t, "escape");
     expect(topOverlay(t.ctx.store.get())).toBeUndefined();
   });

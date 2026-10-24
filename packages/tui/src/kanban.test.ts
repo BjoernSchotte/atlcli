@@ -127,7 +127,7 @@ describe("the board view", () => {
     await t.settle();
     expect(moves).toEqual(["A-1:11"]);
     expect(topOverlay(t.ctx.store.get())).toBeUndefined();
-    expect(t.ctx.store.get().log.at(-1)).toMatchObject({ ok: true, text: "A-1 → To Do", commands: ["atlcli jira issue transition --key A-1 --to 'Back to backlog' --profile test"] });
+    expect(t.ctx.store.get().log.at(-1)).toMatchObject({ ok: true, text: "A-1 → To Do", commands: ["atlcli jira issue transition --key=A-1 '--to=Back to backlog' --profile=test"] });
   });
 
   test("no transition into the column: a note, no write", async () => {
