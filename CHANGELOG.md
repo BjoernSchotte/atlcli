@@ -2,6 +2,31 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.8] - 2026-10-24
+
+### Bug Fixes
+
+- **script:** Export refuses page ids that could pass flags to the child CLI ([c11236a](https://github.com/bjoernschotte/atlcli/commit/c11236a842c2e1c909283151195d43b233252ee5))
+
+### Documentation
+
+- **spec:** Script runtime with QuickJS sandbox and MVP plan ([5e72798](https://github.com/bjoernschotte/atlcli/commit/5e72798f8cbe177c2f100afac5037d85aa27c2a2))
+- **spec:** Record MVP decisions for script runtime ([1fbb8f8](https://github.com/bjoernschotte/atlcli/commit/1fbb8f86da79dbd65d0c306ff0ff357a68768fb4))
+- **script:** Guide, Script API reference and CI recipe for atlcli script ([604b014](https://github.com/bjoernschotte/atlcli/commit/604b014fdb33976c3a25318958728139bc5cfb7b))
+- **readme:** Automation scripts section and a one-line in-page TOC ([3cf6ad3](https://github.com/bjoernschotte/atlcli/commit/3cf6ad3b6a9d982846fb61529e688f8aaba3afc0))
+
+### Features
+
+- **script-runtime:** QuickJS sandbox core for TypeScript automation scripts ([6545389](https://github.com/bjoernschotte/atlcli/commit/65453898c105743bb704bc65c4e12a544916e244))
+- **script-runtime:** Script meta, atlcli verbs and plan recording ([22d10d8](https://github.com/bjoernschotte/atlcli/commit/22d10d8b66aba21c2dace7f3ae89c6a69f905357))
+- **script-runtime:** Portable script plans and digest-bound apply ([6e19a1f](https://github.com/bjoernschotte/atlcli/commit/6e19a1f26d44c4082bce5254bcb62e2e4da52729))
+- **cli:** Atlcli script command with lazy CLI port and boilerplate-free scripts ([18398fc](https://github.com/bjoernschotte/atlcli/commit/18398fc655c66d6cd0e1172d8dab8ac98db62623))
+- **script:** Skip unchanged page updates, limit flags, env auth docs fix ([42d080c](https://github.com/bjoernschotte/atlcli/commit/42d080cab88bb6eccefbabb1728137a7f0745a72))
+- **script:** Links, assign, labels, attachments, sprints, comments, move/delete and export verbs ([64feec4](https://github.com/bjoernschotte/atlcli/commit/64feec4a16f72b11b6bb65e6e4997f9f79b535e9))
+
+### Testing
+
+- **script-runtime:** Give the GC-teardown regression test room on CI runners ([621797a](https://github.com/bjoernschotte/atlcli/commit/621797a9f9c95161521de50c7cec8671b6ba1d02))
 ## [2026.10.7] - 2026-10-24
 
 ### Bug Fixes
