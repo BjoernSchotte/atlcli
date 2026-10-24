@@ -13,6 +13,7 @@ import {
   type JiraUser,
 } from "@atlcli/jira";
 import type { Command, Ctx } from "./keymap.js";
+import { keysJql, logged, type Argv } from "./log.js";
 import { LIST_FIELDS, loadDetail, selectedIssue, targetIssues } from "./jira.js";
 import { pushOverlay, withItems, type Overlay, type PickerItem } from "./state.js";
 
@@ -30,9 +31,10 @@ function prompt(ctx: Ctx, title: string, value: string, onSubmit: (value: string
 
 /**
  * Asks, then runs `apply` with a busy indicator; reloads `keys` afterwards.
- * More than `BULK_CONFIRM` issues need a second `y`.
+ * More than `BULK_CONFIRM` issues need a second `y`. The command log gets
+ * `argvs`, the CLI commands that do the same.
  */
-export function confirmWrite(ctx: Ctx, title: string, lines: string[], keys: string[], apply: () => Promise<string>): void {
+export function confirmWrite(ctx: Ctx, title: string, lines: string[], keys: string[], argvs: Argv[], apply: () => Promise<string>): void {
   open(ctx, {
     kind: "confirm",
     title,
@@ -40,7 +42,7 @@ export function confirmWrite(ctx: Ctx, title: string, lines: string[], keys: str
     double: keys.length > BULK_CONFIRM,
     step: 0,
     onConfirm: async () => {
-      const done = await ctx.task("Saving…", apply);
+      const done = await ctx.task("Saving…", () => logged(ctx, argvs, apply));
       await Promise.all(keys.map((key) => loadDetail(ctx, key, true)));
       if (done) ctx.toast("success", done);
     },
@@ -69,6 +71,9 @@ async function each(issues: JiraIssue[], work: (issue: JiraIssue) => Promise<voi
   return issues.length === 1 ? `${issues[0]!.key} updated` : `${issues.length} issues updated`;
 }
 
+/** The single-issue command for one issue, the `jira bulk` one for several. */
+export const oneOrBulk = (keys: string[], one: (key: string) => Argv, bulk: (jql: string) => Argv): Argv => (keys.length === 1 ? one(keys[0]!) : bulk(keysJql(keys)));
+
 const list = (issues: JiraIssue[], what: (i: JiraIssue) => string) => issues.map((i) => `${i.key}  ${what(i)}`);
 
 // ============ Transition ============
@@ -89,6 +94,7 @@ async function transition(ctx: Ctx): Promise<void> {
         `Transition to "${chosen.name}"?`,
         list(issues, (i) => `${i.fields.status?.name ?? "?"} → ${chosen.to?.name ?? chosen.name}`),
         issues.map((i) => i.key),
+        [transitionArgv(issues.map((i) => i.key), chosen.name)],
         () =>
           each(issues, async (issue) => {
             // Other issues may have other workflows: match by name there.
@@ -100,6 +106,9 @@ async function transition(ctx: Ctx): Promise<void> {
     }
   );
 }
+
+export const transitionArgv = (keys: string[], to: string): Argv =>
+  oneOrBulk(keys, (key) => ["jira", "issue", "transition", "--key", key, "--to", to], (jql) => ["jira", "bulk", "transition", "--jql", jql, "--to", to]);
 
 // ============ Assign ============
 
@@ -133,6 +142,7 @@ function assign(ctx: Ctx): void {
       const client = ctx.opts.jira;
       let ref: { accountId: string } | { name: string } | null;
       let name: string;
+      const user = id === "none" || id === "me" ? id : id!.slice(id!.indexOf(":") + 1);
       if (id === "none") {
         ref = null;
         name = "unassigned";
@@ -150,6 +160,7 @@ function assign(ctx: Ctx): void {
         `Assign to ${name}?`,
         list(issues, (i) => `${i.fields.assignee?.displayName ?? "unassigned"} → ${name}`),
         issues.map((i) => i.key),
+        issues.map((i) => ["jira", "issue", "assign", "--key", i.key, "--assignee", user]),
         () => each(issues, (issue) => client.assignIssue(issue.key, ref))
       );
     },
@@ -177,7 +188,7 @@ function comment(ctx: Ctx): void {
     value: "",
     preview: false,
     onSubmit: (text) =>
-      confirmWrite(ctx, `Add this comment to ${issue.key}?`, text.split("\n").slice(0, 12), [issue.key], async () => {
+      confirmWrite(ctx, `Add this comment to ${issue.key}?`, text.split("\n").slice(0, 12), [issue.key], [["jira", "issue", "comment", "--key", issue.key, text]], async () => {
         await ctx.opts.jira.addComment(issue.key, richText(ctx, text));
         ctx.store.set((s) => ({ ...s, jira: { ...s.jira, tab: "comments" } }));
         return `Comment added to ${issue.key}`;
@@ -209,10 +220,13 @@ async function edit(ctx: Ctx): Promise<void> {
         const fields: Record<string, unknown> = {};
         if (summaryChanged) fields.summary = summary.trim();
         if (after !== before) fields.description = richText(ctx, after);
-        const done = await ctx.task("Saving…", async () => {
-          await client.updateIssue(issue.key, { fields });
-          return `${issue.key} saved`;
-        });
+        const argv: Argv = ["jira", "issue", "update", "--key", issue.key, ...(summaryChanged ? ["--summary", summary.trim()] : []), ...(after !== before ? ["--edit"] : [])];
+        const done = await ctx.task("Saving…", () =>
+          logged(ctx, [argv], async () => {
+            await client.updateIssue(issue.key, { fields });
+            return `${issue.key} saved`;
+          })
+        );
         await loadDetail(ctx, issue.key, true);
         if (done) ctx.toast("success", done);
       },
@@ -244,6 +258,7 @@ function labels(ctx: Ctx): void {
           `Change the labels of ${issues[0]!.key}?`,
           [...add.map((l) => `+ ${l}`), ...remove.map((l) => `- ${l}`)],
           [issues[0]!.key],
+          [["jira", "issue", "update", "--key", issues[0]!.key, ...(add.length ? ["--add-labels", add.join(",")] : []), ...(remove.length ? ["--remove-labels", remove.join(",")] : [])]],
           async () => {
             if (add.length) await ctx.opts.jira.addLabels(issues[0]!.key, add);
             if (remove.length) await ctx.opts.jira.removeLabels(issues[0]!.key, remove);
@@ -257,6 +272,7 @@ function labels(ctx: Ctx): void {
           `Add ${wanted.join(", ")}?`,
           list(issues, () => `+ ${wanted.join(", ")}`),
           issues.map((i) => i.key),
+          wanted.map((l) => ["jira", "bulk", "label", "add", l, "--jql", keysJql(issues.map((i) => i.key))]),
           () => each(issues, (issue) => ctx.opts.jira.addLabels(issue.key, wanted))
         );
       }
@@ -297,7 +313,8 @@ async function sprint(ctx: Ctx): Promise<void> {
     ([id]) => {
       const name = id === "backlog" ? "the backlog" : sprints.find((sp) => String(sp.id) === id)!.name;
       const keys = issues.map((i) => i.key);
-      confirmWrite(ctx, `Move to ${name}?`, list(issues, () => `→ ${name}`), keys, async () => {
+      const argv: Argv = id === "backlog" ? ["jira", "sprint", "remove", ...keys] : ["jira", "sprint", "add", ...keys, "--sprint", id!];
+      confirmWrite(ctx, `Move to ${name}?`, list(issues, () => `→ ${name}`), keys, [argv], async () => {
         if (id === "backlog") await client.moveIssuesToBacklog(keys);
         else await client.moveIssuesToSprint(Number(id), keys);
         return `${keys.length === 1 ? keys[0] : `${keys.length} issues`} moved to ${name}`;
@@ -331,6 +348,7 @@ function parent(ctx: Ctx): void {
         `Set the parent to ${label}?`,
         list(issues, (i) => `${i.fields.parent?.key ?? "none"} → ${id === "none" ? "none" : id}`),
         issues.map((i) => i.key),
+        [id === "none" ? ["jira", "epic", "remove", ...issues.map((i) => i.key)] : ["jira", "epic", "add", ...issues.map((i) => i.key), "--epic", id!]],
         () =>
           each(issues, (issue) =>
             id === "none"
@@ -387,6 +405,7 @@ async function create(ctx: Ctx): Promise<void> {
           `Create this ${type} in ${project}?`,
           [summary.trim(), ...(description ? ["", ...description.split("\n").slice(0, 10)] : ["(no description)"])],
           [],
+          [["jira", "issue", "create", "--project", project!, "--type", type!, "--summary", summary.trim(), ...(description ? ["--edit"] : [])]],
           async () => {
             const created = await client.createIssue({
               fields: { project: { key: project! }, issuetype: { name: type! }, summary: summary.trim(), description: description ? richText(ctx, description) : undefined },
@@ -411,7 +430,7 @@ async function clone(ctx: Ctx): Promise<void> {
   const f = source.fields;
   prompt(ctx, `Clone ${issue.key}: summary`, f.summary ?? "", (summary) => {
     if (!summary.trim()) return ctx.toast("error", "The summary cannot be empty.");
-    confirmWrite(ctx, `Clone ${issue.key}?`, [summary.trim(), `${f.issuetype?.name ?? ""} in ${f.project.key}, linked as "clones ${issue.key}"`], [issue.key], async () => {
+    confirmWrite(ctx, `Clone ${issue.key}?`, [summary.trim(), `${f.issuetype?.name ?? ""} in ${f.project.key}, linked as "clones ${issue.key}"`], [issue.key], [["jira", "issue", "clone", issue.key, "--summary", summary.trim()]], async () => {
       const created = await client.createIssue({
         fields: {
           project: { key: f.project.key },

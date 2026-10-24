@@ -27,6 +27,7 @@ import type {
   JiraEpic,
   JiraField,
   JiraFilter,
+  JiraBoardColumn,
   JiraFilterPermission,
   JiraAttachment,
   JiraComponent,
@@ -1422,6 +1423,20 @@ export class JiraClient {
       throw new Error(`Board ${boardId} has no saved filter.`);
     }
     return String(config.filter.id);
+  }
+
+  /**
+   * A board's columns, left to right, with the ids of the statuses each one
+   * shows.
+   *
+   * GET /rest/agile/1.0/board/{id}/configuration
+   */
+  async getBoardColumns(boardId: number): Promise<JiraBoardColumn[]> {
+    const config = await this.request<{ columnConfig?: { columns?: { name: string; statuses?: { id: string | number }[] }[] } }>(
+      `/board/${boardId}/configuration`,
+      { apiBase: this.agilePath }
+    );
+    return (config.columnConfig?.columns ?? []).map((c) => ({ name: c.name, statusIds: (c.statuses ?? []).map((st) => String(st.id)) }));
   }
 
   // ============ Worklogs ============

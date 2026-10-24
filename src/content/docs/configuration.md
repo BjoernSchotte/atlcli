@@ -268,6 +268,8 @@ Settings for `atlcli tui`, all optional:
 | `tui.theme` | string | `"dark"` | `dark` or `light` |
 | `tui.columns` | string[] | `["key", "status", "assignee"]` | `key`, `type`, `status`, `priority`, `assignee`, `updated`; the summary always comes last |
 | `tui.keymap` | object | none | Command id → list of keys; replaces that command's keys |
+| `tui.refresh` | number | `60` | Seconds without a key press before the list reloads; `0` turns it off, the minimum is `10` |
+| `tui.views` | object[] | none | Saved views (`profile`, `area`, `name`, `query`); the TUI writes them with `F` |
 
 An invalid value stops `atlcli tui` with a message naming it. See [Terminal UI](tui.md#configuration).
 

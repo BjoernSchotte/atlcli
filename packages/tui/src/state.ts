@@ -3,8 +3,8 @@
  * commands and loaders update it through the store; nothing here touches the
  * terminal or the network, so it all tests without either.
  */
-import type { JiraIssue } from "@atlcli/jira";
-import type { TuiArea } from "../index.js";
+import type { JiraBoardColumn, JiraIssue } from "@atlcli/jira";
+import type { TuiArea, TuiView } from "../index.js";
 
 export type Focus = "nav" | "list" | "detail";
 
@@ -130,6 +130,7 @@ export interface PickerItem {
 
 export type Overlay =
   | { kind: "help" }
+  | { kind: "log"; selected: number }
   | { kind: "palette"; query: string; selected: number }
   | {
       kind: "picker";
@@ -139,6 +140,8 @@ export type Overlay =
       selected: number;
       multi: boolean;
       marked: string[];
+      /** The user toggled a mark (with tab), so `marked` is the answer even when empty. */
+      toggled?: boolean;
       /** Free text the user typed is a valid answer (labels). */
       allowFree: boolean;
       /** Loads items for the query (user search); replaces `items`. */
@@ -183,6 +186,20 @@ export interface Toast {
   text: string;
 }
 
+// ============ Command log ============
+
+/** A write the TUI made, with the `atlcli` commands that do the same. */
+export interface LogEntry {
+  id: number;
+  /** Local time, HH:MM:SS. */
+  at: string;
+  ok: boolean;
+  /** What changed, or why it failed. */
+  text: string;
+  /** Shell lines, `atlcli …`; empty when the CLI has no equivalent. */
+  commands: string[];
+}
+
 // ============ Areas ============
 
 export type Loadable<T> = { status: "loading" } | { status: "error"; error: string } | { status: "ok"; value: T };
@@ -202,6 +219,12 @@ export interface JiraState {
   list: ListState<JiraIssue>;
   details: Record<string, Loadable<IssueDetail>>;
   tab: JiraTab;
+  /** The list as rows, or as a board of columns (`b`). */
+  view: "list" | "board";
+  /** The board the list came from (a board, one of its sprints, its backlog). */
+  boardId?: number;
+  /** Board columns, by board id, once loaded. */
+  columns: Record<number, JiraBoardColumn[]>;
 }
 
 export type WikiTab = "page" | "info";
@@ -246,6 +269,10 @@ export interface AppState {
   listWidth?: number;
   overlays: Overlay[];
   toasts: Toast[];
+  /** Writes of this session, oldest first. */
+  log: LogEntry[];
+  /** Saved views of this profile, both areas. */
+  views: TuiView[];
   /** Busy indicator text, e.g. "Saving…". */
   busy?: string;
   /** A scroll request for the detail pane; `seq` changes on every request. */
@@ -262,7 +289,9 @@ export function initialState(area: TuiArea = "jira"): AppState {
     zoom: false,
     overlays: [],
     toasts: [],
-    jira: { done: [], nav: emptyTree(), list: emptyList("Issues"), details: {}, tab: "details" },
+    log: [],
+    views: [],
+    jira: { done: [], nav: emptyTree(), list: emptyList("Issues"), details: {}, tab: "details", view: "list", columns: {} },
     wiki: { nav: emptyTree(), list: emptyList("Pages"), details: {}, tab: "page" },
   };
 }

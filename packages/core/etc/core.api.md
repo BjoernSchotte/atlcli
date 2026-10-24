@@ -1404,6 +1404,16 @@ export type TuiSettings = {
     theme?: string;
     keymap?: Record<string, string[]>;
     columns?: string[];
+    refresh?: number;
+    views?: TuiViewSetting[];
+};
+
+// export: TuiViewSetting
+export type TuiViewSetting = {
+    profile: string;
+    area: string;
+    name: string;
+    query: string;
 };
 
 // export: unsetFlag
@@ -2957,6 +2967,16 @@ export type TuiSettings = {
     theme?: string;
     keymap?: Record<string, string[]>;
     columns?: string[];
+    refresh?: number;
+    views?: TuiViewSetting[];
+};
+
+// export: TuiViewSetting
+export type TuiViewSetting = {
+    profile: string;
+    area: string;
+    name: string;
+    query: string;
 };
 
 // export: unsetFlag

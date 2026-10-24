@@ -957,3 +957,34 @@ describe("JiraClient.getBoardFilterJql", () => {
     ]);
   });
 });
+
+describe("JiraClient.getBoardColumns", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("reads the columns and their status ids from the board configuration", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = mock((url: string) => {
+      urls.push(url);
+      return Promise.resolve(
+        Response.json({
+          columnConfig: {
+            columns: [
+              { name: "To Do", statuses: [{ id: "10000" }] },
+              { name: "In Progress", statuses: [{ id: 3 }, { id: "10001" }] },
+              { name: "Empty" },
+            ],
+          },
+        })
+      );
+    }) as unknown as typeof fetch;
+
+    expect(await new JiraClient(mockProfile).getBoardColumns(889)).toEqual([
+      { name: "To Do", statusIds: ["10000"] },
+      { name: "In Progress", statusIds: ["3", "10001"] },
+      { name: "Empty", statusIds: [] },
+    ]);
+    expect(urls).toEqual(["https://test.atlassian.net/rest/agile/1.0/board/889/configuration"]);
+  });
+});

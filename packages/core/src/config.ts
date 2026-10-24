@@ -132,6 +132,17 @@ export type TuiSettings = {
   keymap?: Record<string, string[]>;
   /** Issue list columns before the summary: key, type, status, priority, assignee, updated. */
   columns?: string[];
+  /** Seconds without a key press before the TUI reloads its list (default 60; 0 = off). */
+  refresh?: number;
+  /** Lists saved in the TUI (`F`), per profile: JQL for `jira`, CQL for `wiki`. */
+  views?: TuiViewSetting[];
+};
+
+export type TuiViewSetting = {
+  profile: string;
+  area: string;
+  name: string;
+  query: string;
 };
 
 /**

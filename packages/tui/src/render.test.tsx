@@ -163,3 +163,38 @@ describe("shell", () => {
     expect(detailRow).toBeGreaterThan(listRow);
   });
 });
+
+describe("board view and command log", () => {
+  test("b shows the list as status columns with the cards in them, at 160 and at 80 columns", async () => {
+    for (const width of [160, 80]) {
+      const t = jiraStub();
+      const s = await show(t, width, 30);
+      s.mockInput.pressKey("b");
+      await t.settle();
+      await s.renderOnce();
+      const frame = s.captureCharFrame();
+      const top = frame.split("\n").find((l) => l.includes("To Do (1)"))!;
+      expect(top).toMatch(/To Do \(1\).*In Progress \(1\)/);
+      expect(frame).toContain("Fix the login");
+      expect(frame).toContain("Ann Lee");
+      // The board takes the detail's room.
+      expect(frame).not.toMatch(/details\s+comments/);
+      await screen?.dispose();
+      screen = undefined;
+    }
+  });
+
+  test("! shows what changed and the atlcli command", async () => {
+    const t = jiraStub();
+    const s = await show(t);
+    const { record } = await import("./log.js");
+    record(t.ctx, true, "AB-1 updated", [["jira", "issue", "transition", "--key", "AB-1", "--to", "In Progress"]]);
+    s.mockInput.pressKey("!");
+    await t.settle();
+    await s.renderOnce();
+    const frame = s.captureCharFrame();
+    expect(frame).toContain("Command log");
+    expect(frame).toMatch(/\d\d:\d\d:\d\d ✓ AB-1 updated/);
+    expect(frame).toContain("$ atlcli jira issue transition --key AB-1 --to 'In Progress' --profile test");
+  });
+});

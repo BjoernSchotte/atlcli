@@ -25,6 +25,21 @@ export function overlayKey(ctx: Ctx, key: string, commands: Command[]): boolean 
     case "help":
       if (key === "escape" || key === "q" || key === "?" || key === "return") close(ctx);
       return true;
+    case "log": {
+      const entries = ctx.store.get().log;
+      if (key === "escape" || key === "q" || key === "!") close(ctx);
+      else if (key === "down" || key === "j") update(ctx, { ...o, selected: Math.min(o.selected + 1, entries.length - 1) });
+      else if (key === "up" || key === "k") update(ctx, { ...o, selected: Math.max(o.selected - 1, 0) });
+      else if (key === "y") {
+        // Newest first on screen.
+        const entry = entries[entries.length - 1 - o.selected];
+        if (!entry?.commands.length) return true;
+        const text = entry.commands.join("\n");
+        if (ctx.copy(text)) ctx.toast("success", entry.commands.length === 1 ? "Copied the command" : `Copied ${entry.commands.length} commands`);
+        else ctx.toast("error", "This terminal does not support copying (OSC 52).");
+      }
+      return true;
+    }
     case "palette": {
       const found = paletteCommands(commands, ctx.store.get(), o.query);
       if (key === "escape") close(ctx);
@@ -45,11 +60,13 @@ export function overlayKey(ctx: Ctx, key: string, commands: Command[]): boolean 
       else if (key === "up" || key === "ctrl+p") update(ctx, { ...o, selected: Math.max(o.selected - 1, 0) });
       else if (key === "tab" && o.multi && current) {
         const marked = o.marked.includes(current.id) ? o.marked.filter((m) => m !== current.id) : [...o.marked, current.id];
-        update(ctx, { ...o, marked });
+        update(ctx, { ...o, marked, toggled: true });
       } else if (key === "return") {
         const free = o.allowFree && o.query.trim() && !items.some((i) => i.label.toLowerCase() === o.query.trim().toLowerCase()) ? o.query.trim() : undefined;
-        const ids = o.multi ? (o.marked.length > 0 ? o.marked : current && !free ? [current.id] : []) : current && !free ? [current.id] : [];
-        if (ids.length === 0 && !free) return true;
+        // Marks the user set (even none left: every label unmarked) are the answer; without any, the item under the cursor.
+        const chosen = o.multi && (o.marked.length > 0 || o.toggled);
+        const ids = chosen ? o.marked : current && !free ? [current.id] : [];
+        if (ids.length === 0 && !free && !chosen) return true;
         close(ctx);
         runSafely(ctx, () => o.onSubmit(ids, free));
       }

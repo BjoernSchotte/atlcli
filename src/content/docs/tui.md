@@ -8,7 +8,12 @@ description: "atlcli tui: a fullscreen terminal UI for browsing, triaging and ed
 `atlcli tui` opens a fullscreen terminal UI for working in Jira and Confluence:
 - browse your issues, boards, sprints and pages;
 - read them, rendered as markdown;
-- change them in place: status, assignee, comments, labels, sprint and parent, and page edits with a diff before saving.
+- change them in place: status, assignee, comments, labels, sprint and parent, and page edits with a diff before saving;
+- see a sprint or any list as a board of columns, and move cards across it;
+- save lists as views or Jira filters;
+- look up every change you made as the `atlcli` command that does the same, for your scripts.
+
+Lists reload on their own while you leave the keyboard alone.
 
 Everything else in atlcli stays as it is. Flags, `--json` and exit codes do not change, and scripts and CI keep using the commands. The TUI is a separate entry point that only starts in an interactive terminal.
 
@@ -74,6 +79,8 @@ The help (`?`) always shows the keys of the focused pane. These are the defaults
 | `r` or `F5` | Reload |
 | `O` | Open in the browser |
 | `y` / `Y` | Copy the key (or page id) / the URL |
+| `!` | [Command log](#command-log): what this session changed, as `atlcli` commands |
+| `F` | [Save the list](#saved-views) as a view (in Jira, also as a favourite filter) |
 | `q` or `Ctrl+C` | Quit |
 
 ### Navigator, list and detail
@@ -91,6 +98,7 @@ The help (`?`) always shows the keys of the focused pane. These are the defaults
 | `/` | Filter | Takes `jira search` flags (`--assignee me --status ~Done --updated -7d`) or raw JQL |
 | `o` | Sort | Updated, created, priority, status, due date, key, rank |
 | `+` | Load more | When the list says `100+` |
+| `b` | [Board view](#board-view) on/off | The list as columns |
 | `Enter` on the **links** tab | List linked issues, parent and subtasks | |
 | `t` | Transition | Picker of the valid transitions |
 | `a` | Assign | `me`, `unassigned`, or search users by name or email |
@@ -117,6 +125,32 @@ Boards and sprints, with the navigator focused:
 
 Deleting needs `y` twice.
 
+With the navigator focused, `d` on an entry under **Saved views** deletes that view, and on one under **Favourite filters** deletes the filter in Jira (`y` twice; Jira only lets you delete your own).
+
+### Board view
+
+`b` shows the Jira list as a board: one column per board column, the cards in rank order. `b` again shows the rows.
+
+- **Columns:** a list that came from a board, one of its sprints or its backlog shows that board's columns. Any other list (a search, a filter, an epic) gets one column per status, ordered to do, in progress, done. Statuses the board does not map go into a last column, **Not on the board**.
+- **Moving:** `h`/`l` go to the previous and next column (empty ones are skipped), `j`/`k` move within a column.
+- **Cards:** key, assignee and the summary in up to two lines. The board takes the room of the list and the detail; `Enter` shows the selected card's issue fullscreen, `Esc` returns to the board.
+- **Every issue key works on the selected card:** `t`, `a`, `c`, `e`, `L`, `s`, `p`, marks with `Space`.
+
+| Key | Action |
+|---|---|
+| `Shift+→` / `Shift+←` | Move the card one column right or left |
+| `m` | Move the card to a column you pick |
+
+Moving a card is a transition into a status of the target column. It runs **at once**, without asking, and shows in the [command log](#command-log). When several transitions lead into the column, a picker asks which one; when none does, the status bar says so and nothing changes.
+
+### Saved views
+
+`F` saves the list under a name:
+- **A saved view** stays on this computer, in `tui.views` of the config, for the profile you use. It works in both areas: JQL in Jira, CQL in the wiki (a search, not a page's children).
+- **A Jira favourite filter** (Jira only) is created in Jira after you confirm. Jira's web UI and your other devices see it too.
+
+Saved views show in the navigator under **Saved views**, filters under **Favourite filters**. Saving a view under an existing name replaces it.
+
 ### Wiki
 
 | Key | Action | Notes |
@@ -138,6 +172,7 @@ The detail pane has two tabs (`.` and `,` switch): **page**, the page as markdow
 - The **wheel** scrolls any pane.
 - **Drag** the right border of the navigator or the list to resize it.
 - **Click** a tab (details, comments, …) or an area in the header.
+- **Board view:** click a card to select it, double-click it to show its issue.
 
 ## Safety
 
@@ -148,6 +183,20 @@ The detail pane has two tabs (`.` and `,` switch): **page**, the page as markdow
   - discard your edit.
 - **Pages the converter cannot keep intact** cannot be edited here. A page with a macro whose content atlcli cannot preserve shows "Read only here", and you edit it in Confluence.
 - **Text you typed is not thrown away silently:** `Esc` in the comment editor asks first.
+- **One exception:** moving a card on the board does not ask. It is a single transition, and the command log records it.
+
+## Command log
+
+`!` lists every change this session made, newest first: when, whether it worked (✓ or ✗ with Jira's or Confluence's error), what changed, and the `atlcli` command that does the same:
+
+```
+16:37:56 ✓ ATLCLI-173 → In Arbeit
+  $ atlcli jira issue transition --key ATLCLI-173 --to 'In Arbeit' --profile work
+```
+
+`j`/`k` select an entry, `y` copies its command, `Esc` closes. The commands are quoted for `sh` and `zsh`, so they paste into a shell or a script as they are. A change to several issues becomes one `jira bulk …` command with `--jql "key in (…)"`. Where the TUI took text from `$EDITOR`, the command names the file the CLI expects (`--edit`, or `--body <file>`).
+
+The log covers changes only, not what you read, and it lasts for the session.
 
 ## Configuration
 
@@ -159,7 +208,8 @@ Optional, in `~/.atlcli/config.json` (or the file `ATLCLI_CONFIG` names):
     "area": "wiki",
     "theme": "light",
     "columns": ["key", "type", "status", "assignee"],
-    "keymap": { "jira.transition": ["t", "T"], "app.quit": ["q"] }
+    "keymap": { "jira.transition": ["t", "T"], "app.quit": ["q"] },
+    "refresh": 60
   }
 }
 ```
@@ -170,6 +220,8 @@ Optional, in `~/.atlcli/config.json` (or the file `ATLCLI_CONFIG` names):
 | `tui.theme` | `"dark"` \| `"light"` | `"dark"` | Colors |
 | `tui.columns` | list of `key`, `type`, `status`, `priority`, `assignee`, `updated` | `["key", "status", "assignee"]` | Issue list columns before the summary. A narrow list drops columns from the right |
 | `tui.keymap` | object: command id → list of keys | none | Replaces a command's keys. Command ids are in the palette (`:`) and in the help |
+| `tui.refresh` | whole seconds, `0` or at least `10` | `60` | Auto-refresh: after this long without a key press, the list and the open detail reload, and again every time it passes while you stay idle. They keep the selection and the marks, and the detail stays on screen until its new version is there. Never while a dialog is open or a change is saving. `0` turns it off; smaller values become `10` |
+| `tui.views` | list of `{ "profile", "area", "name", "query" }` | none | Saved views. The TUI writes them (`F`); entries of other profiles are kept |
 
 An invalid value fails at start with a message naming it (`tui.theme must be "dark" or "light", not "dakr".`) instead of falling back silently.
 
@@ -217,6 +269,9 @@ Search with `/`, edit with `e`, check the diff, save with `y`.
 | "Read only here" on a page | The page has a macro atlcli cannot keep | Edit that page in Confluence |
 | "changed in Confluence (vN → vM); not saved" | Someone saved the page while you edited | Choose "Edit again on the new version" to merge |
 | Colors hard to read | Light terminal background | `"tui": { "theme": "light" }` |
+| "ABC-1 has no transition into …" on the board | The workflow has no transition from the card's status into that column | Move it through the column in between, or pick another status with `t` |
+| "Only a search can be saved" on `F` | The wiki list shows a page's children or a space's top pages | Search with `/` (e.g. `ancestor = 123`), then save |
+| The list jumps back to Jira's order after a while | Auto-refresh reloaded it; Jira's search shows a new rank only after a few seconds | Wait a moment and reload (`r`), or raise `tui.refresh` |
 
 ## Related Topics
 

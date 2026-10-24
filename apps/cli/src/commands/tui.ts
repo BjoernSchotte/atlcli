@@ -1,7 +1,7 @@
-import { ERROR_CODES, fail, getActiveProfile, getFlag, hasFlag, loadConfig, output, resolveDefaults, type OutputOptions, type TuiSettings } from "@atlcli/core";
+import { ERROR_CODES, fail, getActiveProfile, getFlag, hasFlag, loadConfig, output, resolveDefaults, saveConfig, type OutputOptions, type TuiSettings, type TuiViewSetting } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { JiraClient, resolveStatusMap } from "@atlcli/jira";
-import type { TuiColumn, TuiConfig } from "@atlcli/tui";
+import type { TuiColumn, TuiConfig, TuiView } from "@atlcli/tui";
 
 const COLUMNS: TuiColumn[] = ["key", "type", "status", "priority", "assignee", "updated"];
 import { openUrl } from "./jira.js";
@@ -27,7 +27,7 @@ by name, 1/2 switch between Jira and Wiki, q quits.
 
 Config (~/.atlcli/config.json, optional):
   "tui": { "area": "wiki", "theme": "light", "columns": ["key", "type", "status", "assignee"],
-           "keymap": { "jira.transition": ["t", "T"] } }
+           "keymap": { "jira.transition": ["t", "T"] }, "refresh": 60 }
 
 Needs an interactive terminal; in CI or a pipe it fails instead of waiting for input.`;
 }
@@ -54,7 +54,30 @@ export function tuiConfig(settings: TuiSettings | undefined): TuiConfig {
     if (bad.length) throw new Error(`tui.columns takes ${COLUMNS.join(", ")}; not ${bad.join(", ")}.`);
     config.columns = settings.columns as TuiColumn[];
   }
+  if (settings.refresh !== undefined) {
+    if (typeof settings.refresh !== "number" || !Number.isInteger(settings.refresh) || settings.refresh < 0) {
+      throw new Error(`tui.refresh is a whole number of seconds (0 turns it off), not ${JSON.stringify(settings.refresh)}.`);
+    }
+    // Below 10 s every idle moment would hit Jira; 10 is fast enough to watch a board.
+    config.refresh = settings.refresh === 0 ? 0 : Math.max(10, settings.refresh);
+  }
   return config;
+}
+
+/** The profile's saved views from `tui.views`, checked like the other settings. */
+export function tuiViews(settings: TuiSettings | undefined, profile: string): TuiView[] {
+  const views = settings?.views;
+  if (views === undefined) return [];
+  const ok =
+    Array.isArray(views) &&
+    views.every((v) => v && typeof v.profile === "string" && (v.area === "jira" || v.area === "wiki") && typeof v.name === "string" && typeof v.query === "string");
+  if (!ok) throw new Error('tui.views holds { "profile", "area": "jira" | "wiki", "name", "query" } entries; the TUI writes them (F).');
+  return views.filter((v) => v.profile === profile).map(({ area, name, query }) => ({ area: area as TuiView["area"], name, query }));
+}
+
+/** `tui.views` with the profile's views replaced by `views`; other profiles keep theirs. */
+export function withProfileViews(all: TuiViewSetting[] | undefined, profile: string, views: TuiView[]): TuiViewSetting[] {
+  return [...(all ?? []).filter((v) => v.profile !== profile), ...views.map((v) => ({ profile, ...v }))];
 }
 
 export async function handleTui(
@@ -87,8 +110,10 @@ export async function handleTui(
   if (!profile) fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   assertCliAuthSupported(profile, opts);
   let tui: TuiConfig;
+  let views: TuiView[];
   try {
     tui = tuiConfig(config.tui);
+    views = tuiViews(config.tui, profile.name);
   } catch (err) {
     fail(opts, 1, ERROR_CODES.CONFIG, err instanceof Error ? err.message : String(err));
   }
@@ -112,5 +137,12 @@ export async function handleTui(
     config: tui,
     openUrl,
     editText: editInEditor,
+    views,
+    // Read fresh: another atlcli may have changed the config while the TUI ran.
+    saveViews: async (next) => {
+      const current = await loadConfig();
+      current.tui = { ...current.tui, views: withProfileViews(current.tui?.views, profile.name, next) };
+      await saveConfig(current);
+    },
   });
 }

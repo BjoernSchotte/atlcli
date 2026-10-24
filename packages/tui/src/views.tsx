@@ -21,6 +21,8 @@ export interface Env {
   commands: Command[];
   areas: Record<AppState["area"], AreaModule>;
   keymap: Record<string, string[]>;
+  /** A key was pressed (restarts the auto-refresh wait). */
+  onActivity?: () => void;
 }
 
 const EnvContext = createContext<Env | null>(null);
@@ -290,6 +292,8 @@ function overlayHint(o: Overlay): string {
   switch (o.kind) {
     case "help":
       return "esc close";
+    case "log":
+      return "↑↓ choose · y copy the command · esc close";
     case "palette":
       return "type to search · ↑↓ choose · enter run · esc close";
     case "picker":
@@ -333,8 +337,8 @@ function Dialog({ title, width, height, children }: { title: string; width: numb
 export function Overlays({ width, height }: { width: number; height: number }) {
   const overlay = useApp(topOverlay);
   if (!overlay) return null;
-  const w = Math.min(width - 4, overlay.kind === "diff" || overlay.kind === "help" ? width - 4 : overlay.kind === "compose" ? 100 : 72);
-  const h = Math.min(height - 2, overlay.kind === "diff" || overlay.kind === "help" ? height - 2 : overlay.kind === "compose" ? 24 : overlay.kind === "confirm" || overlay.kind === "prompt" ? Math.min(height - 2, 4 + (overlay.kind === "confirm" ? Math.min(overlay.lines.length, 14) : 1)) : 20);
+  const w = Math.min(width - 4, overlay.kind === "diff" || overlay.kind === "help" || overlay.kind === "log" ? width - 4 : overlay.kind === "compose" ? 100 : 72);
+  const h = Math.min(height - 2, overlay.kind === "diff" || overlay.kind === "help" || overlay.kind === "log" ? height - 2 : overlay.kind === "compose" ? 24 : overlay.kind === "confirm" || overlay.kind === "prompt" ? Math.min(height - 2, 4 + (overlay.kind === "confirm" ? Math.min(overlay.lines.length, 14) : 1)) : 20);
   return (
     <box style={{ position: "absolute", left: Math.floor((width - w) / 2), top: Math.floor((height - h) / 2), width: w, height: h, zIndex: 100 }}>
       <OverlayBody overlay={overlay} width={w} height={h} />
@@ -346,6 +350,8 @@ function OverlayBody({ overlay, width, height }: { overlay: Overlay; width: numb
   switch (overlay.kind) {
     case "help":
       return <Help width={width} height={height} />;
+    case "log":
+      return <Log overlay={overlay} width={width} height={height} />;
     case "palette":
       return <Palette overlay={overlay} width={width} height={height} />;
     case "picker":
@@ -383,6 +389,35 @@ function Help({ width, height }: { width: number; height: number }) {
             </box>
           );
         })}
+      </scrollbox>
+    </Dialog>
+  );
+}
+
+function Log({ overlay, width, height }: { overlay: Extract<Overlay, { kind: "log" }>; width: number; height: number }) {
+  const { theme } = useEnv();
+  const entries = useApp((s) => s.log);
+  const ref = useRef<ScrollBoxRenderable>(null);
+  const shown = [...entries].reverse();
+  const selectedId = shown[overlay.selected]?.id;
+  useEffect(() => {
+    if (selectedId) ref.current?.scrollChildIntoView(`log-${selectedId}`);
+  }, [selectedId]);
+  return (
+    <Dialog title="Command log · what this session changed, as atlcli commands" width={width} height={height}>
+      {shown.length === 0 ? <text fg={theme.dim} content="Nothing changed yet. Every write shows here with its atlcli command." /> : null}
+      <scrollbox ref={ref} style={{ flexGrow: 1 }}>
+        {shown.map((entry, i) => (
+          <box key={entry.id} id={`log-${entry.id}`} style={{ flexDirection: "column", marginBottom: 1, backgroundColor: i === overlay.selected ? theme.selectedBg : undefined }}>
+            <box style={{ height: 1, flexDirection: "row" }}>
+              <text fg={entry.ok ? theme.success : theme.error} content={`${entry.at} ${entry.ok ? "✓" : "✗"} `} wrapMode="none" style={{ flexShrink: 0 }} />
+              <text fg={theme.fg} content={clip(entry.text, width - 16)} wrapMode="none" />
+            </box>
+            {entry.commands.map((line, n) => (
+              <text key={n} fg={theme.key} content={`  $ ${line}`} />
+            ))}
+          </box>
+        ))}
       </scrollbox>
     </Dialog>
   );

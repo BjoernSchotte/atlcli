@@ -9,6 +9,8 @@ import { expandNode, updateNav } from "./commands.js";
 import type { Command, Ctx } from "./keymap.js";
 import { jiraActions } from "./jira-actions.js";
 import { agileActions } from "./jira-agile.js";
+import { kanbanCommands } from "./kanban.js";
+import { VIEWS_GROUP, viewNodes, viewsGroup } from "./saved-views.js";
 import { pushOverlay, setChildren, withItems, type AppState, type JiraTab, type TreeNode } from "./state.js";
 
 export const LIST_FIELDS = ["summary", "status", "issuetype", "priority", "assignee", "updated", "labels", "parent"];
@@ -53,14 +55,22 @@ let listSeq = 0;
 let listAbort: AbortController | undefined;
 let moreToken: string | undefined;
 
-/** Loads a list; a newer load cancels an older one still in flight. */
-export async function loadIssues(ctx: Ctx, title: string, jql: string): Promise<void> {
+/**
+ * Loads a list; a newer load cancels an older one still in flight. `boardId`
+ * is the board the list belongs to (the board view shows its columns); a
+ * reload of the same query keeps the one it had.
+ */
+export async function loadIssues(ctx: Ctx, title: string, jql: string, boardId?: number): Promise<void> {
   const seq = ++listSeq;
   listAbort?.abort();
   const { signal } = (listAbort = new AbortController());
   // A reload of the same list keeps the selection; another list starts at the top.
   const sameQuery = ctx.store.get().jira.list.query === jql;
-  ctx.store.set((s) => ({ ...s, jira: { ...s.jira, list: { ...s.jira.list, title, query: jql, loading: true, error: undefined } } }));
+  ctx.store.set((s) => ({
+    ...s,
+    jira: { ...s.jira, boardId: sameQuery ? s.jira.boardId : boardId, list: { ...s.jira.list, title, query: jql, loading: true, error: undefined } },
+  }));
+  void loadColumns(ctx);
   try {
     const result = await ctx.opts.jira.search(jql, { maxResults: PAGE, fields: LIST_FIELDS, signal });
     if (seq !== listSeq) return;
@@ -75,6 +85,14 @@ export async function loadIssues(ctx: Ctx, title: string, jql: string): Promise<
     const error = err instanceof Error ? err.message : String(err);
     ctx.store.set((s) => ({ ...s, jira: { ...s.jira, list: { ...s.jira.list, loading: false, error, items: [] } } }));
   }
+}
+
+/** Loads the columns of the list's board for the board view, once per board. */
+export async function loadColumns(ctx: Ctx): Promise<void> {
+  const { view, boardId, columns } = ctx.store.get().jira;
+  if (view !== "board" || boardId === undefined || columns[boardId]) return;
+  const loaded = await ctx.task("Loading the board's columns…", () => ctx.opts.jira.getBoardColumns(boardId));
+  if (loaded) ctx.store.set((s) => ({ ...s, jira: { ...s.jira, columns: { ...s.jira.columns, [boardId]: loaded } } }));
 }
 
 async function loadMore(ctx: Ctx): Promise<void> {
@@ -196,7 +214,10 @@ const readCommands: Command[] = [
           multi: false,
           marked: [],
           allowFree: false,
-          onSubmit: ([order]) => loadIssues(ctx, ctx.store.get().jira.list.title, withOrder(ctx.store.get().jira.list.query, order!)),
+          onSubmit: ([order]) => {
+            const { list, boardId } = ctx.store.get().jira;
+            return loadIssues(ctx, list.title, withOrder(list.query, order!), boardId);
+          },
         })
       ),
   },
@@ -233,7 +254,8 @@ const readCommands: Command[] = [
 export const jira: AreaModule = {
   id: "jira",
   label: "Jira",
-  commands: [...readCommands, ...jiraActions, ...agileActions],
+  // Board keys first: in the board view they take h/j/k/l/Enter from the list.
+  commands: [...kanbanCommands, ...readCommands, ...jiraActions, ...agileActions],
 
   async init(ctx) {
     const { project, board, jql } = ctx.opts;
@@ -251,6 +273,7 @@ export const jira: AreaModule = {
       { id: "g:boards", label: project ? `Boards (${project})` : "Boards", kind: "group", expandable: true },
       ...(project ? [{ id: "g:epics", label: `Epics (${project})`, kind: "group", expandable: true }] : []),
       { id: "g:filters", label: "Favourite filters", kind: "group", expandable: true },
+      viewsGroup(),
     ];
     updateNav(ctx, (t) => setChildren(t, undefined, roots));
     const list = jql ? loadIssues(ctx, "Search", jql) : loadIssues(ctx, "My open issues", mineJql(doneStatuses));
@@ -272,14 +295,16 @@ export const jira: AreaModule = {
     const data = node.data ?? {};
     if (typeof data.jql === "string") {
       ctx.store.set((s) => ({ ...s, focus: "list" }));
-      await loadIssues(ctx, node.label, data.jql);
+      // Sprints and the backlog sit under their board.
+      const parent = node.parent ? ctx.store.get().jira.nav.nodes[node.parent] : undefined;
+      await loadIssues(ctx, node.label, data.jql, parent?.kind === "board" ? Number(parent.data?.boardId) : undefined);
       return;
     }
     if (node.kind === "board") {
       const where = stripOrderBy((await ctx.task("Loading the board…", () => ctx.opts.jira.getBoardFilterJql(Number(data.boardId)))) ?? "");
       if (!where) return;
       ctx.store.set((s) => ({ ...s, focus: "list" }));
-      await loadIssues(ctx, node.label, `(${where}) AND ${openClause(ctx.store.get().jira.done)} ORDER BY rank ASC`);
+      await loadIssues(ctx, node.label, `(${where}) AND ${openClause(ctx.store.get().jira.done)} ORDER BY rank ASC`, Number(data.boardId));
     }
   },
 
@@ -288,11 +313,13 @@ export const jira: AreaModule = {
     if (issue) void loadDetail(ctx, issue.key);
   },
 
-  async refresh(ctx) {
+  async refresh(ctx, quiet = false) {
     const s = ctx.store.get();
-    const issue = selectedIssue(s);
-    if (issue) ctx.store.set((st) => ({ ...st, jira: { ...st.jira, details: {} } }));
+    // Quiet (auto-refresh): the detail stays until its new version is there.
+    if (!quiet && selectedIssue(s)) ctx.store.set((st) => ({ ...st, jira: { ...st.jira, details: {} } }));
     await loadIssues(ctx, s.jira.list.title, s.jira.list.query);
+    const issue = selectedIssue(ctx.store.get());
+    if (quiet && issue) await loadDetail(ctx, issue.key, true);
   },
 
   itemId: (s, i) => s.jira.list.items[i]?.key,
@@ -308,6 +335,7 @@ async function childrenOf(ctx: Ctx, node: TreeNode): Promise<Omit<TreeNode, "dep
     const { values } = await pageAgile((startAt, maxResults) => client.listBoards({ startAt, maxResults, projectKeyOrId: ctx.opts.project }), 500);
     return values.map((b) => ({ id: `b:${b.id}`, label: `${b.name} (${b.type})`, kind: "board", expandable: b.type === "scrum", data: { boardId: b.id, type: b.type } }));
   }
+  if (node.id === VIEWS_GROUP) return viewNodes(ctx.store.get().views, "jira");
   if (node.id === "g:filters") {
     const filters = await client.getFavouriteFilters();
     return filters.map((f) => query(`f:${f.id}`, f.name, f.jql ?? `filter = ${f.id}`));
