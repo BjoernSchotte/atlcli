@@ -2,7 +2,7 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [Unreleased]
+## [2026.10.9] - 2026-10-24
 
 2026.10.8 was tagged but never published: its release preflight failed on a test timeout before any artifact was built. Everything it contained ships in this release.
 
@@ -29,6 +29,11 @@ All notable changes to atlcli will be documented in this file.
 ### Testing
 
 - **script-runtime:** Give the GC-teardown regression test room on CI runners ([621797a](https://github.com/bjoernschotte/atlcli/commit/621797a9f9c95161521de50c7cec8671b6ba1d02))
+
+### Miscellaneous
+
+- **release:** Reuse an equivalent commit's CI proof; fix script CLI test timeouts ([9a7600a](https://github.com/bjoernschotte/atlcli/commit/9a7600ae71791ec4598648c6d6c897073938554d))
+
 ## [2026.10.7] - 2026-10-24
 
 ### Bug Fixes

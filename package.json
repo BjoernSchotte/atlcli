@@ -1,6 +1,6 @@
 {
   "name": "atlcli",
-  "version": "2026.10.8",
+  "version": "2026.10.9",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
