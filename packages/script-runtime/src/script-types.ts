@@ -25,11 +25,11 @@ interface ScriptParamSpec {
 
 /** Shape of \`export const meta\`. */
 interface ScriptMeta {
-  /** Lowercase letters, digits and dashes. */
-  name: string;
+  /** Lowercase letters, digits and dashes; defaults to the file name. */
+  name?: string;
   description?: string;
-  /** Default-deny. Write grants name one project or space, e.g. "jira:write:ATLCLI". */
-  permissions: ScriptPermission[];
+  /** Once given, everything else is denied. Write grants name one project or space, e.g. "jira:write:ATLCLI". */
+  permissions?: ScriptPermission[];
   /** Planned writes per run (default 100). */
   limits?: { maxWrites?: number };
   /** Parameters passed with \`--param name=value\`. */

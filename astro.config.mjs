@@ -28,6 +28,7 @@ export default defineConfig({
       sidebar: [
         { label: 'Getting Started', link: '/getting-started/' },
         { label: 'Daily Digest', link: '/digest/' },
+        { label: 'Automation Scripts', link: '/scripts/' },
         { label: 'Terminal UI', link: '/tui/' },
         {
           label: 'Confluence',
@@ -123,6 +124,7 @@ export default defineConfig({
             { label: 'Export Automation', link: '/recipes/export-automation/' },
             { label: 'Issue Triage', link: '/recipes/issue-triage/' },
             { label: 'Meeting Notes to Jira', link: '/recipes/meeting-notes-to-jira/' },
+            { label: 'Scripts in CI', link: '/recipes/scripts-in-ci/' },
             { label: 'Confluence for Coding Agents', link: '/recipes/confluence-vfs-agents/' },
           ],
         },
@@ -143,6 +145,7 @@ export default defineConfig({
             { label: 'CLI Commands', link: '/reference/cli-commands/' },
             { label: 'Atlassian Action Palette', link: '/reference/action-palette/' },
             { label: 'Jira and Confluence Research', link: '/reference/research/' },
+            { label: 'Script API', link: '/reference/scripts/' },
             { label: 'DOCX Export Engine', link: '/reference/docx-engine/' },
             { label: 'PDF Export Engine', link: '/reference/pdf-engine/' },
             { label: 'Export Jobs & Operations', link: '/reference/export-jobs/' },

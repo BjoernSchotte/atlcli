@@ -334,6 +334,41 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
   3. Drift-Test: Die Seite wird zwischen Plan und Apply manuell geändert; Apply muss abbrechen.
   4. Ein Endlosschleifen-Skript wird abgebrochen.
 
+**Umgesetzt (T9):**
+
+- **Doku:**
+  - Guide `src/content/docs/scripts.md`: erstes Skript, Skripte schreiben, Plan/Apply,
+    `meta`, Editor und Typecheck, Beispiele, Limits, Troubleshooting.
+  - Referenz `reference/scripts.md`: Befehle und Flags, Globals, `meta` mit Typ, Default und
+    Constraints, Verben, Platzhalter, Vorbedingungen, Limits, Plan-Datei, JSON-Formate,
+    Exit-Codes.
+  - Rezept `recipes/scripts-in-ci.md`: Plan als PR-Artefakt, Apply des freigegebenen
+    Artefakts per `workflow_dispatch` mit Environment-Approval, wöchentliche Routine mit
+    `permissions` und `maxWrites`.
+  - Dazu: Sidebar, `cli-commands.md#scripts`, Rezept-Übersicht und Related Topics.
+  - Statt „Apply nach Merge“ wendet das CI-Rezept das *geprüfte Artefakt* an. Ein frischer
+    Lauf nach dem Merge würde nicht genau das ausführen, was im Review stand.
+- **Doku-Beispiele geprüft:**
+  - Alle 12 TypeScript-Blöcke der drei Seiten bestehen den Typecheck gegen die generierte
+    `atlcli.d.ts`. Dabei fiel auf, dass `ScriptMeta.name` und `.permissions` dort noch
+    Pflichtfelder waren; das ist korrigiert.
+  - Das Release-Notes-Beispiel lief live unverändert, nur mit Space `DOCSY` statt `DOCS`:
+    temporäre Fix-Version und temporäres Issue (beides per Skript angelegt), dann Anlegen,
+    Labeln und ein zweiter Lauf als Upsert.
+  - Das Minimal-Beispiel lief live.
+  - Alle Testressourcen sind gelöscht.
+- **Live-Szenarien 1–3:** abgedeckt durch die T7/T8-E2E. Szenario 4 (Endlosschleife) lief
+  aus dem gebauten CLI.
+- **Follow-ups:**
+  - **Inhaltsgleiche Updates beim Planen weglassen.** Confluence legt dafür ohnehin keine
+    Version an, der Plan zeigt sie aber als Operation.
+  - **Limits per Flag einstellbar machen** (z. B. Deadline), wenn Bedarf besteht.
+  - **Data Center live verifizieren.** Die Clients unterstützen es, getestet ist nur Cloud.
+  - **Bestehender Doku-Fehler, nicht Teil dieses PRs:** `reference/environment.md` sagt,
+    `ATLCLI_SITE`/`ATLCLI_EMAIL` wirkten zur Laufzeit. Tatsächlich liest `auth login` beide
+    und `export` (explizite Auth) `ATLCLI_EMAIL`. Für normale Befehle gilt zur Laufzeit nur
+    `ATLCLI_API_TOKEN`; die Site kommt aus dem Profil.
+
 ## Abnahme
 
 - `bun run test`, `bun run typecheck`, das Browser-Gate und `api-report --check` laufen grün.
