@@ -8,6 +8,7 @@ import type { AreaModule } from "./commands.js";
 import { expandNode, updateNav } from "./commands.js";
 import type { Command, Ctx } from "./keymap.js";
 import { jiraActions } from "./jira-actions.js";
+import { agileActions } from "./jira-agile.js";
 import { pushOverlay, setChildren, withItems, type AppState, type JiraTab, type TreeNode } from "./state.js";
 
 export const LIST_FIELDS = ["summary", "status", "issuetype", "priority", "assignee", "updated", "labels", "parent"];
@@ -232,7 +233,7 @@ const readCommands: Command[] = [
 export const jira: AreaModule = {
   id: "jira",
   label: "Jira",
-  commands: [...readCommands, ...jiraActions],
+  commands: [...readCommands, ...jiraActions, ...agileActions],
 
   async init(ctx) {
     const { project, board, jql } = ctx.opts;
@@ -305,7 +306,7 @@ async function childrenOf(ctx: Ctx, node: TreeNode): Promise<Omit<TreeNode, "dep
   const client = ctx.opts.jira;
   if (node.id === "g:boards") {
     const { values } = await pageAgile((startAt, maxResults) => client.listBoards({ startAt, maxResults, projectKeyOrId: ctx.opts.project }), 500);
-    return values.map((b) => ({ id: `b:${b.id}`, label: `${b.name} (${b.type})`, kind: "board", expandable: b.type === "scrum", data: { boardId: b.id } }));
+    return values.map((b) => ({ id: `b:${b.id}`, label: `${b.name} (${b.type})`, kind: "board", expandable: b.type === "scrum", data: { boardId: b.id, type: b.type } }));
   }
   if (node.id === "g:filters") {
     const filters = await client.getFavouriteFilters();
@@ -325,9 +326,14 @@ async function childrenOf(ctx: Ctx, node: TreeNode): Promise<Omit<TreeNode, "dep
       client.listSprints(boardId, { state: "future" }),
     ]);
     const where = stripOrderBy(await client.getBoardFilterJql(boardId));
+    const sprint = (sp: { id: number; name: string; state: string }, mark: string) => ({
+      ...query(`s:${sp.id}`, `${mark} ${sp.name}`, `sprint = ${sp.id} ORDER BY rank ASC`),
+      kind: "sprint",
+      data: { jql: `sprint = ${sp.id} ORDER BY rank ASC`, sprintId: sp.id, name: sp.name, state: sp.state },
+    });
     return [
-      ...active.values.map((sp) => query(`s:${sp.id}`, `● ${sp.name}`, `sprint = ${sp.id} ORDER BY rank ASC`)),
-      ...future.values.map((sp) => query(`s:${sp.id}`, `○ ${sp.name}`, `sprint = ${sp.id} ORDER BY rank ASC`)),
+      ...active.values.map((sp) => sprint(sp, "●")),
+      ...future.values.map((sp) => sprint(sp, "○")),
       query(`bl:${boardId}`, "Backlog", `(${where}) AND (sprint IS EMPTY OR sprint IN closedSprints()) AND ${openClause(ctx.store.get().jira.done)} ORDER BY rank ASC`),
     ];
   }
