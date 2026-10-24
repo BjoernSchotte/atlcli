@@ -221,6 +221,7 @@ All milestones are implemented and live-tested (profile `mayflower`, writes in A
 | Spaces "favourites first" | The default space first, then by name | Favourites would cost a request per space |
 | `skipLibCheck` only in the package | Yes, plus a hand-written type facade (`packages/tui/index.d.ts`) | The CLI's typecheck follows `import("@atlcli/tui")` into OpenTUI's declarations otherwise; `facade.test.ts` checks the facade |
 | — | `<` / `>` resize the focused pane | A keyboard way for what the mouse does by dragging |
+| Sprint moves only | Also boards and sprints from the navigator (`n` new board or sprint, `S` start/complete, `d` delete) and `R` rank in the list | Requested after the MVP; builds on `jira board create/delete` and `jira issue rank` (#328) |
 
 ### Found and fixed along the way
 

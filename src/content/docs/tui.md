@@ -100,8 +100,22 @@ The help (`?`) always shows the keys of the focused pane. These are the defaults
 | `s` | Move to a sprint or the backlog | Uses the navigator's board, `--board`, or the project's first scrum board |
 | `p` | Set or remove the parent (epic) | Searches the project's epics |
 | `n` / `N` | New issue / clone | A clone is linked as "clones" to its source, like a clone made in Jira |
+| `R` | Reorder (rank) | Up, down, to the top or to the bottom; the list must be sorted by rank (`o` → Rank). Marked issues move as one block |
 
-`t`, `a`, `L` (add only), `s` and `p` work on all **marked** issues, or on the selected one when none is marked.
+`t`, `a`, `L` (add only), `s`, `p` and `R` work on all **marked** issues, or on the selected one when none is marked.
+
+Boards and sprints, with the navigator focused:
+
+| Key | On | Action |
+|---|---|---|
+| `n` | **Boards** (or a kanban board) | New board: name, then scrum or kanban. It lands in the project of `--project` (or asks for one), on a new filter `project = KEY ORDER BY Rank ASC` that is shared with the project |
+| `n` | A scrum board, one of its sprints or its backlog | New sprint on that board, not started |
+| `S` | A future sprint | Start it: today until the end date you give (default: two weeks) |
+| `S` | The active sprint | Complete it. Its open issues stay in the closed sprint and show in the backlog; move them with `s` |
+| `d` | A sprint | Delete it; its issues move to the backlog |
+| `d` | A board | Delete it, or it and its filter. Its sprints go with it; issues are not touched |
+
+Deleting needs `y` twice.
 
 ### Wiki
 
@@ -127,7 +141,7 @@ The detail pane has two tabs (`.` and `,` switch): **page**, the page as markdow
 
 ## Safety
 
-- **Every change asks first** and lists what it will change. A change to more than five issues needs `y` twice.
+- **Every change asks first** and lists what it will change. A change to more than five issues, and deleting a board or a sprint, needs `y` twice.
 - **Wiki edits** use the same markdown conversion as `atlcli wiki docs push`. They show a diff and save as version + 1. If someone saved the page meanwhile, the TUI does not overwrite it and offers three choices:
   - show what changed in Confluence;
   - edit again on the new version, with your text as a draft below it;

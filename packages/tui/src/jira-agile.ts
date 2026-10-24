@@ -7,7 +7,7 @@ import { expandNode, updateNav } from "./commands.js";
 import { confirmWrite } from "./jira-actions.js";
 import { jira, targetIssues } from "./jira.js";
 import type { Command, Ctx } from "./keymap.js";
-import { pushOverlay, withItems, type AppState, type TreeNode } from "./state.js";
+import { pushOverlay, visibleNodes, withItems, type AppState, type TreeNode } from "./state.js";
 
 const open = (ctx: Ctx, overlay: Parameters<typeof pushOverlay>[1]) => ctx.store.set((s) => pushOverlay(s, overlay));
 
@@ -28,6 +28,8 @@ async function reload(ctx: Ctx, id: string): Promise<void> {
   if (!node) return;
   await jira.expand(ctx, node);
   await expandNode(ctx, jira, ctx.store.get().jira.nav.nodes[id]!);
+  // A completed or deleted sprint is gone from the tree: select its board instead.
+  updateNav(ctx, (t) => (t.selected && visibleNodes(t).some((n) => n.id === t.selected) ? t : { ...t, selected: id }));
 }
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
