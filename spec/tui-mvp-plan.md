@@ -257,11 +257,18 @@ Each requirement of this plan, against the code and a live run (`mayflower`; ATL
 | `e` (diff, version + 1, conflict: show, redo, discard), `n`, `L`, `m`, `v`, `y`/`Y`/`O`; W0 guard | `wiki.ts`, `editBlockReason` | e2e `wiki-write` incl. conflict; Data Center |
 | Pure core (store, keymap) and thin views; synchronous store for batched keys | `store.ts`, `keymap.ts`, `state.ts` | — (unit tests) |
 | Shared helpers moved to `@atlcli/jira` (search JQL, user pick, transitions) | `packages/jira/src/input.ts`; API report | CLI unchanged (its tests) |
-| Async: stale answers dropped, superseded list requests cancelled (`AbortSignal`) | `jira.ts`, `wiki.ts` `listAbort`; tests | — |
+| Async: stale answers dropped, superseded list requests cancelled (`AbortSignal`) | `jira.ts`, `wiki.ts` `listAbort`; tests | burst of three list switches: two searches cancelled |
 | `$EDITOR` suspends the renderer | `app.tsx` `suspend`, CLI `editInEditor` | e2e writes; Windows with a script editor |
 | Config `tui.area`, `theme`, `keymap`, `columns` | `tuiConfig`, `TuiSettings` | copy of the config via `ATLCLI_CONFIG` |
 | Unit, render and live e2e tests; CI runs unit and render | `packages/tui/src/*.test.ts*`, `scripts/tui-e2e.ts` | full CI runs on the branch |
 | M5: light theme, keymap, resizable panes, binary smoke tests (Linux glibc and musl, Windows), release notes | `theme.ts`, `tui-smoke.py`, `tui-smoke-windows.py`; release notes come from the Conventional Commits at release | Docker (glibc, musl), Windows runner |
+
+Rerun on the code of the final commit (`b036d9ad`):
+- `scripts/tui-e2e.ts` against `mayflower`: all four scenarios (ATLCLI, DOCSY, with `$EDITOR` edits), and `jira-read` against TCW.
+- **Cancelling:** opening three lists in one burst sent three searches; the first two were cancelled (no response in the request log), the last one was answered, and the list showed it.
+- **Author:** the info tab of a DOCSY page shows "updated … by …".
+- **Linux binaries** built from it, in Docker under a TTY: Debian 12 (glibc) and Alpine 3.20 (musl) drew the shell and ended on SIGTERM; `tui --self-test` passed and the TTY guard refused without a terminal in both.
+- Full local `bun run test` (10,156 pass) and a full CI run ([40045771133](https://github.com/BjoernSchotte/atlcli/actions/runs/40045771133)).
 
 The PR description (#327) lists the live scenarios; the repository has no PR template file.
 
