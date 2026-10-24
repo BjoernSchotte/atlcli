@@ -148,6 +148,12 @@ describe("shell", () => {
     expect(row.indexOf("To Do")).toBeLessThan(row.indexOf("Fix the login"));
   });
 
+  test("160 columns: navigator, list and detail side by side", async () => {
+    const s = await show(jiraStub(), 160, 30);
+    const top = s.captureCharFrame().split("\n").find((l) => l.includes("Navigator"))!;
+    expect(top).toMatch(/Navigator.*My open issues \(2\).*AB-1/);
+  });
+
   test("narrow terminals stack list and detail and hide the navigator", async () => {
     const s = await show(jiraStub(), 80, 30);
     const frame = s.captureCharFrame();
