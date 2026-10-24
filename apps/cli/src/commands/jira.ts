@@ -1707,14 +1707,7 @@ async function handleIssueRank(
   }
 
   const client = await getClient(flags, opts);
-  const failed: Array<{ issueKey: string; errors: string[] }> = [];
-  let anchor = after;
-  for (let i = 0; i < issues.length; i += AGILE_MOVE_CHUNK) {
-    const chunk = issues.slice(i, i + AGILE_MOVE_CHUNK);
-    // Before X: each chunk lands right above X, below the previous one. After X: chain on the last ranked issue.
-    failed.push(...(await client.rankIssues(before ? { issues: chunk, before } : { issues: chunk, after: anchor })));
-    anchor = chunk[chunk.length - 1];
-  }
+  const failed = await client.rankIssues({ issues, before, after });
   if (failed.length > 0) {
     const detail = failed.map((f) => `${f.issueKey}: ${f.errors.join("; ") || "not ranked"}`).join(", ");
     fail(opts, 1, ERROR_CODES.API, `Jira could not rank ${failed.length} of ${issues.length} issues: ${detail}`);
@@ -1940,25 +1933,14 @@ async function handleBoardCreate(
     fail(opts, 1, ERROR_CODES.USAGE, "Give --project (or set a default: atlcli config set global.project <key>), --jql or --filter.");
   }
 
-  // A board always sits on a saved filter. Without --filter, one is made for it, shared
-  // with the project like Jira's own board wizard does, and removed again if the board fails.
-  let filterId = filterFlag;
-  const created = filterId === undefined;
-  if (filterId === undefined) {
-    const jql = jqlFlag ?? `project = "${project}" ORDER BY Rank ASC`;
-    filterId = String((await client.createFilter({ name, jql })).id);
-  }
-  try {
-    if (created && project) {
-      const { id: projectId } = await client.getProject(project);
-      await client.addFilterPermission(filterId, { type: "project", projectId: String(projectId) });
-    }
-    const board = await client.createBoard({ name, type, filterId: Number(filterId), projectKeyOrId: project });
-    output({ schemaVersion: "1", board, filter: { id: filterId, created } }, opts);
-  } catch (err) {
-    if (created) await client.deleteFilter(filterId).catch(() => {});
-    throw err;
-  }
+  const { filterId, filterCreated, ...board } = await client.createBoard({
+    name,
+    type,
+    filterId: filterFlag === undefined ? undefined : Number(filterFlag),
+    jql: jqlFlag,
+    projectKeyOrId: project,
+  });
+  output({ schemaVersion: "1", board, filter: { id: String(filterId), created: filterCreated } }, opts);
 }
 
 async function handleBoardDelete(

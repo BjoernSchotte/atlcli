@@ -556,12 +556,15 @@ export declare class JiraClient {
     createBoard(params: {
         name: string;
         type: "scrum" | "kanban";
-        filterId: number;
+        filterId?: number;
+        jql?: string;
         projectKeyOrId?: string;
     }): Promise<{
         id: number;
         name: string;
         type: string;
+        filterId: number;
+        filterCreated: boolean;
     }>;
     deleteBoard(boardId: number): Promise<void>;
     listSprints(boardId: number, options?: {
@@ -2295,12 +2298,15 @@ export declare class JiraClient {
     createBoard(params: {
         name: string;
         type: "scrum" | "kanban";
-        filterId: number;
+        filterId?: number;
+        jql?: string;
         projectKeyOrId?: string;
     }): Promise<{
         id: number;
         name: string;
         type: string;
+        filterId: number;
+        filterCreated: boolean;
     }>;
     deleteBoard(boardId: number): Promise<void>;
     listSprints(boardId: number, options?: {
@@ -4029,12 +4035,15 @@ export declare class JiraClient {
     createBoard(params: {
         name: string;
         type: "scrum" | "kanban";
-        filterId: number;
+        filterId?: number;
+        jql?: string;
         projectKeyOrId?: string;
     }): Promise<{
         id: number;
         name: string;
         type: string;
+        filterId: number;
+        filterCreated: boolean;
     }>;
     deleteBoard(boardId: number): Promise<void>;
     listSprints(boardId: number, options?: {
@@ -5768,12 +5777,15 @@ export declare class JiraClient {
     createBoard(params: {
         name: string;
         type: "scrum" | "kanban";
-        filterId: number;
+        filterId?: number;
+        jql?: string;
         projectKeyOrId?: string;
     }): Promise<{
         id: number;
         name: string;
         type: string;
+        filterId: number;
+        filterCreated: boolean;
     }>;
     deleteBoard(boardId: number): Promise<void>;
     listSprints(boardId: number, options?: {
