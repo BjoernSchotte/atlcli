@@ -913,6 +913,29 @@ describe("JiraClient.getAllSprintIssues", () => {
   });
 });
 
+describe("JiraClient sprint state changes", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  // Regression: a PUT replaced the sprint, and Jira refused a start without the name.
+  test("start and close send a partial update (POST) with only their fields", async () => {
+    const sent: Array<{ url: string; method?: string; body: unknown }> = [];
+    globalThis.fetch = mock((url: string, init: RequestInit) => {
+      sent.push({ url, method: init.method, body: JSON.parse(String(init.body)) });
+      return Promise.resolve(Response.json({ id: 5 }));
+    }) as unknown as typeof fetch;
+
+    const client = new JiraClient(mockProfile);
+    await client.startSprint(5, { startDate: "2026-10-24", endDate: "2026-11-07" });
+    await client.closeSprint(5, "2026-11-07T00:00:00.000Z");
+    expect(sent).toEqual([
+      { url: "https://test.atlassian.net/rest/agile/1.0/sprint/5", method: "POST", body: { startDate: "2026-10-24", endDate: "2026-11-07", state: "active" } },
+      { url: "https://test.atlassian.net/rest/agile/1.0/sprint/5", method: "POST", body: { state: "closed", completeDate: "2026-11-07T00:00:00.000Z" } },
+    ]);
+  });
+});
+
 describe("JiraClient.getBoardFilterJql", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
