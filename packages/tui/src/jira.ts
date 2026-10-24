@@ -49,16 +49,19 @@ export function withOrder(jql: string, order: string): string {
 }
 
 let listSeq = 0;
+let listAbort: AbortController | undefined;
 let moreToken: string | undefined;
 
-/** Loads a list; a newer load wins over an older one still in flight. */
+/** Loads a list; a newer load cancels an older one still in flight. */
 export async function loadIssues(ctx: Ctx, title: string, jql: string): Promise<void> {
   const seq = ++listSeq;
+  listAbort?.abort();
+  const { signal } = (listAbort = new AbortController());
   // A reload of the same list keeps the selection; another list starts at the top.
   const sameQuery = ctx.store.get().jira.list.query === jql;
   ctx.store.set((s) => ({ ...s, jira: { ...s.jira, list: { ...s.jira.list, title, query: jql, loading: true, error: undefined } } }));
   try {
-    const result = await ctx.opts.jira.search(jql, { maxResults: PAGE, fields: LIST_FIELDS });
+    const result = await ctx.opts.jira.search(jql, { maxResults: PAGE, fields: LIST_FIELDS, signal });
     if (seq !== listSeq) return;
     moreToken = result.nextPageToken;
     ctx.store.set((s) => {

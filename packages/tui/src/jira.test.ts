@@ -77,6 +77,20 @@ describe("loading", () => {
     expect(ctx.store.get().jira.list.title).toBe("fast");
   });
 
+  test("a newer list load cancels the request of the older one", async () => {
+    const signals: Record<string, AbortSignal> = {};
+    const { ctx } = setup({
+      search: (jql: string, o: { signal: AbortSignal }) => {
+        signals[jql] = o.signal;
+        return { issues: [] };
+      },
+      getIssue: (key: string) => issue(key),
+    });
+    await loadIssues(ctx, "a", "a");
+    await loadIssues(ctx, "b", "b");
+    expect([signals.a!.aborted, signals.b!.aborted]).toEqual([true, false]);
+  });
+
   test("init lists my open issues and loads the selected one's detail", async () => {
     const { ctx, calls, settle } = setup({
       search: () => ({ issues: [issue("AB-1"), issue("AB-2")] }),
