@@ -23,7 +23,8 @@ describe("editorCommand", () => {
     expect(editorCommand({ EDITOR: "nano" })).toBe("nano");
     // Regression: `VISUAL=` ran an empty command (exit 126) instead of $EDITOR.
     expect(editorCommand({ VISUAL: "", EDITOR: "nano" })).toBe("nano");
-    expect(editorCommand({ VISUAL: " ", EDITOR: "" })).toBe("vi");
+    expect(editorCommand({ VISUAL: " ", EDITOR: "" }, "darwin")).toBe("vi");
+    expect(editorCommand({}, "win32")).toBe("notepad");
   });
 });
 

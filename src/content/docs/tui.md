@@ -16,7 +16,7 @@ Everything else in atlcli stays as it is. Flags, `--json` and exit codes do not 
 
 - An authenticated profile (`atlcli auth login`) with Jira and Confluence access.
 - An interactive terminal: macOS Terminal, iTerm2, Ghostty, kitty, WezTerm, Windows Terminal or tmux. In CI or a pipe, `atlcli tui` fails with `atlcli tui needs an interactive terminal.` instead of waiting for input.
-- For editing descriptions and pages: `$VISUAL` or `$EDITOR`. If neither is set, `vi` is used.
+- For editing descriptions and pages: `$VISUAL` or `$EDITOR`. If neither is set, `vi` is used (`notepad` on Windows).
 
 ## Steps
 

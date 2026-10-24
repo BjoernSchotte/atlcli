@@ -43,9 +43,10 @@ export {
 
 // ============ Editor ============
 
-/** `$VISUAL`, else `$EDITOR`, else `vi`; an empty variable counts as unset (`VISUAL=` would run nothing). */
-export function editorCommand(env: Record<string, string | undefined> = process.env): string {
-  return env.VISUAL?.trim() || env.EDITOR?.trim() || "vi";
+/** `$VISUAL`, else `$EDITOR`, else `vi` (`notepad` on Windows); an empty variable counts as unset (`VISUAL=` would run nothing). */
+export function editorCommand(env: Record<string, string | undefined> = process.env, platform: string = process.platform): string {
+  // Windows has no vi; Notepad is always there and blocks until closed.
+  return env.VISUAL?.trim() || env.EDITOR?.trim() || (platform === "win32" ? "notepad" : "vi");
 }
 
 /** Edit `initial` in `$VISUAL`/`$EDITOR` (default `vi`); needs a terminal. */
