@@ -114,6 +114,8 @@ The help (`?`) always shows the keys of the focused pane. These are the defaults
 | `m` | Move under another page | Searches the space's pages by title |
 | `v` | Compare with an earlier version | A diff between that version and the current one |
 
+The detail pane has two tabs (`.` and `,` switch): **page**, the page as markdown, and **info**: title, space, id, version, when and by whom it was last updated, labels, and whether it can be edited here.
+
 ## Mouse
 
 - **Click** a row to select it, and a navigator entry to open it.

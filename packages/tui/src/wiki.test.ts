@@ -37,6 +37,7 @@ function wikiSetup(extra: Record<string, (...args: never[]) => unknown> = {}, ed
     getInstanceUrl: () => "https://example.atlassian.net/wiki",
     searchPages: () => [{ id: "10", title: "Page 10", spaceKey: "DOC", version: 3 }],
     getPage: (id: string) => page(id, version, "<p>Hello <strong>world</strong></p>"),
+    getPageDetails: (id: string) => ({ ...page(id, version, "<p>Hello <strong>world</strong></p>"), modified: "2026-10-20T09:30:00.000Z", modifiedBy: { displayName: "Ann Lee" } }),
     mentionNames: () => new Map(),
     getLabels: () => [{ name: "a", prefix: "global" }],
     updatePage: (p: { version: number }) => {
@@ -54,7 +55,7 @@ describe("reading", () => {
     await loadSearch(t.ctx, "Recent", "type = page");
     await t.settle();
     const d = t.ctx.store.get().wiki.details["10"];
-    expect(d?.status === "ok" && d.value).toMatchObject({ markdown: "Hello **world**", labels: ["a"], version: 3 });
+    expect(d?.status === "ok" && d.value).toMatchObject({ markdown: "Hello **world**", labels: ["a"], version: 3, author: "Ann Lee", updated: "2026-10-20T09:30:00.000Z" });
   });
 
   test("init: default space first and expanded", async () => {
@@ -91,8 +92,16 @@ describe("reading", () => {
     expect(t.calls.map((c) => c.method)).not.toContain("getPageDirectChildren");
   });
 
+  test("a newer list load cancels the request of the older one", async () => {
+    const signals: AbortSignal[] = [];
+    const { t } = wikiSetup({ searchPages: (_cql: string, _max: number, o: { signal: AbortSignal }) => (signals.push(o.signal), []) });
+    await loadSearch(t.ctx, "A", "a");
+    await loadSearch(t.ctx, "B", "b");
+    expect(signals.map((s) => s.aborted)).toEqual([true, false]);
+  });
+
   test("a failed page load shows its error", async () => {
-    const { t } = wikiSetup({ getPage: () => Promise.reject(new Error("403 Forbidden")) });
+    const { t } = wikiSetup({ getPageDetails: () => Promise.reject(new Error("403 Forbidden")) });
     await loadPage(t.ctx, "10");
     const d = t.ctx.store.get().wiki.details["10"];
     expect(d).toEqual({ status: "error", error: "403 Forbidden" });
@@ -131,6 +140,7 @@ describe("editing", () => {
   test("a page with a macro atlcli cannot keep is not edited", async () => {
     const { t } = wikiSetup({
       getPage: (id: string) => page(id, 3, '<div data-macro="confluence" data-macro-name="jira">x</div>'),
+      getPageDetails: (id: string) => page(id, 3, '<div data-macro="confluence" data-macro-name="jira">x</div>'),
     });
     const { storageToMarkdown } = await import("@atlcli/confluence");
     // Precondition: the converter really produces the no-content marker for such a page.

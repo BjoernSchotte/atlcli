@@ -45,15 +45,18 @@ function setWiki(ctx: Ctx, patch: (w: AppState["wiki"]) => Partial<AppState["wik
 }
 
 let listSeq = 0;
+let listAbort: AbortController | undefined;
 
-/** Shows rows in the list; a newer load wins over an older one still in flight. */
-async function loadRows(ctx: Ctx, title: string, query: string, rows: () => Promise<WikiPageRow[]>): Promise<void> {
+/** Shows rows in the list; a newer load cancels an older one still in flight. */
+async function loadRows(ctx: Ctx, title: string, query: string, rows: (signal: AbortSignal) => Promise<WikiPageRow[]>): Promise<void> {
   const seq = ++listSeq;
+  listAbort?.abort();
+  const { signal } = (listAbort = new AbortController());
   // A reload of the same list keeps the selection; another list starts at the top.
   const same = ctx.store.get().wiki.list.query === query;
   setWiki(ctx, (w) => ({ list: { ...w.list, title, query, loading: true, error: undefined } }));
   try {
-    const items = await rows();
+    const items = await rows(signal);
     if (seq !== listSeq) return;
     setWiki(ctx, (w) => ({ list: withItems(same ? w.list : { ...w.list, items: [], selected: 0, marked: [] }, items, (p) => p.id, items.length >= MAX) }));
     wiki.select(ctx);
@@ -64,25 +67,25 @@ async function loadRows(ctx: Ctx, title: string, query: string, rows: () => Prom
 }
 
 export function loadSearch(ctx: Ctx, title: string, cql: string): Promise<void> {
-  return loadRows(ctx, title, cql, async () =>
-    (await ctx.opts.confluence.searchPages(cql, MAX)).map((r) => ({ id: r.id, title: r.title, spaceKey: r.spaceKey, version: r.version, updated: r.lastModified }))
+  return loadRows(ctx, title, cql, async (signal) =>
+    (await ctx.opts.confluence.searchPages(cql, MAX, { signal })).map((r) => ({ id: r.id, title: r.title, spaceKey: r.spaceKey, version: r.version, updated: r.lastModified }))
   );
 }
 
 /** Current child pages and folders of a page or folder. Data Center has no v2 API and no folders: v1 child pages there. */
-async function directChildren(client: ConfluenceClient, parentId: string): Promise<{ id: string; title: string; type: "page" | "folder" }[]> {
+async function directChildren(client: ConfluenceClient, parentId: string, signal?: AbortSignal): Promise<{ id: string; title: string; type: "page" | "folder" }[]> {
   if (client.deploymentType !== "cloud") {
-    return (await client.getChildrenWithPosition(parentId)).map((p) => ({ id: p.id, title: p.title, type: "page" }));
+    return (await client.getChildrenWithPosition(parentId, { signal })).map((p) => ({ id: p.id, title: p.title, type: "page" }));
   }
-  const children = await client.getPageDirectChildren(parentId);
+  const children = await client.getPageDirectChildren(parentId, { signal });
   return children
     .filter((c) => (c.status ?? "current") === "current" && (c.type === "page" || c.type === "folder"))
     .map((c) => ({ id: c.id, title: c.title, type: c.type as "page" | "folder" }));
 }
 
 /** A page's children as rows, the page itself first (so its detail shows). */
-async function childRows(client: ConfluenceClient, page: { id: string; title: string; spaceKey?: string } | undefined, parentId: string): Promise<WikiPageRow[]> {
-  const rows = (await directChildren(client, parentId)).filter((c) => c.type === "page").map((c) => ({ id: c.id, title: c.title, spaceKey: page?.spaceKey }));
+async function childRows(client: ConfluenceClient, page: { id: string; title: string; spaceKey?: string } | undefined, parentId: string, signal?: AbortSignal): Promise<WikiPageRow[]> {
+  const rows = (await directChildren(client, parentId, signal)).filter((c) => c.type === "page").map((c) => ({ id: c.id, title: c.title, spaceKey: page?.spaceKey }));
   return page ? [{ id: page.id, title: page.title, spaceKey: page.spaceKey }, ...rows] : rows;
 }
 
@@ -95,7 +98,7 @@ export function loadPage(ctx: Ctx, id: string, force = false): Promise<void> {
   if (!known) setWiki(ctx, (w) => ({ details: { ...w.details, [id]: { status: "loading" } } }));
   const client = ctx.opts.confluence;
   const request = (async () => {
-    const page = await client.getPage(id);
+    const page = await client.getPageDetails(id);
     const [names, labels] = await Promise.all([client.mentionNames([page.storage]).catch(() => new Map<string, string>()), client.getLabels(id).catch(() => [])]);
     const markdown = storageToMarkdown(page.storage, { baseUrl: client.getInstanceUrl(), mentionNames: names }).trim();
     const value: PageDetail = {
@@ -105,7 +108,8 @@ export function loadPage(ctx: Ctx, id: string, force = false): Promise<void> {
       version: page.version ?? 1,
       markdown,
       labels: labels.map((l) => l.name),
-      updated: page.lastModified,
+      author: page.modifiedBy?.displayName || undefined,
+      updated: page.modified ?? page.lastModified,
       editBlocked: editBlockReason(markdown),
     };
     setWiki(ctx, (w) => ({
@@ -434,7 +438,7 @@ export const wiki: AreaModule = {
     }
     if (node.kind === "page" || node.kind === "folder") {
       const page = node.kind === "page" ? { id: String(node.data?.id), title: node.label, spaceKey: node.data?.spaceKey as string | undefined } : undefined;
-      return loadRows(ctx, node.label, `children:${node.data?.id}`, () => childRows(client, page, String(node.data?.id)));
+      return loadRows(ctx, node.label, `children:${node.data?.id}`, (signal) => childRows(client, page, String(node.data?.id), signal));
     }
   },
 

@@ -41,7 +41,7 @@ export function WikiDetail() {
               ["Space", page.spaceKey ?? ""],
               ["Id", page.id],
               ["Version", `v${page.version}`],
-              ["Updated", page.updated?.slice(0, 16).replace("T", " ") ?? ""],
+              ["Updated", [page.updated?.slice(0, 16).replace("T", " "), page.author].filter(Boolean).join(" by ")],
               ["Labels", page.labels.join(", ") || "–"],
               ["Editable", page.editBlocked ? `no: ${page.editBlocked}` : "yes (e)"],
             ] as Array<[string, string]>
