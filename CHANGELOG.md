@@ -2,6 +2,63 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.6] - 2026-10-24
+
+### Bug Fixes
+
+- **jira:** Sprint start and close update only the given fields ([b672065](https://github.com/bjoernschotte/atlcli/commit/b6720651ce9165576d0eb7b5e8f35eb484b61575))
+- **build:** Keep OpenTUI's absent platform packages external ([c849fd5](https://github.com/bjoernschotte/atlcli/commit/c849fd5fd220787fe21c3fea828f0bae74c8527b))
+- **tui:** Page tree on Confluence Data Center ([2cc34cb](https://github.com/bjoernschotte/atlcli/commit/2cc34cb1aca287a6afc07acb257a96a40ebd8bab))
+- **tui:** List a page's children on Confluence Data Center ([5d66535](https://github.com/bjoernschotte/atlcli/commit/5d66535b545b141a4c4d3418b8d79c5ac1b419cf))
+- **cli:** Notepad as the default editor on Windows ([9dca009](https://github.com/bjoernschotte/atlcli/commit/9dca0091003ecf84acd7f99f5da1370538c23508))
+
+### Documentation
+
+- **spec:** TUI MVP plan with decisions ([fc393fa](https://github.com/bjoernschotte/atlcli/commit/fc393fa3fc588f6c27415df8ddcd020416ba3c02))
+- **spec:** TUI plan outcome with the Linux binary results ([3adce05](https://github.com/bjoernschotte/atlcli/commit/3adce05213de7699b516ffe6a683244f41f9702d))
+- **spec:** TUI outcome with the sprint, Data Center and Windows results ([0421979](https://github.com/bjoernschotte/atlcli/commit/0421979b38b34be91177c2fbc537aa3f3011169d))
+- **spec:** TUI outcome with the live Data Center and Windows editor results ([4cf3c68](https://github.com/bjoernschotte/atlcli/commit/4cf3c68fc67795913694f27a2f30fba2d5b91d1e))
+- **spec:** TUI outcome checks each requirement of the plan ([b036d9a](https://github.com/bjoernschotte/atlcli/commit/b036d9ad3cd44eb98c985c7cd7a4f176cc6c53ff))
+- **spec:** TUI live reruns on the final code ([7016415](https://github.com/bjoernschotte/atlcli/commit/701641569b6b80b6f884587dee81a7e39b25b822))
+- **spec:** Windows against a live site is out of the TUI MVP ([6c0129f](https://github.com/bjoernschotte/atlcli/commit/6c0129f0450ac743a1dd8f8037088d26e2e7e7b5))
+- **spec:** The owner dropped the Windows live-site test from the TUI MVP ([06354cc](https://github.com/bjoernschotte/atlcli/commit/06354cce9f0d659972b0aa96e0adc2e2e1dbf4d5))
+
+### Features
+
+- **jira:** Jira board create and jira board delete ([078e7fb](https://github.com/bjoernschotte/atlcli/commit/078e7fb348d4dffb901287d183e44fca434122fe))
+- **jira:** Jira issue rank reorders issues on boards and in the backlog ([234694c](https://github.com/bjoernschotte/atlcli/commit/234694cddc2a337ca7bbbe05d25e33d668517c3a))
+- **tui:** Spike a fullscreen Jira browser on OpenTUI + React ([f4c626a](https://github.com/bjoernschotte/atlcli/commit/f4c626abd591e00ad2dea454b60599c6342a1bd4))
+- **tui:** Packages/tui shell, store, keymap, overlays and the Jira area ([23191c8](https://github.com/bjoernschotte/atlcli/commit/23191c891737e6eb2cbb77a55afadbbf33b7369f))
+- **tui:** Tests and live fixes for the Jira area ([bf59e5e](https://github.com/bjoernschotte/atlcli/commit/bf59e5e28d025ed934cfa6dd700d8808f7eecc46))
+- **tui:** The Wiki area: page tree, search, pages as markdown, editing with diff ([0b12c3d](https://github.com/bjoernschotte/atlcli/commit/0b12c3df30068744860fbd9ec71bda166284f276))
+- **tui:** Polish, e2e harness, docs, release build for the native library ([e5a7bb4](https://github.com/bjoernschotte/atlcli/commit/e5a7bb400116dc106c0b67452112739d3b132412))
+- **tui:** The Wiki info tab shows who last updated the page ([1513d62](https://github.com/bjoernschotte/atlcli/commit/1513d62130582cd11e72fa5e027d28095157bbfc))
+- **tui:** A newer list load cancels the older request ([4fde809](https://github.com/bjoernschotte/atlcli/commit/4fde8097139cf97459fce60aaa8ee67970aab159))
+- **tui:** Boards, sprints and rank from the Jira area ([dfb1b4e](https://github.com/bjoernschotte/atlcli/commit/dfb1b4e56dbf86518843e9a8b6b91f44d5c21e8f))
+- **tui:** Select the board when its sprint leaves the tree; document the agile keys ([6c02f32](https://github.com/bjoernschotte/atlcli/commit/6c02f32d3e8840e636ad0e08efe5b9200c8ac831))
+
+### Miscellaneous
+
+- **release:** Run the cross-compiled Windows CLI on Windows ([59c7fd4](https://github.com/bjoernschotte/atlcli/commit/59c7fd4b984cb4f5daa02e288d8ffe3fe1fdb3a0))
+- TMP Windows proof for the TUI binary (removed after the run) ([398fd92](https://github.com/bjoernschotte/atlcli/commit/398fd923f744812ae65f821f14b4bb352b99e1ca))
+- TMP Windows interactive proof (removed after the run) ([8c5902c](https://github.com/bjoernschotte/atlcli/commit/8c5902c15c1e5c00477733cc9ccd7cf88a25fdbb))
+- **release:** Drive the Windows TUI in a ConPTY console ([d63c0e3](https://github.com/bjoernschotte/atlcli/commit/d63c0e329730081b7c5c31bdb705937198153f74))
+- TMP Windows mouse proof (removed after the run) ([2809319](https://github.com/bjoernschotte/atlcli/commit/2809319d6fddae0066ae87f26d93484dc8ba2d06))
+- **release:** Click the Wiki tab in the Windows TUI smoke test ([a27a323](https://github.com/bjoernschotte/atlcli/commit/a27a323787f2fdc5cecd524a680e3e10e4a5ae87))
+- **release:** The Windows TUI smoke test edits an issue through $EDITOR ([eea9008](https://github.com/bjoernschotte/atlcli/commit/eea90089e40962332d5d23ad72624808588c844e))
+- TMP Windows editor proof (removed after the run) ([2f34110](https://github.com/bjoernschotte/atlcli/commit/2f34110a59e303c9ab70169f66f2258843d9660f))
+- TMP Windows Notepad proof (removed after the run) ([8835677](https://github.com/bjoernschotte/atlcli/commit/883567791c84c859d9d3884e715b820b2256e534))
+- TMP Notepad proof, connect by process and print diagnostics ([7220f59](https://github.com/bjoernschotte/atlcli/commit/7220f596082dafd6ad3a48d631ba617f580f972e))
+- **release:** Drive Notepad in the Windows TUI smoke test on request ([0739385](https://github.com/bjoernschotte/atlcli/commit/07393856348d268a0d22d60b211821dc492ceae0))
+
+### Refactoring
+
+- **jira:** Board filter and rank batching live in JiraClient ([339f0ee](https://github.com/bjoernschotte/atlcli/commit/339f0ee1aa05ea4cf293519a10184c210ffe746f))
+
+### Testing
+
+- **cli:** A 30 s timeout for the four-plan PDF placement test ([f3b52f7](https://github.com/bjoernschotte/atlcli/commit/f3b52f72d21ea51dca76f389d2fe37d0e5b6f532))
+- **tui:** The layout at 160 columns ([137e6ba](https://github.com/bjoernschotte/atlcli/commit/137e6ba32d59985216d0d0f8ac5790c2c94b1dde))
 ## [2026.10.5] - 2026-10-23
 
 ### Bug Fixes
