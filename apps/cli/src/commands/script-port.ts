@@ -234,6 +234,10 @@ export function createCliScriptPort(
       return { id: attachment.id };
     },
     async confluenceExport({ pageId, format, path }) {
+      // The id becomes a positional argument of the child CLI: a plan file is
+      // editable, so anything but a page id (e.g. "--template=…") is refused.
+      if (!/^\d+$/.test(pageId)) throw new Error(`Not a Confluence page id: ${JSON.stringify(pageId)}`);
+      if (format !== "pdf" && format !== "docx") throw new Error(`Unknown export format: ${JSON.stringify(format)}`);
       const target = resolve(outDir, path);
       await mkdir(dirname(target), { recursive: true });
       await runSelf(["wiki", "export", pageId, "--format", format, "--output", target, "--profile", profileName]);
