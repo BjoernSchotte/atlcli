@@ -236,10 +236,39 @@ All milestones are implemented and live-tested (profile `mayflower`, writes in A
 - **Data Center page tree:** root pages came from the Cloud-only v2 listing and children from v2 `direct-children`, so the tree failed on Data Center. There it now uses v1 (`/space/{key}/content/page?depth=root`, `/content/{id}/child/page`). Tested live against a local Confluence 9.2 Data Center (Docker, Postgres 15, Atlassian's 3-hour developer license): the tree expanded three levels, and the run found that opening a page still listed its children through v2 (404); fixed. `scripts/tui-e2e.ts` `wiki-read` and `wiki-write` (new page, edit with diff, conflict, cleanup) pass against it.
 - **Windows:** the release runs the cross-compiled `atlcli.exe` on `windows-latest` before bundling: `--version` and the hidden `tui --self-test`, which draws the shell into OpenTUI's test renderer and needs no terminal. A one-off run of this job on the branch passed ([run 40033687743](https://github.com/BjoernSchotte/atlcli/actions/runs/40033687743)).
 
-### Known limits
+### Requirement check
+
+Each requirement of this plan, against the code and a live run (`mayflower`; ATLCLI and DOCSY; Confluence Data Center 9.2 in Docker; Windows through `smoke-windows`):
+
+| Plan | Where | Live |
+|---|---|---|
+| Separate entry, CLI untouched, TTY guard, OpenTUI loaded only in `atlcli tui` | `apps/cli/src/commands/tui.ts` | Without a TTY: JSON error, exit 1 |
+| Three panes, `[` collapses the navigator, `z` fullscreen detail, stacked below 100 columns | `app.tsx`, `commands.ts`; render tests at 80, 140, 160 columns | tmux, resized to 90×30 |
+| `1`/`2` and header click, modals, toasts, help `?`, palette `:`/`Ctrl+K` | `commands.ts`, `overlays.ts`, `views.tsx` | e2e `jira-read`; Windows click |
+| Mouse: click, double-click, wheel, border drag, tab click; shift+click marks | `views.tsx`, `app.tsx`; render tests | tmux SGR mouse |
+| Jira navigator: boards → sprints and backlog, epics, favourite filters, my open, watching, recent | `jira.ts` | e2e `jira-read` (TCW, ATLCLI) |
+| Jira list: columns, `/` with search flags or JQL, `o` sort, `space`/`V`/shift+click | `jira.ts`, `commands.ts` | e2e `jira-read` |
+| Jira detail tabs; `Enter` on links | `jira-view.tsx`, `jira.ts` | e2e `jira-read` |
+| `t` `a` `c` `e` `L` `s` `p` `n` `N` `y` `Y` `O`; confirm every write, `y` twice above 5 | `jira-actions.ts` (`BULK_CONFIRM`) | e2e `jira-write`; sprint move on a temporary board |
+| Reload after a write, errors as toasts with Jira's message | `jira-actions.ts` | e2e `jira-write` |
+| Wiki navigator: spaces, page tree loading on expand | `wiki.ts` (`directChildren`, v1 on Data Center) | e2e `wiki-read`; Data Center three levels |
+| Wiki list: children, CQL search (labels: `label = "x"`), recently updated, my pages | `wiki.ts` | e2e `wiki-read`, Data Center |
+| Wiki detail: markdown as `docs pull` converts it; version, author, labels | `wiki.ts`, `wiki-view.tsx` | info tab shows "updated … by …" |
+| `e` (diff, version + 1, conflict: show, redo, discard), `n`, `L`, `m`, `v`, `y`/`Y`/`O`; W0 guard | `wiki.ts`, `editBlockReason` | e2e `wiki-write` incl. conflict; Data Center |
+| Pure core (store, keymap) and thin views; synchronous store for batched keys | `store.ts`, `keymap.ts`, `state.ts` | — (unit tests) |
+| Shared helpers moved to `@atlcli/jira` (search JQL, user pick, transitions) | `packages/jira/src/input.ts`; API report | CLI unchanged (its tests) |
+| Async: stale answers dropped, superseded list requests cancelled (`AbortSignal`) | `jira.ts`, `wiki.ts` `listAbort`; tests | — |
+| `$EDITOR` suspends the renderer | `app.tsx` `suspend`, CLI `editInEditor` | e2e writes; Windows with a script editor |
+| Config `tui.area`, `theme`, `keymap`, `columns` | `tuiConfig`, `TuiSettings` | copy of the config via `ATLCLI_CONFIG` |
+| Unit, render and live e2e tests; CI runs unit and render | `packages/tui/src/*.test.ts*`, `scripts/tui-e2e.ts` | full CI runs on the branch |
+| M5: light theme, keymap, resizable panes, binary smoke tests (Linux glibc and musl, Windows), release notes | `theme.ts`, `tui-smoke.py`, `tui-smoke-windows.py`; release notes come from the Conventional Commits at release | Docker (glibc, musl), Windows runner |
+
+The PR description (#327) lists the live scenarios; the repository has no PR template file.
+
+### Platform notes
 
 - **Windows:** in a real console (ConPTY, `scripts/ci/tui-smoke-windows.py`, part of the release's `smoke-windows` job, against a local Jira stub) the binary draws, `?` opens the help, `e` edits an issue through `$EDITOR` with the diff and saves it (the stub receives the edited description), a mouse click on the Wiki tab switches the area and `q` quits with 0 ([run 40044278411](https://github.com/BjoernSchotte/atlcli/actions/runs/40044278411)). Without `$VISUAL`/`$EDITOR`, Windows now falls back to `notepad` instead of `vi`. Not run there: a live Atlassian site, and Notepad itself (the test uses a script as the editor).
 - **Linux:** both binaries ran in Docker under a TTY: they drew the shell and ended on SIGTERM.
   - **glibc:** Debian 12, arm64.
-  - **musl:** Alpine 3.20, arm64. This build needs `libstdc++`, which is a Bun runtime requirement, and atlcli ships no musl build.
+  - **musl:** Alpine 3.20, arm64, with `libstdc++` installed (Bun's runtime needs it). atlcli's releases have no musl build; this checks that the TUI's native library works there.
 - **Sprint moves:** tested live on a temporary scrum board in ATLCLI (into a sprint, back to the backlog); board, sprint, filter and issue were deleted afterwards.
