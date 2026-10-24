@@ -95,10 +95,30 @@ describe("planScript", () => {
     expect(result.operations).toEqual([]);
   });
 
-  it("fails as invalid-script on bad meta or params", async () => {
-    expect((await scriptError(plan(`export default () => 1`))).kind).toBe("invalid-script");
-    const unknown = await scriptError(plan(meta(["jira:read"]) + `export default () => 1`, { params: { x: "1" } }));
+  it("fails as invalid-script on bad meta or params, before any code runs", async () => {
+    const port = new FakePort();
+    const bad = await scriptError(plan(meta(["jira:admin"]) + `await atlcli.jira.get("ATLCLI-1");`, { port }));
+    expect(bad.kind).toBe("invalid-script");
+    expect(port.calls).toEqual([]);
+    const unknown = await scriptError(
+      plan(meta(["jira:read"], `, params: { days: { type: "number" } }`) + `export default () => 1`, { params: { x: "1" } }),
+    );
     expect(unknown.message).toBe("Unknown parameter: x");
+  });
+
+  it("runs a plain top-level script without meta, imports or exports", async () => {
+    const result = await plan(
+      `for await (const issue of atlcli.jira.search("project = ATLCLI", { limit: 2 })) {
+  await atlcli.jira.comment(issue.key, "Closing as stale");
+}`,
+      { params: { reason: "stale" } },
+    );
+    expect(result.meta).toEqual({});
+    expect(result.params).toEqual({ reason: "stale" });
+    expect(result.operations.map((o) => [o.verb, o.args.key])).toEqual([
+      ["jira.comment", "ATLCLI-1"],
+      ["jira.comment", "ATLCLI-2"],
+    ]);
   });
 
   it("iterates jira.search across pages with a limit", async () => {
@@ -295,7 +315,9 @@ describe("inspectScript", () => {
   });
 
   it("reports invalid meta", async () => {
-    const error = await scriptError(inspectScript(`export const meta = { name: "x" }; export default () => 1`, { variant: DEBUG_VARIANT }));
+    const error = await scriptError(
+      inspectScript(`export const meta = { permissions: ["jira:admin"] }; export default () => 1`, { variant: DEBUG_VARIANT }),
+    );
     expect(error.message).toContain("Invalid meta.permissions");
   });
 });

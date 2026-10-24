@@ -92,28 +92,44 @@ Hosts liefern nur Ports:
 
 ## Skript-Vertrag
 
+**Leitlinie DX (2026-10-24):** Ein Skript ist einfach Code. Es braucht keine Imports, keinen
+Export und kein Boilerplate; `atlcli.*`, `atlcli.params` und `console` sind immer da.
+
 ```ts
-export const meta = {
+for await (const issue of atlcli.jira.search("project = ATLCLI AND updated < -180d")) {
+  await atlcli.jira.comment(issue.key, "Closing as stale");
+  await atlcli.jira.transition(issue.key, "Won't Do");
+}
+```
+
+Optional, für geteilte Skripte oder typisierte Parameter:
+
+```ts
+export const meta: ScriptMeta = {
   name: "close-stale-bugs",
-  permissions: ["jira:read", "jira:write:ATLCLI"],   // default-deny, Projekt-/Space-gebunden
-  hosts: ["cli", "extension", "forge"],              // optional; script check prüft Verben dagegen
+  permissions: ["jira:read", "jira:write:ATLCLI"],   // gesetzt = default-deny, Projekt-/Space-gebunden
   limits: { maxWrites: 200 },
   params: { days: { type: "number", default: 180 } },
 };
 
-export default async function (params: { days: number }) {
-  for await (const issue of atlcli.jira.search(
-    `project = ATLCLI AND type = Bug AND updated < -${params.days}d`,
-  )) {
-    await atlcli.jira.comment(issue.key, "Auto-closed: stale");
-    await atlcli.jira.transition(issue.key, "Won't Do");
-  }
-}
+export default async ({ days }) => { /* … */ };      // optional; sonst ist der Modul-Body das Skript
 ```
 
-- `meta` ist ein reines Literal und wird statisch ausgelesen, bevor Code läuft.
-- `permissions` sind nur eine Obergrenze. Tatsächlich gelten immer die Rechte des ausführenden
-  Users bzw. Profils.
+- **`meta` ist optional.** Ohne `permissions` sind alle Verben erlaubt. Writes werden trotzdem
+  nur geplant und erst nach Freigabe angewendet. Das Sicherheitsnetz ist Plan/Apply, `meta`
+  ist die zusätzliche Härtung.
+- **`meta` wird statisch gelesen**, bevor Skriptcode läuft. Es muss ein in sich geschlossenes
+  Literal `export const meta = { … }` sein; andere Formen (`export { meta }`, `let`, Aufrufe)
+  werden abgelehnt.
+- **`permissions` sind eine Obergrenze.** Es gelten immer zusätzlich die Rechte des
+  ausführenden Users bzw. Profils.
+- **Ergebnis:** Ein Default-Export ist optional. Als Funktion wird er mit `params` aufgerufen,
+  sonst ist sein Wert das Ergebnis.
+- **Lazy Loading:**
+  - Die CLI lädt Runtime, QuickJS und WASM erst, wenn `atlcli script` läuft.
+  - Jira- und Confluence-Client entstehen erst beim ersten Verb des jeweiligen Produkts.
+  - Neue, schwere Namespaces (z. B. `atlcli.export.pdf` mit Typst-WASM) laden ihre Engine
+    ebenfalls erst beim ersten Aufruf per dynamischem Import.
 
 ## API-Oberfläche (MVP)
 

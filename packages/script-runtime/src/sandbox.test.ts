@@ -35,6 +35,20 @@ describe("runScript", () => {
     expect((await runScript(`export default () => 1 + 1`)).value).toBe(2);
   });
 
+  // Regression: quickjs-emscripten-core 0.32.0 unregistered asyncify runtimes
+  // before freeing them, so host functions collected at teardown threw
+  // "QuickJSRuntime not found when trying to free HostRef" (patched in patches/).
+  it("disposes release-build runtimes with host functions cleanly, repeatedly", async () => {
+    const echo: HostFunction = async ([v]) => v;
+    for (let i = 0; i < 3; i++) {
+      const result = await runScript(`console.log("x"); export default async () => atlcli.echo(${i})`, {
+        host: { echo },
+        onLog: () => {},
+      });
+      expect(result.value).toBe(i);
+    }
+  });
+
   it("calls namespaced host functions with JSON-copied arguments", async () => {
     const seen: unknown[][] = [];
     const get: HostFunction = async (args) => {
@@ -106,7 +120,7 @@ describe("runScript", () => {
     expect(error.kind).toBe("memory");
     // The poisoned WASM instance is dropped; the next run gets a fresh one.
     expect((await run(`export default () => "fresh"`)).value).toBe("fresh");
-  });
+  }, 30_000); // re-instantiating the debug WASM after OOM takes seconds
 
   it("times out hanging host calls and aborts their signal", async () => {
     let aborted = false;
@@ -177,11 +191,6 @@ describe("runScript", () => {
     }
   });
 
-  it("requires a default export function", async () => {
-    const error = await scriptError(run(`export const x = 1;`));
-    expect(error.kind).toBe("invalid-script");
-  });
-
   it("forwards console output to onLog", async () => {
     const logs: string[] = [];
     await run(`export default () => { console.log("n =", 1, { a: 2 }); console.warn("careful"); }`, {
@@ -195,50 +204,30 @@ describe("runScript", () => {
     expect(result.value).toBe(2);
   });
 
-  it("rejects atlcli calls at module top level, before prepare", async () => {
-    const one: HostFunction = async () => 1;
-    const error = await scriptError(run(`await atlcli.one(); export default () => 1`, { host: { one } }));
-    expect(error.message).toContain("not available at module top level");
-  });
-
-  it("passes the meta export to prepare and its result to the default export", async () => {
+  it("runs plain top-level scripts with atlcli and params, no exports needed", async () => {
     const seen: unknown[] = [];
-    const result = await run(
-      `export const meta = { name: "x", n: 2 }; export default (p) => p.doubled`,
-      {
-        prepare: (meta) => {
-          seen.push(meta);
-          return { doubled: (meta as { n: number }).n * 2 };
-        },
-      },
-    );
-    expect(seen).toEqual([{ name: "x", n: 2 }]);
-    expect(result.value).toBe(4);
-  });
-
-  it("ends the run when prepare throws", async () => {
-    const error = await scriptError(
-      run(`export default () => "ran"`, {
-        prepare: () => {
-          throw new Error("meta.name is required");
-        },
-      }),
-    );
-    expect(error.kind).toBe("invalid-script");
-    expect(error.message).toBe("meta.name is required");
-  });
-
-  it("stops after prepare when callDefault is false", async () => {
-    let called = false;
-    const mark: HostFunction = async () => {
-      called = true;
+    const log: HostFunction = async (args) => {
+      seen.push(args);
+      return "ok";
     };
-    const result = await run(`export const meta = 1; export default () => atlcli.mark()`, {
-      host: { mark },
-      callDefault: false,
+    const result = await run(`const r = await atlcli.log(atlcli.params.who); console.log(r);`, {
+      host: { log },
+      params: { who: "world" },
     });
     expect(result.value).toBeNull();
-    expect(called).toBe(false);
+    expect(seen).toEqual([["world"]]);
+  });
+
+  it("returns a non-function default export as the result", async () => {
+    expect((await run(`export default { n: await Promise.resolve(3) };`)).value).toEqual({ n: 3 });
+  });
+
+  it("passes params to a default-export function and freezes them", async () => {
+    const result = await run(
+      `export default (p) => { "use strict"; try { p.days = 1; } catch { return [p === atlcli.params, p.days]; } }`,
+      { params: { days: 7 } },
+    );
+    expect(result.value).toEqual([true, 7]);
   });
 
   it("applies guest-side wrappers to host functions", async () => {

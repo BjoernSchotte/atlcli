@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_MAX_WRITES, maxWritesOf, parseScriptMeta, resolveScriptParams } from "./meta.js";
+import DEBUG_VARIANT from "@jitl/quickjs-ng-wasmfile-debug-sync";
+import { DEFAULT_MAX_WRITES, extractScriptMeta, maxWritesOf, parseScriptMeta, resolveScriptParams } from "./meta.js";
 
 const base = { name: "close-stale", permissions: ["jira:read", "jira:write:ATLCLI"] };
 
@@ -18,8 +19,9 @@ describe("parseScriptMeta", () => {
     expect(maxWritesOf(meta)).toBe(5);
   });
 
-  it("requires a meta export", () => {
-    expect(() => parseScriptMeta(null)).toThrow("must export `meta`");
+  it("treats absent meta as empty: everything optional", () => {
+    expect(parseScriptMeta(null)).toEqual({});
+    expect(parseScriptMeta({})).toEqual({});
   });
 
   it.each([
@@ -70,7 +72,43 @@ describe("resolveScriptParams", () => {
     expect(() => resolveScriptParams(meta, raw)).toThrow(message);
   });
 
-  it("returns no params when none are declared", () => {
+  it("passes undeclared params through as given", () => {
     expect(resolveScriptParams(parseScriptMeta(base))).toEqual({});
+    expect(resolveScriptParams({}, { project: "ATLCLI", days: "30" })).toEqual({ project: "ATLCLI", days: "30" });
+    expect(() => resolveScriptParams({}, { x: {} })).toThrow("must be a string, number or boolean");
+  });
+});
+
+describe("extractScriptMeta", () => {
+  const extract = (js: string) => extractScriptMeta(js, { variant: DEBUG_VARIANT });
+
+  it("reads the literal without running the script", async () => {
+    const js = `export const meta = {
+  name: "x", // a { brace in a comment
+  description: "braces } in \\"strings\\" and \`templates }\`",
+  permissions: ["jira:read"], /* and } here */
+  params: { days: { type: "number", default: 3 } },
+};
+throw new Error("must not run");`;
+    expect(await extract(js)).toEqual({
+      name: "x",
+      description: 'braces } in "strings" and `templates }`',
+      permissions: ["jira:read"],
+      params: { days: { type: "number", default: 3 } },
+    });
+  });
+
+  it("returns null when there is no meta", async () => {
+    expect(await extract(`for await (const i of atlcli.jira.search("x")) {}`)).toBeNull();
+  });
+
+  it.each([
+    [`const m = {}; export { m as meta };`, "Declare meta as"],
+    [`export let meta = {};`, "Declare meta as"],
+    [`export const meta = makeMeta();`, "must be an object literal"],
+    [`const p = ["jira:read"]; export const meta = { permissions: p };`, "self-contained literal"],
+    [`export const meta = { name: "x"`, "not closed"],
+  ])("rejects %s", async (js, message) => {
+    await expect(extract(js)).rejects.toThrow(message);
   });
 });

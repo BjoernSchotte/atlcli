@@ -1,10 +1,11 @@
 import {
+  newQuickJSAsyncWASMModuleFromVariant,
   newQuickJSWASMModuleFromVariant,
   shouldInterruptAfterDeadline,
   type QuickJSContext,
   type QuickJSDeferredPromise,
   type QuickJSHandle,
-  type QuickJSSyncVariant,
+  type QuickJSVariant,
   type QuickJSWASMModule,
 } from "quickjs-emscripten-core";
 
@@ -47,25 +48,19 @@ export interface RunScriptOptions {
    * generator over a paged host call). Trusted code, evaluated before the script.
    */
   wrappers?: Readonly<Record<string, string>>;
-  /** JSON value passed to the default export (ignored when `prepare` is set). */
-  params?: unknown;
-  /**
-   * Called synchronously with the module's JSON-copied `meta` export once the
-   * module has loaded; its return value is passed to the default export. Host
-   * calls are rejected until it returns, so top-level code cannot act before
-   * the script's declarations are validated. Throwing ends the run.
-   */
-  prepare?: (meta: unknown) => unknown;
-  /** `false` stops after `prepare` (inspection); the result value is then `null`. */
-  callDefault?: boolean;
+  /** JSON object exposed as frozen `atlcli.params` and passed to a default-export function. */
+  params?: Readonly<Record<string, unknown>>;
   limits?: Partial<SandboxLimits>;
   onLog?: (level: SandboxLogLevel, message: string) => void;
-  /** Override the WASM build (tests use the debug build for leak detection). */
-  variant?: QuickJSSyncVariant;
+  /** Override the WASM build (tests use the sync debug build for leak detection). */
+  variant?: QuickJSVariant;
 }
 
 export interface RunScriptResult {
-  /** JSON-roundtripped return value of the default export (`undefined` → `null`). */
+  /**
+   * JSON-roundtripped result: what a default-export function returns, else the
+   * default export's value, else `null` (a plain top-level script).
+   */
   value: unknown;
   hostCalls: number;
 }
@@ -93,7 +88,6 @@ export class ScriptError extends Error {
 }
 
 const SCRIPT_MODULE = "script";
-const NO_DEFAULT = "A script must export a default function";
 const HOST_NAME = /^[a-z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)*$/;
 
 // Raw bridges are captured in closures and removed from globalThis before user
@@ -101,9 +95,9 @@ const HOST_NAME = /^[a-z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)*$/;
 // entry, `done(ok, payload)`. Everything crossing them is a string. JSON is
 // captured too, so a script overriding globals only breaks itself.
 const PRELUDE = `
-const h = globalThis.__atlcliHost, l = globalThis.__atlcliLog, names = globalThis.__atlcliNames, wrappers = globalThis.__atlcliWrappers;
+const h = globalThis.__atlcliHost, l = globalThis.__atlcliLog, names = globalThis.__atlcliNames, wrappers = globalThis.__atlcliWrappers, params = globalThis.__atlcliParams;
 const { parse, stringify } = JSON;
-delete globalThis.__atlcliHost; delete globalThis.__atlcliLog; delete globalThis.__atlcliNames; delete globalThis.__atlcliWrappers;
+delete globalThis.__atlcliHost; delete globalThis.__atlcliLog; delete globalThis.__atlcliNames; delete globalThis.__atlcliWrappers; delete globalThis.__atlcliParams;
 const wrap = parse(wrappers);
 const fmt = (v) => typeof v === "string" ? v : (() => { try { return stringify(v); } catch { return String(v); } })();
 const say = (level) => (...a) => l(level, a.map(fmt).join(" "));
@@ -124,37 +118,48 @@ for (const name of parse(names)) {
   });
   node[parts.at(-1)] = wrap[name] ? (0, eval)("(" + wrap[name] + ")")(raw) : raw;
 }
-const freeze = (o) => { for (const v of Object.values(o)) if (typeof v === "object") freeze(v); return Object.freeze(o); };
+root.params = parse(params);
+const freeze = (o) => { for (const v of Object.values(o)) if (v && typeof v === "object") freeze(v); return Object.freeze(o); };
 Object.defineProperty(globalThis, "atlcli", { value: freeze(root), writable: false, configurable: false, enumerable: false });
 `;
 
+// Only the API both module kinds share is used (no asyncified host functions),
+// so sync and asyncify builds behave alike.
 let defaultModule: Promise<QuickJSWASMModule> | undefined;
-const variantModules = new WeakMap<QuickJSSyncVariant, Promise<QuickJSWASMModule>>();
+const variantModules = new WeakMap<QuickJSVariant, Promise<QuickJSWASMModule>>();
 
-function loadModule(variant?: QuickJSSyncVariant): Promise<QuickJSWASMModule> {
+const fromVariant = (variant: QuickJSVariant): Promise<QuickJSWASMModule> =>
+  variant.type === "async"
+    ? (newQuickJSAsyncWASMModuleFromVariant(variant) as Promise<unknown> as Promise<QuickJSWASMModule>)
+    : newQuickJSWASMModuleFromVariant(variant);
+
+function loadModule(variant?: QuickJSVariant): Promise<QuickJSWASMModule> {
   if (!variant) {
-    defaultModule ??= import("@jitl/quickjs-ng-wasmfile-release-sync").then((v) =>
-      newQuickJSWASMModuleFromVariant(v.default),
-    );
+    // The engine swap point. The CLI already ships this build's WASM (one
+    // `emscripten-module.wasm` beside the bundle; see apps/cli/build-assets.ts),
+    // and quickjs-ng has no single-file build, so sync and asyncify cannot both ship.
+    defaultModule ??= import("@jitl/quickjs-ng-wasmfile-release-asyncify").then((v) => fromVariant(v.default));
     return defaultModule;
   }
   let module = variantModules.get(variant);
   if (!module) {
-    module = newQuickJSWASMModuleFromVariant(variant);
+    module = fromVariant(variant);
     variantModules.set(variant, module);
   }
   return module;
 }
 
-function forgetModule(variant?: QuickJSSyncVariant): void {
+function forgetModule(variant?: QuickJSVariant): void {
   if (variant) variantModules.delete(variant);
   else defaultModule = undefined;
 }
 
 /**
- * Run an ES module (already stripped of types) whose default export receives
- * `params`. One QuickJS runtime per run, always disposed. The guest has no
- * fetch, no imports and no host references, only frozen `atlcli.*` functions.
+ * Run an ES module (already stripped of types). The module body is the script:
+ * top-level `await` and `atlcli.*` work directly; a default-export function, if
+ * present, is called with `params` afterwards. One QuickJS runtime per run,
+ * always disposed. The guest has no fetch, no imports and no host references,
+ * only the frozen `atlcli` namespace.
  */
 export async function runScript(js: string, options: RunScriptOptions = {}): Promise<RunScriptResult> {
   const limits = { ...DEFAULT_SANDBOX_LIMITS, ...options.limits };
@@ -166,8 +171,6 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
   for (const name of Object.keys(wrappers)) {
     if (!Object.hasOwn(host, name)) throw new TypeError(`Wrapper without host function: ${name}`);
   }
-  const prepare = options.prepare ?? (() => options.params ?? null);
-  let prepared = false;
   const quickjs = await loadModule(options.variant);
   const runtime = quickjs.newRuntime();
   runtime.setMemoryLimit(limits.memoryBytes);
@@ -227,7 +230,6 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
       const name = ctx.getString(nameHandle);
       const fn = Object.hasOwn(host, name) ? host[name] : undefined;
       if (!fn) return { error: ctx.newError(`Unknown host function: ${name}`) };
-      if (!prepared) return { error: ctx.newError("atlcli is not available at module top level; call it from the default export") };
       if (++hostCalls > limits.maxHostCalls) {
         const error = new ScriptError("host-call-limit", `Host call limit exceeded (${limits.maxHostCalls})`);
         fail(error);
@@ -254,40 +256,21 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
       if (ctx.dump(okHandle) === true) resolveRun(ctx.getString(payloadHandle));
       else fail(toScriptError(ctx, payloadHandle));
     });
-    define("__atlcliPrepare", (metaHandle) => {
-      try {
-        const params = prepare(JSON.parse(ctx.getString(metaHandle)));
-        prepared = true;
-        return ctx.newString(JSON.stringify(params ?? null));
-      } catch (error) {
-        const scriptError =
-          error instanceof ScriptError
-            ? error
-            : new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
-        fail(scriptError);
-        return { error: ctx.newError(scriptError.message) };
-      }
-    });
     ctx.newString(JSON.stringify(Object.keys(host))).consume((names) =>
       ctx.setProp(ctx.global, "__atlcliNames", names),
     );
     ctx.newString(JSON.stringify(wrappers)).consume((w) => ctx.setProp(ctx.global, "__atlcliWrappers", w));
+    ctx.newString(JSON.stringify(options.params ?? {})).consume((p) => ctx.setProp(ctx.global, "__atlcliParams", p));
 
     ctx.unwrapResult(ctx.evalCode(PRELUDE, "atlcli:prelude", { type: "global" })).dispose();
 
     const entry = `(async () => {
-  const done = globalThis.__atlcliDone, prepare = globalThis.__atlcliPrepare;
-  const { parse, stringify } = JSON;
-  delete globalThis.__atlcliDone; delete globalThis.__atlcliPrepare;
+  const done = globalThis.__atlcliDone, stringify = JSON.stringify;
+  delete globalThis.__atlcliDone;
   try {
     const m = await import(${JSON.stringify(SCRIPT_MODULE)});
-    if (typeof m.default !== "function") throw new TypeError(${JSON.stringify(NO_DEFAULT)});
-    let meta = null;
-    try { meta = stringify(m.meta === undefined ? null : m.meta) ?? "null"; } catch { meta = "null"; }
-    const params = parse(prepare(meta));
-    if (!${options.callDefault !== false}) return done(true, "null");
-    const r = await m.default(params);
-    done(true, stringify(r === undefined ? null : r));
+    const r = typeof m.default === "function" ? await m.default(atlcli.params) : m.default;
+    done(true, stringify(r === undefined ? null : r) ?? "null");
   } catch (e) { done(false, e); }
 })();`;
     timer = setTimeout(
@@ -370,9 +353,6 @@ function toScriptError(ctx: QuickJSContext, handle: QuickJSHandle): ScriptError 
   }
   if (name === "InternalError" && /out of memory/i.test(message)) {
     return new ScriptError("memory", "Script exceeded its memory limit");
-  }
-  if (name === "TypeError" && message === NO_DEFAULT) {
-    return new ScriptError("invalid-script", message);
   }
   if (/Imports are not allowed in scripts/.test(message) || name === "SyntaxError") {
     return new ScriptError("invalid-script", message, stack);

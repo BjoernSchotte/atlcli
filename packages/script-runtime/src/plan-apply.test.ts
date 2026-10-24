@@ -193,6 +193,19 @@ describe("applyScriptPlan", () => {
     expect(report.operations[0]).toEqual({ seq: 1, verb: "jira.create", status: "applied", result: { id: "ATLCLI-10", key: "ATLCLI-10" } });
   });
 
+  it("resolves references embedded in text, leaves unrelated plan:<n> text alone", async () => {
+    const port = new StatefulPort();
+    const source = `
+const issue = await atlcli.jira.create({ project: "ATLCLI", type: "Task", summary: "Ship it" });
+await atlcli.confluence.createPage({ space: "DOCSY", title: "Notes", markdown: "Tracked in " + issue.key + "; see plan:99 and plan:2" });`;
+    const run = await planScript(source, { port, variant: DEBUG_VARIANT });
+    expect(run.operations[1]!.dependsOn).toEqual([1]);
+    const plan = await createScriptPlan(run, { source, baseUrl: BASE_URL });
+    expect((await applyScriptPlan(plan, { port, baseUrl: BASE_URL })).status).toBe("applied");
+    const page = [...port.pages.values()].find((p) => p.title === "Notes")!;
+    expect(page.markdown).toBe("Tracked in ATLCLI-10; see plan:99 and plan:2");
+  });
+
   it("aborts with nothing written when the target drifted", async () => {
     const port = new StatefulPort();
     const plan = await makePlan(port);

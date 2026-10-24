@@ -1,6 +1,6 @@
 import { normalizeBaseUrl, ScriptPlanError, type ScriptPlanV1 } from "./plan.js";
 import type { ScriptPort } from "./port.js";
-import type { PlannedOperation, Precondition } from "./verbs.js";
+import { PLAN_REFERENCE, type PlannedOperation, type Precondition } from "./verbs.js";
 
 export interface ApplyScriptPlanOptions {
   port: ScriptPort;
@@ -33,7 +33,6 @@ export interface ApplyReport {
   operations: OperationResult[];
 }
 
-const PLACEHOLDER = /^plan:(\d+)$/;
 
 /**
  * Applies a parsed (digest-verified) plan. All preconditions are checked
@@ -150,14 +149,9 @@ async function execute(
   }
 }
 
+/** Replaces `plan:<seq>` references to created objects, also inside text; other text stays as written. */
 function resolve(value: unknown, resolved: Map<number, string>): unknown {
-  if (typeof value === "string") {
-    const ref = PLACEHOLDER.exec(value);
-    if (!ref) return value;
-    const real = resolved.get(Number(ref[1]));
-    if (real === undefined) throw new Error(`Unresolved plan reference: ${value}`);
-    return real;
-  }
+  if (typeof value === "string") return value.replace(PLAN_REFERENCE, (ref, seq) => resolved.get(Number(seq)) ?? ref);
   if (Array.isArray(value)) return value.map((item) => resolve(item, resolved));
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolve(v, resolved)]));

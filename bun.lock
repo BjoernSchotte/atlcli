@@ -88,6 +88,7 @@
         "@atlcli/pdf-template-authoring": "workspace:*",
         "@atlcli/plugin-api": "workspace:*",
         "@atlcli/research": "workspace:*",
+        "@atlcli/script-runtime": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
         "@atlcli/tui": "workspace:*",
         "@atlcli/web-publish": "workspace:*",
@@ -499,7 +500,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@atlcli/change-set": "workspace:*",
-        "@jitl/quickjs-ng-wasmfile-release-sync": "0.32.0",
+        "@jitl/quickjs-ng-wasmfile-release-asyncify": "0.32.0",
         "quickjs-emscripten-core": "0.32.0",
         "zod": "4.6.7",
       },
@@ -574,6 +575,7 @@
     "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch",
     "webdav-server@2.6.3": "patches/webdav-server@2.6.3.patch",
     "@langchain/quickjs@1.0.0": "patches/@langchain%2Fquickjs@1.0.0.patch",
+    "quickjs-emscripten-core@0.32.0": "patches/quickjs-emscripten-core@0.32.0.patch",
   },
   "overrides": {
     "deepagents": "1.12.1",
@@ -906,8 +908,6 @@
     "@jitl/quickjs-ng-wasmfile-debug-sync": ["@jitl/quickjs-ng-wasmfile-debug-sync@0.32.0", "", { "dependencies": { "@jitl/quickjs-ffi-types": "0.32.0" } }, "sha512-OHerkOeYgNwEWL0vcDOxrolZLiW9JuO8maRiDuuvBymuyWkqIMghlepDUOOoEcfJ2Yc6Vhd3fwMsKYfCYxsxEQ=="],
 
     "@jitl/quickjs-ng-wasmfile-release-asyncify": ["@jitl/quickjs-ng-wasmfile-release-asyncify@0.32.0", "", { "dependencies": { "@jitl/quickjs-ffi-types": "0.32.0" } }, "sha512-N4GfnnxR0g4dEaymjclJkGjNaa1dpmPjp8fTu022WWFFyiQ2mOMi5b8V3CEWJOlW/4bflQGbSotuPI/I8/5PQg=="],
-
-    "@jitl/quickjs-ng-wasmfile-release-sync": ["@jitl/quickjs-ng-wasmfile-release-sync@0.32.0", "", { "dependencies": { "@jitl/quickjs-ffi-types": "0.32.0" } }, "sha512-XAX2jjZWWh3M0YaRqi82xMKNW/gkF6mo3MpW3UY2cmVxnQai1JuboVsJQVoLU629iEL4XWvHtO4h5lo7NRnAcg=="],
 
     "@jitl/quickjs-wasmfile-debug-asyncify": ["@jitl/quickjs-wasmfile-debug-asyncify@0.32.0", "", { "dependencies": { "@jitl/quickjs-ffi-types": "0.32.0" } }, "sha512-EX8zbXwGqCgAE764M+qvkHtyXDi/FUoMBea0JnES7vCM3P7a2+EOZOjGv85wtZ2sJhI1oJ+nekmqpOODFDY+hw=="],
 

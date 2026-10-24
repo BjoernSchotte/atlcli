@@ -30,6 +30,7 @@ import { handlePlugin, pluginHelp } from "./commands/plugin.js";
 import { handleJira, jiraHelpFor } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
 import { handleSkill } from "./commands/skill.js";
+import { handleScript } from "./commands/script.js";
 import {
   chatHelp,
   handleChat,
@@ -191,6 +192,9 @@ async function main(): Promise<void> {
         break;
       case "skill":
         await handleSkill(rest, parsed.flags, opts);
+        break;
+      case "script":
+        await handleScript(rest, parsed.flags, opts);
         break;
       case "update":
         await handleUpdate(rest, parsed.flags, opts);

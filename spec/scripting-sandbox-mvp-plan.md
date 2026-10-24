@@ -279,6 +279,46 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
 - Hilfetexte, Shell-Completion und `ROOT_COMMANDS` werden ergänzt.
 - **Tests:** CLI-Tests im Muster von `jira-board-cli.test.ts`, inklusive Exit-Codes.
 
+**Umgesetzt (T7+T8), inklusive DX-Umbau:**
+
+- **Skript-Vertrag vereinfacht** (Wunsch: so wenig Boilerplate wie möglich):
+  - Der Modul-Body ist das Skript, `atlcli.*` funktioniert auf Top-Level.
+  - `meta` ist optional und wird statisch vor der Ausführung gelesen (`extractScriptMeta`).
+    Damit entfallen der `prepare`-Hook und die Sperre auf Top-Level-Ebene.
+  - `atlcli.params` ist eingebaut.
+  - Ohne `permissions` ist alles erlaubt; Writes laufen weiterhin nur über Plan/Apply.
+- **Engine:** quickjs-ng **asyncify** statt sync. quickjs-ng hat keinen Single-File-Build, und
+  beide Varianten erwarten `emscripten-module.wasm` neben dem Bundle. Die CLI liefert die
+  asyncify-WASM bereits aus (`apps/cli/build-assets.ts`), also bleibt es bei einer Engine.
+  - Die Promise-Brücke und damit echtes `Promise.all` bleibt erhalten, weil keine
+    asyncified Host-Funktionen genutzt werden.
+  - Die Leak-Tests laufen weiter auf dem ng-Debug-Build (sync); die Sandbox akzeptiert beide
+    Modularten.
+- **Patch:** `quickjs-emscripten-core@0.32.0` meldet asyncify-Runtimes vor `QTS_FreeRuntime`
+  ab. Host-Funktionen, die erst beim Teardown-GC freigegeben werden, warfen dann „QuickJSRuntime
+  not found when trying to free HostRef“. Behoben über `patches/`, Regressionstest in
+  `sandbox.test.ts`.
+- **Plan-Referenzen in Texten:** `plan:<n>` wird auch innerhalb von Strings aufgelöst und in
+  `dependsOn` erfasst (z. B. eine Seite, die ein neues Issue nennt). Nur Referenzen auf
+  erzeugende Operationen (`jira.create`, `confluence.createPage`) werden ersetzt; anderer Text
+  bleibt unverändert.
+- **CLI:** `atlcli script run <file> | -e <code>`, `--param`, `--plan-out`, `--apply`, `--yes`,
+  `--json`, außerdem `apply`, `check` (Validierung von `meta` plus `tsc --noEmit`, falls `tsc`
+  vorhanden ist) und `init` (`atlcli.d.ts`, `tsconfig.json` mit `moduleDetection: force`,
+  `example.ts`).
+  - Exit-Code 2 bei Drift.
+  - `--apply` ohne Terminal oder mit `--json` verlangt `--yes`.
+- **Live-E2E (mayflower, DOCSY/ATLCLI):**
+  - Lesezugriff aus dem gebauten `dist/`.
+  - Plan und Apply mit 7 Operationen (Issue anlegen, kommentieren, transitionieren; zwei
+    Seiten in Hierarchie, Label, Upsert): alles verifiziert, danach gelöscht.
+  - Drift live geprüft: Exit 2, nichts geschrieben.
+  - Teilfehler live gesehen: Die Transition „Done“ gibt es im deutschen Workflow nicht
+    („Fertig“). Der Stopp war sauber, die Fehlermeldung nennt jetzt die verfügbaren
+    Transitions.
+- **Bekannte Grenze:** Transitions für Issues, die erst im Plan angelegt werden, lassen sich
+  beim Planen nicht prüfen. Das wird in T9 dokumentiert.
+
 ### T9: Doku, Skill, E2E
 
 - **Doku:** `docs/` bekommt einen Feature-Guide (Erstes Skript, Plan/Apply, CI-Rezept mit
@@ -313,7 +353,8 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
 
 ## Entscheidungen (2026-10-24)
 
-1. **WASM-Variante:** `@jitl/quickjs-ng-wasmfile-release-sync@0.32.0`, exakt gepinnt.
+1. **WASM-Variante:** zunächst `@jitl/quickjs-ng-wasmfile-release-sync@0.32.0`. In T7/T8
+   wurde aus Packaging-Gründen auf die asyncify-Variante gewechselt (siehe dort).
    - Die Variante bleibt austauschbar. Sie wird an genau einer Stelle in `sandbox.ts` an
      `newQuickJSWASMModuleFromVariant` übergeben. Alle `@jitl`-Varianten haben dieselbe
      FFI-Schnittstelle (`quickjs-ffi-types`).

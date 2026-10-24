@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { maxWritesOf, parseScriptMeta, resolveScriptParams, type ScriptMeta, type ScriptParams } from "./meta.js";
+import { extractScriptMeta, maxWritesOf, parseScriptMeta, resolveScriptParams, type ScriptMeta, type ScriptParams } from "./meta.js";
 import type { ConfluencePageView, ScriptPort } from "./port.js";
 import { runScript, ScriptError, type HostFunction, type RunScriptOptions } from "./sandbox.js";
 
@@ -84,8 +84,9 @@ class Recorder {
     private readonly meta: ScriptMeta,
   ) {}
 
+  /** Without declared permissions every verb is allowed (writes are still only planned). */
   require(permission: string): void {
-    if (!this.meta.permissions.includes(permission as never)) {
+    if (this.meta.permissions && !this.meta.permissions.includes(permission as never)) {
       throw new ScriptError("permission-denied", `Script meta.permissions does not grant "${permission}"`);
     }
   }
@@ -146,7 +147,8 @@ class Recorder {
     if (this.operations.length >= maxWritesOf(this.meta)) {
       throw new ScriptError("write-limit", `Write limit exceeded (meta.limits.maxWrites = ${maxWritesOf(this.meta)})`);
     }
-    const dependsOn = new Set(placeholdersIn(args));
+    // Unknown or non-producing seqs in prose ("see plan:99") are just text.
+    const dependsOn = new Set(placeholdersIn(args).filter((seq) => PRODUCERS.has(this.operations[seq - 1]?.verb as WriteVerb)));
     const previous = object ? this.touched.get(object) : undefined;
     if (previous) dependsOn.add(previous);
     for (const seq of dependsOn) this.operation(seq);
@@ -162,11 +164,14 @@ class Recorder {
   }
 }
 
+/** Operations whose result a `plan:<seq>` reference stands for (issue key, page id). */
+export const PRODUCERS: ReadonlySet<WriteVerb> = new Set(["jira.create", "confluence.createPage"]);
+
+/** `plan:<seq>` references, whole values or embedded in text (e.g. a page body naming a new issue). */
+export const PLAN_REFERENCE = /\bplan:(\d+)\b/g;
+
 function placeholdersIn(value: unknown): number[] {
-  if (typeof value === "string") {
-    const ref = PLACEHOLDER.exec(value);
-    return ref ? [Number(ref[1])] : [];
-  }
+  if (typeof value === "string") return [...value.matchAll(PLAN_REFERENCE)].map((m) => Number(m[1]));
   if (Array.isArray(value)) return value.flatMap(placeholdersIn);
   if (value && typeof value === "object") return Object.values(value).flatMap(placeholdersIn);
   return [];
@@ -207,7 +212,7 @@ const VERBS: Record<string, Verb> = {
     r.require(`jira:write:${r.jiraProject(key)}`);
     if (!PLACEHOLDER.test(key)) {
       const available = await r.port.jiraGetTransitions(key, { signal });
-      if (!available.includes(transition)) {
+      if (!available.some((name) => name.toLowerCase() === transition.toLowerCase())) {
         throw new Error(`Transition "${transition}" is not available for ${key} (available: ${available.join(", ") || "none"})`);
       }
     }
@@ -312,12 +317,18 @@ export const SCRIPT_VERBS = Object.freeze(Object.keys(VERBS));
 
 /**
  * Runs a script in plan mode: reads go live through `port`, writes are
- * recorded as operations with preconditions. Nothing is written.
+ * recorded as operations with preconditions. Nothing is written. `meta` is
+ * read and validated before any script code runs.
  */
 export async function planScript(js: string, options: PlanScriptOptions): Promise<ScriptRunPlan> {
-  let recorder: Recorder | undefined;
-  let meta: ScriptMeta | undefined;
-  let params: ScriptParams = {};
+  const meta = parseMetaOrThrow(await extractScriptMeta(js, { variant: options.variant }));
+  let params: ScriptParams;
+  try {
+    params = resolveScriptParams(meta, options.params);
+  } catch (error) {
+    throw new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
+  }
+  const recorder = new Recorder(options.port, meta);
   const host: Record<string, HostFunction> = {};
   for (const [name, definition] of Object.entries(VERBS)) {
     host[name] = async (rawArgs, signal) => {
@@ -326,40 +337,31 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
         const issue = parsed.error.issues[0]!;
         throw new TypeError(`Invalid arguments for atlcli.${name}: ${[...issue.path].join(".") || "args"}: ${issue.message}`);
       }
-      return definition.run(recorder!, parsed.data as never, signal);
+      return definition.run(recorder, parsed.data as never, signal);
     };
   }
   const result = await runScript(js, {
     host,
     wrappers: WRAPPERS,
+    params,
     limits: options.limits,
     onLog: options.onLog,
     variant: options.variant,
-    prepare: (rawMeta) => {
-      meta = parseScriptMeta(rawMeta);
-      params = resolveScriptParams(meta, options.params);
-      recorder = new Recorder(options.port, meta);
-      return params;
-    },
   });
-  return { meta: meta!, params, value: result.value, operations: recorder!.operations, hostCalls: result.hostCalls };
+  return { meta, params, value: result.value, operations: recorder.operations, hostCalls: result.hostCalls };
 }
 
-/** Loads a script far enough to validate and return its `meta`; runs no verbs. */
+/** Reads and validates a script's `meta` without running any script code. */
 export async function inspectScript(js: string, options: Pick<RunScriptOptions, "variant"> = {}): Promise<ScriptMeta> {
-  let meta: ScriptMeta | undefined;
-  // Same namespace shape as planScript, so top-level code sees what it will see when run.
-  await runScript(js, {
-    host: Object.fromEntries(SCRIPT_VERBS.map((name) => [name, async () => null])),
-    wrappers: WRAPPERS,
-    variant: options.variant,
-    callDefault: false,
-    prepare: (rawMeta) => {
-      meta = parseScriptMeta(rawMeta);
-      return null;
-    },
-  });
-  return meta!;
+  return parseMetaOrThrow(await extractScriptMeta(js, options));
+}
+
+function parseMetaOrThrow(raw: unknown): ScriptMeta {
+  try {
+    return parseScriptMeta(raw);
+  } catch (error) {
+    throw new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** Optional trailing arguments arrive as JSON null; tuples expect them absent. */

@@ -27,6 +27,8 @@ export interface CreateScriptPlanOptions {
   /** Script source as run (before type stripping is fine; it is only hashed). */
   source: string;
   path?: string;
+  /** Plan name when meta has none; defaults to the file name, else "script". */
+  name?: string;
   baseUrl: string;
   profile?: string;
   now?: Date;
@@ -77,7 +79,7 @@ export async function createScriptPlan(run: ScriptRunPlan, options: CreateScript
     schema: SCRIPT_PLAN_SCHEMA_V1,
     createdAt: (options.now ?? new Date()).toISOString(),
     script: {
-      name: run.meta.name,
+      name: run.meta.name ?? options.name ?? scriptNameFromPath(options.path) ?? "script",
       ...(options.path ? { path: options.path } : {}),
       sha256: await sha256HexV1(new TextEncoder().encode(options.source)),
       meta: run.meta,
@@ -125,6 +127,11 @@ export async function parseScriptPlan(input: string | unknown): Promise<ScriptPl
     throw new ScriptPlanError("Plan digest mismatch: the plan was modified after it was created");
   }
   return plan;
+}
+
+function scriptNameFromPath(path: string | undefined): string | undefined {
+  const base = path?.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "");
+  return base || undefined;
 }
 
 export function normalizeBaseUrl(url: string): string {
