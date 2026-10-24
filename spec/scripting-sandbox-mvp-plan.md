@@ -248,11 +248,13 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
 | Forge-Host, sucrase | Phase 3 |
 | Monaco/Editor | Forge-Phase |
 
-## Offene Fragen
+## Entscheidungen (2026-10-24)
 
-1. WASM-Variante: `@jitl/quickjs-ng-wasmfile-release-sync@0.32.0` (neue Dependency, bessere
-   ES-Abdeckung, gleiche Engine wie in der Research-Runtime)? Oder das schon installierte
-   upstream `@jitl/quickjs-wasmfile-release-sync`?
-2. Befehlsname: `atlcli script …` oder kürzer `atlcli run …`?
-3. Soll `run --apply` im MVP enthalten sein, oder vorerst nur der Weg über `run --plan-out` und
-   `apply`?
+1. **WASM-Variante:** `@jitl/quickjs-ng-wasmfile-release-sync@0.32.0`, exakt gepinnt.
+   - Die Variante bleibt austauschbar. Sie wird an genau einer Stelle in `sandbox.ts` an
+     `newQuickJSWASMModuleFromVariant` übergeben. Alle `@jitl`-Varianten haben dieselbe
+     FFI-Schnittstelle (`quickjs-ffi-types`).
+   - Ein Wechsel ist ein Einzeiler plus Dependency-Tausch. Die Sandbox-Tests aus T2 dienen dabei
+     als Regressionsnetz für Unterschiede im ES-Verhalten.
+2. **Befehlsname:** `atlcli script …`.
+3. **`run --apply`** ist im MVP enthalten: interaktive Bestätigung, ohne TTY ist `--yes` Pflicht.
