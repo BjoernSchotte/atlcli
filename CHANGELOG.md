@@ -2,6 +2,20 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.7] - 2026-10-24
+
+### Bug Fixes
+
+- **security:** Harden browser and editor launch, pin pywinpty, keep shared board filters ([022905a](https://github.com/bjoernschotte/atlcli/commit/022905a60cc7c0bed9c0ca67d78671eabbe4a074))
+- **security:** Command log lines cannot gain flags from Jira data; atomic config writes ([51111ba](https://github.com/bjoernschotte/atlcli/commit/51111ba00f7789604f7d85a311a25f297aa2cea1))
+
+### Documentation
+
+- **readme:** Lead with the terminal UI and PDF export, screenshots from live demo content ([833e0c5](https://github.com/bjoernschotte/atlcli/commit/833e0c5ddd23b635a7f9ceb6b56dfe3e4e2261bf))
+
+### Features
+
+- **tui:** Board view, command log, auto-refresh and saved views ([5bad3d1](https://github.com/bjoernschotte/atlcli/commit/5bad3d15593fab3c7e395a31f8aece91210ce530))
 ## [2026.10.6] - 2026-10-24
 
 ### Bug Fixes
