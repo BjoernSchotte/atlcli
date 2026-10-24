@@ -2,7 +2,9 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [2026.10.8] - 2026-10-24
+## [Unreleased]
+
+2026.10.8 was tagged but never published: its release preflight failed on a test timeout before any artifact was built. Everything it contained ships in this release.
 
 ### Bug Fixes
 

@@ -106,6 +106,24 @@ describe("CI workflow policy", () => {
     expect(nfs).toContain("nfs-helper-build.json");
   });
 
+  it("reuses an equivalent commit's CI proof but always attests the tag and runs tag canaries", async () => {
+    const release = await workflow("release.yml");
+    expect(release).toContain('bun scripts/ci/release-proof-reuse.ts --sha "$GITHUB_SHA" >> "$GITHUB_OUTPUT"');
+    const preflight = release.slice(release.indexOf("  preflight:"), release.indexOf("  tag-canaries:"));
+    expect(preflight).toContain("needs: proof");
+    for (const input of ["run_static_quality", "run_tests", "run_astro_platform"]) {
+      expect(preflight).toContain(`${input}: \${{ needs.proof.outputs.reuse != 'true' }}`);
+    }
+    // The exact-SHA attestation is never reused.
+    expect(preflight).toContain("emit_security_attestation: true");
+    const canaries = release.slice(release.indexOf("  tag-canaries:"), release.indexOf("  resolve:"));
+    expect(canaries).toContain("if: needs.proof.outputs.reuse == 'true'");
+    expect(canaries).toContain("run_astro_platform: true");
+    // Publication waits for the canaries whenever they run.
+    expect(release).toContain("needs: [resolve, create-draft, verify-downloaded-draft, native-cli-consumer, tag-canaries]");
+    expect(release).toContain("(needs.tag-canaries.result == 'success' || needs.tag-canaries.result == 'skipped')");
+  });
+
   it("delegates the complete stable product bundle to the reusable artifact workflow", async () => {
     const release = await workflow("release.yml");
     const reusable = await workflow("reusable-release-artifacts.yml");
@@ -415,7 +433,7 @@ describe("CI workflow policy", () => {
     expect(native).toContain("download-native-asset");
     expect(native).toContain("verify-native-cli.ts");
     const publish = block(stable, /^ {2}publish-draft:\s*$/, 2);
-    expect(publish).toContain("needs: [resolve, create-draft, verify-downloaded-draft, native-cli-consumer]");
+    expect(publish).toContain("needs: [resolve, create-draft, verify-downloaded-draft, native-cli-consumer, tag-canaries]");
     expect(publish).toContain("publish-draft");
     expect(block(stable, /^ {2}verify-published:\s*$/, 2)).toContain("verify-published");
     expect(stable.match(/contents: write/g)).toHaveLength(4);
