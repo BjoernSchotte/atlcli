@@ -121,7 +121,7 @@ Boards and sprints, with the navigator focused:
 | `S` | A future sprint | Start it: today until the end date you give (default: two weeks) |
 | `S` | The active sprint | Complete it. Its open issues stay in the closed sprint and show in the backlog; move them with `s` |
 | `d` | A sprint | Delete it; its issues move to the backlog |
-| `d` | A board | Delete it, or it and its filter. Its sprints go with it; issues are not touched |
+| `d` | A board | Delete it, or it and its filter (the filter stays while another board uses it). Its sprints go with it; issues are not touched |
 
 Deleting needs `y` twice.
 

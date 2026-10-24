@@ -15,7 +15,14 @@ import {
   renderTable,
   replaceInBody,
   resolveColumns,
+  editorShellLine,
+  safeFileName,
 } from "./jira-input.js";
+import { browserCommand } from "./jira.js";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("editorCommand", () => {
   test("VISUAL, then EDITOR, then vi; empty values count as unset", () => {
@@ -25,6 +32,47 @@ describe("editorCommand", () => {
     expect(editorCommand({ VISUAL: "", EDITOR: "nano" })).toBe("nano");
     expect(editorCommand({ VISUAL: " ", EDITOR: "" }, "darwin")).toBe("vi");
     expect(editorCommand({}, "win32")).toBe("notepad");
+  });
+});
+
+describe("editor launch", () => {
+  test("the file reaches the editor through an environment variable, never as shell text", () => {
+    expect(editorShellLine("code --wait", "darwin")).toBe('code --wait "$ATLCLI_EDIT_FILE"');
+    expect(editorShellLine("notepad", "win32")).toBe('notepad "%ATLCLI_EDIT_FILE%"');
+  });
+
+  test("temp file names keep only safe characters", () => {
+    expect(safeFileName("ATLCLI-12.md")).toBe("ATLCLI-12.md");
+    expect(safeFileName('a"; rm -rf ~; ".md')).toBe("a___rm_-rf_____.md");
+    expect(safeFileName("$(touch x).md")).toBe("__touch_x_.md");
+    expect(safeFileName("../up.md")).toBe("__up.md");
+  });
+
+  // Regression: the file name was interpolated into the shell line; a quote in it ran the rest as a command.
+  test("a hostile name cannot run anything through the shell", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "atlcli-editor-"));
+    try {
+      const file = join(dir, safeFileName('x"; touch pwned; ".md'));
+      await writeFile(file, "text");
+      const proc = Bun.spawn(["/bin/sh", "-c", editorShellLine("cat", "darwin")], { cwd: dir, env: { ...process.env, ATLCLI_EDIT_FILE: file }, stdout: "pipe" });
+      expect(await new Response(proc.stdout).text()).toBe("text");
+      expect(existsSync(join(dir, "pwned"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("browserCommand", () => {
+  test("http(s) only; Windows goes through url.dll, not cmd", () => {
+    expect(browserCommand("https://x.atlassian.net/browse/A-1", "darwin")).toEqual({ command: "open", args: ["https://x.atlassian.net/browse/A-1"] });
+    expect(browserCommand("https://x.atlassian.net/wiki/spaces/A&B/pages/1", "win32")).toEqual({
+      command: "rundll32",
+      args: ["url.dll,FileProtocolHandler", "https://x.atlassian.net/wiki/spaces/A&B/pages/1"],
+    });
+    expect(browserCommand("http://dc.local/browse/A-1", "linux").command).toBe("xdg-open");
+    expect(() => browserCommand("file:///etc/passwd", "linux")).toThrow("Only http and https");
+    expect(() => browserCommand("calc.exe", "win32")).toThrow("Not a URL");
   });
 });
 

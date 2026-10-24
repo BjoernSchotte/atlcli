@@ -9,7 +9,7 @@
 3. a mouse click on the header's Wiki tab switches the area;
 4. `q` quits with exit 0.
 
-    pip install pywinpty==2.0.15
+    pip install --require-hashes --only-binary :all: -r scripts/ci/tui-smoke-windows-requirements.txt
     python scripts/ci/tui-smoke-windows.py path\\to\\atlcli.exe
 
 `--notepad` (needs pywinauto and a desktop session, as GitHub's Windows

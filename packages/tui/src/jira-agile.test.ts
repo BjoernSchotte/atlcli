@@ -146,14 +146,22 @@ describe("boards and sprints in the navigator", () => {
   });
 
   test("d on a board with its filter needs two y, then deletes board and filter", async () => {
-    const t = setup(agileStub({ getBoardFilterId: () => "500", deleteBoard: () => undefined, deleteFilter: () => undefined }));
+    const t = setup(agileStub({ deleteBoardAndFilter: () => ({ filterId: "500", filterDeleted: true, otherBoards: [] }) }));
     boardTree(t, "b:7");
     press(t, "d", "down", "return", "y");
-    expect(t.calls.some((c) => c.method === "deleteBoard")).toBe(false);
+    expect(t.calls.some((c) => c.method.startsWith("delete"))).toBe(false);
     press(t, "y");
     await t.settle();
-    expect(t.calls.filter((c) => c.method.startsWith("delete")).map((c) => [c.method, c.args[0]])).toEqual([["deleteBoard", 7], ["deleteFilter", "500"]]);
+    expect(t.calls.filter((c) => c.method.startsWith("delete")).map((c) => [c.method, c.args[0]])).toEqual([["deleteBoardAndFilter", 7]]);
     expect(t.ctx.store.get().jira.nav.selected).toBe("g:boards");
+  });
+
+  test("a filter another board uses stays, and the toast says which board", async () => {
+    const t = setup(agileStub({ deleteBoardAndFilter: () => ({ filterId: "500", filterDeleted: false, otherBoards: [8] }) }));
+    boardTree(t, "b:7");
+    press(t, "d", "down", "return", "y", "y");
+    await t.settle();
+    expect(t.toasts().at(-1)?.text).toMatch(/its filter stays, board 8 uses it$/);
   });
 
   test("d on a sprint deletes it after two y", async () => {

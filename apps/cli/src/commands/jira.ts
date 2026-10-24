@@ -1592,24 +1592,29 @@ async function handleIssueClone(
   output({ schemaVersion: "1", cloned: result }, opts);
 }
 
+/**
+ * The command that opens `url` in the browser. Only http(s) URLs: an opener
+ * hands other schemes (file:, custom handlers) to whatever program owns them.
+ * Windows uses url.dll, not `cmd /c start`, which would parse `&` and `^` in
+ * the URL as shell syntax.
+ */
+export function browserCommand(url: string, platform: string = process.platform): { command: string; args: string[] } {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Not a URL: ${url}`);
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error(`Only http and https URLs open in the browser, not ${parsed.protocol}`);
+  const href = parsed.href;
+  if (platform === "darwin") return { command: "open", args: [href] };
+  if (platform === "win32") return { command: "rundll32", args: ["url.dll,FileProtocolHandler", href] };
+  return { command: "xdg-open", args: [href] };
+}
+
 export async function openUrl(url: string): Promise<void> {
   const { spawn } = await import("node:child_process");
-  const platform = process.platform;
-
-  let command: string;
-  let args: string[];
-
-  if (platform === "darwin") {
-    command = "open";
-    args = [url];
-  } else if (platform === "win32") {
-    command = "cmd";
-    args = ["/c", "start", "", url];
-  } else {
-    // Linux and others
-    command = "xdg-open";
-    args = [url];
-  }
+  const { command, args } = browserCommand(url);
 
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -1938,10 +1943,21 @@ async function handleBoardDelete(
   if (!hasFlag(flags, "confirm")) fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a board.");
 
   const client = await getClient(flags, opts);
-  const filterId = hasFlag(flags, "delete-filter") ? await client.getBoardFilterId(Number(id)) : undefined;
-  await client.deleteBoard(Number(id));
-  if (filterId) await client.deleteFilter(filterId);
-  output({ schemaVersion: "1", deleted: Number(id), ...(filterId ? { deletedFilter: filterId } : {}) }, opts);
+  if (!hasFlag(flags, "delete-filter")) {
+    await client.deleteBoard(Number(id));
+    output({ schemaVersion: "1", deleted: Number(id) }, opts);
+    return;
+  }
+  const result = await client.deleteBoardAndFilter(Number(id));
+  output(
+    {
+      schemaVersion: "1",
+      deleted: Number(id),
+      // A filter another board still uses stays, or that board would break.
+      ...(result.filterDeleted ? { deletedFilter: result.filterId } : { keptFilter: { id: result.filterId, usedByBoards: result.otherBoards } }),
+    },
+    opts
+  );
 }
 
 async function handleBoardBacklog(
@@ -1999,7 +2015,8 @@ Commands:
 
 A board needs a saved filter. Without --filter, create makes one from --jql
 (default: project = <key> ORDER BY Rank ASC), shared with --project. delete
-keeps the filter unless --delete-filter is given; issues are never touched.
+keeps the filter unless --delete-filter is given, and even then while another
+board still uses it; issues are never touched.
 
 Options:
   --profile <name>   Use a specific auth profile

@@ -1,0 +1,10 @@
+# The Windows TUI smoke test (tui-smoke-windows.py) drives the CLI through ConPTY.
+# Hash-pinned: pip installs only these exact wheels (--require-hashes). Hashes from
+# https://pypi.org/pypi/pywinpty/2.0.15/json; pywinpty has no dependencies.
+pywinpty==2.0.15 \
+    --hash=sha256:d261cd88fcd358cfb48a7ca0700db3e1c088c9c10403c9ebc0d8a8b57aa6a117 \
+    --hash=sha256:8e7f5de756a615a38b96cd86fa3cd65f901ce54ce147a3179c45907fa11b4c4e \
+    --hash=sha256:9a6bcec2df2707aaa9d08b86071970ee32c5026e10bcc3cc5f6f391d85baf7ca \
+    --hash=sha256:83a8f20b430bbc5d8957249f875341a60219a4e971580f2ba694fbfb54a45ebc \
+    --hash=sha256:ab5920877dd632c124b4ed17bc6dd6ef3b9f86cd492b963ffdb1a67b85b0f408 \
+    --hash=sha256:a4560ad8c01e537708d2790dbe7da7d986791de805d89dd0d3697ca59e9e4901
