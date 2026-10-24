@@ -20,6 +20,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@atlcli/change-set": "workspace:*",
     "@jitl/quickjs-ng-wasmfile-release-sync": "0.32.0",
     "quickjs-emscripten-core": "0.32.0",
     "zod": "4.6.7"

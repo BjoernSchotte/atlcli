@@ -235,6 +235,23 @@ dokumentiert.
 - Teilfehler mit Bericht.
 - Platzhalter-Auflösung.
 
+**Umgesetzt (T5+T6).**
+
+- `createScriptPlan`, `serializeScriptPlan` und `parseScriptPlan` liegen in `plan.ts`,
+  `applyScriptPlan` in `apply.ts`.
+- Die Plan-Datei ist kanonisches JSON, gleiche Pläne ergeben also gleiche Bytes. Der Digest
+  läuft über alle Felder außer `digest`. Damit fällt auch ein manipuliertes `target` auf.
+- Die Konsistenz wird vor dem Digest geprüft: `seq` ist fortlaufend, `dependsOn` verweist nur
+  auf frühere Operationen.
+- Die Logs des Laufs stehen **nicht** im Plan. Sie sind nicht reviewrelevant und würden
+  harmlose Unterschiede erzeugen; die CLI gibt sie direkt aus.
+- Apply ergibt `applied`, `drift` (nichts geschrieben) oder `failed` (bis zum Fehler
+  geschrieben, der Rest übersprungen). Konnte eine Vorbedingung nicht gelesen werden, zählt
+  das als Drift.
+- Für `updatePage` kommt die Version aus der Vorbedingung bzw. aus dem Ergebnis des
+  vorherigen Writes im selben Apply. So läuft z. B. `updatePage` gefolgt von `upsertPage` auf
+  dieselbe Seite als 7 → 8 → 9 durch.
+
 ### T7: CLI-Port-Adapter
 
 `script-port.ts` implementiert `ScriptPort` über `JiraClient` und `ConfluenceClient`:
