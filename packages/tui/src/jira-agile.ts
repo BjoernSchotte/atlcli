@@ -107,12 +107,18 @@ function deleteBoard(ctx: Ctx, node: TreeNode): void {
         step: 0,
         onConfirm: async () => {
           const argv = ["jira", "board", "delete", "--id", String(id), "--confirm", ...(what === "filter" ? ["--delete-filter"] : [])];
-          const done = await ctx.task("Deleting…", () => logged(ctx, [argv], async () => {
-            const filterId = what === "filter" ? await ctx.opts.jira.getBoardFilterId(id) : undefined;
-            await ctx.opts.jira.deleteBoard(id);
-            if (filterId) await ctx.opts.jira.deleteFilter(filterId);
-            return `Board ${node.label} deleted`;
-          }));
+          const done = await ctx.task("Deleting…", () =>
+            logged(ctx, [argv], async () => {
+              if (what !== "filter") {
+                await ctx.opts.jira.deleteBoard(id);
+                return `Board ${node.label} deleted`;
+              }
+              const result = await ctx.opts.jira.deleteBoardAndFilter(id);
+              return result.filterDeleted
+                ? `Board ${node.label} and its filter deleted`
+                : `Board ${node.label} deleted; its filter stays, board ${result.otherBoards.join(", ")} uses it`;
+            })
+          );
           if (!done) return;
           updateNav(ctx, (t) => ({ ...t, selected: "g:boards" }));
           await reload(ctx, "g:boards");

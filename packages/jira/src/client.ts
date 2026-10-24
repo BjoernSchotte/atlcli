@@ -1712,6 +1712,8 @@ export class JiraClient {
     type?: "scrum" | "kanban" | "simple";
     name?: string;
     projectKeyOrId?: string;
+    /** Only boards on this saved filter. */
+    filterId?: number;
   } = {}): Promise<{ values: Array<{ id: number; name: string; type: string }>; total: number }> {
     return this.request("/board", {
       apiBase: this.agilePath,
@@ -1721,8 +1723,22 @@ export class JiraClient {
         type: options.type,
         name: options.name,
         projectKeyOrId: options.projectKeyOrId,
+        filterId: options.filterId,
       },
     });
+  }
+
+  /**
+   * Deletes a board and its saved filter. The filter stays when another
+   * board still uses it: deleting it would break that board.
+   */
+  async deleteBoardAndFilter(boardId: number): Promise<{ filterId: string; filterDeleted: boolean; otherBoards: number[] }> {
+    const filterId = await this.getBoardFilterId(boardId);
+    await this.deleteBoard(boardId);
+    const { values } = await this.listBoards({ filterId: Number(filterId), maxResults: 50 });
+    const otherBoards = values.map((b) => b.id).filter((id) => id !== boardId);
+    if (otherBoards.length === 0) await this.deleteFilter(filterId);
+    return { filterId, filterDeleted: otherBoards.length === 0, otherBoards };
   }
 
   /**

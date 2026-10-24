@@ -544,6 +544,7 @@ export declare class JiraClient {
         type?: "scrum" | "kanban" | "simple";
         name?: string;
         projectKeyOrId?: string;
+        filterId?: number;
     }): Promise<{
         values: Array<{
             id: number;
@@ -551,6 +552,11 @@ export declare class JiraClient {
             type: string;
         }>;
         total: number;
+    }>;
+    deleteBoardAndFilter(boardId: number): Promise<{
+        filterId: string;
+        filterDeleted: boolean;
+        otherBoards: number[];
     }>;
     getBoard(boardId: number): Promise<{
         id: number;
@@ -2323,6 +2329,7 @@ export declare class JiraClient {
         type?: "scrum" | "kanban" | "simple";
         name?: string;
         projectKeyOrId?: string;
+        filterId?: number;
     }): Promise<{
         values: Array<{
             id: number;
@@ -2330,6 +2337,11 @@ export declare class JiraClient {
             type: string;
         }>;
         total: number;
+    }>;
+    deleteBoardAndFilter(boardId: number): Promise<{
+        filterId: string;
+        filterDeleted: boolean;
+        otherBoards: number[];
     }>;
     getBoard(boardId: number): Promise<{
         id: number;
@@ -4207,6 +4219,7 @@ export declare class JiraClient {
         type?: "scrum" | "kanban" | "simple";
         name?: string;
         projectKeyOrId?: string;
+        filterId?: number;
     }): Promise<{
         values: Array<{
             id: number;
@@ -4214,6 +4227,11 @@ export declare class JiraClient {
             type: string;
         }>;
         total: number;
+    }>;
+    deleteBoardAndFilter(boardId: number): Promise<{
+        filterId: string;
+        filterDeleted: boolean;
+        otherBoards: number[];
     }>;
     getBoard(boardId: number): Promise<{
         id: number;
@@ -5986,6 +6004,7 @@ export declare class JiraClient {
         type?: "scrum" | "kanban" | "simple";
         name?: string;
         projectKeyOrId?: string;
+        filterId?: number;
     }): Promise<{
         values: Array<{
             id: number;
@@ -5993,6 +6012,11 @@ export declare class JiraClient {
             type: string;
         }>;
         total: number;
+    }>;
+    deleteBoardAndFilter(boardId: number): Promise<{
+        filterId: string;
+        filterDeleted: boolean;
+        otherBoards: number[];
     }>;
     getBoard(boardId: number): Promise<{
         id: number;

@@ -44,7 +44,8 @@ like the board, from `--jql` or `project = "<key>" ORDER BY Rank ASC`), shares
 it with `--project`, and deletes it again if the board fails; the output names
 it under `filter` with `created: true`. `--type` defaults to `scrum`.
 `delete` needs `--confirm` and keeps the filter; add `--delete-filter` only
-for a filter made for that board.
+for a filter made for that board. A filter another board still uses stays even
+then: the output has `keptFilter: { id, usedByBoards }` instead of `deletedFilter`.
 
 `board list` takes `--limit` (default 50); `backlog` and `issues` take `--limit`
 (default 50) and an extra `--jql` filter. Board IDs come from `board list`.

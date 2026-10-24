@@ -16,6 +16,8 @@ let server: ReturnType<typeof Bun.serve>;
 let home: string;
 /** Whether POST /board fails, as Jira does for a filter it cannot use. */
 let boardFails = false;
+/** Boards GET /board?filterId=500 lists (other boards on the deleted board's filter). */
+let filterBoards: number[] = [];
 
 beforeAll(async () => {
   server = Bun.serve({
@@ -36,6 +38,9 @@ beforeAll(async () => {
       }
       if (path === "/rest/agile/1.0/board/77/configuration") return Response.json({ id: 77, filter: { id: "500" } });
       if (path === "/rest/agile/1.0/board/77" && req.method === "DELETE") return new Response(null, { status: 204 });
+      if (path === "/rest/agile/1.0/board" && url.searchParams.get("filterId") === "500") {
+        return Response.json({ values: filterBoards.map((id) => ({ id, name: `Board ${id}`, type: "scrum" })), total: filterBoards.length });
+      }
       if (path === "/rest/agile/1.0/issue/rank" && req.method === "PUT") {
         // AB-9 cannot be ranked: Jira answers 207 with one entry per issue.
         if (!body.issues.includes("AB-9")) return new Response(null, { status: 204 });
@@ -64,6 +69,7 @@ afterAll(async () => {
 beforeEach(() => {
   requests = [];
   boardFails = false;
+  filterBoards = [];
 });
 
 async function run(args: string[], area = "board") {
@@ -139,6 +145,15 @@ describe("board delete", () => {
     expect(exitCode).toBe(0);
     expect(writes()).toEqual(["DELETE /rest/agile/1.0/board/77", "DELETE /rest/api/3/filter/500"]);
     expect(JSON.parse(stdout)).toEqual({ schemaVersion: "1", deleted: 77, deletedFilter: "500" });
+  });
+
+  // Regression: --delete-filter deleted a filter other boards still used, breaking them.
+  test("--delete-filter keeps a filter another board still uses", async () => {
+    filterBoards = [88];
+    const { exitCode, stdout } = await run(["delete", "--id", "77", "--confirm", "--delete-filter", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(writes()).toEqual(["DELETE /rest/agile/1.0/board/77"]);
+    expect(JSON.parse(stdout)).toEqual({ schemaVersion: "1", deleted: 77, keptFilter: { id: "500", usedByBoards: [88] } });
   });
 });
 

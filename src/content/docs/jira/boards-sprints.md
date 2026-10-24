@@ -154,7 +154,7 @@ atlcli jira board delete --id 882 --confirm
 atlcli jira board delete --id 882 --confirm --delete-filter
 ```
 
-Deleting a board leaves its issues and sprints' issues untouched. Its saved filter stays unless you add `--delete-filter`, which reads the filter from the board first and deletes it after the board. Only use it for a filter made for this board: other boards or users may rely on a shared one.
+Deleting a board leaves its issues and sprints' issues untouched. Its saved filter stays unless you add `--delete-filter`, which reads the filter from the board first and deletes it after the board. If another board still uses the filter, it stays, and the output names it under `keptFilter` with the ids of those boards (`usedByBoards`). Saved searches and subscriptions of other users are not checked: use `--delete-filter` for a filter made for this board.
 
 Output (`--json`): `{ "schemaVersion": "1", "deleted": 882, "deletedFilter": "11334" }`.
 
