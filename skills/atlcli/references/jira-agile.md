@@ -77,11 +77,14 @@ atlcli jira sprint start --id 456 --end 2026-08-24 --goal 'Ship the exporter' --
 atlcli jira sprint close --id 456 --json
 atlcli jira sprint add PROJ-101 PROJ-102 --sprint 456 --json
 atlcli jira sprint remove PROJ-101 --json          # moves issues to the backlog
+atlcli jira issue rank PROJ-7 PROJ-8 --before PROJ-1 --json   # reorder (or --after)
 atlcli jira sprint delete --id 456 --confirm --json
 ```
 
 Issue keys are positional and variadic on `add`/`remove`. `remove` needs no
 sprint ID because it moves the issues to the backlog wherever they are.
+`issue rank` puts the issues, in the given order, directly before or after the
+target; the order is global across boards.
 `start` also accepts `--start`, `--end` and `--goal`. Starting or closing a
 sprint is visible to the whole team, so confirm first.
 

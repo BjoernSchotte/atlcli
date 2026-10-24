@@ -1,5 +1,5 @@
 /**
- * `jira board create` and `jira board delete` through the real CLI against a
+ * `jira board create`, `jira board delete` and `jira issue rank` through the real CLI against a
  * local Bun server that speaks Jira Cloud's platform and Agile APIs.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -36,6 +36,11 @@ beforeAll(async () => {
       }
       if (path === "/rest/agile/1.0/board/77/configuration") return Response.json({ id: 77, filter: { id: "500" } });
       if (path === "/rest/agile/1.0/board/77" && req.method === "DELETE") return new Response(null, { status: 204 });
+      if (path === "/rest/agile/1.0/issue/rank" && req.method === "PUT") {
+        // AB-9 cannot be ranked: Jira answers 207 with one entry per issue.
+        if (!body.issues.includes("AB-9")) return new Response(null, { status: 204 });
+        return Response.json({ entries: body.issues.map((k: string) => (k === "AB-9" ? { issueKey: k, status: 403, errors: ["No permission"] } : { issueKey: k, status: 200 })) }, { status: 207 });
+      }
       return new Response(JSON.stringify({ message: `stub: no route for ${req.method} ${path}` }), { status: 404 });
     },
   });
@@ -61,8 +66,8 @@ beforeEach(() => {
   boardFails = false;
 });
 
-async function run(args: string[]) {
-  const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "jira", "board", ...args], {
+async function run(args: string[], area = "board") {
+  const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "jira", area, ...args], {
     cwd: home,
     env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "t", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
     stdout: "pipe",
@@ -134,5 +139,40 @@ describe("board delete", () => {
     expect(exitCode).toBe(0);
     expect(writes()).toEqual(["DELETE /rest/agile/1.0/board/77", "DELETE /rest/api/3/filter/500"]);
     expect(JSON.parse(stdout)).toEqual({ schemaVersion: "1", deleted: 77, deletedFilter: "500" });
+  });
+});
+
+describe("issue rank", () => {
+  const rank = (args: string[]) => run(["rank", ...args, "--json"], "issue");
+  const ranks = () => requests.filter((r) => r.path === "/rest/agile/1.0/issue/rank").map((r) => r.body);
+
+  test("--before ranks the issues above the target in one call", async () => {
+    const { exitCode, stdout } = await rank(["AB-1", "AB-2", "--before", "AB-5"]);
+    expect(exitCode).toBe(0);
+    expect(ranks()).toEqual([{ issues: ["AB-1", "AB-2"], rankBeforeIssue: "AB-5" }]);
+    expect(JSON.parse(stdout)).toEqual({ schemaVersion: "1", ranked: { issues: ["AB-1", "AB-2"], before: "AB-5" } });
+  });
+
+  test("more than 50 issues: --after chains each chunk on the last ranked issue", async () => {
+    const keys = Array.from({ length: 51 }, (_, i) => `AB-${100 + i}`);
+    const { exitCode } = await rank([...keys, "--after", "AB-5"]);
+    expect(exitCode).toBe(0);
+    expect(ranks()).toEqual([
+      { issues: keys.slice(0, 50), rankAfterIssue: "AB-5" },
+      { issues: [keys[50]], rankAfterIssue: keys[49] },
+    ]);
+  });
+
+  test("an issue Jira could not rank fails with its error", async () => {
+    const { exitCode, stdout, stderr } = await rank(["AB-1", "AB-9", "--before", "AB-5"]);
+    expect(exitCode).toBe(1);
+    expect(stdout + stderr).toContain("AB-9: No permission");
+  });
+
+  test("usage errors write nothing", async () => {
+    for (const args of [["--before", "AB-5"], ["AB-1"], ["AB-1", "--before", "AB-5", "--after", "AB-6"]]) {
+      expect((await rank(args)).exitCode).toBe(1);
+    }
+    expect(writes()).toEqual([]);
   });
 });

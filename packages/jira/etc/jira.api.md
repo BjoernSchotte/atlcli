@@ -626,6 +626,14 @@ export declare class JiraClient {
     getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
+    rankIssues(params: {
+        issues: string[];
+        before?: string;
+        after?: string;
+    }): Promise<Array<{
+        issueKey: string;
+        errors: string[];
+    }>>;
     getEpicIssues(epicKeyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -2357,6 +2365,14 @@ export declare class JiraClient {
     getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
+    rankIssues(params: {
+        issues: string[];
+        before?: string;
+        after?: string;
+    }): Promise<Array<{
+        issueKey: string;
+        errors: string[];
+    }>>;
     getEpicIssues(epicKeyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -4083,6 +4099,14 @@ export declare class JiraClient {
     getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
+    rankIssues(params: {
+        issues: string[];
+        before?: string;
+        after?: string;
+    }): Promise<Array<{
+        issueKey: string;
+        errors: string[];
+    }>>;
     getEpicIssues(epicKeyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;
@@ -5814,6 +5838,14 @@ export declare class JiraClient {
     getSprintRemovedIssueKeys(boardId: number, sprintId: number): Promise<string[]>;
     moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
     moveIssuesToBacklog(issues: string[]): Promise<void>;
+    rankIssues(params: {
+        issues: string[];
+        before?: string;
+        after?: string;
+    }): Promise<Array<{
+        issueKey: string;
+        errors: string[];
+    }>>;
     getEpicIssues(epicKeyOrId: string, options?: {
         startAt?: number;
         maxResults?: number;

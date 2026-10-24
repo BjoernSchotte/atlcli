@@ -323,6 +323,30 @@ Options:
 |------|-------------|
 | `--issues` | Comma-separated issue keys (alternative to positional args) |
 
+### Rank Issues
+
+Reorder issues on boards and in the backlog, as dragging them in Jira does. The issues land directly before or after the target, in the order you give them:
+
+```bash
+# Put PROJ-7 and PROJ-8 at the top, above PROJ-1
+atlcli jira issue rank PROJ-7 PROJ-8 --before PROJ-1
+
+# Move PROJ-3 right below PROJ-12
+atlcli jira issue rank PROJ-3 --after PROJ-12
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--before <key>` | Rank directly above this issue |
+| `--after <key>` | Rank directly below this issue |
+| `--issues` | Comma-separated issue keys (alternative to positional args) |
+
+Give exactly one of `--before` or `--after`. Rank is global: one order serves every board that shows the issues. More than 50 issues are sent in batches of 50 and keep their order.
+
+If Jira cannot rank some issues (no permission, or the board has no rank field), the command names them with Jira's error and exits 1; the others are ranked.
+
 ### Sprint Report
 
 Get sprint metrics:

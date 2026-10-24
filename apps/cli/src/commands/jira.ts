@@ -677,6 +677,9 @@ async function handleIssue(
     case "unlink-page":
       await handleIssueUnlinkPage(flags, opts);
       return;
+    case "rank":
+      await handleIssueRank(args.slice(1), flags, opts);
+      return;
     default:
       unknownSubcommand(sub, issueHelp(), opts);
       return;
@@ -1665,6 +1668,7 @@ Commands:
   link-page --key <key> --page <id>    Link to Confluence page
   pages --key <key>                    List linked Confluence pages
   unlink-page --key <key> --link <id>  Remove link to Confluence page
+  rank <key> [key...] (--before <key> | --after <key>)   Reorder on boards and in the backlog
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -1684,6 +1688,38 @@ Content without a markdown form is kept as <!--adf:...--> markers; leave them in
                          numbers → number, JSON strings → parsed, plain text → string.
                          Example: --field customfield_10028=5 --field customfield_10077={"value":"Bug"}
 `;
+}
+
+/** `issue rank <key...> --before|--after <key>`: the issues keep their given order. */
+async function handleIssueRank(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const issues = args.length > 0 ? args : getFlag(flags, "issues")?.split(",");
+  const before = getFlag(flags, "before");
+  const after = getFlag(flags, "after");
+  if (!issues || issues.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue keys are required (as args or --issues).");
+  }
+  if (Boolean(before) === Boolean(after)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Give exactly one of --before <key> or --after <key>.");
+  }
+
+  const client = await getClient(flags, opts);
+  const failed: Array<{ issueKey: string; errors: string[] }> = [];
+  let anchor = after;
+  for (let i = 0; i < issues.length; i += AGILE_MOVE_CHUNK) {
+    const chunk = issues.slice(i, i + AGILE_MOVE_CHUNK);
+    // Before X: each chunk lands right above X, below the previous one. After X: chain on the last ranked issue.
+    failed.push(...(await client.rankIssues(before ? { issues: chunk, before } : { issues: chunk, after: anchor })));
+    anchor = chunk[chunk.length - 1];
+  }
+  if (failed.length > 0) {
+    const detail = failed.map((f) => `${f.issueKey}: ${f.errors.join("; ") || "not ranked"}`).join(", ");
+    fail(opts, 1, ERROR_CODES.API, `Jira could not rank ${failed.length} of ${issues.length} issues: ${detail}`);
+  }
+  output({ schemaVersion: "1", ranked: { issues, ...(before ? { before } : { after }) } }, opts);
 }
 
 // ============ Cross-Product Linking (Jira → Confluence) ============

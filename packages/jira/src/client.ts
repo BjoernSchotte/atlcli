@@ -2003,6 +2003,31 @@ export class JiraClient {
     });
   }
 
+  /**
+   * Rank issues directly before or after another issue, keeping their order
+   * (at most 50 per call). Returns the issues Jira could not rank.
+   *
+   * PUT /rest/agile/1.0/issue/rank
+   */
+  async rankIssues(params: {
+    issues: string[];
+    before?: string;
+    after?: string;
+  }): Promise<Array<{ issueKey: string; errors: string[] }>> {
+    // 204 when every issue moved, 207 with one entry per issue otherwise.
+    const res = await this.request<{ entries?: Array<{ issueId?: number; issueKey?: string; status: number; errors?: string[] }> }>(
+      "/issue/rank",
+      {
+        apiBase: this.agilePath,
+        method: "PUT",
+        body: { issues: params.issues, rankBeforeIssue: params.before, rankAfterIssue: params.after },
+      }
+    );
+    return (res.entries ?? [])
+      .filter((entry) => entry.status >= 300)
+      .map((entry) => ({ issueKey: entry.issueKey ?? String(entry.issueId), errors: entry.errors ?? [] }));
+  }
+
   // ============ Epic Operations ============
 
   /**

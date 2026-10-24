@@ -720,6 +720,7 @@ atlcli jira sprint delete --id <id> --confirm
 atlcli jira sprint issues --id <id> [--jql <query>] [--limit <n>]  # Issue table
 atlcli jira sprint add <issues...> --sprint <id>
 atlcli jira sprint remove <issues...>   # Move to backlog
+atlcli jira issue rank <issues...> (--before <key> | --after <key>)  # Reorder
 atlcli jira sprint report <id> [--points-field <id>] [--status-map <map>]  # Sprint metrics (JSON)
 atlcli jira sprint review <id> --space <key> [--export <file>]  # Sprint review page
 ```
