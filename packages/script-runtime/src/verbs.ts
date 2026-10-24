@@ -38,6 +38,17 @@ export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "on
   port: ScriptPort;
   /** Raw parameter input, resolved against `meta.params`. */
   params?: Readonly<Record<string, unknown>>;
+  /** Overrides `meta.limits.maxWrites` (e.g. from `--max-writes`). */
+  maxWrites?: number;
+}
+
+/** A write the plan left out because it would change nothing. */
+export interface SkippedWrite {
+  verb: WriteVerb;
+  /** Page id or issue key. */
+  target: string;
+  title?: string;
+  reason: "unchanged";
 }
 
 export interface ScriptRunPlan {
@@ -46,6 +57,7 @@ export interface ScriptRunPlan {
   /** The default export's return value. */
   value: unknown;
   operations: PlannedOperation[];
+  skipped: SkippedWrite[];
   hostCalls: number;
 }
 
@@ -76,12 +88,14 @@ const pageInput = z.strictObject({ space: str, title: str, markdown: z.string(),
 /** One plan recording session; every verb closes over it. */
 class Recorder {
   readonly operations: PlannedOperation[] = [];
+  readonly skipped: SkippedWrite[] = [];
   /** Object identity → seq of the last operation that wrote it. */
   private readonly touched = new Map<string, number>();
 
   constructor(
     readonly port: ScriptPort,
     private readonly meta: ScriptMeta,
+    private readonly maxWrites = maxWritesOf(meta),
   ) {}
 
   /** Without declared permissions every verb is allowed (writes are still only planned). */
@@ -144,8 +158,11 @@ class Recorder {
     object?: string,
     precondition?: () => Promise<Precondition | undefined>,
   ): Promise<number> {
-    if (this.operations.length >= maxWritesOf(this.meta)) {
-      throw new ScriptError("write-limit", `Write limit exceeded (meta.limits.maxWrites = ${maxWritesOf(this.meta)})`);
+    if (this.operations.length >= this.maxWrites) {
+      throw new ScriptError(
+        "write-limit",
+        `Write limit exceeded (${this.maxWrites} writes; raise meta.limits.maxWrites or pass --max-writes)`,
+      );
     }
     // Unknown or non-producing seqs in prose ("see plan:99") are just text.
     const dependsOn = new Set(placeholdersIn(args).filter((seq) => PRODUCERS.has(this.operations[seq - 1]?.verb as WriteVerb)));
@@ -289,6 +306,13 @@ function createPage(r: Recorder, input: z.output<typeof pageInput>): Promise<num
 }
 
 async function updatePage(r: Recorder, id: string, title: string, markdown: string, live?: ConfluencePageView): Promise<void> {
+  // Reads show the state before the plan, so only a page the plan has not
+  // written yet can be compared; after an earlier write, A → B → A is real.
+  const untouched = live && r.lastWrite(`confluence:${id}`) === undefined;
+  if (untouched && live.title === title && r.port.confluenceNormalizeMarkdown(markdown) === live.markdown) {
+    r.skipped.push({ verb: "confluence.updatePage", target: id, title, reason: "unchanged" });
+    return;
+  }
   await r.record("confluence.updatePage", { id, title, markdown }, `confluence:${id}`, async () =>
     live ? { kind: "confluence-page-unchanged", id, version: live.version } : undefined,
   );
@@ -328,7 +352,7 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
   } catch (error) {
     throw new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
   }
-  const recorder = new Recorder(options.port, meta);
+  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta));
   const host: Record<string, HostFunction> = {};
   for (const [name, definition] of Object.entries(VERBS)) {
     host[name] = async (rawArgs, signal) => {
@@ -348,7 +372,14 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
     onLog: options.onLog,
     variant: options.variant,
   });
-  return { meta, params, value: result.value, operations: recorder.operations, hostCalls: result.hostCalls };
+  return {
+    meta,
+    params,
+    value: result.value,
+    operations: recorder.operations,
+    skipped: recorder.skipped,
+    hostCalls: result.hostCalls,
+  };
 }
 
 /** Reads and validates a script's `meta` without running any script code. */

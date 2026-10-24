@@ -359,15 +359,32 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
   - Alle Testressourcen sind gelöscht.
 - **Live-Szenarien 1–3:** abgedeckt durch die T7/T8-E2E. Szenario 4 (Endlosschleife) lief
   aus dem gebauten CLI.
-- **Follow-ups:**
-  - **Inhaltsgleiche Updates beim Planen weglassen.** Confluence legt dafür ohnehin keine
-    Version an, der Plan zeigt sie aber als Operation.
-  - **Limits per Flag einstellbar machen** (z. B. Deadline), wenn Bedarf besteht.
-  - **Data Center live verifizieren.** Die Clients unterstützen es, getestet ist nur Cloud.
-  - **Bestehender Doku-Fehler, nicht Teil dieses PRs:** `reference/environment.md` sagt,
-    `ATLCLI_SITE`/`ATLCLI_EMAIL` wirkten zur Laufzeit. Tatsächlich liest `auth login` beide
-    und `export` (explizite Auth) `ATLCLI_EMAIL`. Für normale Befehle gilt zur Laufzeit nur
-    `ATLCLI_API_TOKEN`; die Site kommt aus dem Profil.
+- **Follow-ups (umgesetzt am 2026-10-24):**
+  - **Inhaltsgleiche Updates:**
+    - Der Port hat jetzt `confluenceNormalizeMarkdown`, also den Rundweg Markdown → Storage →
+      Markdown des Hosts.
+    - Das erste `updatePage`/`upsertPage` auf eine Seite wird übersprungen, wenn Titel und
+      normalisierter Body gleich sind. Es landet dann in `plan.skipped` und erscheint in der
+      Ausgabe unter „Unchanged, not planned“.
+    - Spätere Writes auf eine im Plan schon geänderte Seite bleiben immer erhalten, sonst ginge
+      A → B → A verloren.
+    - Live gegen Confluence geprüft mit Tabelle, Codeblock und Link: Der identische Re-Run
+      plant nichts.
+    - Für Jira-Updates und Labels gibt es keinen No-op-Vergleich; dafür würden zusätzliche
+      Reads gebraucht.
+  - **Limits per Flag:** `--timeout` (Dauer), `--max-writes` (gewinnt über
+    `meta.limits.maxWrites`), `--max-calls`, `--memory <MB>`. Fest bleiben der Stack und das
+    60-s-Timeout pro Call.
+  - **Doku-Fehler zu Umgebungsvariablen korrigiert:**
+    - Betroffen: `reference/environment.md`, `authentication.md`, `configuration.md`, die
+      Rezepte `ci-cd-docs.md` (`wiki docs push`) und `sprint-reporting.md`.
+    - Kern: Umgebungsvariablen ersetzen kein Profil. `auth login` liest `ATLCLI_SITE` und
+      `ATLCLI_EMAIL`, zur Laufzeit wirkt nur `ATLCLI_API_TOKEN`; Ausnahme ist der profilfreie
+      `wiki export`.
+    - Außerdem stand in `authentication.md` eine nicht existierende `credentials.json`.
+    - Gegen einen Stub verifiziert: ohne Login „No active profile“, `auth login` liest die
+      Variablen ohne Rückfrage, danach läuft der Befehl.
+  - **Offen:** Data Center live verifizieren.
 
 ## Abnahme
 

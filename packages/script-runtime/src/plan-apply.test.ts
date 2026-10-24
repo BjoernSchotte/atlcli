@@ -91,6 +91,9 @@ class StatefulPort implements ScriptPort {
     Object.assign(page, { title: input.title, markdown: input.markdown, version: page.version + 1 });
     return { id: page.id, version: page.version };
   }
+  confluenceNormalizeMarkdown(markdown: string) {
+    return markdown;
+  }
   async confluenceAddLabels(pageId: string, labels: string[]) {
     this.guard("confluenceAddLabels");
     this.pages.get(pageId)!.labels.push(...labels);

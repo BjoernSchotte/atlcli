@@ -151,10 +151,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Generate Report
         env:
-          ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
+          ATLCLI_SITE: ${{ secrets.ATLASSIAN_URL }}
           ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
           ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
-        run: ./scripts/sprint-report.sh $BOARD_ID $SPRINT_ID > report.md
+        run: |
+          atlcli auth login
+          ./scripts/sprint-report.sh $BOARD_ID $SPRINT_ID > report.md
       - name: Upload Report
         uses: actions/upload-artifact@v3
         with:

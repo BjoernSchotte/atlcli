@@ -84,6 +84,15 @@ atlcli script run cleanup.ts --apply --yes                         # plan + appl
 - **First failure stops the run.** Earlier operations stay written, and the
   report says which ran.
 
+- **Unchanged pages are skipped.** An `updatePage` or `upsertPage` that would
+  leave body and title as they are is not planned. It is listed under
+  `Unchanged, not planned` and in `plan.skipped`. "No changes planned" after a
+  re-run is the expected result.
+- **Limits:** the defaults are 5 minutes, 10,000 calls, 100 writes and 64 MB.
+  Raise them only for a run the user expects to be large: `--timeout 30m`,
+  `--max-calls`, `--max-writes` (overrides `meta.limits.maxWrites`),
+  `--memory <MB>`.
+
 `atlcli script check <file>` validates `meta` and type-checks the file against
 `atlcli.d.ts` when `tsc` is on PATH. `atlcli script init [dir]` writes
 `atlcli.d.ts`, `tsconfig.json` and an example script.

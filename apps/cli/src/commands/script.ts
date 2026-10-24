@@ -58,6 +58,12 @@ Options for run:
   --profile <name>       Profile to run against
   --json                 Machine-readable output
 
+Limits for run (defaults in parentheses):
+  --timeout <duration>   Whole run, e.g. 90s, 10m, 1h; a bare number is seconds (5m)
+  --max-writes <n>       Operations per plan; overrides meta.limits.maxWrites (100)
+  --max-calls <n>        Jira/Confluence calls per run (10000)
+  --memory <MB>          Script memory (64)
+
 Exit codes: 0 ok · 1 error · 2 drift (target changed since the plan; nothing written)
 `;
 }
@@ -93,6 +99,7 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
   if (!inline && !file) fail(opts, 1, ERROR_CODES.USAGE, "Usage: atlcli script run <file> | -e <code>");
   const source = inline ?? (await readSource(file!, opts));
   const params = parseParams(getFlags(flags, "param"), opts);
+  const { limits, maxWrites } = parseLimits(flags, opts);
   const { profile, port } = await connect(flags, opts);
   const rt = await runtime();
 
@@ -100,6 +107,8 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
     rt.planScript(transpile(source, opts), {
       port,
       params,
+      limits,
+      ...(maxWrites !== undefined ? { maxWrites } : {}),
       onLog: (level, message) => process.stderr.write(`${level === "info" ? "" : `${level}: `}${stripControlChars(message)}\n`),
     }),
   );
@@ -246,6 +255,33 @@ function transpile(source: string, opts: OutputOptions): string {
   }
 }
 
+/** `--timeout`, `--memory`, `--max-calls`, `--max-writes`; unset flags keep the runtime defaults. */
+function parseLimits(
+  flags: Flags,
+  opts: OutputOptions,
+): { limits: { deadlineMs?: number; memoryBytes?: number; maxHostCalls?: number }; maxWrites?: number } {
+  const count = (name: string): number | undefined => {
+    const raw = getFlag(flags, name);
+    if (raw === undefined) return undefined;
+    if (!/^[1-9]\d*$/.test(raw)) fail(opts, 1, ERROR_CODES.USAGE, `--${name} expects a positive whole number, got "${raw}"`);
+    return Number(raw);
+  };
+  const limits: { deadlineMs?: number; memoryBytes?: number; maxHostCalls?: number } = {};
+  const timeout = getFlag(flags, "timeout");
+  if (timeout !== undefined) {
+    const match = /^([1-9]\d*)(ms|s|m|h)?$/.exec(timeout);
+    if (!match) fail(opts, 1, ERROR_CODES.USAGE, `--timeout expects a duration like 90s, 10m or 1h, got "${timeout}"`);
+    const unit = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 }[(match[2] ?? "s") as "ms" | "s" | "m" | "h"];
+    limits.deadlineMs = Number(match[1]) * unit;
+  }
+  const memory = count("memory");
+  if (memory !== undefined) limits.memoryBytes = memory * 1024 * 1024;
+  const calls = count("max-calls");
+  if (calls !== undefined) limits.maxHostCalls = calls;
+  const maxWrites = count("max-writes");
+  return { limits, ...(maxWrites !== undefined ? { maxWrites } : {}) };
+}
+
 function parseParams(raw: string[], opts: OutputOptions): Record<string, string> {
   const params: Record<string, string> = {};
   for (const entry of raw) {
@@ -332,6 +368,10 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
   else {
     lines.push(`Plan: ${n} operation${n === 1 ? "" : "s"}`);
     for (const op of plan.operations) lines.push(`  ${String(op.seq).padStart(3)}  ${describeOperation(op)}`);
+  }
+  if (plan.skipped.length > 0) {
+    lines.push(`Unchanged, not planned: ${plan.skipped.length}`);
+    for (const skip of plan.skipped) lines.push(`       page ${skip.target}${skip.title ? ` ${JSON.stringify(skip.title)}` : ""} (same content)`);
   }
   if (plan.value !== null) lines.push(`Result: ${JSON.stringify(plan.value)}`);
   if (planOut) lines.push(`Plan written to ${planOut} (digest ${plan.digest.slice(0, 12)})`);

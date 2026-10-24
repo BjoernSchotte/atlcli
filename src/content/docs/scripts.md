@@ -128,6 +128,8 @@ await atlcli.confluence.createPage({ space: "DOCS", title: "Release 2026.10", ma
 
 The plan lists the page as `(after #1)`. Once applied, the page says `Tracked in ATLCLI-187`.
 
+**Updates that change nothing are left out.** When `updatePage` or `upsertPage` would write the body and title the page already has, the plan skips it and lists it under `Unchanged, not planned`. Re-running a report script therefore plans nothing when the report did not change. This applies to the first write to a page in a run: a later write that restores an earlier state is kept.
+
 **Three ways to apply:**
 
 | Command | When |
@@ -230,11 +232,17 @@ export default { issues: lines.length, created: page.created };
 atlcli script run release-notes.ts --param version=2026.10 --apply
 ```
 
-Run it twice: the second run updates the same page instead of creating a new one. For running scripts from CI, see [Scripts in CI](recipes/scripts-in-ci.md).
+Run it twice: the second run updates the same page instead of creating a new one. If nothing changed since the last run, the update is left out of the plan, and the output lists the page under `Unchanged, not planned`. For running scripts from CI, see [Scripts in CI](recipes/scripts-in-ci.md).
 
 ## Limits
 
-Scripts run with fixed limits: 64 MB of memory, 5 minutes per run, 60 seconds per Jira or Confluence call, 10,000 calls per run, and the plan's `maxWrites`. A script that hits one ends with an error that names it. See [Script API: sandbox limits](reference/scripts.md#sandbox-limits).
+By default a script gets 64 MB of memory, 5 minutes per run, 10,000 Jira or Confluence calls and 100 planned writes. A script that hits a limit ends with an error that names it. Raise or lower the limits per run:
+
+```bash
+atlcli script run migrate.ts --timeout 30m --max-calls 50000 --max-writes 2000 --memory 256
+```
+
+`--max-writes` overrides `meta.limits.maxWrites`. Each Jira or Confluence call may take up to 60 seconds. See [Script API: sandbox limits](reference/scripts.md#sandbox-limits).
 
 ## Troubleshooting
 
@@ -246,6 +254,9 @@ Transition names come from the workflow and may be localized. Matching ignores c
 
 **`Targets changed since the plan was made; nothing was written` (exit 2)**
 Someone edited an issue or page between the plan and the apply. Run the script again to plan against the current state.
+
+**`Script failed (write-limit)` / `(host-call-limit)` / `(interrupted)`**
+The run hit a limit. If the size is expected (a migration, a large space), raise it with `--max-writes`, `--max-calls` or `--timeout`. Otherwise check the script for a loop that never ends.
 
 **`Script failed (permission-denied): Script meta.permissions does not grant "jira:write:OPS"`**
 The script's `meta.permissions` does not include that project or space. Add the grant, or remove `permissions` to allow everything.

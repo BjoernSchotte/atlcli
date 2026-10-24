@@ -279,6 +279,35 @@ export default async ({ n }) => { await atlcli.jira.comment("ATLCLI-1", "n=" + (
     expect(typo.stderr).toContain("Script failed (invalid-script): Unknown parameter: m");
   });
 
+  test("updates that would not change a page are left out of the plan", async () => {
+    // Page 900 stores <p>old</p>; "old" round-trips to the same body.
+    const file = await script("noop.ts", `await atlcli.confluence.updatePage("900", { markdown: "old" });`);
+    const { exitCode, stdout, stderr } = await run(["run", file, "--apply", "--yes"]);
+    expect(exitCode, stderr).toBe(0);
+    expect(stdout).toContain("No changes planned.");
+    expect(stdout).toContain('Unchanged, not planned: 1\n       page 900 "Release Notes" (same content)');
+    expect(writes).toEqual([]);
+  });
+
+  test("--timeout, --max-writes and --max-calls override the defaults", async () => {
+    const loop = await run(["run", "-e", "for (;;) {}", "--timeout", "1s"]);
+    expect(loop.exitCode).toBe(1);
+    expect(loop.stderr).toContain("Script failed (interrupted)");
+
+    const many = await script("many.ts", `for (const key of ["ATLCLI-1", "ATLCLI-2"]) await atlcli.jira.comment(key, "x");`);
+    const writes = await run(["run", many, "--max-writes", "1"]);
+    expect(writes.stderr).toContain("Script failed (write-limit)");
+
+    const calls = await run(["run", "-e", `await atlcli.jira.get("ATLCLI-1"); await atlcli.jira.get("ATLCLI-2");`, "--max-calls", "1"]);
+    expect(calls.stderr).toContain("Script failed (host-call-limit)");
+
+    for (const [flag, value] of [["--timeout", "soon"], ["--max-writes", "0"], ["--memory", "-1"]] as const) {
+      const bad = await run(["run", "-e", "1", flag, value]);
+      expect(bad.exitCode).toBe(1);
+      expect(bad.stderr).toContain(flag);
+    }
+  });
+
   test("guest errors are reported, not thrown", async () => {
     const file = await script("broken.ts", `await atlcli.jira.get("ATLCLI-404");`);
     const { exitCode, stderr } = await run(["run", file]);

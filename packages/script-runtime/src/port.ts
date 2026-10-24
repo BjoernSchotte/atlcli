@@ -33,6 +33,12 @@ export interface ScriptPort {
   confluenceCreatePage(input: ConfluenceCreateInput): Promise<{ id: string; version: number }>;
   confluenceUpdatePage(input: ConfluenceUpdateInput): Promise<{ id: string; version: number }>;
   confluenceAddLabels(pageId: string, labels: string[]): Promise<void>;
+  /**
+   * Markdown as `confluenceGetPage` would return it once stored: the host's
+   * Markdown → Storage → Markdown round trip. Lets the runtime spot updates
+   * that would not change a page.
+   */
+  confluenceNormalizeMarkdown(markdown: string): string;
 }
 
 export interface JiraIssueView {

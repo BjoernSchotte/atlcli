@@ -53,6 +53,10 @@ class FakePort implements ScriptPort {
     const page = [...this.pages.values()].find((p) => p.spaceKey === spaceKey && p.title === title);
     return page ? { id: page.id, version: page.version } : null;
   }
+  /** The fake stores Markdown as given, so normalizing trims only trailing blank lines. */
+  confluenceNormalizeMarkdown(markdown: string) {
+    return markdown.replace(/\s+$/, "");
+  }
   jiraCreateIssue = this.write;
   jiraUpdateIssue = this.write;
   jiraTransitionIssue = this.write;
@@ -241,6 +245,46 @@ describe("planScript", () => {
       ["confluence.createPage", "a", [], "confluence-title-absent"],
       ["confluence.updatePage", "b", [2], undefined],
     ]);
+  });
+
+  it("skips page updates that would not change the page", async () => {
+    const result = await plan(
+      meta(ALL) +
+        `export default [
+          await atlcli.confluence.updatePage("100", { markdown: "# Old\\n" }),
+          await atlcli.confluence.upsertPage({ space: "DOCSY", title: "Release Notes", markdown: "# Old" }),
+        ]`,
+    );
+    expect(result.value).toEqual([{ id: "100" }, { id: "100", created: false }]);
+    expect(result.operations).toEqual([]);
+    expect(result.skipped).toEqual([
+      { verb: "confluence.updatePage", target: "100", title: "Release Notes", reason: "unchanged" },
+      { verb: "confluence.updatePage", target: "100", title: "Release Notes", reason: "unchanged" },
+    ]);
+  });
+
+  it("keeps updates that only look unchanged against the pre-plan state", async () => {
+    const result = await plan(
+      meta(ALL) +
+        `await atlcli.confluence.updatePage("100", { markdown: "# New" });
+         await atlcli.confluence.updatePage("100", { markdown: "# Old" });
+         await atlcli.confluence.updatePage("100", { title: "Renamed", markdown: "# Old" });`,
+    );
+    // A → B → A must restore A; a title change is a change even with the same body.
+    expect(result.operations.map((o) => [o.args.title, o.args.markdown])).toEqual([
+      ["Release Notes", "# New"],
+      ["Release Notes", "# Old"],
+      ["Renamed", "# Old"],
+    ]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("lets the caller override meta.limits.maxWrites", async () => {
+    const script = meta(ALL, `, limits: { maxWrites: 5 }`) + `for (let i = 0; i < 3; i++) await atlcli.jira.comment("ATLCLI-1", "n" + i);`;
+    expect((await plan(script)).operations).toHaveLength(3);
+    const error = await scriptError(plan(script, { maxWrites: 2 }));
+    expect(error.kind).toBe("write-limit");
+    expect(error.message).toContain("--max-writes");
   });
 
   it("rejects creating the same page twice in one plan", async () => {

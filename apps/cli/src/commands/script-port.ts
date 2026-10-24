@@ -114,6 +114,9 @@ export function createCliScriptPort(jira: () => JiraClient, confluence: () => Co
     async confluenceAddLabels(pageId, labels) {
       await confluence().addLabels(pageId, labels);
     },
+    confluenceNormalizeMarkdown(markdown) {
+      return storageToMarkdown(markdownToStorage(markdown, conversion), conversion);
+    },
   };
 }
 

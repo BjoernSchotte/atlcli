@@ -1,7 +1,7 @@
 import { canonicalJsonV1, digestCanonicalJsonV1, sha256HexV1 } from "@atlcli/change-set";
 import { z } from "zod";
 import { scriptMetaSchema, type ScriptMeta, type ScriptParams } from "./meta.js";
-import type { PlannedOperation, ScriptRunPlan } from "./verbs.js";
+import type { PlannedOperation, ScriptRunPlan, SkippedWrite } from "./verbs.js";
 
 export const SCRIPT_PLAN_SCHEMA_V1 = "atlcli.script-plan/1" as const;
 
@@ -18,6 +18,8 @@ export interface ScriptPlanV1 {
   params: ScriptParams;
   target: { baseUrl: string; profile?: string };
   operations: PlannedOperation[];
+  /** Writes left out because they would change nothing. */
+  skipped: SkippedWrite[];
   /** The default export's return value, for summaries. */
   value: unknown;
   digest: string;
@@ -70,6 +72,9 @@ const planSchema = z.strictObject({
   params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
   target: z.strictObject({ baseUrl: z.url(), profile: z.string().optional() }),
   operations: z.array(operation),
+  skipped: z.array(
+    z.strictObject({ verb: operation.shape.verb, target: key, title: z.string().optional(), reason: z.literal("unchanged") }),
+  ),
   value: z.unknown(),
   digest: sha256,
 });
@@ -87,6 +92,7 @@ export async function createScriptPlan(run: ScriptRunPlan, options: CreateScript
     params: run.params,
     target: { baseUrl: normalizeBaseUrl(options.baseUrl), ...(options.profile ? { profile: options.profile } : {}) },
     operations: run.operations,
+    skipped: run.skipped,
     value: run.value,
   };
   return { ...body, digest: await digestCanonicalJsonV1(body) };

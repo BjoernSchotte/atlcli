@@ -16,6 +16,7 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 - [Placeholders](#placeholders)
 - [Preconditions](#preconditions)
 - [Sandbox limits](#sandbox-limits)
+- [Unchanged updates](#unchanged-updates)
 - [Plan file](#plan-file)
 - [JSON output](#json-output)
 - [Exit codes and error kinds](#exit-codes-and-error-kinds)
@@ -38,6 +39,10 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `--apply` | run | switch | off | Applies after planning; asks first |
 | `--yes` | run, apply | switch | off | Applies without asking. Required without a terminal or with `--json` |
 | `--profile <name>` | run, apply | string | active profile | Also `ATLCLI_PROFILE` |
+| `--timeout <duration>` | run | `90s`, `10m`, `1h`, `500ms`; bare number = seconds | `5m` | Whole run, CPU and waiting |
+| `--max-writes <n>` | run | positive integer | `meta.limits.maxWrites`, else 100 | Overrides `meta.limits.maxWrites` |
+| `--max-calls <n>` | run | positive integer | 10,000 | Jira and Confluence calls per run |
+| `--memory <MB>` | run | positive integer | 64 | Script memory |
 | `--json` | all | switch | off | One JSON document on stdout; script output stays on stderr |
 | `--force` | init | switch | off | Overwrites `tsconfig.json` and `example.ts`; `atlcli.d.ts` is always refreshed |
 
@@ -111,7 +116,7 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 | `confluence.search(cql, { limit? })` | async iterator of `{ id, title, spaceKey }` | `confluence:read` | read; pages of 100 |
 | `confluence.getPage(id)` | `{ id, title, spaceKey, version, parentId?, markdown }` | `confluence:read` | read |
 | `confluence.createPage({ space, title, markdown, parentId? })` | `{ id }` placeholder | `confluence:write:<space>` | create; title still absent |
-| `confluence.updatePage(id, { title?, markdown })` | `{ id }` | `confluence:write:<space of page>` | replaces the body; page version unchanged. Keeps the title unless given |
+| `confluence.updatePage(id, { title?, markdown })` | `{ id }` | `confluence:write:<space of page>` | replaces the body; page version unchanged. Keeps the title unless given. Left out when body and title would not change |
 | `confluence.upsertPage({ space, title, markdown, parentId? })` | `{ id, created }` | `confluence:write:<space>` | becomes an update of the page with that exact title, else a create |
 | `confluence.addLabels(pageId, labels)` | `null` | `confluence:write:<space of page>` | labels; no precondition |
 
@@ -141,16 +146,20 @@ All preconditions are checked before the first write. If any fails, nothing is w
 
 ## Sandbox limits
 
-| Limit | Value | When hit |
-|---|---|---|
-| Memory | 64 MB | `memory` |
-| Stack | 512 KB | `guest` (stack overflow) |
-| Run time, CPU and waiting | 5 minutes | `interrupted` (busy loop) or `deadline` (waiting) |
-| One Jira or Confluence call | 60 seconds | catchable error `Host call timed out` |
-| Calls per run | 10,000 | `host-call-limit` |
-| Planned writes | `meta.limits.maxWrites`, default 100 | `write-limit` |
+| Limit | Default | Set with | When hit |
+|---|---|---|---|
+| Memory | 64 MB | `--memory` | `memory` |
+| Stack | 512 KB | fixed | `guest` (stack overflow) |
+| Run time, CPU and waiting | 5 minutes | `--timeout` | `interrupted` (busy loop) or `deadline` (waiting) |
+| One Jira or Confluence call | 60 seconds | fixed | catchable error `Host call timed out` |
+| Calls per run | 10,000 | `--max-calls` | `host-call-limit` |
+| Planned writes | 100 | `meta.limits.maxWrites`, `--max-writes` (wins) | `write-limit` |
 
-`host-call-limit`, `write-limit` and `permission-denied` end the run even if the script catches the error. The limits are fixed; only `maxWrites` is configurable.
+`host-call-limit`, `write-limit` and `permission-denied` end the run even if the script catches the error.
+
+## Unchanged updates
+
+The first `updatePage` to a page in a run, or the `upsertPage` that turns into one, is compared with the page as it is now. Both bodies go through the same Markdown → Storage → Markdown conversion. If title and body are equal, no operation is planned. The write appears in `skipped` instead, and the text output lists it as `Unchanged, not planned`. Later writes to a page the plan already changed are always kept, because reads show the state before the plan.
 
 ## Plan file
 
@@ -168,6 +177,7 @@ All preconditions are checked before the first write. If any fails, nothing is w
 | `target.baseUrl` | URL | site the plan was made for |
 | `target.profile` | string | profile name; never credentials |
 | `operations[]` | array | `{ seq, verb, args, precondition?, dependsOn }` |
+| `skipped[]` | array | `{ verb, target, title?, reason: "unchanged" }`; writes left out, see [Unchanged updates](#unchanged-updates) |
 | `value` | JSON | the script's result |
 | `digest` | hex | SHA-256 over the canonical JSON of all other fields |
 
