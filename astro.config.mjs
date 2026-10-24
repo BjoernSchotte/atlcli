@@ -28,6 +28,7 @@ export default defineConfig({
       sidebar: [
         { label: 'Getting Started', link: '/getting-started/' },
         { label: 'Daily Digest', link: '/digest/' },
+        { label: 'Terminal UI', link: '/tui/' },
         {
           label: 'Confluence',
           collapsed: false,

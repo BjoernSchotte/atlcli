@@ -83,6 +83,13 @@ jobs:
       - name: Install frozen dependencies
         run: bash scripts/ci/install-frozen-dependencies.sh
 
+      # windows-x64 is cross-compiled here: OpenTUI's Windows library is an
+      # optional dependency that a Linux install leaves out, so the build
+      # could not embed it. Install every platform's optional packages.
+      - name: Install the cross-compiled target's native packages
+        if: matrix.target == 'windows-x64'
+        run: bun install --frozen-lockfile --os='*' --cpu='*'
+
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
 
@@ -119,6 +126,8 @@ jobs:
           test "$("$RUNNER_TEMP/nfs-installed/atlcli" skill | shasum -a 256)" = "$(shasum -a 256 < skills/atlcli/SKILL.md)"
           "$RUNNER_TEMP/nfs-installed/atlcli-confluence-nfs" --version
           test -s "$RUNNER_TEMP/nfs-installed/THIRD-PARTY-nfs.html"
+          # The TUI's native library is embedded too: it draws in a pseudo-terminal and quits.
+          python3 scripts/ci/tui-smoke.py "$RUNNER_TEMP/nfs-installed/atlcli"
 
       - name: Assert requested build identity
         env:
@@ -136,6 +145,44 @@ jobs:
           path: release/atlcli-${{ matrix.target }}.*
           if-no-files-found: error
           retention-days: 7
+
+  # The Windows CLI is cross-compiled on Linux; run it on Windows before it ships.
+  # The TUI self-test draws without a terminal, proving its native library loads.
+  smoke-windows:
+    name: Run the Windows CLI natively
+    needs: build-cli
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha }}
+
+      - name: Download this run's Windows CLI
+        uses: actions/download-artifact@v8
+        with:
+          name: release-${{ inputs.channel }}-${{ inputs.source_sha }}-${{ github.run_id }}-${{ inputs.release_attempt }}-cli-windows-x64
+          path: release
+
+      - name: Version and TUI self-test
+        shell: pwsh
+        env:
+          ATLCLI_DISABLE_UPDATE_CHECK: "1"
+        run: |
+          Expand-Archive -LiteralPath release/atlcli-windows-x64.zip -DestinationPath cli
+          & .\cli\atlcli.exe --version
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & .\cli\atlcli.exe tui --self-test
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      # The TUI in a real Windows console (ConPTY): draw, keys, quit.
+      - name: Interactive TUI smoke test
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pywinpty==2.0.15
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/ci/tui-smoke-windows.py cli\atlcli.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
   build-extension:
     name: Build Chrome MV3 extension
@@ -198,7 +245,7 @@ jobs:
 
   bundle:
     name: Assemble and consume exact release bundle
-    needs: [build-cli, build-extension]
+    needs: [build-cli, smoke-windows, build-extension]
     runs-on: ubuntu-latest
     outputs:
       bundle_artifact: ${{ steps.contract.outputs.name }}

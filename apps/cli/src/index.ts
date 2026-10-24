@@ -40,6 +40,7 @@ import { auditHelp, handleAudit } from "./commands/audit.js";
 import { auditJiraHelp } from "./commands/audit-jira.js";
 import { auditWikiHelp } from "./commands/audit-wiki.js";
 import { digestHelp, handleDigest } from "./commands/digest.js";
+import { handleTui, tuiHelp } from "./commands/tui.js";
 import {
   handlePdfTemplate,
   pdfTemplateHelp,
@@ -167,6 +168,9 @@ async function main(): Promise<void> {
       case "digest":
         await handleDigest(rest, parsed.flags, opts);
         break;
+      case "tui":
+        await handleTui(rest, parsed.flags, opts);
+        break;
       case "chat":
         await handleChat(rest, parsed.flags, opts);
         break;
@@ -293,6 +297,9 @@ function showCommandHelp(
       break;
     case "digest":
       output(digestHelp(), opts);
+      break;
+    case "tui":
+      output(tuiHelp(), opts);
       break;
     case "audit":
       // `audit jira --help` / `audit wiki --help` print the target's help (#286).

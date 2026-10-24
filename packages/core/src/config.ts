@@ -122,6 +122,18 @@ export type DigestConfig = {
   projects?: string[];
 };
 
+/** `atlcli tui` settings. */
+export type TuiSettings = {
+  /** Start area: `jira` (default) or `wiki`. */
+  area?: string;
+  /** `dark` (default) or `light`. */
+  theme?: string;
+  /** Keys per command id, replacing its defaults: `{ "jira.transition": ["t", "ctrl+t"] }`. */
+  keymap?: Record<string, string[]>;
+  /** Issue list columns before the summary: key, type, status, priority, assignee, updated. */
+  columns?: string[];
+};
+
 /**
  * Registered project configuration for --global audit flag.
  */
@@ -179,6 +191,8 @@ export type Config = {
   flow?: FlowConfig;
   /** Digest configuration */
   digest?: DigestConfig;
+  /** `atlcli tui` configuration */
+  tui?: TuiSettings;
   /** Registered projects for --global audit flag */
   projects?: ProjectConfig[];
   /** @deprecated Use 'global' instead. Kept for migration. */

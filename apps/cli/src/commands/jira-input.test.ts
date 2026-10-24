@@ -3,6 +3,7 @@ import type { JiraIssue, JiraUser } from "@atlcli/jira";
 import {
   buildSearchJql,
   cellValue,
+  editorCommand,
   issueCell,
   jqlBefore,
   jqlIn,
@@ -15,6 +16,17 @@ import {
   replaceInBody,
   resolveColumns,
 } from "./jira-input.js";
+
+describe("editorCommand", () => {
+  test("VISUAL, then EDITOR, then vi; empty values count as unset", () => {
+    expect(editorCommand({ VISUAL: "code -w", EDITOR: "nano" })).toBe("code -w");
+    expect(editorCommand({ EDITOR: "nano" })).toBe("nano");
+    // Regression: `VISUAL=` ran an empty command (exit 126) instead of $EDITOR.
+    expect(editorCommand({ VISUAL: "", EDITOR: "nano" })).toBe("nano");
+    expect(editorCommand({ VISUAL: " ", EDITOR: "" }, "darwin")).toBe("vi");
+    expect(editorCommand({}, "win32")).toBe("notepad");
+  });
+});
 
 describe("pickUser", () => {
   const ann = { accountId: "a1", displayName: "Ann Lee", emailAddress: "ann@example.com", active: true };

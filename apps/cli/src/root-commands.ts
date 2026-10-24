@@ -12,6 +12,7 @@ export const ROOT_COMMANDS: ReadonlyArray<readonly [name: string, description: s
   ["wiki", "Confluence operations (page, space, docs, search)"],
   ["jira", "Jira operations (issue, board, sprint, epic)"],
   ["digest", "What changed since your last look, across Jira and Confluence"],
+  ["tui", "Fullscreen terminal UI for working in Jira and Confluence"],
   ["audit", "Check Jira hygiene and Confluence docs against rules"],
   ["research", "Run bounded read-only Jira + Confluence research"],
   ["chat", "Ask a read-only Jira or Confluence question"],

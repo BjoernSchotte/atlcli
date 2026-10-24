@@ -19,6 +19,7 @@
     "src",
     "astro.config.mjs",
     "apps/browser-export-harness",
+    "packages/tui",
     "packages/web-publish-astro/fixtures/**",
     "packages/export-blocks-astro/fixtures/**"
   ]

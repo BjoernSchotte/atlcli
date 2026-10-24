@@ -32,6 +32,7 @@
     "@atlcli/plugin-api": "workspace:*",
     "@atlcli/research": "workspace:*",
     "@atlcli/template-pack": "workspace:*",
+    "@atlcli/tui": "workspace:*",
     "@atlcli/web-publish": "workspace:*",
     "@atlcli/web-publish-astro": "workspace:*",
     "@atlcli/web-publish-starlight": "workspace:*",

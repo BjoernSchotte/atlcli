@@ -1020,6 +1020,17 @@ ANTHROPIC_API_KEY=... atlcli digest --summarize
 
 See [Daily Digest](../digest.md).
 
+### Terminal UI
+
+```bash
+atlcli tui                                     # Jira: your open issues
+atlcli tui --project ABC --board 42            # Navigator on that project and board
+atlcli tui --jql 'project = ABC AND sprint IN openSprints()'
+atlcli tui --area wiki --space DOCS            # Wiki: that space's page tree
+```
+
+Needs an interactive terminal; it fails in CI or a pipe. See [Terminal UI](../tui.md).
+
 ### Research
 
 ```bash

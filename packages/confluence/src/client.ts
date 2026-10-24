@@ -2479,9 +2479,25 @@ export class ConfluenceClient {
     });
   }
 
-  /** Cloud space-root pages, without bodies or a scan of the homepage tree. */
+  /** Space-root pages, without bodies or a scan of the homepage tree (v2 on Cloud, v1 `depth=root` on Data Center). */
   async getSpaceRootPages(space: Pick<ConfluenceSpace, "id" | "key">, options: { signal?: AbortSignal } = {}): Promise<ConfluencePage[]> {
-    if (this.deploymentType !== "cloud") throw new Error("Space-root page listing requires Confluence Cloud");
+    if (this.deploymentType !== "cloud") {
+      const spaceKey = space.key;
+      return drainPaginated<ConfluencePage>(async (token) => {
+        const data: any = await this.request(
+          token === undefined
+            ? `/space/${encodeURIComponent(spaceKey)}/content/page?depth=root&expand=version&limit=100`
+            : token.replace(/^\/rest\/api/, ""),
+          { signal: options.signal, logBody: "meta-only" }
+        );
+        if (!Array.isArray(data.results)) throw new Error("Invalid space-root page response");
+        const items = data.results.map((item: any): ConfluencePage => ({
+          id: String(item.id), title: item.title, spaceKey, parentId: null, version: item.version?.number,
+          url: item._links?.webui ? this.buildWebUrl(item._links.webui) : undefined,
+        }));
+        return { items, next: data._links?.next };
+      });
+    }
     if (!/^[0-9]+$/.test(String(space.id))) throw new Error("Invalid root-listing space ID");
     const spaceKey = space.key;
     const seen = new Set<string>();
