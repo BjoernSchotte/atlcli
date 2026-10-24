@@ -89,9 +89,15 @@ def serve() -> ThreadingHTTPServer:
 
 def edit_in_notepad(marker: str) -> None:
     """Finds the Notepad that atlcli opened on AB-1.md, appends `marker`, saves and closes it."""
-    from pywinauto import Application
+    import subprocess
+    from pywinauto import Application, Desktop
 
-    app = Application(backend="win32").connect(title_re=r".*AB-1.*Notepad.*", timeout=30)
+    try:
+        app = Application(backend="win32").connect(path="notepad.exe", timeout=30)
+    except Exception:
+        print(subprocess.run(["tasklist", "/v", "/fi", "imagename eq notepad.exe"], capture_output=True, text=True).stdout)
+        print("windows:", [w.window_text() for w in Desktop(backend="win32").windows() if w.window_text()][:30])
+        raise
     win = app.top_window()
     win.wait("ready", timeout=30)
     edit = win.child_window(class_name="Edit")
