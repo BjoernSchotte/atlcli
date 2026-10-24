@@ -191,11 +191,82 @@ describe("runScript", () => {
   });
 
   it("supports top-level await in the script module", async () => {
-    const one: HostFunction = async () => 1;
-    const result = await run(`const base = await atlcli.one(); export default () => base + 1`, {
-      host: { one },
-    });
+    const result = await run(`const base = await Promise.resolve(1); export default () => base + 1`);
     expect(result.value).toBe(2);
+  });
+
+  it("rejects atlcli calls at module top level, before prepare", async () => {
+    const one: HostFunction = async () => 1;
+    const error = await scriptError(run(`await atlcli.one(); export default () => 1`, { host: { one } }));
+    expect(error.message).toContain("not available at module top level");
+  });
+
+  it("passes the meta export to prepare and its result to the default export", async () => {
+    const seen: unknown[] = [];
+    const result = await run(
+      `export const meta = { name: "x", n: 2 }; export default (p) => p.doubled`,
+      {
+        prepare: (meta) => {
+          seen.push(meta);
+          return { doubled: (meta as { n: number }).n * 2 };
+        },
+      },
+    );
+    expect(seen).toEqual([{ name: "x", n: 2 }]);
+    expect(result.value).toBe(4);
+  });
+
+  it("ends the run when prepare throws", async () => {
+    const error = await scriptError(
+      run(`export default () => "ran"`, {
+        prepare: () => {
+          throw new Error("meta.name is required");
+        },
+      }),
+    );
+    expect(error.kind).toBe("invalid-script");
+    expect(error.message).toBe("meta.name is required");
+  });
+
+  it("stops after prepare when callDefault is false", async () => {
+    let called = false;
+    const mark: HostFunction = async () => {
+      called = true;
+    };
+    const result = await run(`export const meta = 1; export default () => atlcli.mark()`, {
+      host: { mark },
+      callDefault: false,
+    });
+    expect(result.value).toBeNull();
+    expect(called).toBe(false);
+  });
+
+  it("applies guest-side wrappers to host functions", async () => {
+    const page: HostFunction = async ([token]) =>
+      // undefined arguments cross the JSON boundary as null
+      token === null ? { items: [1, 2], next: "b" } : { items: [3], next: undefined };
+    const result = await run(
+      `export default async () => { const out = []; for await (const n of atlcli.list()) out.push(n); return out; }`,
+      {
+        host: { list: page },
+        wrappers: {
+          list: `(page) => async function* () { let next; do { const r = await page(next); yield* r.items; next = r.next; } while (next); }`,
+        },
+      },
+    );
+    expect(result.value).toEqual([1, 2, 3]);
+  });
+
+  it("treats a ScriptError from a host function as fatal", async () => {
+    const deny: HostFunction = async () => {
+      throw new ScriptError("permission-denied", "nope");
+    };
+    const error = await scriptError(
+      run(`export default async () => { try { await atlcli.deny(); } catch {} return "continued"; }`, {
+        host: { deny },
+      }),
+    );
+    expect(error.kind).toBe("permission-denied");
   });
 
   it("rejects invalid host function names", async () => {

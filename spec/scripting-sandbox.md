@@ -105,7 +105,8 @@ export default async function (params: { days: number }) {
   for await (const issue of atlcli.jira.search(
     `project = ATLCLI AND type = Bug AND updated < -${params.days}d`,
   )) {
-    await atlcli.jira.transition(issue.key, "Won't Do", { comment: "Auto-closed: stale" });
+    await atlcli.jira.comment(issue.key, "Auto-closed: stale");
+    await atlcli.jira.transition(issue.key, "Won't Do");
   }
 }
 ```

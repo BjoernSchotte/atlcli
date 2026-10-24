@@ -41,8 +41,23 @@ export type SandboxLogLevel = "info" | "warn" | "error";
 export interface RunScriptOptions {
   /** Keyed by dotted guest path, e.g. `"jira.search"` → `atlcli.jira.search`. */
   host?: Readonly<Record<string, HostFunction>>;
-  /** JSON value passed to the default export. */
+  /**
+   * Guest-side wrappers, keyed like `host`: JS source of a function that takes
+   * the raw bridged function and returns what the script sees (e.g. an async
+   * generator over a paged host call). Trusted code, evaluated before the script.
+   */
+  wrappers?: Readonly<Record<string, string>>;
+  /** JSON value passed to the default export (ignored when `prepare` is set). */
   params?: unknown;
+  /**
+   * Called synchronously with the module's JSON-copied `meta` export once the
+   * module has loaded; its return value is passed to the default export. Host
+   * calls are rejected until it returns, so top-level code cannot act before
+   * the script's declarations are validated. Throwing ends the run.
+   */
+  prepare?: (meta: unknown) => unknown;
+  /** `false` stops after `prepare` (inspection); the result value is then `null`. */
+  callDefault?: boolean;
   limits?: Partial<SandboxLimits>;
   onLog?: (level: SandboxLogLevel, message: string) => void;
   /** Override the WASM build (tests use the debug build for leak detection). */
@@ -61,8 +76,11 @@ export type ScriptErrorKind =
   | "memory"
   | "deadline" // wall-clock deadline hit while awaiting
   | "host-call-limit"
-  | "invalid-script";
+  | "invalid-script"
+  | "permission-denied"
+  | "write-limit";
 
+/** A host function rejecting with a ScriptError ends the whole run with it. */
 export class ScriptError extends Error {
   constructor(
     readonly kind: ScriptErrorKind,
@@ -83,9 +101,10 @@ const HOST_NAME = /^[a-z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)*$/;
 // entry, `done(ok, payload)`. Everything crossing them is a string. JSON is
 // captured too, so a script overriding globals only breaks itself.
 const PRELUDE = `
-const h = globalThis.__atlcliHost, l = globalThis.__atlcliLog, names = globalThis.__atlcliNames;
+const h = globalThis.__atlcliHost, l = globalThis.__atlcliLog, names = globalThis.__atlcliNames, wrappers = globalThis.__atlcliWrappers;
 const { parse, stringify } = JSON;
-delete globalThis.__atlcliHost; delete globalThis.__atlcliLog; delete globalThis.__atlcliNames;
+delete globalThis.__atlcliHost; delete globalThis.__atlcliLog; delete globalThis.__atlcliNames; delete globalThis.__atlcliWrappers;
+const wrap = parse(wrappers);
 const fmt = (v) => typeof v === "string" ? v : (() => { try { return stringify(v); } catch { return String(v); } })();
 const say = (level) => (...a) => l(level, a.map(fmt).join(" "));
 globalThis.console = Object.freeze({ log: say("info"), info: say("info"), warn: say("warn"), error: say("error") });
@@ -94,7 +113,7 @@ for (const name of parse(names)) {
   const parts = name.split(".");
   let node = root;
   for (const p of parts.slice(0, -1)) node = node[p] ??= Object.create(null);
-  node[parts.at(-1)] = (...args) => h(name, stringify(args)).then(parse, (json) => {
+  const raw = (...args) => h(name, stringify(args)).then(parse, (json) => {
     const { name: errorName, message } = parse(json);
     const error = new Error(message);
     error.name = errorName;
@@ -103,6 +122,7 @@ for (const name of parse(names)) {
     error.stack = errorName + ": " + message + "\\n    at atlcli." + name + "\\n";
     throw error;
   });
+  node[parts.at(-1)] = wrap[name] ? (0, eval)("(" + wrap[name] + ")")(raw) : raw;
 }
 const freeze = (o) => { for (const v of Object.values(o)) if (typeof v === "object") freeze(v); return Object.freeze(o); };
 Object.defineProperty(globalThis, "atlcli", { value: freeze(root), writable: false, configurable: false, enumerable: false });
@@ -139,9 +159,15 @@ function forgetModule(variant?: QuickJSSyncVariant): void {
 export async function runScript(js: string, options: RunScriptOptions = {}): Promise<RunScriptResult> {
   const limits = { ...DEFAULT_SANDBOX_LIMITS, ...options.limits };
   const host = options.host ?? {};
-  for (const name of Object.keys(host)) {
+  const wrappers = options.wrappers ?? {};
+  for (const name of [...Object.keys(host), ...Object.keys(wrappers)]) {
     if (!HOST_NAME.test(name)) throw new TypeError(`Invalid host function name: ${name}`);
   }
+  for (const name of Object.keys(wrappers)) {
+    if (!Object.hasOwn(host, name)) throw new TypeError(`Wrapper without host function: ${name}`);
+  }
+  const prepare = options.prepare ?? (() => options.params ?? null);
+  let prepared = false;
   const quickjs = await loadModule(options.variant);
   const runtime = quickjs.newRuntime();
   runtime.setMemoryLimit(limits.memoryBytes);
@@ -201,6 +227,7 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
       const name = ctx.getString(nameHandle);
       const fn = Object.hasOwn(host, name) ? host[name] : undefined;
       if (!fn) return { error: ctx.newError(`Unknown host function: ${name}`) };
+      if (!prepared) return { error: ctx.newError("atlcli is not available at module top level; call it from the default export") };
       if (++hostCalls > limits.maxHostCalls) {
         const error = new ScriptError("host-call-limit", `Host call limit exceeded (${limits.maxHostCalls})`);
         fail(error);
@@ -213,8 +240,10 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
         // resolve/reject do not take ownership of the value handle.
         (value) =>
           settle(deferred, () => ctx.newString(JSON.stringify(value ?? null)).consume((h) => deferred.resolve(h))),
-        (error: unknown) =>
-          settle(deferred, () => ctx.newString(guestErrorJson(error)).consume((h) => deferred.reject(h))),
+        (error: unknown) => {
+          if (error instanceof ScriptError) fail(error);
+          settle(deferred, () => ctx.newString(guestErrorJson(error)).consume((h) => deferred.reject(h)));
+        },
       );
       return deferred.handle;
     });
@@ -225,18 +254,39 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
       if (ctx.dump(okHandle) === true) resolveRun(ctx.getString(payloadHandle));
       else fail(toScriptError(ctx, payloadHandle));
     });
+    define("__atlcliPrepare", (metaHandle) => {
+      try {
+        const params = prepare(JSON.parse(ctx.getString(metaHandle)));
+        prepared = true;
+        return ctx.newString(JSON.stringify(params ?? null));
+      } catch (error) {
+        const scriptError =
+          error instanceof ScriptError
+            ? error
+            : new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
+        fail(scriptError);
+        return { error: ctx.newError(scriptError.message) };
+      }
+    });
     ctx.newString(JSON.stringify(Object.keys(host))).consume((names) =>
       ctx.setProp(ctx.global, "__atlcliNames", names),
     );
+    ctx.newString(JSON.stringify(wrappers)).consume((w) => ctx.setProp(ctx.global, "__atlcliWrappers", w));
 
     ctx.unwrapResult(ctx.evalCode(PRELUDE, "atlcli:prelude", { type: "global" })).dispose();
 
     const entry = `(async () => {
-  const done = globalThis.__atlcliDone, stringify = JSON.stringify; delete globalThis.__atlcliDone;
+  const done = globalThis.__atlcliDone, prepare = globalThis.__atlcliPrepare;
+  const { parse, stringify } = JSON;
+  delete globalThis.__atlcliDone; delete globalThis.__atlcliPrepare;
   try {
     const m = await import(${JSON.stringify(SCRIPT_MODULE)});
     if (typeof m.default !== "function") throw new TypeError(${JSON.stringify(NO_DEFAULT)});
-    const r = await m.default(${JSON.stringify(options.params ?? null)});
+    let meta = null;
+    try { meta = stringify(m.meta === undefined ? null : m.meta) ?? "null"; } catch { meta = "null"; }
+    const params = parse(prepare(meta));
+    if (!${options.callDefault !== false}) return done(true, "null");
+    const r = await m.default(params);
     done(true, stringify(r === undefined ? null : r));
   } catch (e) { done(false, e); }
 })();`;

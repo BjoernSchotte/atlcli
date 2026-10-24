@@ -168,6 +168,35 @@ Jedes Verb ist ein Registry-Eintrag mit `{ name, kind, schema, permission(args),
   - Platzhalterkette `createPage` → `createPage(parentId)`.
   - Das Write-Limit greift.
 
+**Umgesetzt (T3+T4).** Abweichungen und Präzisierungen gegenüber oben:
+
+- **`meta` und Parameter:** Sie werden nicht in einem eigenen Lauf gelesen. Die Sandbox ruft
+  nach dem Laden des Moduls synchron `prepare(meta)` auf, und dessen Rückgabe wird zum Argument
+  des Default-Exports. `atlcli.*` ist auf Modul-Top-Level gesperrt, damit kein Code vor der
+  Validierung handelt.
+  - `inspectScript` nutzt denselben Weg mit `callDefault: false`.
+  - `meta` ist `strict`: Unbekannte Keys sind Fehler (Schutz vor Tippfehlern). `meta.hosts`
+    entfällt bis zum zweiten Host.
+- **Verben:**
+  - `atlcli.log`, `atlcli.params` und `atlcli.host` entfallen. `console.*` und das
+    Default-Export-Argument decken beides ab.
+  - `jira.transition(key, to)` hat keine `comment`-Option; dafür gibt es `jira.comment`.
+  - Transitions werden schon beim Planen gegen die verfügbaren geprüft.
+  - Search-Verben nehmen `{ limit }` und sind Async-Iteratoren über einen Guest-Wrapper
+    (Sandbox-Option `wrappers`).
+- **Permissions:**
+  - Eine Verweigerung, eine Überschreitung von `maxWrites` (Default 100) und jedes
+    `ScriptError` aus einem Host-Verb beenden den Lauf, auch wenn das Skript den Fehler fängt.
+  - Kaputte Argumente und ein unbekannter Issue-Key sind dagegen fangbare Fehler.
+- **Mehrfach-Writes auf dasselbe Objekt:**
+  - Nur der erste Write trägt eine Vorbedingung. Spätere Writes hängen per `dependsOn` am
+    vorherigen, sonst würde Apply am eigenen ersten Write scheitern.
+  - Wird dieselbe Seite zweimal per `createPage` angelegt, ist das ein Fehler.
+  - `upsertPage` erkennt Seiten, die im Plan angelegt wurden, und aktualisiert dann den
+    Platzhalter.
+- **Grenze:** Reads im Dry-Run sehen den Stand vor allen geplanten Writes. Das wird in T9
+  dokumentiert.
+
 ### T5: Plan-Datei
 
 Schema `atlcli.script-plan/1`. Inhalt:
