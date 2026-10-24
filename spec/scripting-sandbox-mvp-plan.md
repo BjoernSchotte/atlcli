@@ -64,8 +64,8 @@ Verben Raw-Requests bauen. Das würde die Client-Logik (Paging, Fehlerformen, AD
 bestehenden Clients, der spätere Forge-Host über `requestConfluence`.
 
 Die Markdown-Konvertierung sitzt im Adapter. `ponytail:` Damit konvertiert jeder Host selbst.
-Ist `markdown.ts` browser-sicher als Subpath exportierbar, zieht die Konvertierung später in
-die Runtime.
+`packages/confluence/src/markdown.ts` und `packages/jira/src/client.ts` stehen bereits im
+Browser-Gate. Die Konvertierung kann also in die Runtime wandern, sobald der zweite Host kommt.
 
 ## Tasks
 
@@ -80,7 +80,24 @@ Jeder Task wird per TDD umgesetzt und endet mit einem eigenen Commit.
   beide exakt gepinnt.
 - **Check:** `bun scripts/check-browser-build.ts` und `bun run typecheck` laufen grün.
 
+**Umgesetzt (T1):** Das Paket ist `private` wie `import-docx` und deshalb noch nicht im
+API-Report. Die öffentliche Skript-API ist `atlcli.d.ts` (T8), nicht der Paket-Export. Für
+`build` gilt `lib: ES2022, DOM, ESNext.Disposable` ohne Node- oder Bun-Typen. Der Debug-Build
+(`@jitl/quickjs-ng-wasmfile-debug-sync`) ist eine Dev-Dependency für die Leak-Erkennung.
+
 ### T2: Sandbox-Kern
+
+**Umgesetzt:** `runScript(js, { host, params, limits, onLog, variant })`. Die Verb- und
+Plan-Felder (`mode`, `ops`) kommen mit T4. Erkenntnisse aus dem Debug-Build:
+
+- Das Ergebnis meldet der Guest synchron über `done(ok, payload)` zurück, nicht über
+  `ctx.resolvePromise`. `resolvePromise` hält Host-Handles fest, die bei einem frühen Abbruch
+  (Deadline oder Limit) lecken bzw. nach dem Dispose noch benutzt werden.
+- `deferred.resolve/reject` übernehmen den Wert-Handle nicht; er muss selbst freigegeben werden.
+- Host-Fehler gehen als JSON-String über die Grenze, und der Guest baut daraus einen `Error`
+  mit explizitem `stack`. Ein lazy erfasster Stack eines im Promise-Job erzeugten Errors hat
+  sonst die Leak-Assertion im Debug-Build ausgelöst.
+- Nach OOM wird die WASM-Instanz verworfen (`ponytail:` grob, aber sicher).
 
 Signatur:
 
