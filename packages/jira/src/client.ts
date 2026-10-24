@@ -1404,6 +1404,16 @@ export class JiraClient {
    * GET /rest/agile/1.0/board/{id}/configuration, then GET /filter/{id}
    */
   async getBoardFilterJql(boardId: number): Promise<string> {
+    const filter = await this.getFilter(await this.getBoardFilterId(boardId));
+    return filter.jql;
+  }
+
+  /**
+   * The id of a board's saved filter.
+   *
+   * GET /rest/agile/1.0/board/{id}/configuration
+   */
+  async getBoardFilterId(boardId: number): Promise<string> {
     const config = await this.request<{ filter?: { id?: string } }>(
       `/board/${boardId}/configuration`,
       { apiBase: this.agilePath }
@@ -1411,8 +1421,7 @@ export class JiraClient {
     if (!config.filter?.id) {
       throw new Error(`Board ${boardId} has no saved filter.`);
     }
-    const filter = await this.getFilter(config.filter.id);
-    return filter.jql;
+    return String(config.filter.id);
   }
 
   // ============ Worklogs ============
@@ -1711,6 +1720,60 @@ export class JiraClient {
   }
 
   /**
+   * Create a board, optionally located in a project. A board always sits on a
+   * saved filter: without `filterId`, one named like the board is made from
+   * `jql` (default: the project's issues by rank), shared with the project as
+   * Jira's board wizard does, and deleted again if the board fails.
+   *
+   * POST /rest/api/3/filter (+ permission), POST /rest/agile/1.0/board
+   */
+  async createBoard(params: {
+    name: string;
+    type: "scrum" | "kanban";
+    filterId?: number;
+    jql?: string;
+    projectKeyOrId?: string;
+  }): Promise<{ id: number; name: string; type: string; filterId: number; filterCreated: boolean }> {
+    const project = params.projectKeyOrId;
+    let filterId = params.filterId;
+    const filterCreated = filterId === undefined;
+    if (filterId === undefined) {
+      if (!params.jql && !project) throw new Error("A board needs a filter, a JQL query or a project.");
+      const jql = params.jql ?? `project = "${project}" ORDER BY Rank ASC`;
+      filterId = Number((await this.createFilter({ name: params.name, jql })).id);
+    }
+    try {
+      if (filterCreated && project) {
+        const { id: projectId } = await this.getProject(project);
+        await this.addFilterPermission(String(filterId), { type: "project", projectId: String(projectId) });
+      }
+      const board = await this.request<{ id: number; name: string; type: string }>("/board", {
+        method: "POST",
+        apiBase: this.agilePath,
+        body: {
+          name: params.name,
+          type: params.type,
+          filterId,
+          ...(project ? { location: { type: "project", projectKeyOrId: project } } : {}),
+        },
+      });
+      return { ...board, filterId, filterCreated };
+    } catch (err) {
+      if (filterCreated) await this.deleteFilter(String(filterId)).catch(() => {});
+      throw err;
+    }
+  }
+
+  /**
+   * Delete a board. Its saved filter and its issues stay.
+   *
+   * DELETE /rest/agile/1.0/board/{boardId}
+   */
+  async deleteBoard(boardId: number): Promise<void> {
+    await this.request(`/board/${boardId}`, { method: "DELETE", apiBase: this.agilePath });
+  }
+
+  /**
    * List sprints for a board.
    *
    * GET /rest/agile/1.0/board/{boardId}/sprint
@@ -1960,6 +2023,40 @@ export class JiraClient {
       method: "POST",
       body: { issues },
     });
+  }
+
+  /**
+   * Rank issues directly before or after another issue, keeping their order.
+   * Jira takes 50 per call: with `before` each batch lands above the target,
+   * with `after` each batch follows the last issue ranked. Returns the issues
+   * Jira could not rank.
+   *
+   * PUT /rest/agile/1.0/issue/rank
+   */
+  async rankIssues(params: {
+    issues: string[];
+    before?: string;
+    after?: string;
+  }): Promise<Array<{ issueKey: string; errors: string[] }>> {
+    const failed: Array<{ issueKey: string; errors: string[] }> = [];
+    let after = params.after;
+    for (let i = 0; i < params.issues.length; i += 50) {
+      const issues = params.issues.slice(i, i + 50);
+      // 204 when every issue moved, 207 with one entry per issue otherwise.
+      const res = await this.request<{ entries?: Array<{ issueId?: number; issueKey?: string; status: number; errors?: string[] }> }>(
+        "/issue/rank",
+        {
+          apiBase: this.agilePath,
+          method: "PUT",
+          body: params.before ? { issues, rankBeforeIssue: params.before } : { issues, rankAfterIssue: after },
+        }
+      );
+      for (const entry of res.entries ?? []) {
+        if (entry.status >= 300) failed.push({ issueKey: entry.issueKey ?? String(entry.issueId), errors: entry.errors ?? [] });
+      }
+      after = issues[issues.length - 1];
+    }
+    return failed;
   }
 
   // ============ Epic Operations ============
