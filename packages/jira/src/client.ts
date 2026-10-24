@@ -1875,9 +1875,10 @@ export class JiraClient {
   }
 
   /**
-   * Update a sprint.
+   * Update the given fields of a sprint. POST updates only what it sends;
+   * PUT would replace the sprint and fail without its name.
    *
-   * PUT /rest/agile/1.0/sprint/{sprintId}
+   * POST /rest/agile/1.0/sprint/{sprintId}
    */
   async updateSprint(
     sprintId: number,
@@ -1892,7 +1893,7 @@ export class JiraClient {
   ): Promise<JiraSprint> {
     return this.request(`/sprint/${sprintId}`, {
       apiBase: this.agilePath,
-      method: "PUT",
+      method: "POST",
       body: params,
     });
   }
