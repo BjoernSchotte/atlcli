@@ -85,6 +85,9 @@ describe("reading", () => {
     await t.settle();
     await expandNode(t.ctx, wiki, t.ctx.store.get().wiki.nav.nodes["p:10"]!);
     expect(t.ctx.store.get().wiki.nav.nodes["p:10"]!.children).toEqual(["p:11"]);
+    // Opening the page lists its children too (live: this list hit the v2 API and failed with 404).
+    await wiki.open(t.ctx, t.ctx.store.get().wiki.nav.nodes["p:10"]!);
+    expect(t.ctx.store.get().wiki.list.items.map((r) => r.id)).toEqual(["10", "11"]);
     expect(t.calls.map((c) => c.method)).not.toContain("getPageDirectChildren");
   });
 

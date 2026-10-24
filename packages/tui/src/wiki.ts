@@ -69,10 +69,20 @@ export function loadSearch(ctx: Ctx, title: string, cql: string): Promise<void> 
   );
 }
 
+/** Current child pages and folders of a page or folder. Data Center has no v2 API and no folders: v1 child pages there. */
+async function directChildren(client: ConfluenceClient, parentId: string): Promise<{ id: string; title: string; type: "page" | "folder" }[]> {
+  if (client.deploymentType !== "cloud") {
+    return (await client.getChildrenWithPosition(parentId)).map((p) => ({ id: p.id, title: p.title, type: "page" }));
+  }
+  const children = await client.getPageDirectChildren(parentId);
+  return children
+    .filter((c) => (c.status ?? "current") === "current" && (c.type === "page" || c.type === "folder"))
+    .map((c) => ({ id: c.id, title: c.title, type: c.type as "page" | "folder" }));
+}
+
 /** A page's children as rows, the page itself first (so its detail shows). */
 async function childRows(client: ConfluenceClient, page: { id: string; title: string; spaceKey?: string } | undefined, parentId: string): Promise<WikiPageRow[]> {
-  const children = await client.getPageDirectChildren(parentId);
-  const rows = children.filter((c) => c.type === "page" && (c.status ?? "current") === "current").map((c) => ({ id: c.id, title: c.title, spaceKey: page?.spaceKey }));
+  const rows = (await directChildren(client, parentId)).filter((c) => c.type === "page").map((c) => ({ id: c.id, title: c.title, spaceKey: page?.spaceKey }));
   return page ? [{ id: page.id, title: page.title, spaceKey: page.spaceKey }, ...rows] : rows;
 }
 
@@ -464,16 +474,10 @@ async function childNodes(ctx: Ctx, node: TreeNode): Promise<Omit<TreeNode, "dep
     const pages = await client.getSpaceRootPages({ id: String(node.data?.id), key: String(node.data?.key) });
     return pages.map((p) => ({ id: `p:${p.id}`, label: p.title, kind: "page", expandable: true, data: { id: p.id, spaceKey: node.data?.key } }));
   }
-  if (node.kind === "page" && client.deploymentType !== "cloud") {
-    // Data Center has no v2 API and no folders.
-    const pages = await client.getChildrenWithPosition(String(node.data?.id));
-    return pages.map((p) => ({ id: `p:${p.id}`, label: p.title, kind: "page", expandable: true, data: { id: p.id, spaceKey: node.data?.spaceKey } }));
-  }
   if (node.kind === "page" || node.kind === "folder") {
-    const children = await client.getPageDirectChildren(String(node.data?.id));
-    return children
-      .filter((c) => (c.status ?? "current") === "current" && (c.type === "page" || c.type === "folder"))
-      .map((c) => ({ id: `p:${c.id}`, label: c.type === "folder" ? `📁 ${c.title}` : c.title, kind: c.type, expandable: true, data: { id: c.id, spaceKey: node.data?.spaceKey } }));
+    return (await directChildren(client, String(node.data?.id))).map((c) => ({
+      id: `p:${c.id}`, label: c.type === "folder" ? `📁 ${c.title}` : c.title, kind: c.type, expandable: true, data: { id: c.id, spaceKey: node.data?.spaceKey },
+    }));
   }
   return [];
 }
