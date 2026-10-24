@@ -31,6 +31,7 @@
     "@atlcli/pdf-template-authoring": "workspace:*",
     "@atlcli/plugin-api": "workspace:*",
     "@atlcli/research": "workspace:*",
+    "@atlcli/script-runtime": "workspace:*",
     "@atlcli/template-pack": "workspace:*",
     "@atlcli/tui": "workspace:*",
     "@atlcli/web-publish": "workspace:*",

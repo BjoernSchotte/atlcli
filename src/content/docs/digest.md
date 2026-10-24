@@ -244,3 +244,4 @@ That is the upper bound, to keep queries cheap after a long break. A warning say
 - [Configuration: defaults and profiles](configuration.md)
 - [Jira Audit](jira/audit.md) and [Audit Rules](jira/audit-rules.md)
 - [Research](reference/research.md), the agentic alternative for open questions
+- [Automation Scripts](scripts.md), for changes across many issues and pages

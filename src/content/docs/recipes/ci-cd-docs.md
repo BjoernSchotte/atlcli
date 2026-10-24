@@ -60,10 +60,12 @@ jobs:
 
       - name: Push to Confluence
         env:
-          ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
+          ATLCLI_SITE: ${{ secrets.ATLASSIAN_URL }}
           ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
           ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
-        run: ~/.atlcli/bin/atlcli wiki docs push ./docs
+        run: |
+          ~/.atlcli/bin/atlcli auth login
+          ~/.atlcli/bin/atlcli wiki docs push ./docs
 ```
 
 ### On Release
@@ -90,10 +92,12 @@ jobs:
 
       - name: Push to Confluence
         env:
-          ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
+          ATLCLI_SITE: ${{ secrets.ATLASSIAN_URL }}
           ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
           ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
-        run: ~/.atlcli/bin/atlcli wiki docs push ./docs
+        run: |
+          ~/.atlcli/bin/atlcli auth login
+          ~/.atlcli/bin/atlcli wiki docs push ./docs
 ```
 
 ## GitLab CI
@@ -111,9 +115,10 @@ publish-docs:
       - docs/**
   script:
     - curl -fsSL https://atlcli.sh/install.sh | bash
+    - ~/.atlcli/bin/atlcli auth login
     - ~/.atlcli/bin/atlcli wiki docs push ./docs
   variables:
-    ATLCLI_BASE_URL: $ATLASSIAN_URL
+    ATLCLI_SITE: $ATLASSIAN_URL
     ATLCLI_EMAIL: $ATLASSIAN_EMAIL
     ATLCLI_API_TOKEN: $ATLASSIAN_TOKEN
 ```
@@ -125,7 +130,7 @@ pipeline {
     agent any
 
     environment {
-        ATLCLI_BASE_URL = credentials('atlassian-url')
+        ATLCLI_SITE = credentials('atlassian-url')
         ATLCLI_EMAIL = credentials('atlassian-email')
         ATLCLI_API_TOKEN = credentials('atlassian-token')
     }
@@ -141,7 +146,7 @@ pipeline {
                 changeset 'docs/**'
             }
             steps {
-                sh '~/.atlcli/bin/atlcli wiki docs push ./docs'
+                sh '~/.atlcli/bin/atlcli auth login && ~/.atlcli/bin/atlcli wiki docs push ./docs'
             }
         }
     }

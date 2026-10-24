@@ -27,6 +27,7 @@ import jiraIssues from "../../../skills/atlcli/references/jira-issues.md" with {
 import jiraSearch from "../../../skills/atlcli/references/jira-search.md" with { type: "text" };
 import pluginsAndLocalTools from "../../../skills/atlcli/references/plugins-and-local-tools.md" with { type: "text" };
 import safety from "../../../skills/atlcli/references/safety.md" with { type: "text" };
+import scripts from "../../../skills/atlcli/references/scripts.md" with { type: "text" };
 
 export interface SkillFile {
   /** Path relative to the skill directory, with `/` separators. */
@@ -56,6 +57,7 @@ export const SKILL_FILES: readonly SkillFile[] = [
   { path: "references/jira-search.md", content: jiraSearch },
   { path: "references/plugins-and-local-tools.md", content: pluginsAndLocalTools },
   { path: "references/safety.md", content: safety },
+  { path: "references/scripts.md", content: scripts },
 ];
 
 /**

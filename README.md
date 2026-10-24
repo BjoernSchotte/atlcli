@@ -7,9 +7,7 @@ boards and sprints from the command line, keep Confluence spaces as Markdown in
 Git, and export pages and page trees to **publication-grade PDF and Word** — from
 the CLI or locally in a Chrome side panel.
 
-[Documentation](https://atlcli.sh/) ·
-[Getting started](https://atlcli.sh/getting-started/) ·
-[CLI reference](https://atlcli.sh/reference/cli-commands/)
+[Quick install](#quick-install) | [Terminal UI](#terminal-ui) | [PDF and Word](#publication-grade-pdf-and-word) | [In your browser](#in-your-browser) | [Jira](#jira-from-the-command-line) | [Confluence as code](#confluence-as-code) | [Confluence as a filesystem](#confluence-as-a-filesystem) | [Web publishing](#static-web-publishing) | [Automation scripts](#automation-scripts) | [Scripts, CI and agents](#built-for-scripts-ci-and-agents) | [Agent skill](#agent-skill) | [Install](#install) | [Documentation](#documentation) | [Development](#development) | [License](#license)
 
 [![Build](https://github.com/BjoernSchotte/atlcli/actions/workflows/ci.yml/badge.svg)](https://github.com/BjoernSchotte/atlcli/actions)
 [![Version](https://img.shields.io/github/v/release/BjoernSchotte/atlcli)](https://github.com/BjoernSchotte/atlcli/releases)
@@ -32,10 +30,6 @@ development channel: [Install](#install).
 | ![Sprint 42 on a scrum board in the atlcli TUI](assets/readme/tui-jira-sprint.png) | ![A Confluence page as Markdown in the atlcli TUI](assets/readme/tui-wiki-page.png) |
 | **Every change shows a diff first** | **Publication-grade PDF** |
 | ![Editing an issue: the diff before saving](assets/readme/tui-jira-diff.png) | ![PDF page with a table of contents, Confluence panels and status badges](assets/readme/document-fidelity-toc-macros.png) |
-
-- **Start:** [Terminal UI](#terminal-ui) · [PDF and Word export](#publication-grade-pdf-and-word) · [In your browser](#in-your-browser) · [Install](#install)
-- **Work:** [Jira from the command line](#jira-from-the-command-line) · [Confluence as code](#confluence-as-code) · [Confluence as a filesystem](#confluence-as-a-filesystem) · [Static web publishing](#static-web-publishing)
-- **Automate:** [Scripts, CI and agents](#built-for-scripts-ci-and-agents) · [Agent skill](#agent-skill) · [Documentation](#documentation)
 
 ## Terminal UI
 
@@ -206,6 +200,41 @@ atlcli wiki publish run --project .atlcli/publish.json --profile work
 
 [Explore Astro web publishing →](https://atlcli.sh/publishing/)
 
+## Automation scripts
+
+Write Jira and Confluence automation as a few lines of TypeScript. No imports,
+no setup: `atlcli.*` is always there, and the script runs in a sandbox without
+file system or network access.
+
+```ts
+for await (const issue of atlcli.jira.search("project = TEAM AND updated < -180d")) {
+  await atlcli.jira.comment(issue.key, "Closing as stale");
+  await atlcli.jira.transition(issue.key, "Won't Do");
+}
+```
+
+```bash
+atlcli script run stale.ts                        # dry run: prints the plan, changes nothing
+atlcli script run stale.ts --plan-out plan.json   # review it, e.g. as a CI artifact
+atlcli script apply plan.json                     # apply exactly that plan
+```
+
+Every write is planned first. Applying checks that nothing changed in the
+meantime, and writes nothing if something did. Updates that would change nothing
+are left out, so a re-run of a finished script plans nothing.
+
+| Area | What scripts can do |
+| --- | --- |
+| Jira issues | search, read, create, update, transition, comment, link, assign by name or email, labels, attachments |
+| Jira agile | list boards and sprints, create, start and close sprints, move issues into a sprint |
+| Confluence pages | search, read as Markdown, create, update, upsert by title, move, delete to the trash |
+| Around pages | labels, comments, attachments, PDF and DOCX export |
+
+`export const meta = { permissions: [...] }` limits a shared or AI-generated
+script to the projects and spaces it names.
+
+[Explore automation scripts →](https://atlcli.sh/scripts/)
+
 ## Built for scripts, CI and agents
 
 - Human-readable output by default, stable `--json` for scripts
@@ -221,6 +250,7 @@ atlcli wiki publish run --project .atlcli/publish.json --profile work
 | Sync Confluence and Markdown | `atlcli wiki docs --help` |
 | Work on Confluence with a shell | `atlcli wiki sh --help` |
 | Export DOCX or PDF | `atlcli wiki export --help` |
+| Automate with TypeScript | `atlcli script init` |
 | Diagnose configuration | `atlcli doctor` |
 | Teach an agent atlcli | `atlcli skill --install .claude/skills` |
 
@@ -271,6 +301,7 @@ The complete documentation lives at **[atlcli.sh](https://atlcli.sh/)**:
 [Confluence](https://atlcli.sh/confluence/) ·
 [DOCX and PDF export](https://atlcli.sh/confluence/export/) ·
 [Jira](https://atlcli.sh/jira/) ·
+[Automation scripts](https://atlcli.sh/scripts/) ·
 [Recipes](https://atlcli.sh/recipes/) ·
 [CLI reference](https://atlcli.sh/reference/cli-commands/) ·
 [Troubleshooting](https://atlcli.sh/reference/troubleshooting/)

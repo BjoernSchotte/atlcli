@@ -111,6 +111,7 @@ path as linked, for example `atlcli skill references/safety.md`.
 | Content health of a synced docs directory: stale pages, orphans, broken links (`audit wiki`) | [references/confluence-audit.md](references/confluence-audit.md) |
 | Jira hygiene: stuck or unassigned work, stale and overdue issues, rules file, baseline (`audit jira`) | [references/jira-audit.md](references/jira-audit.md) |
 | What changed since the last look, what waits on the user, a standup note: `atlcli digest` | [references/digest.md](references/digest.md) |
+| Many changes or changes needing logic, as one reviewed plan: TypeScript scripts with `atlcli script` (plan, then apply) | [references/scripts.md](references/scripts.md) |
 | Plugins (`git`, `drawio`), `models`, `log`, `update`, `completion` | [references/plugins-and-local-tools.md](references/plugins-and-local-tools.md) |
 | This skill's own files, printing or installing it: `atlcli skill` | [references/plugins-and-local-tools.md](references/plugins-and-local-tools.md#skill) |
 
@@ -128,6 +129,7 @@ wiki  page space docs search my recent template export import publish
       sh mount vfs
 top   auth completion config doctor flag log models plugin update version
       release-info research chat pdf-template digest audit skill tui
+      script
 ```
 
 `atlcli tui` is an interactive fullscreen browser for people; it fails without

@@ -351,7 +351,7 @@ Tokens are resolved in this order (first found wins):
 
 1. `ATLCLI_API_TOKEN` environment variable
 2. Mac Keychain (if username is configured in profile)
-3. Config file (`~/.atlcli/credentials.json`)
+3. The token stored in the profile (`~/.atlcli/config.json`)
 
 ### Checking Token Source
 
@@ -368,42 +368,28 @@ The output includes:
 
 ## Environment Variables
 
-Override credentials with environment variables:
+| Variable | Read by | Effect |
+|----------|---------|--------|
+| `ATLCLI_API_TOKEN` | every command | Token for the active profile; wins over the Keychain and the stored token. Also the default for `auth login --token` |
+| `ATLCLI_SITE` | `auth login`, `auth init` | Default for `--site` |
+| `ATLCLI_EMAIL` | `auth login`, `auth init` | Default for `--email` |
+| `ATLCLI_PROFILE` | every command | Profile to use when `--profile` is not given |
 
-| Variable | Description |
-|----------|-------------|
-| `ATLCLI_SITE` | Atlassian instance URL |
-| `ATLCLI_EMAIL` | Account email (Cloud) |
-| `ATLCLI_API_TOKEN` | API token (Cloud) or PAT (Server/DC) |
-| `ATLCLI_PROFILE` | Default profile name |
-
-:::tip
-`ATLCLI_API_TOKEN` works for both Cloud API tokens and Server/Data Center Personal Access Tokens. The authentication method is determined by the profile's `authType` setting.
-
-For Cloud profiles, `ATLCLI_EMAIL` (or a saved profile email) is still required to build Basic auth headers, even if the token comes from `ATLCLI_API_TOKEN`.
+:::caution[Environment variables do not replace a profile]
+`ATLCLI_SITE` and `ATLCLI_EMAIL` only feed `auth login`. Without a profile, every command fails with `No active profile found`, whatever the environment holds. The exception is [`wiki export`](confluence/export.md#profile-free-auth-for-ci), which can run from environment variables alone.
 :::
 
-Environment variables take precedence over config files:
-
-```bash
-export ATLCLI_SITE="https://ci.atlassian.net"
-export ATLCLI_EMAIL="ci@company.com"
-export ATLCLI_API_TOKEN="$CI_ATLASSIAN_TOKEN"
-atlcli jira search --jql "project = PROJ"
-```
+`ATLCLI_API_TOKEN` works for both Cloud API tokens and Server/Data Center Personal Access Tokens. The profile's auth type decides how it is sent. Cloud profiles take the email from the profile, so log in with `--email` or `ATLCLI_EMAIL` first.
 
 ## Precedence
 
-Credentials are resolved in this order (later wins):
-
-1. Default profile in config
-2. `ATLCLI_PROFILE` environment variable
-3. `ATLCLI_SITE` / `ATLCLI_EMAIL` / `ATLCLI_API_TOKEN` env vars
-4. `--profile` command flag
+- **Profile:** `--profile`, else `ATLCLI_PROFILE`, else the current profile in the config file.
+- **Token:** `ATLCLI_API_TOKEN`, else the Keychain, else the token stored in the profile (see [Token Resolution Priority](#token-resolution-priority)).
+- **Site and email:** the profile's values. Environment variables only fill them in when `auth login` creates or updates the profile, and flags win over them there.
 
 ## CI/CD Usage
 
-For CI/CD pipelines, use environment variables or secrets:
+In CI, log in from secrets once per job, then run commands. `auth login` asks nothing when site, email and token are all set, so it works without a terminal. The profile it writes lives in the runner's home directory and goes away with the runner.
 
 ### GitHub Actions
 
@@ -413,19 +399,22 @@ For CI/CD pipelines, use environment variables or secrets:
     ATLCLI_SITE: ${{ secrets.ATLASSIAN_URL }}
     ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
     ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
-  run: atlcli jira search --jql "fixVersion = ${{ github.ref_name }}"
+  run: |
+    atlcli auth login
+    atlcli jira search --jql "fixVersion = ${{ github.ref_name }}"
 ```
 
 ### GitLab CI
 
 ```yaml
 jira-update:
-  script:
-    - atlcli jira issue transition --key $ISSUE_KEY --to Done
   variables:
     ATLCLI_SITE: $ATLASSIAN_URL
     ATLCLI_EMAIL: $ATLASSIAN_EMAIL
     ATLCLI_API_TOKEN: $ATLASSIAN_TOKEN
+  script:
+    - atlcli auth login
+    - atlcli jira issue transition --key $ISSUE_KEY --to Done
 ```
 
 ### Jenkins
@@ -436,12 +425,20 @@ environment {
     ATLCLI_EMAIL = credentials('atlassian-email')
     ATLCLI_API_TOKEN = credentials('atlassian-token')
 }
+stages {
+    stage('Search') {
+        steps {
+            sh 'atlcli auth login && atlcli jira search --assignee me'
+        }
+    }
+}
 ```
 
 ### Docker
 
 ```bash
-docker run -e ATLCLI_SITE -e ATLCLI_EMAIL -e ATLCLI_API_TOKEN atlcli jira search
+docker run -e ATLCLI_SITE -e ATLCLI_EMAIL -e ATLCLI_API_TOKEN atlcli \
+  sh -c 'atlcli auth login && atlcli jira search --assignee me'
 ```
 
 ## Troubleshooting

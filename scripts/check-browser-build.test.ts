@@ -38,6 +38,7 @@ describe("browser-build gate (spec 001 task 6)", () => {
       "packages/action-registry/src/index.ts",
       "packages/change-set/src/index.ts",
       "packages/change-set/src/adf/index.ts",
+      "packages/script-runtime/src/index.ts",
       "packages/export-blocks/src/index.ts",
       "packages/web-publish/src/index.ts",
       "packages/confluence/src/markdown.ts",

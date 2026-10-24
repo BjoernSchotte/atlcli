@@ -21,6 +21,7 @@ Real-world workflows and use cases for atlcli.
 - [Confluence for Coding Agents](confluence-vfs-agents.md) - Teach an agent to use Confluence as a filesystem
 - [Issue Triage](issue-triage.md) - Bulk issue triage workflow
 - [Meeting Notes to Jira](meeting-notes-to-jira.md) - Turn action items into Jira issues and keep them in sync
+- [Scripts in CI](scripts-in-ci.md) - Review automation script plans in pull requests, apply after approval
 
 ## Common Patterns
 

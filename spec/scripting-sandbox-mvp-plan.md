@@ -64,8 +64,8 @@ Verben Raw-Requests bauen. Das würde die Client-Logik (Paging, Fehlerformen, AD
 bestehenden Clients, der spätere Forge-Host über `requestConfluence`.
 
 Die Markdown-Konvertierung sitzt im Adapter. `ponytail:` Damit konvertiert jeder Host selbst.
-Ist `markdown.ts` browser-sicher als Subpath exportierbar, zieht die Konvertierung später in
-die Runtime.
+`packages/confluence/src/markdown.ts` und `packages/jira/src/client.ts` stehen bereits im
+Browser-Gate. Die Konvertierung kann also in die Runtime wandern, sobald der zweite Host kommt.
 
 ## Tasks
 
@@ -80,7 +80,24 @@ Jeder Task wird per TDD umgesetzt und endet mit einem eigenen Commit.
   beide exakt gepinnt.
 - **Check:** `bun scripts/check-browser-build.ts` und `bun run typecheck` laufen grün.
 
+**Umgesetzt (T1):** Das Paket ist `private` wie `import-docx` und deshalb noch nicht im
+API-Report. Die öffentliche Skript-API ist `atlcli.d.ts` (T8), nicht der Paket-Export. Für
+`build` gilt `lib: ES2022, DOM, ESNext.Disposable` ohne Node- oder Bun-Typen. Der Debug-Build
+(`@jitl/quickjs-ng-wasmfile-debug-sync`) ist eine Dev-Dependency für die Leak-Erkennung.
+
 ### T2: Sandbox-Kern
+
+**Umgesetzt:** `runScript(js, { host, params, limits, onLog, variant })`. Die Verb- und
+Plan-Felder (`mode`, `ops`) kommen mit T4. Erkenntnisse aus dem Debug-Build:
+
+- Das Ergebnis meldet der Guest synchron über `done(ok, payload)` zurück, nicht über
+  `ctx.resolvePromise`. `resolvePromise` hält Host-Handles fest, die bei einem frühen Abbruch
+  (Deadline oder Limit) lecken bzw. nach dem Dispose noch benutzt werden.
+- `deferred.resolve/reject` übernehmen den Wert-Handle nicht; er muss selbst freigegeben werden.
+- Host-Fehler gehen als JSON-String über die Grenze, und der Guest baut daraus einen `Error`
+  mit explizitem `stack`. Ein lazy erfasster Stack eines im Promise-Job erzeugten Errors hat
+  sonst die Leak-Assertion im Debug-Build ausgelöst.
+- Nach OOM wird die WASM-Instanz verworfen (`ponytail:` grob, aber sicher).
 
 Signatur:
 
@@ -151,6 +168,35 @@ Jedes Verb ist ein Registry-Eintrag mit `{ name, kind, schema, permission(args),
   - Platzhalterkette `createPage` → `createPage(parentId)`.
   - Das Write-Limit greift.
 
+**Umgesetzt (T3+T4).** Abweichungen und Präzisierungen gegenüber oben:
+
+- **`meta` und Parameter:** Sie werden nicht in einem eigenen Lauf gelesen. Die Sandbox ruft
+  nach dem Laden des Moduls synchron `prepare(meta)` auf, und dessen Rückgabe wird zum Argument
+  des Default-Exports. `atlcli.*` ist auf Modul-Top-Level gesperrt, damit kein Code vor der
+  Validierung handelt.
+  - `inspectScript` nutzt denselben Weg mit `callDefault: false`.
+  - `meta` ist `strict`: Unbekannte Keys sind Fehler (Schutz vor Tippfehlern). `meta.hosts`
+    entfällt bis zum zweiten Host.
+- **Verben:**
+  - `atlcli.log`, `atlcli.params` und `atlcli.host` entfallen. `console.*` und das
+    Default-Export-Argument decken beides ab.
+  - `jira.transition(key, to)` hat keine `comment`-Option; dafür gibt es `jira.comment`.
+  - Transitions werden schon beim Planen gegen die verfügbaren geprüft.
+  - Search-Verben nehmen `{ limit }` und sind Async-Iteratoren über einen Guest-Wrapper
+    (Sandbox-Option `wrappers`).
+- **Permissions:**
+  - Eine Verweigerung, eine Überschreitung von `maxWrites` (Default 100) und jedes
+    `ScriptError` aus einem Host-Verb beenden den Lauf, auch wenn das Skript den Fehler fängt.
+  - Kaputte Argumente und ein unbekannter Issue-Key sind dagegen fangbare Fehler.
+- **Mehrfach-Writes auf dasselbe Objekt:**
+  - Nur der erste Write trägt eine Vorbedingung. Spätere Writes hängen per `dependsOn` am
+    vorherigen, sonst würde Apply am eigenen ersten Write scheitern.
+  - Wird dieselbe Seite zweimal per `createPage` angelegt, ist das ein Fehler.
+  - `upsertPage` erkennt Seiten, die im Plan angelegt wurden, und aktualisiert dann den
+    Platzhalter.
+- **Grenze:** Reads im Dry-Run sehen den Stand vor allen geplanten Writes. Das wird in T9
+  dokumentiert.
+
 ### T5: Plan-Datei
 
 Schema `atlcli.script-plan/1`. Inhalt:
@@ -189,6 +235,23 @@ dokumentiert.
 - Teilfehler mit Bericht.
 - Platzhalter-Auflösung.
 
+**Umgesetzt (T5+T6).**
+
+- `createScriptPlan`, `serializeScriptPlan` und `parseScriptPlan` liegen in `plan.ts`,
+  `applyScriptPlan` in `apply.ts`.
+- Die Plan-Datei ist kanonisches JSON, gleiche Pläne ergeben also gleiche Bytes. Der Digest
+  läuft über alle Felder außer `digest`. Damit fällt auch ein manipuliertes `target` auf.
+- Die Konsistenz wird vor dem Digest geprüft: `seq` ist fortlaufend, `dependsOn` verweist nur
+  auf frühere Operationen.
+- Die Logs des Laufs stehen **nicht** im Plan. Sie sind nicht reviewrelevant und würden
+  harmlose Unterschiede erzeugen; die CLI gibt sie direkt aus.
+- Apply ergibt `applied`, `drift` (nichts geschrieben) oder `failed` (bis zum Fehler
+  geschrieben, der Rest übersprungen). Konnte eine Vorbedingung nicht gelesen werden, zählt
+  das als Drift.
+- Für `updatePage` kommt die Version aus der Vorbedingung bzw. aus dem Ergebnis des
+  vorherigen Writes im selben Apply. So läuft z. B. `updatePage` gefolgt von `upsertPage` auf
+  dieselbe Seite als 7 → 8 → 9 durch.
+
 ### T7: CLI-Port-Adapter
 
 `script-port.ts` implementiert `ScriptPort` über `JiraClient` und `ConfluenceClient`:
@@ -216,6 +279,46 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
 - Hilfetexte, Shell-Completion und `ROOT_COMMANDS` werden ergänzt.
 - **Tests:** CLI-Tests im Muster von `jira-board-cli.test.ts`, inklusive Exit-Codes.
 
+**Umgesetzt (T7+T8), inklusive DX-Umbau:**
+
+- **Skript-Vertrag vereinfacht** (Wunsch: so wenig Boilerplate wie möglich):
+  - Der Modul-Body ist das Skript, `atlcli.*` funktioniert auf Top-Level.
+  - `meta` ist optional und wird statisch vor der Ausführung gelesen (`extractScriptMeta`).
+    Damit entfallen der `prepare`-Hook und die Sperre auf Top-Level-Ebene.
+  - `atlcli.params` ist eingebaut.
+  - Ohne `permissions` ist alles erlaubt; Writes laufen weiterhin nur über Plan/Apply.
+- **Engine:** quickjs-ng **asyncify** statt sync. quickjs-ng hat keinen Single-File-Build, und
+  beide Varianten erwarten `emscripten-module.wasm` neben dem Bundle. Die CLI liefert die
+  asyncify-WASM bereits aus (`apps/cli/build-assets.ts`), also bleibt es bei einer Engine.
+  - Die Promise-Brücke und damit echtes `Promise.all` bleibt erhalten, weil keine
+    asyncified Host-Funktionen genutzt werden.
+  - Die Leak-Tests laufen weiter auf dem ng-Debug-Build (sync); die Sandbox akzeptiert beide
+    Modularten.
+- **Patch:** `quickjs-emscripten-core@0.32.0` meldet asyncify-Runtimes vor `QTS_FreeRuntime`
+  ab. Host-Funktionen, die erst beim Teardown-GC freigegeben werden, warfen dann „QuickJSRuntime
+  not found when trying to free HostRef“. Behoben über `patches/`, Regressionstest in
+  `sandbox.test.ts`.
+- **Plan-Referenzen in Texten:** `plan:<n>` wird auch innerhalb von Strings aufgelöst und in
+  `dependsOn` erfasst (z. B. eine Seite, die ein neues Issue nennt). Nur Referenzen auf
+  erzeugende Operationen (`jira.create`, `confluence.createPage`) werden ersetzt; anderer Text
+  bleibt unverändert.
+- **CLI:** `atlcli script run <file> | -e <code>`, `--param`, `--plan-out`, `--apply`, `--yes`,
+  `--json`, außerdem `apply`, `check` (Validierung von `meta` plus `tsc --noEmit`, falls `tsc`
+  vorhanden ist) und `init` (`atlcli.d.ts`, `tsconfig.json` mit `moduleDetection: force`,
+  `example.ts`).
+  - Exit-Code 2 bei Drift.
+  - `--apply` ohne Terminal oder mit `--json` verlangt `--yes`.
+- **Live-E2E (mayflower, DOCSY/ATLCLI):**
+  - Lesezugriff aus dem gebauten `dist/`.
+  - Plan und Apply mit 7 Operationen (Issue anlegen, kommentieren, transitionieren; zwei
+    Seiten in Hierarchie, Label, Upsert): alles verifiziert, danach gelöscht.
+  - Drift live geprüft: Exit 2, nichts geschrieben.
+  - Teilfehler live gesehen: Die Transition „Done“ gibt es im deutschen Workflow nicht
+    („Fertig“). Der Stopp war sauber, die Fehlermeldung nennt jetzt die verfügbaren
+    Transitions.
+- **Bekannte Grenze:** Transitions für Issues, die erst im Plan angelegt werden, lassen sich
+  beim Planen nicht prüfen. Das wird in T9 dokumentiert.
+
 ### T9: Doku, Skill, E2E
 
 - **Doku:** `docs/` bekommt einen Feature-Guide (Erstes Skript, Plan/Apply, CI-Rezept mit
@@ -230,6 +333,104 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
      sie.
   3. Drift-Test: Die Seite wird zwischen Plan und Apply manuell geändert; Apply muss abbrechen.
   4. Ein Endlosschleifen-Skript wird abgebrochen.
+
+**Umgesetzt (T9):**
+
+- **Doku:**
+  - Guide `src/content/docs/scripts.md`: erstes Skript, Skripte schreiben, Plan/Apply,
+    `meta`, Editor und Typecheck, Beispiele, Limits, Troubleshooting.
+  - Referenz `reference/scripts.md`: Befehle und Flags, Globals, `meta` mit Typ, Default und
+    Constraints, Verben, Platzhalter, Vorbedingungen, Limits, Plan-Datei, JSON-Formate,
+    Exit-Codes.
+  - Rezept `recipes/scripts-in-ci.md`: Plan als PR-Artefakt, Apply des freigegebenen
+    Artefakts per `workflow_dispatch` mit Environment-Approval, wöchentliche Routine mit
+    `permissions` und `maxWrites`.
+  - Dazu: Sidebar, `cli-commands.md#scripts`, Rezept-Übersicht und Related Topics.
+  - Statt „Apply nach Merge“ wendet das CI-Rezept das *geprüfte Artefakt* an. Ein frischer
+    Lauf nach dem Merge würde nicht genau das ausführen, was im Review stand.
+- **Doku-Beispiele geprüft:**
+  - Alle 12 TypeScript-Blöcke der drei Seiten bestehen den Typecheck gegen die generierte
+    `atlcli.d.ts`. Dabei fiel auf, dass `ScriptMeta.name` und `.permissions` dort noch
+    Pflichtfelder waren; das ist korrigiert.
+  - Das Release-Notes-Beispiel lief live unverändert, nur mit Space `DOCSY` statt `DOCS`:
+    temporäre Fix-Version und temporäres Issue (beides per Skript angelegt), dann Anlegen,
+    Labeln und ein zweiter Lauf als Upsert.
+  - Das Minimal-Beispiel lief live.
+  - Alle Testressourcen sind gelöscht.
+- **Live-Szenarien 1–3:** abgedeckt durch die T7/T8-E2E. Szenario 4 (Endlosschleife) lief
+  aus dem gebauten CLI.
+- **Follow-ups (umgesetzt am 2026-10-24):**
+  - **Inhaltsgleiche Updates:**
+    - Der Port hat jetzt `confluenceNormalizeMarkdown`, also den Rundweg Markdown → Storage →
+      Markdown des Hosts.
+    - Das erste `updatePage`/`upsertPage` auf eine Seite wird übersprungen, wenn Titel und
+      normalisierter Body gleich sind. Es landet dann in `plan.skipped` und erscheint in der
+      Ausgabe unter „Unchanged, not planned“.
+    - Spätere Writes auf eine im Plan schon geänderte Seite bleiben immer erhalten, sonst ginge
+      A → B → A verloren.
+    - Live gegen Confluence geprüft mit Tabelle, Codeblock und Link: Der identische Re-Run
+      plant nichts.
+    - Für Jira-Updates und Labels gibt es keinen No-op-Vergleich; dafür würden zusätzliche
+      Reads gebraucht.
+  - **Limits per Flag:** `--timeout` (Dauer), `--max-writes` (gewinnt über
+    `meta.limits.maxWrites`), `--max-calls`, `--memory <MB>`. Fest bleiben der Stack und das
+    60-s-Timeout pro Call.
+  - **Doku-Fehler zu Umgebungsvariablen korrigiert:**
+    - Betroffen: `reference/environment.md`, `authentication.md`, `configuration.md`, die
+      Rezepte `ci-cd-docs.md` (`wiki docs push`) und `sprint-reporting.md`.
+    - Kern: Umgebungsvariablen ersetzen kein Profil. `auth login` liest `ATLCLI_SITE` und
+      `ATLCLI_EMAIL`, zur Laufzeit wirkt nur `ATLCLI_API_TOKEN`; Ausnahme ist der profilfreie
+      `wiki export`.
+    - Außerdem stand in `authentication.md` eine nicht existierende `credentials.json`.
+    - Gegen einen Stub verifiziert: ohne Login „No active profile“, `auth login` liest die
+      Variablen ohne Rückfrage, danach läuft der Befehl.
+  - **Offen:** Data Center live verifizieren.
+- **Verb-Erweiterung (umgesetzt am 2026-10-24):**
+  - **Jira:**
+    - `link(from, type, to)`: Typname oder eine der beiden Phrasen; die inward-Phrase dreht
+      die Richtung um.
+    - `assign(key, user | null)`: Benutzer werden beim Planen über `resolveUser` aufgelöst.
+    - `addLabels`/`removeLabels`, `attach`
+    - `boards`/`sprints` als Iteratoren
+    - `createSprint`, `updateSprint` (Start nur mit beiden Daten, Schließen nur aus active)
+    - `moveToSprint`
+  - **Confluence:**
+    - `removeLabels`: ein fehlendes Label gilt als entfernt.
+    - `comments`/`comment` (Footer)
+    - `movePage` (nur im selben Space)
+    - `deletePage` (in den Papierkorb; spätere Writes darauf werfen)
+    - `attachments`/`attach` (gleicher Name ergibt eine neue Version)
+    - `export` (PDF/DOCX)
+  - **Entscheidungen:**
+    - Anhänge kommen als Inhalt aus dem Skript (utf8/base64, max. 10 MB), nie aus dem
+      Dateisystem. So kann ein geteiltes oder generiertes Skript keine lokalen Dateien
+      abgreifen.
+    - Export schreibt nur relativ unter das Apply-Verzeichnis. Der Pfad wird beim Planen und
+      vor dem Schreiben erneut geprüft, weil eine Plan-Datei editierbar ist.
+    - Die CLI führt den Export als Kindprozess `atlcli wiki export` aus, weil `fail()` den
+      Prozess beendet.
+    - Neue Vorbedingung `jira-sprint-unchanged` (Sprint-State).
+    - No-op-Skips für `assign`, Labels und `movePage`.
+  - **Bugs, die dabei mitbehoben wurden:**
+    - `addLabels` vor `updatePage` auf derselben Seite nahm dem Update die
+      Version-Vorbedingung, und Apply scheiterte mit „No known version“. Labels, Kommentare
+      und Anhänge belegen das Seitenobjekt jetzt nicht mehr.
+    - Jedes Skript, das nach einem `await` viel allokiert (GC während einer
+      fortgesetzten async-Funktion), brach beim Dispose an QuickJS' Leak-Assertion
+      (`gc_obj_list`) ab. Reproduziert mit QuickJS und quickjs-ng unter
+      quickjs-emscripten 0.32.
+    - Jetzt wird die WASM-Instanz verworfen und das Ergebnis bleibt erhalten. Ein Zähler hält
+      die Bridge-Leak-Prüfung der Tests scharf.
+  - **Live in ATLCLI/DOCSY geprüft (alles wieder gelöscht):**
+    - Ein Plan mit 17 Operationen: zwei Issues, Link, Assign, Labels, Anhang, Sprint und
+      Move, zwei Seiten mit Move, Labels, Kommentar, zwei Anhängen sowie PDF- und
+      DOCX-Export. Platzhalter wurden im Seitentext und im Kommentar aufgelöst.
+    - Re-Run: sechs Writes wurden als unverändert übersprungen; Anhangsversion v3; der
+      Sprint wurde umbenannt und gestartet.
+    - Löschen per Skript.
+    - Zwei Live-Befunde als Regressionstests:
+      - Sprint-Start ohne Daten liefert HTTP 400. Das wird jetzt beim Planen geprüft.
+      - Ein fehlendes Confluence-Label liefert 404.
 
 ## Abnahme
 
@@ -250,7 +451,8 @@ ein einfacher Concurrency-Limiter dazu (Default 4, per `--concurrency` einstellb
 
 ## Entscheidungen (2026-10-24)
 
-1. **WASM-Variante:** `@jitl/quickjs-ng-wasmfile-release-sync@0.32.0`, exakt gepinnt.
+1. **WASM-Variante:** zunächst `@jitl/quickjs-ng-wasmfile-release-sync@0.32.0`. In T7/T8
+   wurde aus Packaging-Gründen auf die asyncify-Variante gewechselt (siehe dort).
    - Die Variante bleibt austauschbar. Sie wird an genau einer Stelle in `sandbox.ts` an
      `newQuickJSWASMModuleFromVariant` übergeben. Alle `@jitl`-Varianten haben dieselbe
      FFI-Schnittstelle (`quickjs-ffi-types`).

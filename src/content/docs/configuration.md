@@ -319,14 +319,13 @@ Register projects for cross-project operations:
 
 | Variable | Description |
 |----------|-------------|
-| `ATLCLI_BASE_URL` | Atlassian instance URL |
-| `ATLCLI_EMAIL` | Account email |
-| `ATLCLI_API_TOKEN` | API token |
-| `ATLCLI_PROFILE` | Default profile |
-| `ATLCLI_LOG_LEVEL` | Logging level |
+| `ATLCLI_API_TOKEN` | Token for the active profile; overrides the stored token |
+| `ATLCLI_SITE`, `ATLCLI_EMAIL` | Defaults for `auth login --site` / `--email`; not read by other commands |
+| `ATLCLI_PROFILE` | Profile to use when `--profile` is not given |
+| `ATLCLI_LOG_LEVEL` | Logging level; overrides `logging.level` |
 | `ATLCLI_CONFIG` | Path to config file |
 
-Environment variables override config file settings.
+Environment variables do not replace a profile; see [Environment Variables](reference/environment.md) for what each one affects.
 
 ## Project Configuration
 

@@ -936,6 +936,23 @@ atlcli jira webhook refresh <id>        # Refresh expiration (30 day limit)
 
 **Event types:** `jira:issue_created`, `jira:issue_updated`, `jira:issue_deleted`, `comment_created`, `comment_updated`, `comment_deleted`, `sprint_created`, `sprint_started`, `sprint_closed`, `worklog_created`, `worklog_updated`, `worklog_deleted`
 
+## Scripts
+
+TypeScript automation for Jira and Confluence. Writes are planned and applied separately; see [Automation Scripts](../scripts.md) and the [Script API](scripts.md).
+
+```bash
+atlcli script run <file>                       # Run and show the plan (writes nothing)
+atlcli script run <file> --param key=value     # Pass parameters (atlcli.params)
+atlcli script run <file> --plan-out plan.json  # Write the plan for review or CI
+atlcli script run <file> --apply               # Plan, ask, apply
+atlcli script run <file> --apply --yes         # Plan and apply without asking
+atlcli script run -e '<code>'                  # Inline code
+atlcli script run <file> --timeout 30m --max-writes 2000   # Raise limits
+atlcli script apply plan.json --yes            # Apply a reviewed plan (exit 2 on drift)
+atlcli script check <file>                     # Validate meta, type-check with tsc
+atlcli script init [dir]                       # atlcli.d.ts, tsconfig.json, example.ts
+```
+
 ## Logging
 
 ```bash
@@ -1095,5 +1112,6 @@ atlcli -v                               # Short form
 
 - [Shell Completions](shell-completions.md) - Tab completion setup
 - [Agent Skill](agent-skill.md) - The agent skill and `atlcli skill`
+- [Script API](scripts.md) - `atlcli script` verbs, meta and plan file
 - [Environment Variables](environment.md) - Environment configuration
 - [Troubleshooting](troubleshooting.md) - Common issues

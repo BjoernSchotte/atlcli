@@ -88,6 +88,7 @@
         "@atlcli/pdf-template-authoring": "workspace:*",
         "@atlcli/plugin-api": "workspace:*",
         "@atlcli/research": "workspace:*",
+        "@atlcli/script-runtime": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
         "@atlcli/tui": "workspace:*",
         "@atlcli/web-publish": "workspace:*",
@@ -494,6 +495,19 @@
         "zod": "4.6.7",
       },
     },
+    "packages/script-runtime": {
+      "name": "@atlcli/script-runtime",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/change-set": "workspace:*",
+        "@jitl/quickjs-ng-wasmfile-release-asyncify": "0.32.0",
+        "quickjs-emscripten-core": "0.32.0",
+        "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@jitl/quickjs-ng-wasmfile-debug-sync": "0.32.0",
+      },
+    },
     "packages/template-pack": {
       "name": "@atlcli/template-pack",
       "version": "0.6.0",
@@ -561,6 +575,7 @@
     "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch",
     "webdav-server@2.6.3": "patches/webdav-server@2.6.3.patch",
     "@langchain/quickjs@1.0.0": "patches/@langchain%2Fquickjs@1.0.0.patch",
+    "quickjs-emscripten-core@0.32.0": "patches/quickjs-emscripten-core@0.32.0.patch",
   },
   "overrides": {
     "deepagents": "1.12.1",
@@ -705,6 +720,8 @@
     "@atlcli/plugin-api": ["@atlcli/plugin-api@workspace:packages/plugin-api"],
 
     "@atlcli/research": ["@atlcli/research@workspace:packages/research"],
+
+    "@atlcli/script-runtime": ["@atlcli/script-runtime@workspace:packages/script-runtime"],
 
     "@atlcli/template-pack": ["@atlcli/template-pack@workspace:packages/template-pack"],
 
@@ -887,6 +904,8 @@
     "@jetbrains/websandbox": ["@jetbrains/websandbox@1.3.1", "", {}, "sha512-YTl3MJXbAkYDyuRhWqlQoo7eY2jaLGRqUkx4LVRvxr0VnK7s5bu0p2KAGOWZIBf6I3pmuuq+JzBDHw1b0fV0/Q=="],
 
     "@jitl/quickjs-ffi-types": ["@jitl/quickjs-ffi-types@0.32.0", "", {}, "sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg=="],
+
+    "@jitl/quickjs-ng-wasmfile-debug-sync": ["@jitl/quickjs-ng-wasmfile-debug-sync@0.32.0", "", { "dependencies": { "@jitl/quickjs-ffi-types": "0.32.0" } }, "sha512-OHerkOeYgNwEWL0vcDOxrolZLiW9JuO8maRiDuuvBymuyWkqIMghlepDUOOoEcfJ2Yc6Vhd3fwMsKYfCYxsxEQ=="],
 
     "@jitl/quickjs-ng-wasmfile-release-asyncify": ["@jitl/quickjs-ng-wasmfile-release-asyncify@0.32.0", "", { "dependencies": { "@jitl/quickjs-ffi-types": "0.32.0" } }, "sha512-N4GfnnxR0g4dEaymjclJkGjNaa1dpmPjp8fTu022WWFFyiQ2mOMi5b8V3CEWJOlW/4bflQGbSotuPI/I8/5PQg=="],
 
