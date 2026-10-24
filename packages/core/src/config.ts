@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, realpath, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import os from "node:os";
 
@@ -236,10 +236,24 @@ export async function loadConfig(): Promise<Config> {
   return parsed;
 }
 
+/**
+ * Writes the config atomically (a temp file, then a rename), readable by the
+ * owner only: it holds every profile and maybe tokens, and a crash or a second
+ * writer (the TUI saves views while the CLI runs) must not leave it cut off.
+ */
 export async function saveConfig(config: Config): Promise<void> {
   await mkdir(dirname(CONFIG_PATH), { recursive: true });
   const data = JSON.stringify(config, null, 2);
-  await writeFile(CONFIG_PATH, data, "utf8");
+  // A symlinked config (dotfiles) stays a symlink: replace the file it points to.
+  const target = await realpath(CONFIG_PATH).catch(() => CONFIG_PATH);
+  const temp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await writeFile(temp, data, { encoding: "utf8", mode: 0o600 });
+    await rename(temp, target);
+  } catch (err) {
+    await rm(temp, { force: true });
+    throw err;
+  }
 }
 
 export function getProfile(config: Config, name: string): Profile | undefined {

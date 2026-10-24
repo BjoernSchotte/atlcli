@@ -1,4 +1,8 @@
 import { describe, test, expect } from "bun:test";
+import { lstat, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   Config,
   Profile,
@@ -243,5 +247,43 @@ describe("config", () => {
       expect(retrieved?.tlsCaFile).toBe("/path/to/ca.pem");
       expect(retrieved?.tlsSkipVerify).toBe(false);
     });
+  });
+});
+
+describe("saveConfig", () => {
+  // In a child process: the config path comes from ATLCLI_CONFIG when the module loads.
+  async function save(path: string): Promise<void> {
+    const script = `import { saveConfig } from ${JSON.stringify(fileURLToPath(new URL("./config.ts", import.meta.url)))}; await saveConfig({ profiles: {}, tui: { refresh: 30 } });`;
+    const proc = Bun.spawn([process.execPath, "-e", script], { env: { ...process.env, ATLCLI_CONFIG: path }, stderr: "pipe" });
+    expect(await proc.exited).toBe(0);
+  }
+
+  test("writes atomically and owner-only, leaving no temp file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "atlcli-config-"));
+    try {
+      const file = join(dir, "config.json");
+      await save(file);
+      expect(JSON.parse(await readFile(file, "utf8")).tui).toEqual({ refresh: 30 });
+      if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
+      expect(await readdir(dir)).toEqual(["config.json"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a symlinked config stays a symlink; the file it points to is replaced", async () => {
+    if (process.platform === "win32") return;
+    const dir = await mkdtemp(join(tmpdir(), "atlcli-config-"));
+    try {
+      const real = join(dir, "dotfiles-config.json");
+      const link = join(dir, "config.json");
+      await writeFile(real, "{}");
+      await symlink(real, link);
+      await save(link);
+      expect((await lstat(link)).isSymbolicLink()).toBe(true);
+      expect(JSON.parse(await readFile(real, "utf8")).tui).toEqual({ refresh: 30 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

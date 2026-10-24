@@ -75,7 +75,7 @@ describe("saved views", () => {
     press(t, "y");
     await t.settle();
     expect(t.calls.find((c) => c.method === "createFilter")?.args).toEqual([{ name: "Bugs", jql: "type = Bug", favourite: true }]);
-    expect(t.ctx.store.get().log.at(-1)?.commands).toEqual(["atlcli jira filter create --name Bugs --jql 'type = Bug' --favourite --profile test"]);
+    expect(t.ctx.store.get().log.at(-1)?.commands).toEqual(["atlcli jira filter create --name=Bugs '--jql=type = Bug' --favourite --profile=test"]);
   });
 
   test("d deletes a saved view, or (y twice) a Jira filter", async () => {

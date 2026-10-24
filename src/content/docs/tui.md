@@ -191,10 +191,10 @@ The detail pane has two tabs (`.` and `,` switch): **page**, the page as markdow
 
 ```
 16:37:56 ✓ ATLCLI-173 → In Arbeit
-  $ atlcli jira issue transition --key ATLCLI-173 --to 'In Arbeit' --profile work
+  $ atlcli jira issue transition --key=ATLCLI-173 '--to=In Arbeit' --profile=work
 ```
 
-`j`/`k` select an entry, `y` copies its command, `Esc` closes. The commands are quoted for `sh` and `zsh`, so they paste into a shell or a script as they are. A change to several issues becomes one `jira bulk …` command with `--jql "key in (…)"`. Where the TUI took text from `$EDITOR`, the command names the file the CLI expects (`--edit`, or `--body <file>`).
+`j`/`k` select an entry, `y` copies its command, `Esc` closes. The commands are quoted for `sh` and `zsh`, so they paste into a shell or a script as they are. Flag values are written as `--flag=value`, so a value from Jira that starts with `-` (a summary like `--profile=prod`) stays a value and cannot become a flag. A label or comment that starts with `-` has no safe form as a plain argument: that entry shows no command. A change to several issues becomes one `jira bulk …` command with `--jql "key in (…)"`. Where the TUI took text from `$EDITOR`, the command names the file the CLI expects (`--edit`, or `--body <file>`).
 
 The log covers changes only, not what you read, and it lasts for the session.
 

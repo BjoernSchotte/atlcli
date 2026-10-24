@@ -195,6 +195,6 @@ describe("board view and command log", () => {
     const frame = s.captureCharFrame();
     expect(frame).toContain("Command log");
     expect(frame).toMatch(/\d\d:\d\d:\d\d ✓ AB-1 updated/);
-    expect(frame).toContain("$ atlcli jira issue transition --key AB-1 --to 'In Progress' --profile test");
+    expect(frame).toContain("$ atlcli jira issue transition --key=AB-1 '--to=In Progress' --profile=test");
   });
 });
