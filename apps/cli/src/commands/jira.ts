@@ -125,6 +125,7 @@ import {
   formatAttachmentSize,
   formatAttachmentsTable,
   toAttachmentJson,
+  copyAttachment,
   // Rich text (spec jira-content-workflows A1)
   AdfDocument,
   adfToMarkdown,
@@ -1297,6 +1298,9 @@ async function handleIssueAttachment(
     case "delete":
       await handleAttachmentDelete(args.slice(1), flags, opts);
       return;
+    case "copy":
+      await handleAttachmentCopy(args.slice(1), flags, opts);
+      return;
     default:
       unknownSubcommand(sub, attachmentHelp(), opts);
       return;
@@ -1464,6 +1468,36 @@ async function handleAttachmentDelete(
   }
 }
 
+/**
+ * `jira issue attachment copy <id> | <issue-key> <filename> --to <issue-key>`.
+ *
+ * Every attachment the target names is copied (a filename can match several),
+ * through a temp file: no size limit beyond the target site's own.
+ */
+async function handleAttachmentCopy(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const to = getFlag(flags, "to");
+  if (!to) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--to <issue-key> is required: jira issue attachment copy <id>|<key> <filename> --to <key>");
+  }
+  const { client, attachments } = await resolveAttachments(args, flags, opts);
+  const copied: Array<{ from: string; id: string; filename: string; size: number; issue: string }> = [];
+  for (const attachment of attachments) {
+    const created = await copyAttachment(client, attachment.id, to!, { source: attachment });
+    copied.push({ from: attachment.id, id: String(created.id), filename: attachment.filename, size: attachment.size, issue: to! });
+  }
+  if (opts.json) {
+    output({ schemaVersion: "1", copied, total: copied.length }, opts);
+    return;
+  }
+  for (const file of copied) {
+    output(`Copied ${file.filename} (${formatAttachmentSize(file.size)}) → ${file.issue} as ${file.id}`, opts);
+  }
+}
+
 function attachmentHelp(): string {
   return `atlcli jira issue attachment <command>
 
@@ -1472,11 +1506,14 @@ Commands:
   download <issue-key> <filename> [-o <path>] [--overwrite]
   delete <id> --confirm
   delete <issue-key> <filename> --confirm
+  copy <id> --to <issue-key>
+  copy <issue-key> <filename> --to <issue-key>
 
 Options:
   -o, --output <path>  Output directory or file path (default: current directory)
       --overwrite      Replace existing files
       --confirm        Required for delete
+      --to <key>       Target issue for copy
       --profile <name> Use a specific auth profile
       --json           JSON output
 
@@ -1540,6 +1577,8 @@ async function editFlag(initial: string, opts: OutputOptions): Promise<string> {
  * not copied: a priority outside the project's scheme fails the create.
  * Like Jira's own clone, the new issue gets a "Cloners" link to the source;
  * a site without that link type keeps the clone and gets a warning.
+ * `--attachments` copies every attachment as well; a failed copy keeps the
+ * clone and is reported per file, so a retry never clones twice.
  */
 async function handleIssueClone(
   args: string[],
@@ -1558,7 +1597,7 @@ async function handleIssueClone(
   }
   const client = await getClient(flags, opts);
   const source = await client.getIssue(key, {
-    fields: ["project", "summary", "description", "issuetype", "labels", "components", "parent"],
+    fields: ["project", "summary", "description", "issuetype", "labels", "components", "parent", "attachment"],
   });
   const f = source.fields;
   const project = getFlag(flags, "project") ?? f.project.key;
@@ -1582,13 +1621,30 @@ async function handleIssueClone(
       assignee: assignee ? ((await userFlag(client, assignee, opts)) ?? undefined) : undefined,
     },
   });
-  let warning: string | undefined;
+  const warnings: string[] = [];
   try {
     await client.createIssueLink({ type: { name: "Cloners" }, inwardIssue: { key: created.key }, outwardIssue: { key } });
   } catch (err) {
-    warning = `Cloned, but not linked to ${key}: ${err instanceof Error ? err.message : String(err)}`;
+    warnings.push(`Cloned, but not linked to ${key}: ${err instanceof Error ? err.message : String(err)}`);
   }
-  const result = { from: key, issue: formatIssue(await client.getIssue(created.key)), ...(warning ? { warning } : {}) };
+  const attachments: Array<{ from: string; id: string; filename: string }> = [];
+  if (hasFlag(flags, "attachments")) {
+    for (const attachment of f.attachment ?? []) {
+      try {
+        const copy = await copyAttachment(client, attachment.id, created.key, { source: attachment });
+        attachments.push({ from: attachment.id, id: String(copy.id), filename: attachment.filename });
+      } catch (err) {
+        warnings.push(`Attachment ${attachment.filename} (${attachment.id}) not copied: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+  const result = {
+    from: key,
+    issue: formatIssue(await client.getIssue(created.key)),
+    ...(hasFlag(flags, "attachments") ? { attachments } : {}),
+    // `warning` (first message) stays for existing consumers; `warnings` lists all.
+    ...(warnings.length ? { warning: warnings[0], warnings } : {}),
+  };
   output({ schemaVersion: "1", cloned: result }, opts);
 }
 
@@ -1638,7 +1694,7 @@ Commands:
   create --project <key> --type <name> --summary <text> [--description <md> | --description-file <path|-> | --edit] [--priority <name>] [--assignee <user>] [--labels <a,b,c>] [--parent <key>] [--field <id>=<value> ...]
   update --key <key> [--summary <text>] [--description <md> | --description-file <path|-> | --edit] [--priority <name>] [--assignee <user>|none] [--add-labels <a,b>] [--remove-labels <c,d>] [--field <id>=<value> ...]
   delete --key <key> --confirm [--delete-subtasks]
-  clone <key> [--summary <text>] [--project <key>] [--type <name>] [--priority <name>] [--labels <a,b>] [--parent <key>] [--assignee <user>] [--replace <find:replace> ...]
+  clone <key> [--summary <text>] [--project <key>] [--type <name>] [--priority <name>] [--labels <a,b>] [--parent <key>] [--assignee <user>] [--replace <find:replace> ...] [--attachments]
   transition --key <key> --to <status>
   transitions --key <key>              List available transitions
   assign --key <key> --assignee <user>|none|default
@@ -1655,6 +1711,7 @@ Commands:
   attachments <key>                    List attachments on an issue
   attachment download <id>|<key> <filename> [-o <path>] [--overwrite]
   attachment delete <id>|<key> <filename> --confirm
+  attachment copy <id>|<key> <filename> --to <key>
   open <key>                           Open issue in browser
   link-page --key <key> --page <id>    Link to Confluence page
   pages --key <key>                    List linked Confluence pages

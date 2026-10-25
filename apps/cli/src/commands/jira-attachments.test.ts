@@ -38,6 +38,10 @@ type Fixture = {
 let attachments: Fixture[] = [];
 /** Attachment ids the CLI asked the server to delete. */
 let deleted: string[] = [];
+/** Files the CLI uploaded, per target issue. */
+let uploaded: Array<{ issue: string; filename: string; bytes: Uint8Array }> = [];
+/** Answer every upload with 500 (clone keeps going and warns). */
+let failUploads = false;
 
 let server: ReturnType<typeof Bun.serve>;
 let home: string;
@@ -55,16 +59,32 @@ const meta = (a: Fixture) => ({
 beforeAll(async () => {
   server = Bun.serve({
     port: 0,
-    fetch(req) {
+    async fetch(req) {
       const { pathname } = new URL(req.url);
 
       // Non-cloud base URL ⇒ the client talks v2.
-      if (req.method === "GET" && pathname === `/rest/api/2/issue/${ISSUE}`) {
+      if (req.method === "GET" && (pathname === `/rest/api/2/issue/${ISSUE}` || pathname === "/rest/api/2/issue/NEW-1")) {
+        const key = pathname.endsWith("NEW-1") ? "NEW-1" : ISSUE;
         return Response.json({
-          id: "10000",
-          key: ISSUE,
-          fields: { attachment: attachments.map(meta) },
+          id: key === ISSUE ? "10000" : "10001",
+          key,
+          fields: {
+            project: { key: "ATLCLI" },
+            summary: "Source",
+            issuetype: { name: "Task" },
+            status: { name: "To Do" },
+            attachment: key === ISSUE ? attachments.map(meta) : [],
+          },
         });
+      }
+      if (req.method === "POST" && pathname === "/rest/api/2/issue") return Response.json({ id: "10001", key: "NEW-1" });
+      if (req.method === "POST" && pathname === "/rest/api/2/issueLink") return new Response(null, { status: 201 });
+      const upload = /^\/rest\/api\/2\/issue\/([^/]+)\/attachments$/.exec(pathname);
+      if (req.method === "POST" && upload) {
+        if (failUploads) return new Response("nope", { status: 500 });
+        const file = (await req.formData()).get("file") as File;
+        uploaded.push({ issue: upload[1], filename: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+        return Response.json([{ id: String(20000 + uploaded.length), filename: file.name, size: file.size }]);
       }
 
       const content = /^\/rest\/api\/2\/attachment\/content\/(\d+)$/.exec(pathname);
@@ -135,6 +155,8 @@ beforeEach(async () => {
     { id: "10002", filename: "debug.log", size: 12288, mimeType: "text/plain", bytes: LOG_BYTES },
   ];
   deleted = [];
+  uploaded = [];
+  failUploads = false;
   await rm(join(home, "out"), { recursive: true, force: true });
 });
 
@@ -509,5 +531,65 @@ describe("unknown jira subcommands", () => {
     const { stdout, exitCode } = await runCli(["jira", "issue", "attachment"]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("atlcli jira issue attachment <command>");
+  }, 30_000);
+});
+
+describe("jira issue attachment copy", () => {
+  // Sizes match the bytes: the copy checks the download against the metadata.
+  beforeEach(() => {
+    attachments = [
+      { id: "10001", filename: "screenshot.png", size: PNG_BYTES.length, mimeType: "image/png", bytes: PNG_BYTES },
+      { id: "10002", filename: "debug.log", size: LOG_BYTES.length, mimeType: "text/plain", bytes: LOG_BYTES },
+    ];
+  });
+
+  it("copies by id to another issue", async () => {
+    const { stdout, exitCode } = await runCli(["jira", "issue", "attachment", "copy", "10001", "--to", "NEW-1", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout).copied).toEqual([{ from: "10001", id: "20001", filename: "screenshot.png", size: PNG_BYTES.length, issue: "NEW-1" }]);
+    expect(uploaded).toEqual([{ issue: "NEW-1", filename: "screenshot.png", bytes: PNG_BYTES }]);
+  }, 30_000);
+
+  it("copies by issue key and filename", async () => {
+    const { exitCode } = await runCli(["jira", "issue", "attachment", "copy", ISSUE, "debug.log", "--to", "NEW-1"]);
+    expect(exitCode).toBe(0);
+    expect(uploaded.map((u) => [u.filename, new TextDecoder().decode(u.bytes)])).toEqual([["debug.log", "boom\n"]]);
+  }, 30_000);
+
+  it("requires --to", async () => {
+    const { exitCode, stderr } = await runCli(["jira", "issue", "attachment", "copy", "10001"]);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("--to");
+    expect(uploaded).toEqual([]);
+  }, 30_000);
+});
+
+describe("jira issue clone --attachments", () => {
+  beforeEach(() => {
+    attachments = [{ id: "10001", filename: "screenshot.png", size: PNG_BYTES.length, mimeType: "image/png", bytes: PNG_BYTES }];
+  });
+
+  it("copies the source's attachments to the clone", async () => {
+    const { stdout, exitCode } = await runCli(["jira", "issue", "clone", ISSUE, "--attachments", "--json"]);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout).cloned.attachments).toEqual([{ from: "10001", id: "20001", filename: "screenshot.png" }]);
+    expect(uploaded).toEqual([{ issue: "NEW-1", filename: "screenshot.png", bytes: PNG_BYTES }]);
+  }, 30_000);
+
+  it("keeps the clone and warns per file when a copy fails", async () => {
+    failUploads = true;
+    const { stdout, exitCode } = await runCli(["jira", "issue", "clone", ISSUE, "--attachments", "--json"]);
+    expect(exitCode).toBe(0);
+    const cloned = JSON.parse(stdout).cloned;
+    expect(cloned.issue.key).toBe("NEW-1");
+    expect(cloned.attachments).toEqual([]);
+    expect(cloned.warnings).toEqual([expect.stringContaining("screenshot.png (10001) not copied")]);
+  }, 60_000);
+
+  it("leaves attachments alone without the flag", async () => {
+    const { stdout, exitCode } = await runCli(["jira", "issue", "clone", ISSUE, "--json"]);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout).cloned.attachments).toBeUndefined();
+    expect(uploaded).toEqual([]);
   }, 30_000);
 });
