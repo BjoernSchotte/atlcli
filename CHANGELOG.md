@@ -2,6 +2,26 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.10] - 2026-10-25
+
+### Bug Fixes
+
+- **confluence:** Keep nested macros intact on pull and push ([4fdbb01](https://github.com/bjoernschotte/atlcli/commit/4fdbb01a4bcb16407460bae8f94a93e69bcdd33a))
+- **jira:** Copy-issues plans no status move for To Do issues ([7a497c2](https://github.com/bjoernschotte/atlcli/commit/7a497c27ce3d14fd63947495286437138c3bd04d))
+
+### Documentation
+
+- **spec:** Plan copying Jira issues across projects with attachments ([7d30aeb](https://github.com/bjoernschotte/atlcli/commit/7d30aebb828a7554e8b8942ba0b156535a3cd847))
+
+### Features
+
+- **jira:** Copy attachments between issues through a temp file ([8939e48](https://github.com/bjoernschotte/atlcli/commit/8939e487ad3b25aa1a9e6e7e18ba5d7c5f754f6a))
+- **script:** Jira.copyAttachment, raw comments and descriptions, issue properties ([064601d](https://github.com/bjoernschotte/atlcli/commit/064601d054f1257f6bac470a2ccf0950e46c7807))
+- **jira:** Project copy-issues as a plan/apply built-in script ([0e7fb3a](https://github.com/bjoernschotte/atlcli/commit/0e7fb3a91eafc3e61801003d71e579e6216f4e3c))
+
+### Testing
+
+- Make bun run test --parallel reliable ([3df2fb6](https://github.com/bjoernschotte/atlcli/commit/3df2fb6c62a847b4c1041afc09b9fa633e447c1e))
 ## [2026.10.9] - 2026-10-24
 
 2026.10.8 was tagged but never published: its release preflight failed on a test timeout before any artifact was built. Everything it contained ships in this release.
