@@ -64,11 +64,11 @@ export function structure<N>(nodes: N[], controlFor: (n: N) => Control | undefin
 export const isEmpty = (v: unknown) => v === undefined || v === null || v === false || v === 0 || v === "" || (Array.isArray(v) && v.length === 0);
 
 /** What a block emits: which items, under which scope. */
-export function expandBlock<N, C extends Pick<AdfContext, "scope" | "opts" | "warnings">>(
+export function expandBlock<N, R, C extends Pick<AdfContext, "scope" | "opts" | "warnings">>(
   block: Block<N>,
   ctx: C,
-  emit: (items: Item<N>[], ctx: C) => N[],
-): N[] {
+  emit: (items: Item<N>[], ctx: C) => R[],
+): R[] {
   const { value, warnings } = evaluateExpression(block.control.expr, ctx.scope, { ...ctx.opts, strict: false });
   ctx.warnings.push(...warnings);
   switch (block.control.name) {
