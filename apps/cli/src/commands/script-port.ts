@@ -11,6 +11,7 @@ import type {
   JiraSprintView,
   ScriptPort,
 } from "@atlcli/script-runtime";
+import { createTemplateRenderer } from "./template-flags.js";
 
 /** A port whose clients are created on first use: a Confluence-only script never builds a Jira client. */
 export function createLazyCliScriptPort(profile: Profile, outDir = process.cwd()): ScriptPort {
@@ -264,6 +265,7 @@ export function createCliScriptPort(
     confluenceNormalizeMarkdown(markdown) {
       return storageToMarkdown(markdownToStorage(markdown, conversion), conversion);
     },
+    render: createTemplateRenderer(profileName),
   };
 }
 

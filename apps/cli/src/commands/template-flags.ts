@@ -9,15 +9,19 @@ import {
   fail,
   getFlag,
   getFlags,
+  createTemplateScope,
   hasFlag,
   isInteractive,
   parseVarsFile,
   promptInput,
+  RenderBudget,
+  renderBody,
   resolveTemplateValues,
   type OutputOptions,
   type TemplateVariable,
   type VarsFile,
 } from "@atlcli/core";
+import type { ScriptPort } from "@atlcli/script-runtime";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -114,6 +118,18 @@ export async function completeTemplateValues(input: TemplateRunInput, flags: Fla
     values[v.name] = r.values[v.name];
   }
   return { ...input, values, missing: [] };
+}
+
+/**
+ * The script runtime's `render` port operation over the core engine. One
+ * budget per renderer, so a run shares the 16 MB output limit.
+ */
+export function createTemplateRenderer(profile?: string): NonNullable<ScriptPort["render"]> {
+  const budget = new RenderBudget();
+  return (input, o) => {
+    const scope = createTemplateScope({ vars: o.vars, now: new Date(o.now), profile, source: o.source, parent: o.parent });
+    return renderBody(input, scope, { unit: o.unit, format: o.format, strict: o.strict, budget });
+  };
 }
 
 /** The script runtime's `templating` option. */

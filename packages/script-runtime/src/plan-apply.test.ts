@@ -245,6 +245,33 @@ async function makePlan(port: ScriptPort, source = SCRIPT): Promise<ScriptPlanV1
   });
 }
 
+describe("templated plans", () => {
+  const source = `export default async () => atlcli.render("{{nope}}")`;
+  class RenderingPort extends StatefulPort {
+    render(input: unknown, o: { unit: string }) {
+      return { value: input, warnings: [{ code: "unresolved", message: "Unresolved {{nope}}", unit: o.unit }] };
+    }
+  }
+  const templating = { vars: { y: 1 }, now: "2026-10-25T00:00:00.000Z", strict: false };
+
+  it("keeps templating and render warnings, covered by the digest", async () => {
+    const run = await planScript(source, { port: new RenderingPort(), templating, variant: DEBUG_VARIANT });
+    const plan = await createScriptPlan(run, { source, baseUrl: BASE_URL });
+    const parsed = await parseScriptPlan(serializeScriptPlan(plan));
+    expect(parsed.templating).toEqual({ now: "2026-10-25T00:00:00.000Z", vars: { y: 1 } });
+    expect(parsed.renderWarnings).toEqual([{ code: "unresolved", message: "Unresolved {{nope}}", unit: "render#1" }]);
+    const tampered = { ...JSON.parse(serializeScriptPlan(plan)), templating: { now: "2027-01-01T00:00:00.000Z", vars: {} } };
+    await expect(parseScriptPlan(tampered)).rejects.toThrow(/digest/);
+  });
+
+  it("a plan that never rendered has neither field", async () => {
+    const run = await planScript(`export default () => 1`, { port: new StatefulPort(), variant: DEBUG_VARIANT });
+    const plan = await createScriptPlan(run, { source: "x", baseUrl: BASE_URL });
+    expect("templating" in plan).toBe(false);
+    expect("renderWarnings" in plan).toBe(false);
+  });
+});
+
 describe("script plan file", () => {
   it("round-trips through canonical JSON and verifies its digest", async () => {
     const plan = await makePlan(new StatefulPort());

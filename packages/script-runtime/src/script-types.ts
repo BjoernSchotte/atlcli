@@ -117,6 +117,22 @@ const console: {
 const atlcli: {
   /** Values passed with \`--param name=value\` (typed when declared in meta.params). */
   readonly params: Readonly<Record<string, string | number | boolean>>;
+  /**
+   * Renders a template (Handlebars, tolerant) with \`--var\`/\`--vars-file\` values
+   * and the frozen \`--now\`. A string is plain text unless \`format\` says
+   * otherwise; an object with \`type: "doc"\` is ADF. Unresolved \`{{…}}\` stays
+   * literal and is reported in the plan; with \`--strict\` it fails the run.
+   */
+  render<T>(
+    input: T,
+    options?: {
+      vars?: Record<string, unknown>;
+      format?: "text" | "adf" | "storage" | "wikimarkup";
+      source?: unknown;
+      parent?: unknown;
+      unit?: string;
+    },
+  ): Promise<T>;
   readonly jira: {
     /** All issues matching \`jql\`, paged transparently. */
     search(jql: string, options?: { fields?: string[]; properties?: string[]; limit?: number }): AsyncIterable<JiraIssue>;

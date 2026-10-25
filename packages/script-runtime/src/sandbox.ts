@@ -73,7 +73,8 @@ export type ScriptErrorKind =
   | "host-call-limit"
   | "invalid-script"
   | "permission-denied"
-  | "write-limit";
+  | "write-limit"
+  | "template"; // atlcli.render failed (--strict, output limit)
 
 /** A host function rejecting with a ScriptError ends the whole run with it. */
 export class ScriptError extends Error {

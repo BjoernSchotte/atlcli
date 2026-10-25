@@ -791,5 +791,45 @@ it("exposes the verb set", () => {
     "jira.transition",
     "jira.update",
     "jira.updateSprint",
+    "render",
   ]);
+});
+
+/** A port whose renderer replaces {{year}} and warns on {{nope}}, like the host engine would. */
+class RenderPort extends FakePort {
+  render(input: unknown, o: { vars: Record<string, unknown>; unit: string }) {
+    const text = String(input);
+    return {
+      value: typeof input === "string" ? text.replace("{{year}}", String(o.vars.year)) : input,
+      warnings: text.includes("{{nope}}") ? [{ code: "unresolved", message: "Unresolved {{nope}}", unit: o.unit }] : [],
+    };
+  }
+}
+
+describe("atlcli.render", () => {
+  it("renders with run vars, call vars win, warnings land in the run", async () => {
+    const run = await plan(
+      `export default async () => [await atlcli.render("Y{{year}}"), await atlcli.render("Y{{year}}", { vars: { year: 1 } }), await atlcli.render("{{nope}}")]`,
+      { port: new RenderPort(), templating: { vars: { year: 2026 }, now: "2026-10-25T00:00:00.000Z", strict: false } },
+    );
+    expect(run.value).toEqual(["Y2026", "Y1", "{{nope}}"]);
+    expect(run.renderWarnings).toEqual([{ code: "unresolved", message: "Unresolved {{nope}}", unit: "render#3" }]);
+    expect(run.templating).toEqual({ now: "2026-10-25T00:00:00.000Z", vars: { year: 2026 } });
+    expect(run.operations).toEqual([]);
+  });
+  it("a render error ends the run as a template ScriptError", async () => {
+    class Strict extends FakePort {
+      render(): never {
+        const e = new Error("Template warnings with --strict");
+        e.name = "RenderError";
+        throw e;
+      }
+    }
+    const error = await scriptError(plan(`await atlcli.render("x")`, { port: new Strict() }));
+    expect(error.kind).toBe("template");
+  });
+  it("fails clearly on a host without a renderer", async () => {
+    const run = await plan(`export default async () => { try { await atlcli.render("x"); } catch (e) { return e.message; } }`);
+    expect(run.value).toBe("atlcli.render is not available on this host");
+  });
 });

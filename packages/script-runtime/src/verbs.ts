@@ -9,6 +9,7 @@ import type {
   JiraSprintState,
   JiraUserRef,
   ScriptPort,
+  TemplateWarningView,
 } from "./port.js";
 import { runScript, ScriptError, type HostFunction, type RunScriptOptions } from "./sandbox.js";
 
@@ -70,6 +71,15 @@ export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "on
   params?: Readonly<Record<string, unknown>>;
   /** Overrides `meta.limits.maxWrites` (e.g. from `--max-writes`). */
   maxWrites?: number;
+  /** Template vars and the frozen clock for atlcli.render (CLI --var/--vars-file/--now/--strict). */
+  templating?: Templating;
+}
+
+export interface Templating {
+  vars: Record<string, unknown>;
+  /** ISO time @today/@now render as. */
+  now: string;
+  strict: boolean;
 }
 
 /** A write the plan left out because it would change nothing. */
@@ -89,6 +99,10 @@ export interface ScriptRunPlan {
   operations: PlannedOperation[];
   skipped: SkippedWrite[];
   hostCalls: number;
+  /** Set when the run was given templating; recorded in the plan so a re-plan can repeat it. */
+  templating?: { now: string; vars: Record<string, unknown> };
+  /** Warnings from atlcli.render (unresolved {{…}} and others). */
+  renderWarnings: TemplateWarningView[];
 }
 
 const PLACEHOLDER = /^plan:(\d+)$/;
@@ -158,12 +172,15 @@ class Recorder {
   /** Sprint ref → dates after the plan's writes so far (starting needs both). */
   readonly sprintDates = new Map<string, { startDate?: string; endDate?: string }>();
   readonly exportPaths = new Set<string>();
+  readonly renderWarnings: TemplateWarningView[] = [];
+  renderCount = 0;
   private linkTypeList?: Promise<JiraLinkType[]>;
 
   constructor(
     readonly port: ScriptPort,
     private readonly meta: ScriptMeta,
     private readonly maxWrites = maxWritesOf(meta),
+    readonly templating: Templating = { vars: {}, now: new Date().toISOString(), strict: false },
   ) {}
 
   /** Without declared permissions every verb is allowed (writes are still only planned). */
@@ -295,7 +312,37 @@ function verb<A extends unknown[]>(
   return { args: args as z.ZodType<unknown[]>, run: run as Verb["run"] };
 }
 
+const renderOptions = z.strictObject({
+  vars: z.record(z.string(), z.unknown()).optional(),
+  format: z.enum(["text", "adf", "storage", "wikimarkup"]).optional(),
+  source: z.unknown().optional(),
+  parent: z.unknown().optional(),
+  unit: z.string().optional(),
+});
+
 const VERBS: Record<string, Verb> = {
+  // Not a write: renders on the host, records only warnings.
+  render: verb(z.tuple([z.unknown(), renderOptions.optional()]), async (r, [input, o = {}]) => {
+    const render = r.port.render?.bind(r.port);
+    if (!render) throw new Error("atlcli.render is not available on this host");
+    const unit = o.unit ?? `render#${++r.renderCount}`;
+    try {
+      const out = render(input, {
+        format: o.format,
+        source: o.source,
+        parent: o.parent,
+        unit,
+        vars: { ...r.templating.vars, ...(o.vars ?? {}) },
+        now: r.templating.now,
+        strict: r.templating.strict,
+      });
+      r.renderWarnings.push(...out.warnings);
+      return out.value;
+    } catch (error) {
+      if ((error as Error)?.name === "RenderError") throw new ScriptError("template", (error as Error).message);
+      throw error;
+    }
+  }),
   "jira.search": verb(
     z.tuple([
       str,
@@ -740,7 +787,7 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
   } catch (error) {
     throw new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
   }
-  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta));
+  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta), options.templating);
   const host: Record<string, HostFunction> = {};
   for (const [name, definition] of Object.entries(VERBS)) {
     host[name] = async (rawArgs, signal) => {
@@ -767,6 +814,8 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
     operations: recorder.operations,
     skipped: recorder.skipped,
     hostCalls: result.hostCalls,
+    ...(options.templating ? { templating: { now: options.templating.now, vars: options.templating.vars } } : {}),
+    renderWarnings: recorder.renderWarnings,
   };
 }
 

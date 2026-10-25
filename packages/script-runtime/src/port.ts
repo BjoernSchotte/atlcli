@@ -90,6 +90,32 @@ export interface ScriptPort {
    * that would not change a page.
    */
   confluenceNormalizeMarkdown(markdown: string): string;
+  /**
+   * Pure: renders a template with the host's engine (atlcli.render). Throws
+   * an Error named "RenderError" for --strict warnings or an output limit.
+   * Optional; without it atlcli.render fails.
+   */
+  render?(input: unknown, options: RenderInput): { value: unknown; warnings: TemplateWarningView[] };
+}
+
+export interface RenderInput {
+  format?: "text" | "adf" | "storage" | "wikimarkup";
+  vars: Record<string, unknown>;
+  source?: unknown;
+  parent?: unknown;
+  /** Where, for warnings: "SUP-1 summary". */
+  unit: string;
+  /** Frozen clock (ISO) for @today/@now. */
+  now: string;
+  strict: boolean;
+}
+
+export interface TemplateWarningView {
+  code: string;
+  message: string;
+  unit?: string;
+  line?: number;
+  column?: number;
 }
 
 export interface JiraIssueView {
