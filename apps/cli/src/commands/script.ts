@@ -102,6 +102,23 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
   const source = inline ?? (await readSource(file!, opts));
   const params = parseParams(getFlags(flags, "param"), opts);
   const { limits, maxWrites } = parseLimits(flags, opts);
+  await planAndApply(source, file ? { path: relative(process.cwd(), resolve(file)) } : { name: "inline" }, params, { limits, maxWrites }, flags, opts);
+}
+
+/**
+ * Plans `source`, prints or writes the plan, and applies it with `--apply`:
+ * the whole of `script run` after argument parsing. Built-in scripts such as
+ * `jira project copy-issues` run through here too, so they share the plan
+ * file, confirmation and apply report.
+ */
+export async function planAndApply(
+  source: string,
+  origin: { path: string } | { name: string },
+  params: Record<string, unknown>,
+  { limits, maxWrites }: ReturnType<typeof parseLimits>,
+  flags: Flags,
+  opts: OutputOptions,
+): Promise<void> {
   const { profile, port } = await connect(flags, opts);
   const rt = await runtime();
 
@@ -116,7 +133,7 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
   );
   const plan = await rt.createScriptPlan(run, {
     source,
-    ...(file ? { path: relative(process.cwd(), resolve(file)) } : { name: "inline" }),
+    ...origin,
     baseUrl: profile.baseUrl,
     profile: profile.name,
   });
@@ -258,7 +275,7 @@ function transpile(source: string, opts: OutputOptions): string {
 }
 
 /** `--timeout`, `--memory`, `--max-calls`, `--max-writes`; unset flags keep the runtime defaults. */
-function parseLimits(
+export function parseLimits(
   flags: Flags,
   opts: OutputOptions,
 ): { limits: { deadlineMs?: number; memoryBytes?: number; maxHostCalls?: number }; maxWrites?: number } {
@@ -361,7 +378,13 @@ function createdSummary(report: ApplyReport): string {
     .filter((o) => o.status === "applied" && (o.verb === "jira.create" || o.verb === "jira.createSprint" || o.verb === "confluence.createPage"))
     .map((o) => `${o.verb === "jira.createSprint" ? "sprint " : ""}${String(o.result?.key ?? o.result?.id)}`);
   const exported = report.operations.filter((o) => o.status === "applied" && o.verb === "confluence.export").map((o) => String(o.result?.path));
-  return `${created.length ? ` Created: ${created.join(", ")}.` : ""}${exported.length ? ` Exported: ${exported.join(", ")}.` : ""}`;
+  const unmoved = report.operations
+    .filter((o) => o.status === "applied" && o.verb === "jira.setStatus" && o.result?.moved === false)
+    .map((o) => `${String(o.result?.key)} → ${String(o.result?.status)}`);
+  return (
+    `${created.length ? ` Created: ${created.join(", ")}.` : ""}${exported.length ? ` Exported: ${exported.join(", ")}.` : ""}` +
+    (unmoved.length ? `\nStatus unchanged (no direct transition): ${unmoved.join(", ")}.` : "")
+  );
 }
 
 export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, applying: boolean): string {
@@ -407,8 +430,12 @@ function describeOperation(op: PlannedOperation): string {
       return `jira update      ${ref(a.key)} ${Object.keys(a).filter((k) => k !== "key").join(", ")}${after}`;
     case "jira.transition":
       return `jira transition  ${ref(a.key)} → ${a.transition}${after}`;
+    case "jira.setStatus":
+      return `jira status      ${ref(a.key)} → ${a.status} (if a direct transition exists)${after}`;
     case "jira.comment":
-      return `jira comment     ${ref(a.key)} ${text(a.markdown)}${after}`;
+      return `jira comment     ${ref(a.key)} ${"raw" in a ? "(raw)" : text(a.markdown)}${after}`;
+    case "jira.copyAttachment":
+      return `jira attach copy ${a.filename} (${bytes(a.size)}) ${a.id} → ${ref(a.to)}${after}`;
     case "confluence.createPage":
       return `page create      ${a.spaceKey} ${text(a.title)}${a.parentId ? ` under ${ref(a.parentId)}` : ""}${after}`;
     case "confluence.updatePage":
@@ -448,8 +475,12 @@ function describeOperation(op: PlannedOperation): string {
 
 /** Decoded attachment size for the plan listing. */
 function size(a: Record<string, any>): string {
-  const bytes = a.encoding === "base64" ? Buffer.from(a.content, "base64").length : Buffer.byteLength(a.content);
-  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+  return bytes(a.encoding === "base64" ? Buffer.from(a.content, "base64").length : Buffer.byteLength(a.content));
+}
+
+function bytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  return n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function describePrecondition(pre: ScriptPlanV1["operations"][number]["precondition"] & {}): string {
@@ -458,6 +489,8 @@ function describePrecondition(pre: ScriptPlanV1["operations"][number]["precondit
       return `${pre.key} last updated ${pre.updated}`;
     case "jira-sprint-unchanged":
       return `sprint ${pre.id} ${pre.state}`;
+    case "jira-attachment-unchanged":
+      return `attachment ${pre.id} still ${bytes(pre.size)}`;
     case "confluence-page-unchanged":
       return `page ${pre.id} at version ${pre.version}`;
     case "confluence-title-absent":

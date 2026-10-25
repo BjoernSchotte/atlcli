@@ -20,12 +20,14 @@ export const WRITE_VERBS = [
   "jira.create",
   "jira.update",
   "jira.transition",
+  "jira.setStatus",
   "jira.comment",
   "jira.link",
   "jira.assign",
   "jira.addLabels",
   "jira.removeLabels",
   "jira.attach",
+  "jira.copyAttachment",
   "jira.createSprint",
   "jira.updateSprint",
   "jira.moveToSprint",
@@ -45,6 +47,7 @@ export type WriteVerb = (typeof WRITE_VERBS)[number];
 /** State the target must still be in when the plan is applied. */
 export type Precondition =
   | { kind: "jira-issue-unchanged"; key: string; updated: string }
+  | { kind: "jira-attachment-unchanged"; id: string; size: number }
   | { kind: "jira-sprint-unchanged"; id: number; state: JiraSprintState }
   | { kind: "confluence-page-unchanged"; id: string; version: number }
   | { kind: "confluence-title-absent"; spaceKey: string; title: string };
@@ -104,13 +107,21 @@ const startAt = z.number().int().nonnegative().optional();
 const isoDate = z.iso.datetime({ offset: true });
 const label = str.regex(/^\S+$/, "labels cannot contain whitespace");
 const labels = z.array(label).min(1);
-const jiraCreate = z.strictObject({
-  project: str,
-  type: str,
-  summary: str,
-  description: z.string().optional(),
-  fields: z.record(z.string(), z.unknown()).optional(),
-});
+const jiraCreate = z
+  .strictObject({
+    project: str,
+    type: str,
+    summary: str,
+    description: z.string().optional(),
+    fields: z.record(z.string(), z.unknown()).optional(),
+    properties: z.record(str, z.unknown()).optional(),
+  })
+  .refine(
+    (c) => c.description === undefined || c.fields?.description === undefined,
+    "pass one of description (Markdown) or fields.description (raw), not both",
+  );
+/** Markdown, or `{ raw }`: the site's own comment format (ADF on Cloud), sent unchanged. */
+const commentBody = z.union([z.string().min(1), z.strictObject({ raw: z.union([z.string().min(1), z.record(z.string(), z.unknown())]) })]);
 const jiraUpdate = z
   .strictObject({
     summary: str.optional(),
@@ -286,7 +297,10 @@ function verb<A extends unknown[]>(
 
 const VERBS: Record<string, Verb> = {
   "jira.search": verb(
-    z.tuple([str, z.strictObject({ fields: z.array(str).optional(), pageToken: str.optional() }).optional()]),
+    z.tuple([
+      str,
+      z.strictObject({ fields: z.array(str).optional(), properties: z.array(str).optional(), pageToken: str.optional() }).optional(),
+    ]),
     async (r, [jql, options], signal) => {
       r.require("jira:read");
       return r.port.jiraSearch(jql, { ...options, maxResults: SEARCH_PAGE_SIZE, signal });
@@ -317,9 +331,21 @@ const VERBS: Record<string, Verb> = {
     await r.record("jira.transition", { key, transition }, `jira:${key}`, () => issueUnchanged(r, key, signal));
     return null;
   }),
-  "jira.comment": verb(z.tuple([str, z.string().min(1)]), async (r, [key, markdown]) => {
+  "jira.setStatus": verb(z.tuple([str, str]), async (r, [key, status], signal) => {
     r.require(`jira:write:${r.jiraProject(key)}`);
-    const seq = await r.record("jira.comment", { key, markdown });
+    const issue = await untouchedIssue(r, key, ["status"], signal);
+    if (issue && String((issue.fields.status as { name?: string } | undefined)?.name ?? "").toLowerCase() === status.toLowerCase()) {
+      r.skipped.push({ verb: "jira.setStatus", target: key, title: status, reason: "unchanged" });
+      return null;
+    }
+    await r.record("jira.setStatus", { key, status }, `jira:${key}`, async () =>
+      issue ? { kind: "jira-issue-unchanged", key, updated: issue.fields.updated } : undefined,
+    );
+    return null;
+  }),
+  "jira.comment": verb(z.tuple([str, commentBody]), async (r, [key, body]) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const seq = await r.record("jira.comment", typeof body === "string" ? { key, markdown: body } : { key, raw: body.raw });
     return { id: `plan:${seq}` };
   }),
   "jira.link": verb(z.tuple([str, str, str]), async (r, [from, type, to], signal) => {
@@ -357,6 +383,26 @@ const VERBS: Record<string, Verb> = {
   "jira.attach": verb(z.tuple([str, attachmentInput]), async (r, [key, file]) => {
     r.require(`jira:write:${r.jiraProject(key)}`);
     const seq = await r.record("jira.attach", { key, ...checkAttachment(file) });
+    return { id: `plan:${seq}` };
+  }),
+  "jira.copyAttachment": verb(z.tuple([str, str]), async (r, [id, to], signal) => {
+    r.require("jira:read");
+    r.require(`jira:write:${r.jiraProject(to)}`);
+    const source = await r.port.jiraAttachmentInfo(r.readable(id), { signal });
+    const target = await untouchedIssue(r, to, ["attachment"], signal);
+    const existing = ((target?.fields.attachment as Array<{ id: string; filename: string; size: number }> | undefined) ?? []).find(
+      (a) => a.filename === source.filename && Number(a.size) === source.size,
+    );
+    if (existing) {
+      r.skipped.push({ verb: "jira.copyAttachment", target: to, title: source.filename, reason: "unchanged" });
+      return { id: String(existing.id) };
+    }
+    // The source is the object: copying never changes the target issue's own fields.
+    const seq = await r.record("jira.copyAttachment", { id, to, filename: source.filename, size: source.size }, `jira-attachment:${id}`, async () => ({
+      kind: "jira-attachment-unchanged",
+      id,
+      size: source.size,
+    }));
     return { id: `plan:${seq}` };
   }),
   "jira.boards": verb(

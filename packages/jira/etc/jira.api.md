@@ -82,6 +82,10 @@ export interface CreateFilterInput {
 
 // export: CreateIssueInput
 export interface CreateIssueInput {
+    properties?: Array<{
+        key: string;
+        value: unknown;
+    }>;
     fields: {
         project: {
             key: string;
@@ -432,6 +436,7 @@ export declare class JiraClient {
         fields?: string[];
         expand?: string;
         nextPageToken?: string;
+        properties?: string[];
         signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
     searchGet(jql: string, options?: {
@@ -670,7 +675,10 @@ export declare class JiraClient {
     downloadAttachment(contentUrl: string, options?: {
         signal?: AbortSignal;
     }): Promise<Buffer>;
-    uploadAttachment(keyOrId: string, filename: string, data: Buffer): Promise<JiraAttachment[]>;
+    openAttachment(contentUrl: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Response>;
+    uploadAttachment(keyOrId: string, filename: string, data: Buffer | Blob): Promise<JiraAttachment[]>;
     getWatchers(keyOrId: string): Promise<{
         watchers: JiraUser[];
         watchCount: number;
@@ -817,6 +825,7 @@ export interface JiraIssue {
 // export: JiraIssueFields
 export interface JiraIssueFields {
     summary: string;
+    attachment?: JiraAttachment[];
     description?: AdfDocument | string | null;
     issuetype: JiraIssueType;
     project: {
@@ -1519,6 +1528,16 @@ export declare function computeFlowMetrics(input: {
     now: Date;
 }): FlowMetricsV1;
 
+// export: copyAttachment
+export declare function copyAttachment(client: JiraClient, id: string, toIssue: string, options?: CopyAttachmentOptions): Promise<JiraAttachment>;
+
+// export: CopyAttachmentOptions
+export interface CopyAttachmentOptions {
+    signal?: AbortSignal;
+    source?: JiraAttachment;
+    tempRoot?: string;
+}
+
 // export: createAuditBaseline
 export declare function createAuditBaseline(candidates: JiraAuditFinding[], now: Date, previous?: JiraAuditBaseline): JiraAuditBaseline;
 
@@ -1532,6 +1551,10 @@ export interface CreateFilterInput {
 
 // export: CreateIssueInput
 export interface CreateIssueInput {
+    properties?: Array<{
+        key: string;
+        value: unknown;
+    }>;
     fields: {
         project: {
             key: string;
@@ -2217,6 +2240,7 @@ export declare class JiraClient {
         fields?: string[];
         expand?: string;
         nextPageToken?: string;
+        properties?: string[];
         signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
     searchGet(jql: string, options?: {
@@ -2455,7 +2479,10 @@ export declare class JiraClient {
     downloadAttachment(contentUrl: string, options?: {
         signal?: AbortSignal;
     }): Promise<Buffer>;
-    uploadAttachment(keyOrId: string, filename: string, data: Buffer): Promise<JiraAttachment[]>;
+    openAttachment(contentUrl: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Response>;
+    uploadAttachment(keyOrId: string, filename: string, data: Buffer | Blob): Promise<JiraAttachment[]>;
     getWatchers(keyOrId: string): Promise<{
         watchers: JiraUser[];
         watchCount: number;
@@ -2602,6 +2629,7 @@ export interface JiraIssue {
 // export: JiraIssueFields
 export interface JiraIssueFields {
     summary: string;
+    attachment?: JiraAttachment[];
     description?: AdfDocument | string | null;
     issuetype: JiraIssueType;
     project: {
@@ -3757,6 +3785,10 @@ export interface CreateFilterInput {
 
 // export: CreateIssueInput
 export interface CreateIssueInput {
+    properties?: Array<{
+        key: string;
+        value: unknown;
+    }>;
     fields: {
         project: {
             key: string;
@@ -4107,6 +4139,7 @@ export declare class JiraClient {
         fields?: string[];
         expand?: string;
         nextPageToken?: string;
+        properties?: string[];
         signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
     searchGet(jql: string, options?: {
@@ -4345,7 +4378,10 @@ export declare class JiraClient {
     downloadAttachment(contentUrl: string, options?: {
         signal?: AbortSignal;
     }): Promise<Buffer>;
-    uploadAttachment(keyOrId: string, filename: string, data: Buffer): Promise<JiraAttachment[]>;
+    openAttachment(contentUrl: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Response>;
+    uploadAttachment(keyOrId: string, filename: string, data: Buffer | Blob): Promise<JiraAttachment[]>;
     getWatchers(keyOrId: string): Promise<{
         watchers: JiraUser[];
         watchCount: number;
@@ -4492,6 +4528,7 @@ export interface JiraIssue {
 // export: JiraIssueFields
 export interface JiraIssueFields {
     summary: string;
+    attachment?: JiraAttachment[];
     description?: AdfDocument | string | null;
     issuetype: JiraIssueType;
     project: {
@@ -5194,6 +5231,16 @@ export declare function computeFlowMetrics(input: {
     now: Date;
 }): FlowMetricsV1;
 
+// export: copyAttachment
+export declare function copyAttachment(client: JiraClient, id: string, toIssue: string, options?: CopyAttachmentOptions): Promise<JiraAttachment>;
+
+// export: CopyAttachmentOptions
+export interface CopyAttachmentOptions {
+    signal?: AbortSignal;
+    source?: JiraAttachment;
+    tempRoot?: string;
+}
+
 // export: createAuditBaseline
 export declare function createAuditBaseline(candidates: JiraAuditFinding[], now: Date, previous?: JiraAuditBaseline): JiraAuditBaseline;
 
@@ -5207,6 +5254,10 @@ export interface CreateFilterInput {
 
 // export: CreateIssueInput
 export interface CreateIssueInput {
+    properties?: Array<{
+        key: string;
+        value: unknown;
+    }>;
     fields: {
         project: {
             key: string;
@@ -5892,6 +5943,7 @@ export declare class JiraClient {
         fields?: string[];
         expand?: string;
         nextPageToken?: string;
+        properties?: string[];
         signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
     searchGet(jql: string, options?: {
@@ -6130,7 +6182,10 @@ export declare class JiraClient {
     downloadAttachment(contentUrl: string, options?: {
         signal?: AbortSignal;
     }): Promise<Buffer>;
-    uploadAttachment(keyOrId: string, filename: string, data: Buffer): Promise<JiraAttachment[]>;
+    openAttachment(contentUrl: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Response>;
+    uploadAttachment(keyOrId: string, filename: string, data: Buffer | Blob): Promise<JiraAttachment[]>;
     getWatchers(keyOrId: string): Promise<{
         watchers: JiraUser[];
         watchCount: number;
@@ -6277,6 +6332,7 @@ export interface JiraIssue {
 // export: JiraIssueFields
 export interface JiraIssueFields {
     summary: string;
+    attachment?: JiraAttachment[];
     description?: AdfDocument | string | null;
     issuetype: JiraIssueType;
     project: {

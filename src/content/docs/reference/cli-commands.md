@@ -544,6 +544,10 @@ atlcli jira project create --key <KEY> --name <name> \
   [--type software|service_desk|business] [--template <key>] \
   [--description <text>] [--lead <user>]
 atlcli jira project types <key>         # Issue types; or --key <key>
+atlcli jira project copy-issues --to <KEY> (--from <KEY> [--jql <filter>] | --jql <selection>) \
+  [--no-attachments] [--no-links] [--no-subtasks] [--fields <ids>] [--replace <find:replace>]... \
+  [--link-source] [--comments] [--keep-mentions] [--keep-assignee] [--keep-status] [--status-map <from:to>]... \
+  [--plan-out <file>] [--apply [--yes]] [--print-script]   # See /jira/copy-issues/
 ```
 
 ### Issues
@@ -569,7 +573,7 @@ atlcli jira issue update --key <key> --remove-labels <labels>
 atlcli jira issue update --key <key> --assignee <user>  # me, email, name, account id, none
 atlcli jira issue update --key <key> --edit  # Edit the description in $EDITOR
 atlcli jira issue delete --key <key> --confirm
-atlcli jira issue clone <key> [--replace <find:replace>]... [--project <key>] [--summary <text>]
+atlcli jira issue clone <key> [--replace <find:replace>]... [--project <key>] [--summary <text>] [--attachments]
 atlcli jira issue transition --key <key> --to <status>
 atlcli jira issue transitions --key <key>  # List available transitions
 atlcli jira issue assign --key <key> --assignee <user>
@@ -587,6 +591,8 @@ atlcli jira issue attachment download <id> [-o <path>] [--overwrite]
 atlcli jira issue attachment download <key> <filename> [-o <path>] [--overwrite]
 atlcli jira issue attachment delete <id> --confirm
 atlcli jira issue attachment delete <key> <filename> --confirm
+atlcli jira issue attachment copy <id> --to <key>              # Copy to another issue
+atlcli jira issue attachment copy <key> <filename> --to <key>
 atlcli jira issue open <key>            # Open issue in browser
 atlcli jira open [<key>|<project>]      # Open an issue, a project or the site
 

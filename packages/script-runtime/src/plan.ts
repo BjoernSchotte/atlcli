@@ -47,6 +47,7 @@ const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const key = z.string().min(1);
 const precondition = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("jira-issue-unchanged"), key, updated: key }),
+  z.strictObject({ kind: z.literal("jira-attachment-unchanged"), id: key, size: z.number().int().nonnegative() }),
   z.strictObject({ kind: z.literal("jira-sprint-unchanged"), id: z.number().int().positive(), state: z.enum(["future", "active", "closed"]) }),
   z.strictObject({ kind: z.literal("confluence-page-unchanged"), id: key, version: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("confluence-title-absent"), spaceKey: key, title: key }),

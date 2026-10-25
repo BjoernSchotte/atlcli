@@ -80,6 +80,14 @@ A script never gets more rights than the profile it runs with.
    atlcli script run scripts/stale.ts --param project=ATLCLI --apply
    ```
 
+   In CI, cron or any other run without a person at the terminal, add `--yes`:
+   the plan is applied without asking. Without a terminal (or with `--json`),
+   atlcli never waits for an answer: a run without `--yes` stops with
+   `Applying needs confirmation` and writes nothing. To keep a review step,
+   write the plan with `--plan-out plan.json` in one job and apply it with
+   `atlcli script apply plan.json --yes` after approval, see
+   [Scripts in CI](recipes/scripts-in-ci.md).
+
 ## Writing scripts
 
 A script is an ES module, and its body is the program. These are always available:

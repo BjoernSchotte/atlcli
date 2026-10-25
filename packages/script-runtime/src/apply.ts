@@ -98,6 +98,10 @@ async function checkPrecondition(port: ScriptPort, pre: Precondition): Promise<s
         const issue = await port.jiraGetIssue(pre.key, { fields: ["updated"] });
         return issue.fields.updated === pre.updated ? undefined : `updated ${issue.fields.updated}`;
       }
+      case "jira-attachment-unchanged": {
+        const attachment = await port.jiraAttachmentInfo(pre.id, {});
+        return attachment.size === pre.size ? undefined : `size ${attachment.size}`;
+      }
       case "jira-sprint-unchanged": {
         const sprint = await port.jiraGetSprint(pre.id, {});
         return sprint.state === pre.state ? undefined : `state ${sprint.state}`;
@@ -133,8 +137,10 @@ async function execute(
     case "jira.transition":
       await port.jiraTransitionIssue(args.key, args.transition);
       return { key: args.key };
+    case "jira.setStatus":
+      return { key: args.key, status: args.status, ...(await port.jiraSetStatus(args.key, args.status)) };
     case "jira.comment":
-      return { key: args.key, ...(await port.jiraAddComment(args.key, args.markdown)) };
+      return { key: args.key, ...(await port.jiraAddComment(args.key, "raw" in args ? { raw: args.raw } : args.markdown)) };
     case "confluence.createPage": {
       const page = await port.confluenceCreatePage(args as never);
       versions.set(page.id, page.version);
@@ -164,6 +170,8 @@ async function execute(
       return { key: args.key };
     case "jira.attach":
       return { key: args.key, ...(await port.jiraAttach(args.key, attachment(args))) };
+    case "jira.copyAttachment":
+      return { key: args.to, ...(await port.jiraCopyAttachment(args.id, args.to)) };
     case "jira.createSprint": {
       const { boardId, ...input } = args;
       return port.jiraCreateSprint({ boardId: Number(boardId), ...input } as never);

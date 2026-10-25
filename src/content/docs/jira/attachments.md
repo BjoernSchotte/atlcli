@@ -157,6 +157,36 @@ atlcli jira issue attachments PROJ-123 --json | \
   xargs -I {} atlcli jira issue attachment download {} -o ./downloads/
 ```
 
+## Copy Attachment
+
+Copy an attachment to another issue, in the same or another project:
+
+```bash
+# By attachment ID
+atlcli jira issue attachment copy 10001 --to NEW-7
+
+# By issue key + filename (copies every match)
+atlcli jira issue attachment copy PROJ-123 evidence-template.xlsx --to NEW-7
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--to` | Target issue key (required) |
+| `--json` | JSON output: `{ "copied": [{ "from", "id", "filename", "size", "issue" }], "total" }` |
+
+The file is downloaded into a private temporary folder, its size is checked
+against the attachment's metadata, it is uploaded under the same filename, and
+the folder is removed, also when the copy fails. Memory use stays flat for large
+files; the only size limit is the target site's attachment limit. A size
+mismatch uploads nothing.
+
+To copy an issue together with all of its attachments, use
+`atlcli jira issue clone PROJ-123 --attachments`, see
+[Issues](/jira/issues/#clone-issue). For whole projects, see
+[Copy issues between projects](/jira/copy-issues/).
+
 ## Delete Attachment
 
 Remove an attachment:

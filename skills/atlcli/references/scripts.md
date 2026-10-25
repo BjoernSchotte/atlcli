@@ -46,16 +46,18 @@ case.
 
 | Verb | Notes |
 | --- | --- |
-| `atlcli.jira.search(jql, { fields?, limit? })` | async iterator, pages transparently |
+| `atlcli.jira.search(jql, { fields?, properties?, limit? })` | async iterator, pages transparently; `properties` returns issue properties |
 | `atlcli.jira.get(key, { fields? })` | raw fields; `updated` always present |
-| `atlcli.jira.create({ project, type, summary, description?, fields? })` | `description` is Markdown; returns `{ key: "plan:<n>" }` until applied |
+| `atlcli.jira.create({ project, type, summary, description?, fields?, properties? })` | `description` is Markdown; for a lossless copy pass the raw value as `fields.description` (not both); returns `{ key: "plan:<n>" }` until applied |
 | `atlcli.jira.update(key, { summary?, description?, fields? })` | |
 | `atlcli.jira.transition(key, to)` | checked against available transitions when planning (not for issues the plan creates) |
-| `atlcli.jira.comment(key, markdown)` | |
+| `atlcli.jira.setStatus(key, status)` | best effort on apply: a direct transition into that status, else no change (listed after apply) |
+| `atlcli.jira.comment(key, markdown \| { raw })` | `{ raw }` sends ADF (Cloud) or wiki markup (DC) unchanged |
 | `atlcli.jira.link(from, type, to)` | reads as a sentence: `link("A-1", "blocks", "A-2")`; type name or either phrase, checked when planning |
 | `atlcli.jira.assign(key, user)` | `"me"`, email, display name or account id, resolved when planning; `null` unassigns |
 | `atlcli.jira.addLabels(key, labels)` / `removeLabels` | |
 | `atlcli.jira.attach(key, { name, content, encoding? })` | content comes from the script (text, or `encoding: "base64"`), max 10 MB |
+| `atlcli.jira.copyAttachment(id, toIssue)` | copies an existing attachment on apply, any size, bytes never in the plan; skipped if the target has the same name and size |
 | `atlcli.jira.boards({ project?, name? })` / `sprints(boardId, { state? })` | async iterators |
 | `atlcli.jira.createSprint({ board, name, goal?, startDate?, endDate? })` | scrum boards only |
 | `atlcli.jira.updateSprint(id, { name?, goal?, startDate?, endDate?, state? })` | `state: "active"` needs both dates; `"closed"` only from active |

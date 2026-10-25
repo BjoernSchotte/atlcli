@@ -306,6 +306,8 @@ atlcli jira issue attachments PROJ-101 --json
 atlcli jira issue attachment download 10001 -o ./downloads/
 atlcli jira issue attachment download PROJ-101 report.pdf -o ./downloads/
 atlcli jira issue attachment delete PROJ-101 report.pdf --confirm
+atlcli jira issue attachment copy 10001 --to NEW-7 --json
+atlcli jira issue clone PROJ-101 --project NEW --attachments --json
 ```
 
 `attach` takes the key and any number of files. It checks all paths before
@@ -314,6 +316,24 @@ any file failed. `--comment` is posted only if at least one file uploaded, and
 it is Markdown, converted like any other comment. `download` takes an
 attachment ID, or an issue key and filename. It refuses to overwrite an
 existing file without `--overwrite`. `delete` takes `--confirm`.
+`attachment copy` copies to another issue through a temp file, any size, and
+uploads nothing on a size mismatch. `clone --attachments` copies them all; a
+failed file is a `warnings` entry, the clone stays, so retry with
+`attachment copy`, never clone again.
+
+### Copying many issues
+
+`atlcli jira project copy-issues --to NEW (--from OLD [--jql filter] | --jql
+selection)` plans copies with descriptions (unchanged ADF), subtasks, links and
+attachments; nothing is written without `--apply` or `atlcli script apply
+<plan.json>`. Status, assignee, dates and comments start empty unless
+`--keep-status`/`--status-map`, `--keep-assignee`, `--comments`
+(`--keep-mentions` keeps @mentions, which notifies again) are given;
+`--link-source` adds Cloners links; `--replace find:replace` fills
+`{{placeholders}}`, and leftovers are plan warnings. After a partial apply,
+plan again with the same flags (copies are found by their `atlcli.copiedFrom`
+property); never apply the same plan file twice, it would create the issues
+again. Read the plan's warnings before applying.
 
 ## Anti-patterns
 

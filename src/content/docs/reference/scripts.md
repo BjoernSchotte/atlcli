@@ -102,17 +102,19 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 
 | Verb | Returns | Permission | Plan |
 |---|---|---|---|
-| `jira.search(jql, { fields?, limit? })` | async iterator of `{ id, key, fields }` | `jira:read` | read; pages of 100 |
+| `jira.search(jql, { fields?, properties?, limit? })` | async iterator of `{ id, key, fields, properties? }` | `jira:read` | read; pages of 100. `properties` names issue property keys to return |
 | `jira.get(key, { fields? })` | `{ id, key, fields }`, `fields.updated` always present | `jira:read` | read |
-| `jira.create({ project, type, summary, description?, fields? })` | `{ id, key }` placeholders | `jira:write:<project>` | create; no precondition |
+| `jira.create({ project, type, summary, description?, fields?, properties? })` | `{ id, key }` placeholders | `jira:write:<project>` | create; no precondition. `description` is Markdown; `fields.description` is sent unchanged (ADF from `get`, for lossless copies). Not both. `properties` sets issue properties by key |
 | `jira.update(key, { summary?, description?, fields? })` | `null` | `jira:write:<project of key>` | update; issue unchanged |
 | `jira.transition(key, to)` | `null` | `jira:write:<project of key>` | transition; issue unchanged. `to` is matched by name, ignoring case; checked against the issue's transitions when the issue exists |
-| `jira.comment(key, markdown)` | `{ id }` placeholder | `jira:write:<project of key>` | comment; no precondition |
+| `jira.setStatus(key, status)` | `null` | `jira:write:<project of key>` | best-effort transition; issue unchanged. On apply, takes a transition available then whose target status (or name) is `status`; with none, nothing changes and the apply output lists it under `Status unchanged`. For issues whose workflow is not known at plan time, such as ones the plan creates. Left out when the issue already has that status |
+| `jira.comment(key, body)` | `{ id }` placeholder | `jira:write:<project of key>` | comment; no precondition. `body` is Markdown, or `{ raw }`: the site's own format (ADF on Cloud, wiki markup on Data Center), sent unchanged |
 | `jira.link(from, type, to)` | `null` | `jira:write` for both projects | link; no precondition. Reads as a sentence: `link("A-1", "blocks", "A-2")`. `type` is the link type's name or either phrase (`"is blocked by"` swaps the issues); checked at plan time |
 | `jira.assign(key, user)` | `null` | `jira:write:<project of key>` | assignment; issue unchanged. `user` is `"me"`, an email, a display name or an account id, resolved at plan time; `null` unassigns. Left out when already assigned so |
 | `jira.addLabels(key, labels)` | `null` | `jira:write:<project of key>` | labels; issue unchanged. Left out when every label is already set |
 | `jira.removeLabels(key, labels)` | `null` | `jira:write:<project of key>` | labels; issue unchanged. Left out when none of the labels is set |
 | `jira.attach(key, { name, content, encoding? })` | `{ id }` placeholder | `jira:write:<project of key>` | attachment; no precondition. See [Attachments](#attachments) |
+| `jira.copyAttachment(id, toIssue)` | `{ id }` placeholder, or the existing attachment's id when skipped | `jira:read`, `jira:write:<project of toIssue>` | copy; attachment unchanged. `id` comes from `fields.attachment`; the bytes are copied on apply and never enter the script or the plan, so there is no size cap. See [Attachments](#attachments) |
 | `jira.boards({ project?, name?, limit? })` | async iterator of `{ id, name, type, projectKey? }` | `jira:read` | read; pages of 50 |
 | `jira.sprints(boardId, { state?, limit? })` | async iterator of `{ id, name, state, boardId?, startDate?, endDate?, goal? }` | `jira:read` | read; pages of 50 |
 | `jira.createSprint({ board, name, goal?, startDate?, endDate? })` | `{ id }` placeholder | `jira:write:<project of board>` | create; no precondition. Scrum boards only |
@@ -150,6 +152,8 @@ Comments, labels and attachments do not change a page's version, so they never t
 
 Scripts have no file system access, so attachment content comes from the script: text by default, or base64 with `encoding: "base64"`. The limit is 10 MB per attachment after decoding. The content is stored in the plan file, so a plan with attachments grows by their size.
 
+To copy an attachment that already exists in Jira, use `jira.copyAttachment` instead. The plan holds only the reference (id, filename, size); on apply, atlcli downloads the file into a private temporary folder, checks its size, uploads it and removes the folder. Any size works, and the plan stays small. [`jira project copy-issues`](/jira/copy-issues/) is built on it.
+
 ```ts
 const rows = ["key,status"];
 for await (const issue of atlcli.jira.search("project = ATLCLI AND sprint in openSprints()", { fields: ["status"] })) {
@@ -178,7 +182,8 @@ The first write to an existing object records the state the plan saw. Later writ
 
 | Precondition | Recorded by | Checked on apply |
 |---|---|---|
-| Issue unchanged | `jira.update`, `jira.transition`, `jira.assign`, `jira.addLabels`, `jira.removeLabels` | `fields.updated` is the same |
+| Issue unchanged | `jira.update`, `jira.transition`, `jira.setStatus`, `jira.assign`, `jira.addLabels`, `jira.removeLabels` | `fields.updated` is the same |
+| Attachment unchanged | `jira.copyAttachment` (on the source attachment) | the attachment still exists with the same size |
 | Sprint unchanged | `jira.updateSprint` on an existing sprint | `state` is the same |
 | Page unchanged | `confluence.updatePage`, `upsertPage` on an existing page, `movePage`, `deletePage` | `version` is the same |
 | Title absent | `confluence.createPage`, `upsertPage` on a new page | no page with that title in the space |
@@ -209,6 +214,8 @@ The same applies to the first write of these verbs to an object:
 | `jira.assign` | the issue already has that assignee (or none, for `null`) |
 | `jira.addLabels` | every label is already set |
 | `jira.removeLabels` | none of the labels is set |
+| `jira.setStatus` | the issue already has that status |
+| `jira.copyAttachment` | the target issue already has an attachment with that filename and size |
 | `confluence.movePage` | the page already has that parent |
 
 Other verbs are always planned. Re-running a script that only uses verbs from this section and `updatePage`/`upsertPage` therefore plans nothing once its work is done.

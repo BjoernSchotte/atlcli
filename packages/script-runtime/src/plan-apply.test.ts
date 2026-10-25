@@ -59,10 +59,10 @@ class StatefulPort implements ScriptPort {
     issue.status = transition;
     issue.fields.updated = this.tick();
   }
-  async jiraAddComment(key: string, markdown: string) {
+  async jiraAddComment(key: string, body: string | { raw: unknown }) {
     this.guard("jiraAddComment");
     const issue = this.issues.get(key)!;
-    issue.comments.push(markdown);
+    issue.comments.push(typeof body === "string" ? body : JSON.stringify(body.raw));
     return { id: `c${issue.comments.length}` };
   }
   async confluenceSearch() {
@@ -124,6 +124,23 @@ class StatefulPort implements ScriptPort {
     this.guard("jiraEditLabels");
     const current = (this.labels.get(key) ?? []).filter((l) => !change.remove?.includes(l));
     this.labels.set(key, [...current, ...(change.add ?? [])]);
+  }
+  sourceAttachments = new Map([["900", { id: "900", filename: "evidence.xlsx", size: 12_000_000, mimeType: "application/vnd.ms-excel" }]]);
+  async jiraAttachmentInfo(id: string) {
+    const found = this.sourceAttachments.get(id);
+    if (!found) throw new Error(`Attachment does not exist: ${id}`);
+    return found;
+  }
+  async jiraSetStatus(key: string, status: string) {
+    this.guard("jiraSetStatus");
+    if (status === "Nowhere") return { moved: false };
+    this.issues.get(key)!.status = status;
+    return { moved: true, transition: status };
+  }
+  async jiraCopyAttachment(id: string, toKey: string) {
+    this.guard("jiraCopyAttachment");
+    this.attachments.push(`${toKey}/${this.sourceAttachments.get(id)!.filename}:copy`);
+    return { id: `a${this.attachments.length}` };
   }
   async jiraAttach(key: string, file: { name: string; content: string; encoding: string }) {
     this.guard("jiraAttach");
@@ -270,6 +287,27 @@ describe("script plan file", () => {
 });
 
 describe("applyScriptPlan", () => {
+  it("copies attachments onto a created issue, and reports drift when the source changed", async () => {
+    const source = `export const meta = { name: "copy", permissions: ["jira:read", "jira:write:ATLCLI"] };
+const { key } = await atlcli.jira.create({ project: "ATLCLI", type: "Task", summary: "Copy" });
+await atlcli.jira.copyAttachment("900", key);
+`;
+    const port = new StatefulPort();
+    const plan = await makePlan(port, source);
+    const parsed = await parseScriptPlan(serializeScriptPlan(plan));
+    const report = await applyScriptPlan(parsed, { port, baseUrl: BASE_URL });
+    expect(report.status).toBe("applied");
+    expect(port.attachments).toEqual(["ATLCLI-10/evidence.xlsx:copy"]);
+
+    const fresh = new StatefulPort();
+    const again = await makePlan(fresh, source);
+    fresh.sourceAttachments.get("900")!.size = 5;
+    const drifted = await applyScriptPlan(again, { port: fresh, baseUrl: BASE_URL });
+    expect(drifted.status).toBe("drift");
+    expect(drifted.drift[0].actual).toBe("size 5");
+    expect(fresh.attachments).toEqual([]);
+  });
+
   it("applies every operation, resolving placeholders and chaining versions", async () => {
     const port = new StatefulPort();
     const plan = await parseScriptPlan(serializeScriptPlan(await makePlan(port)));

@@ -272,11 +272,14 @@ Create a copy of an issue:
 atlcli jira issue clone PROJ-123
 atlcli jira issue clone PROJ-123 --replace "v1:v2" --replace "Q3:Q4"
 atlcli jira issue clone PROJ-123 --project OTHER --assignee me
+atlcli jira issue clone PROJ-123 --attachments
 ```
 
 The clone gets the source's summary, description, type and labels. In the same project it also gets the components and the parent. Priority, assignee, sprint, versions and custom fields are not copied: they may not fit the target project.
 
 Like a clone made in Jira, the new issue gets a **Cloners** link: it "clones" the source, and the source "is cloned by" it. If the site has no Cloners link type, the clone is kept and the output carries a `warning`.
+
+With `--attachments` every attachment of the source is copied to the clone (see [Copy Attachment](/jira/attachments/#copy-attachment)); the JSON output lists them under `attachments`. A file that fails to copy does not undo the clone: the clone is printed with one entry per failed file in `warnings`, so a retry copies only the missing files (`jira issue attachment copy`) instead of cloning again. To copy many issues with their subtasks and links, use [Copy issues between projects](/jira/copy-issues/).
 
 | Flag | Description |
 |------|-------------|
@@ -288,6 +291,7 @@ Like a clone made in Jira, the new issue gets a **Cloners** link: it "clones" th
 | `--labels` | Labels instead of the source's |
 | `--parent` | Parent issue key |
 | `--assignee` | Assignee (see [Users](#users)) |
+| `--attachments` | Copy the source's attachments to the clone |
 
 ## Delete Issue
 

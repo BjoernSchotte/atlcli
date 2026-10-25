@@ -176,6 +176,7 @@ export interface JiraTransitionField {
 /** Issue fields */
 export interface JiraIssueFields {
   summary: string;
+  attachment?: JiraAttachment[];
   description?: AdfDocument | string | null;
   issuetype: JiraIssueType;
   project: { id: string; key: string; name?: string };
@@ -379,6 +380,8 @@ export interface JiraSearchResults {
 
 /** Input for creating an issue */
 export interface CreateIssueInput {
+  /** Issue properties set on create. */
+  properties?: Array<{ key: string; value: unknown }>;
   fields: {
     project: { key: string } | { id: string };
     issuetype: { name: string } | { id: string };

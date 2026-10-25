@@ -1,0 +1,235 @@
+// Built-in script behind `atlcli jira project copy-issues`. It runs in the
+// same sandbox as any `atlcli script`, so the result is an ordinary plan:
+// review it, then apply it (`--apply`, or `atlcli script apply plan.json`).
+// Print it with `atlcli jira project copy-issues --print-script` and run your
+// own copy with `atlcli script run copy-issues.ts --param to=NEW ...`.
+//
+// Each copy carries the issue property `atlcli.copiedFrom`. Planning again
+// after a partial apply finds those copies and only plans what is missing.
+
+export const meta = {
+  name: "copy-issues",
+  description: "Copy Jira issues into another project with descriptions, subtasks, links and attachments",
+  params: {
+    from: { type: "string", default: "", description: "Source project (or use jql alone)" },
+    jql: { type: "string", default: "", description: "Selection, or an extra filter with from" },
+    to: { type: "string", description: "Target project" },
+    attachments: { type: "boolean", default: true },
+    links: { type: "boolean", default: true },
+    subtasks: { type: "boolean", default: true, description: "Also copy children of selected issues" },
+    fields: { type: "string", default: "", description: "Extra field ids, comma-separated" },
+    replace: { type: "string", default: "[]", description: "JSON [[find, replace], ...] for summary and description" },
+    linkSource: { type: "boolean", default: false },
+    comments: { type: "boolean", default: false },
+    keepMentions: { type: "boolean", default: false },
+    keepAssignee: { type: "boolean", default: false },
+    keepStatus: { type: "boolean", default: false },
+    statusMap: { type: "string", default: "{}", description: "JSON { sourceStatus: targetStatus }" },
+  },
+};
+
+const MARKER = "atlcli.copiedFrom";
+const PLACEHOLDER = /\{\{[\w.-]+\}\}/g;
+
+export default async function copyIssues(p) {
+  const jira = atlcli.jira;
+  const warnings = [];
+  const pairs = JSON.parse(p.replace);
+  const statusMap = JSON.parse(p.statusMap);
+  const extra = p.fields ? p.fields.split(",").map((f) => f.trim()).filter(Boolean) : [];
+  const fields = [
+    "summary", "issuetype", "description", "labels", "components", "fixVersions", "parent", "attachment",
+    "issuelinks", "assignee", "status", ...(p.comments ? ["comment"] : []), ...extra,
+  ];
+
+  const selection = p.from ? `project = "${p.from}"${p.jql ? ` AND (${p.jql})` : ""}` : `(${p.jql})`;
+  const notTarget = `project != "${p.to}"`;
+
+  // 1. The selection, plus children (subtasks, epic children) unless turned off.
+  const issues = new Map();
+  for await (const issue of jira.search(`${selection} AND ${notTarget} ORDER BY key`, { fields })) issues.set(issue.key, issue);
+  let pulledIn = 0;
+  let frontier = [...issues.keys()];
+  while (p.subtasks && frontier.length > 0) {
+    const next = [];
+    for (let i = 0; i < frontier.length; i += 50) {
+      const keys = frontier.slice(i, i + 50).join(", ");
+      for await (const child of jira.search(`parent in (${keys}) AND ${notTarget} ORDER BY key`, { fields })) {
+        if (issues.has(child.key)) continue;
+        issues.set(child.key, child);
+        next.push(child.key);
+        pulledIn++;
+      }
+    }
+    frontier = next;
+  }
+
+  // 2. Copies an earlier run already made (resume after a partial apply).
+  const copies = new Map();
+  for await (const copy of jira.search(`project = "${p.to}" ORDER BY key`, { fields: ["attachment", "issuelinks"], properties: [MARKER] })) {
+    const source = copy.properties?.[MARKER]?.key;
+    if (source) copies.set(source, copy);
+  }
+
+  // 3. Parents before children.
+  const ordered = [];
+  const seen = new Set();
+  const visit = (issue) => {
+    if (seen.has(issue.key)) return;
+    seen.add(issue.key);
+    const parent = issue.fields.parent?.key;
+    if (parent && issues.has(parent)) visit(issues.get(parent));
+    ordered.push(issue);
+  };
+  for (const issue of issues.values()) visit(issue);
+
+  const refs = new Map();
+  const counts = { issues: 0, resumed: 0, subtasksPulledIn: pulledIn, attachments: 0, attachmentBytes: 0, links: 0, comments: 0, statusMoves: 0 };
+  let cloners = p.linkSource;
+
+  for (const issue of ordered) {
+    const f = issue.fields;
+    const existing = copies.get(issue.key);
+    let ref;
+    if (existing) {
+      ref = existing.key;
+      counts.resumed++;
+    } else {
+      const copyFields = {};
+      if (f.description !== null && f.description !== undefined) copyFields.description = replaceBody(f.description, pairs);
+      if (f.labels?.length) copyFields.labels = f.labels;
+      if (f.components?.length) copyFields.components = f.components.map((c) => ({ name: c.name }));
+      if (f.fixVersions?.length) copyFields.fixVersions = f.fixVersions.map((v) => ({ name: v.name }));
+      for (const id of extra) if (f[id] !== null && f[id] !== undefined) copyFields[id] = f[id];
+      if (f.parent?.key) {
+        if (refs.has(f.parent.key)) copyFields.parent = { key: refs.get(f.parent.key) };
+        else warnings.push(`${issue.key}: parent ${f.parent.key} is not copied, so the copy has no parent`);
+      }
+      if (p.keepAssignee && f.assignee) {
+        copyFields.assignee = f.assignee.accountId ? { accountId: f.assignee.accountId } : { name: f.assignee.name };
+      }
+      const summary = replaceText(f.summary, pairs);
+      for (const token of new Set([...summary.matchAll(PLACEHOLDER), ...textOf(copyFields.description).matchAll(PLACEHOLDER)].map((m) => m[0]))) {
+        warnings.push(`${issue.key}: placeholder ${token} is not replaced`);
+      }
+      const created = await jira.create({
+        project: p.to,
+        type: f.issuetype.name,
+        summary,
+        fields: copyFields,
+        properties: { [MARKER]: { key: issue.key, id: issue.id } },
+      });
+      ref = created.key;
+      counts.issues++;
+
+      if (p.comments) {
+        const list = f.comment?.comments ?? [];
+        if ((f.comment?.total ?? list.length) > list.length) warnings.push(`${issue.key}: only ${list.length} of ${f.comment.total} comments are copied`);
+        for (const comment of list) {
+          await jira.comment(ref, { raw: commentBody(comment, p.keepMentions) });
+          counts.comments++;
+        }
+      }
+      // A copy starts in its workflow's initial status, so a "To Do" category status needs no move.
+      if (p.keepStatus && f.status?.name && f.status.statusCategory?.key !== "new") {
+        await jira.setStatus(ref, statusMap[f.status.name] ?? f.status.name);
+        counts.statusMoves++;
+      }
+    }
+    refs.set(issue.key, ref);
+
+    if (p.attachments) {
+      for (const a of f.attachment ?? []) {
+        const result = await jira.copyAttachment(a.id, ref);
+        if (String(result.id).startsWith("plan:")) {
+          counts.attachments++;
+          counts.attachmentBytes += Number(a.size) || 0;
+        }
+      }
+    }
+    if (cloners && !hasLink(existing, "Cloners", issue.key)) {
+      try {
+        await jira.link(ref, "Cloners", issue.key);
+        counts.links++;
+      } catch (error) {
+        warnings.push(`No "Cloners" link type on this site, so copies are not linked to their originals (${error.message})`);
+        cloners = false;
+      }
+    }
+  }
+
+  // 4. Links, once every issue has a ref. Each pair inside the set is planned
+  // from its outward end; a link to an issue outside the set keeps that issue.
+  if (p.links) {
+    for (const issue of ordered) {
+      const existing = copies.get(issue.key);
+      for (const link of issue.fields.issuelinks ?? []) {
+        const type = link.type?.name;
+        if (!type || type === "Cloners") continue;
+        let from;
+        let to;
+        if (link.outwardIssue) {
+          from = refs.get(issue.key);
+          to = refs.get(link.outwardIssue.key) ?? link.outwardIssue.key;
+        } else if (link.inwardIssue) {
+          if (refs.has(link.inwardIssue.key)) continue;
+          from = link.inwardIssue.key;
+          to = refs.get(issue.key);
+        } else continue;
+        const other = from === refs.get(issue.key) ? to : from;
+        if (hasLink(existing, type, other)) continue;
+        await jira.link(from, type, to);
+        counts.links++;
+      }
+    }
+  }
+
+  return { selection: p.from || p.jql, to: p.to, ...counts, warnings };
+}
+
+function replaceText(text, pairs) {
+  return pairs.reduce((acc, [find, replace]) => acc.split(find).join(replace), text ?? "");
+}
+
+// Same rules as replaceInBody in @atlcli/jira: every ADF text node, or a plain
+// string on Data Center. copy-issues-script.test.ts keeps the two in step.
+function replaceBody(body, pairs) {
+  if (pairs.length === 0 || body === null || body === undefined) return body;
+  if (typeof body === "string") return replaceText(body, pairs);
+  return JSON.parse(JSON.stringify(body), (key, value) => (key === "text" && typeof value === "string" ? replaceText(value, pairs) : value));
+}
+
+function textOf(body) {
+  if (body === null || body === undefined) return "";
+  if (typeof body === "string") return body;
+  const parts = [];
+  JSON.stringify(body, (key, value) => {
+    if (key === "text" && typeof value === "string") parts.push(value);
+    return value;
+  });
+  return parts.join(" ");
+}
+
+function commentBody(comment, keepMentions) {
+  const header = `Originally by ${comment.author?.displayName ?? "unknown"} on ${String(comment.created ?? "").slice(0, 10)}`;
+  const body = comment.body;
+  if (typeof body === "string") {
+    const text = keepMentions ? body : body.replace(/\[~(?:accountid:)?([^\]]+)\]/g, "$1");
+    return `_${header}_\n\n${text}`;
+  }
+  const doc = keepMentions
+    ? body
+    : JSON.parse(JSON.stringify(body), (_key, value) =>
+        value && value.type === "mention" ? { type: "text", text: value.attrs?.text ?? "" } : value,
+      );
+  return {
+    ...doc,
+    content: [{ type: "paragraph", content: [{ type: "text", text: header, marks: [{ type: "em" }] }] }, ...(doc.content ?? [])],
+  };
+}
+
+function hasLink(copy, type, otherKey) {
+  return (copy?.fields.issuelinks ?? []).some(
+    (l) => l.type?.name === type && (l.outwardIssue?.key === otherKey || l.inwardIssue?.key === otherKey),
+  );
+}

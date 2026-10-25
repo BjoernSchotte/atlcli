@@ -1156,6 +1156,8 @@ export class JiraClient {
       fields?: string[];
       expand?: string;
       nextPageToken?: string;
+      /** Issue property keys to return per issue (`issue.properties`). */
+      properties?: string[];
       /** Cancels the in-flight request (spec 010 wave 2). */
       signal?: AbortSignal;
     } = {}
@@ -1178,6 +1180,7 @@ export class JiraClient {
         fields,
         expand: options.expand,
         nextPageToken: options.nextPageToken,
+        ...(options.properties?.length ? { properties: options.properties } : {}),
       },
       signal: options.signal,
       logBody: "meta-only",
@@ -2214,6 +2217,20 @@ export class JiraClient {
     contentUrl: string,
     options: { signal?: AbortSignal } = {}
   ): Promise<Buffer> {
+    const res = await this.openAttachment(contentUrl, options);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /**
+   * Open an attachment's content as a successful `Response` whose body has
+   * not been read, so callers can stream large files to disk instead of
+   * holding them in memory. Retries, rate limits, cancellation and the
+   * session redirect policy are the same as {@link downloadAttachment}.
+   */
+  async openAttachment(
+    contentUrl: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<Response> {
     const logger = getLogger();
     const requestId = generateRequestId();
     const startTime = Date.now();
@@ -2265,9 +2282,6 @@ export class JiraClient {
           throw new Error(`Attachment download failed (${res.status}): ${errorText}`);
         }
 
-        const arrayBuffer = await res.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-
         logger.api("response", {
           requestId,
           status: res.status,
@@ -2275,7 +2289,7 @@ export class JiraClient {
           durationMs: Date.now() - startTime,
         });
 
-        return buffer;
+        return res;
       } catch (err) {
         // A cancel is not a transient failure: surface it instead of retrying.
         if (options.signal?.aborted) throw err;
@@ -2299,12 +2313,13 @@ export class JiraClient {
    * Upload an attachment to an issue.
    *
    * POST /rest/api/3/issue/{keyOrId}/attachments
-   * Uses multipart/form-data.
+   * Uses multipart/form-data. A `Blob` (for example a file opened with
+   * `openAsBlob`) is sent as it is, so it is read while uploading.
    */
   async uploadAttachment(
     keyOrId: string,
     filename: string,
-    data: Buffer
+    data: Buffer | Blob
   ): Promise<JiraAttachment[]> {
     const logger = getLogger();
     const requestId = generateRequestId();
@@ -2320,8 +2335,9 @@ export class JiraClient {
 
     // Create FormData with file
     const formData = new FormData();
-    const fileData = new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as unknown as BlobPart;
-    const blob = new Blob([fileData]);
+    const blob = data instanceof Blob
+      ? data
+      : new Blob([new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as unknown as BlobPart]);
     formData.append("file", blob, filename);
 
     let lastError: Error | undefined;
