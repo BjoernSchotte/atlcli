@@ -49,6 +49,13 @@ import {
   isConfluencePageUrl,
   output,
   resolveDefaults,
+  createTemplateScope,
+  finish,
+  RenderBudget,
+  renderBody,
+  renderTextField,
+  type RenderWarning,
+  type TemplateScope,
 } from "@atlcli/core";
 import {
   JiraClient,
@@ -134,6 +141,7 @@ import {
   type StatusCategoryResolver,
 } from "@atlcli/jira";
 import { unknownSubcommand } from "./unknown-subcommand.js";
+import { parseTemplateFlags, TEMPLATE_FLAGS_HELP, templateValuesFrom } from "./template-flags.js";
 
 export async function handleJira(
   args: string[],
@@ -563,7 +571,8 @@ async function handleProjectCopyIssues(
     limits: { deadlineMs: 30 * 60_000, memoryBytes: 256 * 1024 * 1024, maxHostCalls: 100_000, ...limits.limits },
     maxWrites: limits.maxWrites ?? 100_000,
   };
-  await planAndApply(source, { name: "copy-issues" }, params, sized, flags, opts);
+  const templating = templateValuesFrom(await parseTemplateFlags(flags, opts));
+  await planAndApply(source, { name: "copy-issues" }, params, sized, flags, opts, templating);
 }
 
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]*$/;
@@ -627,7 +636,7 @@ Commands:
 copy-issues options:
   --no-attachments, --no-links, --no-subtasks   Leave those out (all copied by default)
   --fields <id,id>          Extra fields to copy (custom field ids)
-  --replace <find:replace>  In summary and description (repeatable)
+  --replace <find:replace>  Legacy find/replace in summary and description, before templates (repeatable)
   --link-source             Link each copy to its original ("Cloners")
   --comments                Copy comments, headed "Originally by <name> on <date>"
   --keep-mentions           Keep @mentions in copied comments (notifies those people again)
@@ -638,6 +647,9 @@ copy-issues options:
   --apply [--yes]           Apply after planning (asks first; --yes skips the question)
   --max-writes <n>, --max-calls <n>, --timeout <duration>, --memory <MB>
   --print-script            Print the built-in script and exit
+
+${TEMPLATE_FLAGS_HELP}
+  Summary, description, labels, comments and names render; {{source.key}} is the original.
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -1700,15 +1712,34 @@ async function handleIssueClone(
   const priority = getFlag(flags, "priority");
   const parent = getFlag(flags, "parent") ?? (sameProject ? f.parent?.key : undefined);
   const labels = getFlag(flags, "labels");
+  const templating = await parseTemplateFlags(flags, opts);
+  let rendered: ReturnType<typeof buildCloneFields>;
+  try {
+    rendered = buildCloneFields(
+      { summary: getFlag(flags, "summary") ?? f.summary, description: f.description, labels: labels ? labels.split(",").map((l) => l.trim()) : f.labels },
+      {
+        pairs,
+        strict: templating.strict,
+        scope: createTemplateScope({
+          vars: templating.values,
+          now: templating.now,
+          project,
+          source: { key, id: source.id, summary: f.summary, project: f.project.key, fields: f },
+        }),
+      },
+    );
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, err instanceof Error ? err.message : String(err));
+  }
 
   const created = await client.createIssue({
     fields: {
       project: { key: project },
       issuetype: { name: type! },
-      summary: replaceText(getFlag(flags, "summary") ?? f.summary, pairs),
-      description: f.description ? replaceInBody(f.description, pairs) : undefined,
+      summary: rendered.summary,
+      description: (rendered.description ?? undefined) as NonNullable<typeof f.description> | undefined,
       priority: priority ? { name: priority } : undefined,
-      labels: labels ? labels.split(",").map((l) => l.trim()) : f.labels,
+      labels: rendered.labels,
       components: sameProject && f.components?.length ? f.components.map((c) => ({ id: c.id })) : undefined,
       parent: parent ? { key: parent } : undefined,
       assignee: assignee ? ((await userFlag(client, assignee, opts)) ?? undefined) : undefined,
@@ -1737,8 +1768,38 @@ async function handleIssueClone(
     ...(hasFlag(flags, "attachments") ? { attachments } : {}),
     // `warning` (first message) stays for existing consumers; `warnings` lists all.
     ...(warnings.length ? { warning: warnings[0], warnings } : {}),
+    ...(rendered.warnings.length ? { templateWarnings: rendered.warnings } : {}),
   };
   output({ schemaVersion: "1", cloned: result }, opts);
+}
+
+/**
+ * Clone fields after --replace and templates: summary, description (ADF or
+ * wiki markup) and labels. Pure, so it is tested without a site. Throws a
+ * RenderError with `strict` and warnings, or for an invalid rendered value.
+ */
+export function buildCloneFields(
+  f: { summary: string; description?: unknown; labels?: string[] },
+  { pairs, scope, strict = false }: { pairs: Array<[string, string]>; scope: TemplateScope; strict?: boolean },
+): { summary: string; description: unknown; labels?: string[]; warnings: RenderWarning[] } {
+  const budget = new RenderBudget();
+  const warnings: RenderWarning[] = [];
+  const opts = (unit: string) => ({ unit, budget });
+  const summary = renderTextField(replaceText(f.summary, pairs), "summary", scope, opts("summary"));
+  warnings.push(...summary.warnings);
+  let description: unknown = f.description;
+  if (description) {
+    const replaced = replaceInBody(description, pairs);
+    const r = renderBody(replaced, scope, { ...opts("description"), format: typeof replaced === "string" ? "wikimarkup" : "adf" });
+    warnings.push(...r.warnings);
+    description = r.value;
+  }
+  const labels = f.labels?.map((label, i) => {
+    const r = renderTextField(label, "label", scope, opts(`label ${i + 1}`));
+    warnings.push(...r.warnings);
+    return r.value;
+  });
+  return finish({ summary: summary.value, description, labels, warnings }, warnings, { strict }).value;
 }
 
 /**
@@ -1787,7 +1848,7 @@ Commands:
   create --project <key> --type <name> --summary <text> [--description <md> | --description-file <path|-> | --edit] [--priority <name>] [--assignee <user>] [--labels <a,b,c>] [--parent <key>] [--field <id>=<value> ...]
   update --key <key> [--summary <text>] [--description <md> | --description-file <path|-> | --edit] [--priority <name>] [--assignee <user>|none] [--add-labels <a,b>] [--remove-labels <c,d>] [--field <id>=<value> ...]
   delete --key <key> --confirm [--delete-subtasks]
-  clone <key> [--summary <text>] [--project <key>] [--type <name>] [--priority <name>] [--labels <a,b>] [--parent <key>] [--assignee <user>] [--replace <find:replace> ...] [--attachments]
+  clone <key> [--summary <text>] [--project <key>] [--type <name>] [--priority <name>] [--labels <a,b>] [--parent <key>] [--assignee <user>] [--replace <find:replace> ...] [--attachments] [--var k=v ...] [--vars-file <file>] [--now <iso>] [--strict]
   transition --key <key> --to <status>
   transitions --key <key>              List available transitions
   assign --key <key> --assignee <user>|none|default

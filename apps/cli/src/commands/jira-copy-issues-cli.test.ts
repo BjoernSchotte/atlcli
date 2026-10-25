@@ -25,6 +25,11 @@ describe("jira project copy-issues", () => {
     expect(stdout).toBe(source);
   }, 30_000);
 
+  it("documents the template flags", async () => {
+    const { stdout } = await run(["--help"]);
+    for (const flag of ["--var", "--vars-file", "--now", "--strict"]) expect(stdout).toContain(flag);
+  }, 30_000);
+
   it.each([
     [["--from", "SUP"], "--to <project> is required"],
     [["--to", "DEV"], "Pass --from <project>"],
@@ -33,6 +38,8 @@ describe("jira project copy-issues", () => {
     [["--jql", "project = SUP ORDER BY key", "--to", "DEV"], "ORDER BY"],
     [["--from", "SUP", "--to", "DEV", "--replace", "novalue"], "find:replace"],
     [["--from", "SUP", "--to", "DEV", "--fields", "a b;c"], "--fields"],
+    [["--from", "SUP", "--to", "DEV", "--vars-file", "/nonexistent/vars.yml"], "--vars-file"],
+    [["--from", "SUP", "--to", "DEV", "--now", "soon"], "--now"],
   ])("rejects %j", async (args, message) => {
     const { stderr, stdout, exitCode } = await run(args as string[]);
     expect(exitCode).not.toBe(0);

@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test";
 import { replaceInBody } from "@atlcli/jira";
 import { planScript, type JiraIssueView, type PlannedOperation, type ScriptPort } from "@atlcli/script-runtime";
 import source from "./copy-issues.script" with { type: "text" };
+import { createTemplateRenderer } from "../commands/template-flags.js";
 
 const script = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(source);
 
@@ -76,6 +77,7 @@ class FakeJira {
       jiraGetTransitions: async () => [],
       jiraFindUser: async (q: string) => ({ accountId: q }),
       confluenceNormalizeMarkdown: (m: string) => m,
+      render: createTemplateRenderer(),
       jiraCreateIssue: write, jiraUpdateIssue: write, jiraTransitionIssue: write, jiraSetStatus: write, jiraAddComment: write,
       jiraLinkIssues: write, jiraAssignIssue: write, jiraEditLabels: write, jiraAttach: write, jiraCopyAttachment: write,
       jiraCreateSprint: write, jiraUpdateSprint: write, jiraMoveToSprint: write,
@@ -88,8 +90,11 @@ const DEFAULTS = {
   linkSource: false, comments: false, keepMentions: false, keepAssignee: false, keepStatus: false, statusMap: "{}",
 };
 
-async function plan(params: Partial<typeof DEFAULTS> = {}, jira = new FakeJira()) {
-  const run = await planScript(script, { port: jira.port(), params: { ...DEFAULTS, ...params }, maxWrites: 1000 });
+const NOW = "2026-10-25T08:30:00.000Z";
+type Templating = { vars: Record<string, unknown>; now: string; strict: boolean };
+
+async function plan(params: Partial<typeof DEFAULTS> = {}, jira = new FakeJira(), templating?: Templating) {
+  const run = await planScript(script, { port: jira.port(), params: { ...DEFAULTS, ...params }, maxWrites: 1000, ...(templating ? { templating } : {}) });
   const ops = run.operations;
   const value = run.value as { warnings: string[] } & Record<string, unknown>;
   return { ops, value, run, jira, created: (summary: string) => ops.find((o) => o.verb === "jira.create" && o.args.summary === summary)! };
@@ -143,14 +148,62 @@ describe("copy-issues", () => {
     expect((await plan({ links: false })).ops.some((o) => o.verb === "jira.link")).toBe(false);
   });
 
-  it("applies replacements to summary and ADF text like replaceInBody, and warns about leftovers", async () => {
+  it("applies replacements to summary and ADF text like replaceInBody", async () => {
     const pairs: Array<[string, string]> = [["{{version}}", "2026.11"]];
     const jira = new FakeJira();
-    const { created, value } = await plan({ replace: JSON.stringify(pairs) }, jira);
+    const { created, value, run } = await plan({ replace: JSON.stringify(pairs) }, jira);
     const copy = created("Release 2026.11 checks");
     expect(copy.args.fields).toMatchObject({ description: replaceInBody(jira.source[0]!.fields.description, pairs) });
     expect(value.warnings).toEqual([]);
-    expect((await plan()).value.warnings).toEqual(["SUP-1: placeholder {{version}} is not replaced"]);
+    expect(run.renderWarnings).toEqual([]);
+  });
+
+  describe("templates", () => {
+    const templating = (vars: Record<string, unknown>, strict = false): Templating => ({ vars, now: NOW, strict });
+
+    it("renders summary, description, labels and comments from --var", async () => {
+      const jira = new FakeJira();
+      jira.source[0]!.fields.labels = ["rel-{{version}}"];
+      const { created } = await plan({ comments: true }, jira, templating({ version: "4.2" }));
+      const copy = created("Release 4.2 checks");
+      expect(JSON.stringify(copy.args.fields)).toContain("Ship 4.2 after ");
+      expect((copy.args.fields as { labels: string[] }).labels).toEqual(["rel-4.2"]);
+    });
+
+    it("leaves unknown placeholders literal and reports them as render warnings", async () => {
+      const { created, run, value } = await plan();
+      expect(created("Release {{version}} checks")).toBeDefined();
+      expect(run.renderWarnings.some((w) => w.unit === "SUP-1 summary" && w.code === "unresolved")).toBe(true);
+      expect(value.warnings.some((w) => w.includes("placeholder"))).toBe(false);
+    });
+
+    it("applies --replace before rendering", async () => {
+      const { created } = await plan({ replace: JSON.stringify([["{{version}}", "{{v}}"]]) }, new FakeJira(), templating({ v: "9" }));
+      expect(created("Release 9 checks")).toBeDefined();
+    });
+
+    it("offers the source issue as {{source.*}}", async () => {
+      const jira = new FakeJira();
+      jira.source[1]!.fields.summary = "Copy of {{source.key}}";
+      const { created } = await plan({}, jira, templating({}));
+      expect(created("Copy of SUP-2")).toBeDefined();
+    });
+
+    it("strict fails the plan on a leftover placeholder", async () => {
+      const error = await plan({}, new FakeJira(), templating({}, true)).catch((e: unknown) => e);
+      expect(error).toMatchObject({ name: "ScriptError", kind: "template" });
+    });
+
+    it("same --now gives the same plan", async () => {
+      const jira = new FakeJira();
+      jira.source[1]!.fields.summary = "Run {{@uuid}} on {{@today}}";
+      const a = await plan({}, jira, templating({ version: "1" }));
+      const b = await plan({}, new FakeJira(), templating({ version: "1" }));
+      jira.source[1]!.fields.summary = "Run {{@uuid}} on {{@today}}";
+      const c = await plan({}, jira, templating({ version: "1" }));
+      expect(c.ops).toEqual(a.ops);
+      expect(b.ops).not.toEqual(a.ops);
+    });
   });
 
   it("adds the project-split opt-ins", async () => {
