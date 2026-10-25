@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFileSync, existsSync } from "node:fs";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import {
   ERROR_CODES,
@@ -67,9 +67,9 @@ Templates for run (atlcli.render):
   --strict               Fail on any template warning (unresolved {{…}} and others)
 
 Limits for run (defaults in parentheses):
-  --timeout <duration>   Whole run, e.g. 90s, 10m, 1h; a bare number is seconds (5m)
-  --max-writes <n>       Operations per plan; overrides meta.limits.maxWrites (100)
-  --max-calls <n>        Jira/Confluence calls per run (10000)
+  --timeout <duration>   Whole run, e.g. 90s, 10m, 1h; a bare number is seconds; 0 = none (1h)
+  --max-writes <n>       Operations per plan; overrides meta.limits.maxWrites; 0 = none (10000)
+  --max-calls <n>        Jira/Confluence calls per run; 0 = none (100000)
   --memory <MB>          Script memory (64)
 
 atlcli.confluence.export writes its files below the directory the plan is applied in.
@@ -157,7 +157,11 @@ export async function planAndApply(
     profile: profile.name,
   });
   const planOut = getFlag(flags, "plan-out");
-  if (planOut) await writeFile(planOut, rt.serializeScriptPlan(plan), "utf8");
+  if (planOut) {
+    await writeFile(planOut, rt.serializeScriptPlan(plan), "utf8");
+    // A journal next to it belonged to the plan this one replaces.
+    await rm(journalPath(planOut), { force: true });
+  }
 
   const apply = hasFlag(flags, "apply");
   if (!apply || plan.operations.length === 0) {
@@ -167,8 +171,14 @@ export async function planAndApply(
   }
   if (!opts.json) output(renderPlan(plan, planOut, true), opts);
   await confirmApply(plan, flags, opts);
-  const report = await rt.applyScriptPlan(plan, { port, baseUrl: profile.baseUrl, onOperation: progress(opts) });
-  finish(plan, report, opts);
+  const journal = planOut ? await openJournal(planOut, plan, { fresh: true }, opts) : undefined;
+  const report = await rt.applyScriptPlan(plan, {
+    port,
+    baseUrl: profile.baseUrl,
+    concurrency: parseConcurrency(flags, opts, 1),
+    onOperation: track(plan, opts, journal),
+  });
+  finish(plan, report, opts, planOut);
 }
 
 async function applyCommand(args: string[], flags: Flags, opts: OutputOptions): Promise<void> {
@@ -189,10 +199,84 @@ async function applyCommand(args: string[], flags: Flags, opts: OutputOptions): 
     output(opts.json ? { schemaVersion: "1", plan, report: { status: "applied", drift: [], operations: [] } } : "Nothing to apply.", opts);
     return;
   }
-  if (!opts.json) output(renderPlan(plan, undefined, true), opts);
-  await confirmApply(plan, flags, opts);
-  const report = await rt.applyScriptPlan(plan, { port, baseUrl: profile.baseUrl, onOperation: progress(opts) });
-  finish(plan, report, opts);
+  const journal = await openJournal(file, plan, { resume: hasFlag(flags, "resume") }, opts);
+  if (journal.done.size === plan.operations.length) {
+    output(opts.json ? { schemaVersion: "1", plan, report: { status: "applied", drift: [], operations: [] } } : "Everything in this plan is already applied.", opts);
+    return;
+  }
+  if (!opts.json) {
+    output(renderPlan(plan, undefined, true), opts);
+    if (journal.done.size > 0) output(`Resuming: ${journal.done.size} of ${plan.operations.length} operations were applied before.`, opts);
+  }
+  await confirmApply(plan, flags, opts, journal.done.size);
+  const report = await rt.applyScriptPlan(plan, {
+    port,
+    baseUrl: profile.baseUrl,
+    done: journal.done,
+    concurrency: parseConcurrency(flags, opts, 1),
+    onOperation: track(plan, opts, journal),
+  });
+  finish(plan, report, opts, file);
+}
+
+/** Journal of an apply: the plan digest, then one JSON line per applied operation. */
+export function journalPath(planFile: string): string {
+  return `${planFile}.journal.jsonl`;
+}
+
+interface Journal {
+  done: Map<number, Record<string, unknown>>;
+  record(seq: number, result: Record<string, unknown>): void;
+}
+
+/**
+ * Opens the journal next to a plan file. `fresh` starts a new one (a plan just
+ * written). Otherwise an existing journal of this plan means an earlier apply
+ * got partway: continuing needs `--resume`, because applying a plan twice
+ * would repeat comments and creates.
+ */
+async function openJournal(planFile: string, plan: ScriptPlanV1, mode: { fresh?: boolean; resume?: boolean }, opts: OutputOptions): Promise<Journal> {
+  const path = journalPath(planFile);
+  const done = new Map<number, Record<string, unknown>>();
+  if (!mode.fresh && existsSync(path)) {
+    const lines = (await readFile(path, "utf8")).split("\n").filter(Boolean);
+    let header: { plan?: string } = {};
+    try {
+      header = JSON.parse(lines[0] ?? "{}");
+      // A line cut off by a crash is the last one; it never counted as applied.
+      for (const line of lines.slice(1)) {
+        try {
+          const entry = JSON.parse(line) as { seq: number; result: Record<string, unknown> };
+          done.set(entry.seq, entry.result);
+        } catch {}
+      }
+    } catch {}
+    if (header.plan !== plan.digest) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, `${displayPath(path)} belongs to a different plan. Move it away to apply this one.`);
+    }
+    if (done.size > 0 && !mode.resume) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        `${done.size} of ${plan.operations.length} operations of this plan were already applied (${displayPath(path)}). Continue with --resume; applying a plan twice repeats its writes.`,
+      );
+    }
+  } else {
+    await writeFile(path, JSON.stringify({ plan: plan.digest }) + "\n", "utf8");
+  }
+  return {
+    done,
+    // Synchronous, so a line is on disk before the next operation starts.
+    record: (seq, result) => appendFileSync(path, JSON.stringify({ seq, result }) + "\n"),
+  };
+}
+
+function parseConcurrency(flags: Flags, opts: OutputOptions, fallback: number): number {
+  const raw = getFlag(flags, "concurrency");
+  if (raw === undefined) return fallback;
+  if (!/^[1-9]\d*$/.test(raw) || Number(raw) > 32) fail(opts, 1, ERROR_CODES.USAGE, `--concurrency expects 1 to 32, got "${raw}"`);
+  return Number(raw);
 }
 
 async function checkCommand(args: string[], opts: OutputOptions): Promise<void> {
@@ -298,21 +382,26 @@ export function parseLimits(
   flags: Flags,
   opts: OutputOptions,
 ): { limits: { deadlineMs?: number; memoryBytes?: number; maxHostCalls?: number }; maxWrites?: number } {
-  const count = (name: string): number | undefined => {
+  /** A positive whole number; with `unlimited`, 0 means no limit (Infinity). */
+  const count = (name: string, unlimited = true): number | undefined => {
     const raw = getFlag(flags, name);
     if (raw === undefined) return undefined;
-    if (!/^[1-9]\d*$/.test(raw)) fail(opts, 1, ERROR_CODES.USAGE, `--${name} expects a positive whole number, got "${raw}"`);
+    if (unlimited && raw === "0") return Infinity;
+    if (!/^[1-9]\d*$/.test(raw)) {
+      fail(opts, 1, ERROR_CODES.USAGE, `--${name} expects a positive whole number${unlimited ? " (0 for no limit)" : ""}, got "${raw}"`);
+    }
     return Number(raw);
   };
   const limits: { deadlineMs?: number; memoryBytes?: number; maxHostCalls?: number } = {};
   const timeout = getFlag(flags, "timeout");
-  if (timeout !== undefined) {
+  if (timeout === "0") limits.deadlineMs = Infinity;
+  else if (timeout !== undefined) {
     const match = /^([1-9]\d*)(ms|s|m|h)?$/.exec(timeout);
     if (!match) fail(opts, 1, ERROR_CODES.USAGE, `--timeout expects a duration like 90s, 10m or 1h, got "${timeout}"`);
     const unit = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 }[(match[2] ?? "s") as "ms" | "s" | "m" | "h"];
     limits.deadlineMs = Number(match[1]) * unit;
   }
-  const memory = count("memory");
+  const memory = count("memory", false);
   if (memory !== undefined) limits.memoryBytes = memory * 1024 * 1024;
   const calls = count("max-calls");
   if (calls !== undefined) limits.maxHostCalls = calls;
@@ -355,26 +444,45 @@ async function guard<T>(opts: OutputOptions, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function confirmApply(plan: ScriptPlanV1, flags: Flags, opts: OutputOptions): Promise<void> {
+async function confirmApply(plan: ScriptPlanV1, flags: Flags, opts: OutputOptions, alreadyDone = 0): Promise<void> {
   if (hasFlag(flags, "yes")) return;
   if (opts.json || !process.stdin.isTTY) {
     fail(opts, 1, ERROR_CODES.USAGE, "Applying needs confirmation: pass --yes (required without a terminal or with --json).");
   }
-  const n = plan.operations.length;
-  if (!(await promptConfirm(`Apply ${n} operation${n === 1 ? "" : "s"} to ${plan.target.baseUrl}?`))) {
+  const n = plan.operations.length - alreadyDone;
+  const breakdown = n >= LARGE_PLAN ? ` (${verbCounts(plan.operations)})` : "";
+  if (!(await promptConfirm(`Apply ${n} operation${n === 1 ? "" : "s"}${breakdown} to ${plan.target.baseUrl}?`))) {
     fail(opts, 1, ERROR_CODES.USAGE, "Not applied.");
   }
 }
 
-function progress(opts: OutputOptions) {
-  return (r: { seq: number; status: string; error?: string }) => {
+/** Plans from this many operations on are summarized rather than listed. */
+const LARGE_PLAN = 200;
+
+/** "120 jira.comment, 80 jira.addLabels", most frequent first. */
+function verbCounts(operations: readonly PlannedOperation[]): string {
+  const counts = new Map<string, number>();
+  for (const op of operations) counts.set(op.verb, (counts.get(op.verb) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([verb, n]) => `${n} ${verb}`).join(", ");
+}
+
+/** Journals applied operations and reports progress: one line each, or a running count for large plans. */
+function track(plan: ScriptPlanV1, opts: OutputOptions, journal?: Journal) {
+  const large = plan.operations.length >= LARGE_PLAN;
+  let applied = 0;
+  return (r: { seq: number; status: string; error?: string; result?: Record<string, unknown> }) => {
+    if (r.status === "applied") {
+      journal?.record(r.seq, r.result ?? {});
+      applied++;
+    }
     if (opts.json) return;
-    if (r.status === "applied") process.stderr.write(`  ✓ ${r.seq}\n`);
     if (r.status === "failed") process.stderr.write(`  ✗ ${r.seq}: ${stripControlChars(r.error ?? "")}\n`);
+    else if (!large) process.stderr.write(`  ✓ ${r.seq}\n`);
+    else if (applied % 100 === 0) process.stderr.write(`  ✓ ${applied} applied\n`);
   };
 }
 
-function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions): void {
+function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions, planFile?: string): void {
   if (report.status === "drift") {
     const lines = report.drift.map((d) => `  #${d.seq} ${describePrecondition(d.precondition)}: now ${d.actual}`);
     fail(opts, 2, ERROR_CODES.VALIDATION, ["Targets changed since the plan was made; nothing was written:", ...lines, "Re-run the script to plan again."].join("\n"), {
@@ -384,7 +492,10 @@ function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions): v
   if (report.status === "failed") {
     const failed = report.operations.find((o) => o.status === "failed")!;
     const done = report.operations.filter((o) => o.status === "applied").length;
-    fail(opts, 1, ERROR_CODES.API, `Operation #${failed.seq} failed: ${failed.error?.replace(/\.$/, "")}. ${done} of ${plan.operations.length} operations were applied; the rest were skipped.`, {
+    const next = planFile
+      ? ` Fix the cause, then continue with: atlcli script apply ${displayPath(planFile)} --resume`
+      : " Pass --plan-out next time to be able to resume.";
+    fail(opts, 1, ERROR_CODES.API, `Operation #${failed.seq} failed: ${failed.error?.replace(/\.$/, "")}. ${done} of ${plan.operations.length} operations were applied; the rest were skipped.${next}`, {
       report,
     });
   }
@@ -411,8 +522,10 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
   const lines = [`${plan.script.name} → ${plan.target.baseUrl}${plan.target.profile ? ` (profile ${plan.target.profile})` : ""}`];
   if (n === 0) lines.push("No changes planned.");
   else {
-    lines.push(`Plan: ${n} operation${n === 1 ? "" : "s"}`);
-    for (const op of plan.operations) lines.push(`  ${String(op.seq).padStart(3)}  ${describeOperation(op)}`);
+    lines.push(`Plan: ${n} operation${n === 1 ? "" : "s"}${n >= LARGE_PLAN ? ` (${verbCounts(plan.operations)})` : ""}`);
+    const shown = n >= LARGE_PLAN ? plan.operations.slice(0, 50) : plan.operations;
+    for (const op of shown) lines.push(`  ${String(op.seq).padStart(3)}  ${describeOperation(op)}`);
+    if (shown.length < n) lines.push(`  … and ${n - shown.length} more (all of them: --plan-out <file> or --json)`);
   }
   if (plan.skipped.length > 0) {
     lines.push(`Unchanged, not planned: ${plan.skipped.length}`);

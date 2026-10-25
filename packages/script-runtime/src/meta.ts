@@ -20,7 +20,7 @@ const paramSpec = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("boolean"), default: z.boolean().optional(), description: z.string().optional() }),
 ]);
 
-export const DEFAULT_MAX_WRITES = 100;
+export const DEFAULT_MAX_WRITES = 10_000;
 
 export const scriptMetaSchema = z.strictObject({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes").optional(),

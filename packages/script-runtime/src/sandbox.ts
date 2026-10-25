@@ -21,20 +21,20 @@ export interface SandboxLimits {
   memoryBytes: number;
   /** QuickJS native stack limit. */
   stackBytes: number;
-  /** Wall-clock budget for the whole run, CPU and awaiting included. */
+  /** Wall-clock budget for the whole run, CPU and awaiting included; `Infinity` for none. */
   deadlineMs: number;
   /** Per host call; the interrupt handler cannot fire while the guest awaits the host. */
   hostCallTimeoutMs: number;
-  /** Total host calls per run. */
+  /** Total host calls per run; `Infinity` for none. */
   maxHostCalls: number;
 }
 
 export const DEFAULT_SANDBOX_LIMITS: SandboxLimits = {
   memoryBytes: 64 * 1024 * 1024,
   stackBytes: 512 * 1024,
-  deadlineMs: 5 * 60_000,
+  deadlineMs: 60 * 60_000,
   hostCallTimeoutMs: 60_000,
-  maxHostCalls: 10_000,
+  maxHostCalls: 100_000,
 };
 
 export type SandboxLogLevel = "info" | "warn" | "error";
@@ -282,10 +282,13 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
     done(true, stringify(r === undefined ? null : r) ?? "null");
   } catch (e) { done(false, e); }
 })();`;
-    timer = setTimeout(
-      () => fail(new ScriptError("deadline", `Script deadline exceeded (${limits.deadlineMs} ms)`)),
-      limits.deadlineMs,
-    );
+    // setTimeout treats Infinity (no deadline) as 0, so only finite deadlines arm it.
+    if (Number.isFinite(limits.deadlineMs)) {
+      timer = setTimeout(
+        () => fail(new ScriptError("deadline", `Script deadline exceeded (${limits.deadlineMs} ms)`)),
+        limits.deadlineMs,
+      );
+    }
     const evaluated = ctx.evalCode(entry, "atlcli:entry", { type: "global" });
     if (evaluated.error) {
       const error = toScriptError(ctx, evaluated.error);

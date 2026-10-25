@@ -123,6 +123,14 @@ describe("runScript", () => {
     expect(error.kind).toBe("interrupted");
   });
 
+  it("runs without limits when they are Infinity (no instant deadline)", async () => {
+    const result = await run(`export default async () => { await atlcli.ok(); await atlcli.ok(); return 2; }`, {
+      host: { ok: async () => true },
+      limits: { deadlineMs: Infinity, maxHostCalls: Infinity },
+    });
+    expect(result).toEqual({ value: 2, hostCalls: 2 });
+  });
+
   it("stops scripts that never settle at the wall-clock deadline", async () => {
     const error = await scriptError(
       run(`export default () => new Promise(() => {})`, { limits: { deadlineMs: 100 } }),
