@@ -54,8 +54,12 @@ import {
   RenderBudget,
   renderBody,
   renderTextField,
+  collectVariables,
+  renderJiraFieldValue,
   type RenderWarning,
   type TemplateScope,
+  type TemplateVariable,
+  type BodyFormat,
 } from "@atlcli/core";
 import {
   JiraClient,
@@ -113,6 +117,7 @@ import {
   templateToCreateInput,
   getTemplateFieldNames,
   JiraTemplate,
+  type JiraTemplateFields,
   CreateRemoteLinkInput,
   // Hierarchical template storage
   JiraTemplateFilter,
@@ -141,7 +146,7 @@ import {
   type StatusCategoryResolver,
 } from "@atlcli/jira";
 import { unknownSubcommand } from "./unknown-subcommand.js";
-import { parseTemplateFlags, TEMPLATE_FLAGS_HELP, templateValuesFrom } from "./template-flags.js";
+import { completeTemplateValues, parseTemplateFlags, TEMPLATE_FLAGS_HELP, templateValuesFrom } from "./template-flags.js";
 
 export async function handleJira(
   args: string[],
@@ -6957,6 +6962,8 @@ async function handleTemplateSave(
   const issue = await client.getIssue(issueKey, { fields: ["*all"] });
 
   const template = issueToTemplate(issue, name, description);
+  const variables = inferTemplateVariables(template.fields);
+  if (variables.length > 0) template.variables = variables;
 
   // Add tags if provided
   if (tagsStr) {
@@ -6977,6 +6984,7 @@ async function handleTemplateSave(
       level,
       sourceIssue: issue.key,
       fields: getTemplateFieldNames(template),
+      ...(variables.length > 0 ? { variables: variables.map((v) => v.name) } : {}),
     },
     opts
   );
@@ -7011,6 +7019,7 @@ async function handleTemplateGet(
         tags: template.tags,
         source: template.source,
         fields: template.fields,
+        ...(template.variables?.length ? { variables: template.variables } : {}),
       },
     },
     opts
@@ -7049,10 +7058,26 @@ async function handleTemplateApply(
     fail(opts, 1, ERROR_CODES.USAGE, "--summary is required (template has no default summary).");
   }
 
-  const createInput = templateToCreateInput(template, projectKey, {
-    summary: finalSummary,
-    description,
-  });
+  // Overrides are templates too; everything renders before anything is sent.
+  const templating = await completeTemplateValues(
+    await parseTemplateFlags(flags, opts, { declarations: template.variables ?? [] }),
+    flags,
+    opts,
+  );
+  const scope = createTemplateScope({ vars: templating.values, now: templating.now, project: projectKey });
+  let rendered: ReturnType<typeof renderTemplateFields>;
+  try {
+    rendered = renderTemplateFields(
+      { ...template.fields, summary: finalSummary, ...(description ? { description } : {}) },
+      scope,
+      new RenderBudget(),
+      templating.strict,
+    );
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, err instanceof Error ? err.message : String(err));
+  }
+
+  const createInput = templateToCreateInput({ ...template, fields: rendered.fields }, projectKey);
   // Any user form, on Cloud (account id) and Data Center (user name).
   if (assignee) (createInput.fields as Record<string, unknown>).assignee = await userFlag(client, assignee, opts);
 
@@ -7068,9 +7093,62 @@ async function handleTemplateApply(
       },
       template: name,
       templateLevel: template.source?.level ?? "global",
+      ...(rendered.warnings.length ? { warnings: rendered.warnings } : {}),
     },
     opts
   );
+}
+
+/** Variables used in a template's fields, as required strings (what `save` records). */
+export function inferTemplateVariables(fields: JiraTemplateFields): TemplateVariable[] {
+  const units = Object.entries(fields).flatMap(([id, value]): Array<{ unit: string; value: unknown; format?: BodyFormat }> => {
+    if (id === "description") return [{ unit: id, value, format: typeof value === "string" ? "wikimarkup" : "adf" }];
+    return stringLeaves(value).map((text) => ({ unit: id, value: text }));
+  });
+  const names = [...new Set(collectVariables(units).map((u) => u.name))].sort();
+  return names.map((name) => ({ name, type: "string", required: true }));
+}
+
+function stringLeaves(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringLeaves);
+  if (value && typeof value === "object") return Object.values(value).flatMap(stringLeaves);
+  return [];
+}
+
+/**
+ * Renders a template's fields: summary, description (ADF or wiki markup),
+ * labels, due date and other values (options, names, strings). Throws a
+ * RenderError for an invalid rendered value, or with `strict` and warnings.
+ */
+export function renderTemplateFields(
+  fields: JiraTemplateFields,
+  scope: TemplateScope,
+  budget: RenderBudget,
+  strict = false,
+): { fields: JiraTemplateFields; warnings: RenderWarning[] } {
+  const warnings: RenderWarning[] = [];
+  const out: Record<string, unknown> = {};
+  for (const [id, value] of Object.entries(fields)) {
+    const opts = { unit: id, budget };
+    let r: { value: unknown; warnings: RenderWarning[] };
+    if (id === "issuetype" || id === "priority") r = { value, warnings: [] };
+    else if (id === "summary" && typeof value === "string") r = renderTextField(value, "summary", scope, opts);
+    else if (id === "description") r = renderBody(value, scope, { ...opts, format: typeof value === "string" ? "wikimarkup" : "adf" });
+    else if (id === "labels" && Array.isArray(value)) {
+      const ws: RenderWarning[] = [];
+      const labels = value.map((l, i) => {
+        const one = renderTextField(String(l), "label", scope, { unit: `label ${i + 1}`, budget });
+        ws.push(...one.warnings);
+        return one.value;
+      });
+      r = { value: labels, warnings: ws };
+    } else if (id === "duedate" && typeof value === "string") r = renderTextField(value, "date", scope, opts);
+    else r = renderJiraFieldValue(value, undefined, scope, opts);
+    warnings.push(...r.warnings);
+    out[id] = r.value;
+  }
+  return finish({ fields: out as JiraTemplateFields, warnings }, warnings, { strict }).value;
 }
 
 async function handleTemplateDelete(
@@ -7244,6 +7322,10 @@ Apply options:
   --summary <text>      Issue summary
   --description <text>  Issue description
   --assignee <user>     Assignee: me, an email, a name or an account id
+  Summary, description, labels and fields are templates ({{name}}); save records
+  the variables it finds, and apply asks for required ones at a terminal.
+
+${TEMPLATE_FLAGS_HELP}
 
 Global options:
   --profile <name>      Use a specific auth profile
