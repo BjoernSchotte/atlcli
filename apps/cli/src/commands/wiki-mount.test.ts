@@ -220,7 +220,7 @@ describe("safe shutdown", () => {
 });
 
 describe("mount startup validation", () => {
-  it("rejects malformed flags before profile lookup or filesystem side effects", () => {
+  it("rejects malformed flags before profile lookup or filesystem side effects", async () => {
     const invalid = [
       ...["webdav", "nfs"].flatMap(transport => [
         ...["invalid", "-1", "1.5", "65536", "0x50", "1e3"].map(port => ["--transport", transport, "--port", port]),
@@ -238,17 +238,23 @@ describe("mount startup validation", () => {
         flags: ["--transport", transport, "--port", port, "--mode", "ro"], code: 1, error: "AUTH",
       }))),
     ];
-    for (const { flags, code, error } of cases) {
-      const mountpoint = join(root, "must-not-exist");
-      const cache = join(root, "no-cache");
-      const result = Bun.spawnSync([process.execPath, "--conditions=development", "run", "--cwd",
+    const mountpoint = join(root, "must-not-exist");
+    const cache = join(root, "no-cache");
+    // All cases at once: one CLI start each, so running them in sequence made
+    // the test's duration (and its timeout) scale with machine load.
+    const results = await Promise.all(cases.map(async ({ flags }) => {
+      const proc = Bun.spawn([process.execPath, "--conditions=development", "run", "--cwd",
         resolve(import.meta.dir, "../.."), "src/index.ts", "wiki", "mount", mountpoint,
         "--profile", "__missing_mount_validation_profile__", "--cache-dir", cache, "--json", ...flags],
-        { timeout: 10_000 });
-      expect(result.exitCode).toBe(code);
-      expect(result.stdout.toString() + result.stderr.toString()).toContain(error);
-      expect(existsSync(mountpoint)).toBe(false);
-      expect(existsSync(cache)).toBe(false);
-    }
-  }, 30_000);
+        { stdout: "pipe", stderr: "pipe", timeout: 30_000 });
+      const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+      return { exitCode, output: stdout + stderr };
+    }));
+    cases.forEach(({ flags, code, error }, i) => {
+      expect({ flags, exitCode: results[i]!.exitCode }).toEqual({ flags, exitCode: code });
+      expect(results[i]!.output).toContain(error);
+    });
+    expect(existsSync(mountpoint)).toBe(false);
+    expect(existsSync(cache)).toBe(false);
+  }, 60_000);
 });

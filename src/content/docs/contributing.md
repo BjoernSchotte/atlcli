@@ -72,6 +72,33 @@ Run the complete local suite with:
 bun run test
 ```
 
+For a faster local run, add `--parallel`: one worker per CPU core, roughly
+100 s instead of about 8 minutes on a 16+-core machine.
+
+```bash
+bun run test --parallel
+```
+
+In parallel mode the runner:
+
+- gives each test a 30 s default timeout instead of Bun's 5 s, because
+  test files that start the CLI compete for the cores; an explicit
+  `--timeout` wins
+- leaves out `*.benchmark.test.*` files and runs them serially afterwards,
+  since their wall-clock budgets mean nothing while every core is busy
+
+With file filters (`bun run test --parallel packages/jira`) everything runs in
+one parallel pass.
+
+Rules for tests that must survive this:
+
+- Build a workspace package with `bunx turbo run build --filter=<package>`,
+  never through the root `bun run build`. Its `prebuild` deletes every browser
+  artifact, including the extension output other tests are reading.
+  `scripts/test-helpers/run-tests.test.ts` enforces this.
+- Don't run CLI starts one after another under one test timeout; start them
+  together, as `wiki-mount.test.ts` does.
+
 Start **CI topology comparison** manually in GitHub Actions to compare one
 duration-aware candidate with all four legacy shards on the same SHA. The
 workflow is non-required and cannot replace **required**. Timing JSON is

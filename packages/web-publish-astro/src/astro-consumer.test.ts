@@ -39,7 +39,7 @@ async function packPackage(name: string, destination: string): Promise<string> {
 }
 
 test("Astro consumer harness loads structured pages and emits a private inventory", async () => {
-  await run(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
+  await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
   const result = await run(["bun", "run", "build"], fixtureDirectory);
   expect(result.stdout).toContain("loaded 1 structured publication page(s)");
 
@@ -235,7 +235,7 @@ test("packed integration builds a clean Astro project with fetch disabled", asyn
   const tarballDirectory = join(root, "tarballs");
   const consumerDirectory = join(root, "consumer");
   try {
-    await run(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
+    await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
     const [exportBlocks, exportBlocksAstro, exportChartsTanStack, webPublish, webPublishAstro] = await Promise.all([
       packPackage("export-blocks", join(tarballDirectory, "export-blocks")),
       packPackage("export-blocks-astro", join(tarballDirectory, "export-blocks-astro")),

@@ -47,8 +47,8 @@ async function packPackage(name: string, destination: string): Promise<string> {
 }
 
 test("a Starlight consumer presents ExportBlock document bodies with static search assets", async () => {
-  await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro"], workspaceRoot);
-  await run(["bun", "run", "build", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
+  await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/export-blocks-astro"], workspaceRoot);
+  await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
   await rm(resolve(fixture, ".astro"), { recursive: true, force: true });
   const output = await run(["bun", "run", "build"], fixture);
   expect(output).toMatch(/\d+ page\(s\) built/u);
@@ -95,7 +95,7 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
 }, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("a bundle-driven Starlight consumer owns source, graph landing, and trusted 404 output", async () => {
-  await run(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
+  await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
   await rm(resolve(publishedConsumerFixture, ".astro"), { recursive: true, force: true });
   const output = await run(["bun", "run", "build"], publishedConsumerFixture);
   expect(output).toContain("4 page(s) built");
@@ -357,7 +357,7 @@ test("a packed Starlight consumer builds from the published package boundary wit
   const tarballs = resolve(root, "tarballs");
   const consumer = resolve(root, "consumer");
   try {
-    await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro", "--filter=@atlcli/web-publish-astro", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
+    await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/export-blocks-astro", "--filter=@atlcli/web-publish-astro", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
     const [exportBlocks, exportBlocksAstro, exportChartsTanStack, webPublish, webPublishAstro, webPublishStarlight] = await Promise.all([
       packPackage("export-blocks", resolve(tarballs, "export-blocks")),
       packPackage("export-blocks-astro", resolve(tarballs, "export-blocks-astro")),
@@ -455,7 +455,7 @@ test("a production harness converts Cloud ADF and DC Storage before a packed Ast
     expect(JSON.stringify([...resolvedCloud.blocks, ...resolvedDc.blocks])).not.toContain("<ac:");
     expect(JSON.stringify([...resolvedCloud.blocks, ...resolvedDc.blocks])).not.toContain("type\":\"doc\"");
 
-    await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro", "--filter=@atlcli/web-publish-astro", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
+    await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/export-blocks-astro", "--filter=@atlcli/web-publish-astro", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
     const [exportBlocks, exportBlocksAstro, exportChartsTanStack, webPublish, webPublishAstro, webPublishStarlight] = await Promise.all([
       packPackage("export-blocks", resolve(tarballs, "export-blocks")),
       packPackage("export-blocks-astro", resolve(tarballs, "export-blocks-astro")),

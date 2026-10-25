@@ -262,7 +262,15 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
     ctx.newString(JSON.stringify(wrappers)).consume((w) => ctx.setProp(ctx.global, "__atlcliWrappers", w));
     ctx.newString(JSON.stringify(options.params ?? {})).consume((p) => ctx.setProp(ctx.global, "__atlcliParams", p));
 
-    ctx.unwrapResult(ctx.evalCode(PRELUDE, "atlcli:prelude", { type: "global" })).dispose();
+    // The CPU deadline also covers the prelude: under load a tiny deadline can
+    // interrupt it, which must surface as a ScriptError, not a raw QuickJS error.
+    const prelude = ctx.evalCode(PRELUDE, "atlcli:prelude", { type: "global" });
+    if (prelude.error) {
+      const error = toScriptError(ctx, prelude.error);
+      prelude.error.dispose();
+      throw error;
+    }
+    prelude.value.dispose();
 
     const entry = `(async () => {
   const done = globalThis.__atlcliDone, stringify = JSON.stringify;

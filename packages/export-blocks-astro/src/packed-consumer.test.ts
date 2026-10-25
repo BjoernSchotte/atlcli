@@ -30,7 +30,7 @@ test("a network-disabled, packed plain-Astro consumer keeps overrides and static
   const tarballs = join(root, "tarballs");
   const consumer = join(root, "consumer");
   try {
-    await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro"], workspaceRoot);
+    await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/export-blocks-astro"], workspaceRoot);
     const [exportBlocks, exportBlocksAstro, exportChartsTanStack] = await Promise.all([
       packPackage("export-blocks", join(tarballs, "export-blocks")),
       packPackage("export-blocks-astro", join(tarballs, "export-blocks-astro")),
