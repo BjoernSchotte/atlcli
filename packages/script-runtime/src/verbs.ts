@@ -9,6 +9,7 @@ import type {
   JiraSprintState,
   JiraUserRef,
   ScriptPort,
+  TemplateWarningView,
 } from "./port.js";
 import { runScript, ScriptError, type HostFunction, type RunScriptOptions } from "./sandbox.js";
 
@@ -40,6 +41,7 @@ export const WRITE_VERBS = [
   "confluence.deletePage",
   "confluence.attach",
   "confluence.export",
+  "confluence.copyAttachment",
 ] as const;
 
 export type WriteVerb = (typeof WRITE_VERBS)[number];
@@ -70,6 +72,15 @@ export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "on
   params?: Readonly<Record<string, unknown>>;
   /** Overrides `meta.limits.maxWrites` (e.g. from `--max-writes`). */
   maxWrites?: number;
+  /** Template vars and the frozen clock for atlcli.render (CLI --var/--vars-file/--now/--strict). */
+  templating?: Templating;
+}
+
+export interface Templating {
+  vars: Record<string, unknown>;
+  /** ISO time @today/@now render as. */
+  now: string;
+  strict: boolean;
 }
 
 /** A write the plan left out because it would change nothing. */
@@ -89,6 +100,10 @@ export interface ScriptRunPlan {
   operations: PlannedOperation[];
   skipped: SkippedWrite[];
   hostCalls: number;
+  /** Set when the run was given templating; recorded in the plan so a re-plan can repeat it. */
+  templating?: { now: string; vars: Record<string, unknown> };
+  /** Warnings from atlcli.render (unresolved {{…}} and others). */
+  renderWarnings: TemplateWarningView[];
 }
 
 const PLACEHOLDER = /^plan:(\d+)$/;
@@ -130,6 +145,17 @@ const jiraUpdate = z
   })
   .refine((u) => Object.keys(u).length > 0, "nothing to update");
 const pageInput = z.strictObject({ space: str, title: str, markdown: z.string(), parentId: str.optional() });
+/** createPage also takes raw storage (lossless copies) and content properties. */
+const createPageInput = z
+  .strictObject({
+    space: str,
+    title: str,
+    markdown: z.string().optional(),
+    storage: z.string().optional(),
+    parentId: str.optional(),
+    properties: z.record(str, z.unknown()).optional(),
+  })
+  .refine((p) => (p.markdown === undefined) !== (p.storage === undefined), "pass markdown or storage, exactly one");
 const attachmentInput = z.strictObject({
   name: str.max(255).refine((n) => !/[\\/]/.test(n), "name cannot contain path separators"),
   content: z.string(),
@@ -158,12 +184,17 @@ class Recorder {
   /** Sprint ref → dates after the plan's writes so far (starting needs both). */
   readonly sprintDates = new Map<string, { startDate?: string; endDate?: string }>();
   readonly exportPaths = new Set<string>();
+  readonly renderWarnings: TemplateWarningView[] = [];
+  /** Unnamed render calls so far (default unit names); `rendered` once any call ran. */
+  renderCount = 0;
+  rendered = false;
   private linkTypeList?: Promise<JiraLinkType[]>;
 
   constructor(
     readonly port: ScriptPort,
     private readonly meta: ScriptMeta,
     private readonly maxWrites = maxWritesOf(meta),
+    readonly templating: Templating = { vars: {}, now: new Date().toISOString(), strict: false },
   ) {}
 
   /** Without declared permissions every verb is allowed (writes are still only planned). */
@@ -295,7 +326,40 @@ function verb<A extends unknown[]>(
   return { args: args as z.ZodType<unknown[]>, run: run as Verb["run"] };
 }
 
+const renderOptions = z.strictObject({
+  vars: z.record(z.string(), z.unknown()).optional(),
+  format: z.enum(["text", "adf", "storage", "wikimarkup"]).optional(),
+  source: z.unknown().optional(),
+  parent: z.unknown().optional(),
+  unit: z.string().optional(),
+  kind: z.enum(["summary", "label", "name", "string", "number", "date", "option"]).optional(),
+});
+
 const VERBS: Record<string, Verb> = {
+  // Not a write: renders on the host, records only warnings.
+  render: verb(z.tuple([z.unknown(), renderOptions.optional()]), async (r, [input, o = {}]) => {
+    const render = r.port.render?.bind(r.port);
+    if (!render) throw new Error("atlcli.render is not available on this host");
+    const unit = o.unit ?? `render#${++r.renderCount}`;
+    r.rendered = true;
+    try {
+      const out = render(input, {
+        format: o.format,
+        source: o.source,
+        parent: o.parent,
+        unit,
+        ...(o.kind ? { kind: o.kind } : {}),
+        vars: { ...r.templating.vars, ...(o.vars ?? {}) },
+        now: r.templating.now,
+        strict: r.templating.strict,
+      });
+      r.renderWarnings.push(...out.warnings);
+      return out.value;
+    } catch (error) {
+      if ((error as Error)?.name === "RenderError") throw new ScriptError("template", (error as Error).message);
+      throw error;
+    }
+  }),
   "jira.search": verb(
     z.tuple([
       str,
@@ -478,9 +542,31 @@ const VERBS: Record<string, Verb> = {
       return r.port.confluenceSearch(cql, { ...options, limit: SEARCH_PAGE_SIZE, signal });
     },
   ),
-  "confluence.getPage": verb(z.tuple([str]), async (r, [id], signal) => {
+  "confluence.getPage": verb(z.tuple([str, z.strictObject({ storage: z.boolean().optional() }).optional()]), async (r, [id, o], signal) => {
     r.require("confluence:read");
-    return r.port.confluenceGetPage(r.readable(id), { signal });
+    if (!o?.storage) return r.port.confluenceGetPage(r.readable(id), { signal });
+    return hostOp(r.port.confluenceGetPageStorage, "confluence.getPage({ storage: true })").call(r.port, r.readable(id), { signal });
+  }),
+  "confluence.children": verb(z.tuple([str]), async (r, [id], signal) => {
+    r.require("confluence:read");
+    return hostOp(r.port.confluenceChildren, "confluence.children").call(r.port, r.readable(id), { signal });
+  }),
+  "confluence.copyAttachment": verb(z.tuple([str, str, str]), async (r, [attachmentId, sourcePageId, toPageId], signal) => {
+    r.require("confluence:read");
+    const target = await r.confluencePage(toPageId, signal);
+    r.require(`confluence:write:${target.spaceKey}`);
+    const source = (await r.port.confluenceAttachments(r.readable(sourcePageId), { signal })).find((a) => a.id === attachmentId);
+    if (!source) throw new Error(`Page ${sourcePageId} has no attachment ${attachmentId}`);
+    if (target.live) {
+      const existing = (await r.port.confluenceAttachments(toPageId, { signal })).find((a) => a.name === source.name && a.size === source.size);
+      if (existing) {
+        r.skipped.push({ verb: "confluence.copyAttachment", target: toPageId, title: source.name, reason: "unchanged" });
+        return { id: existing.id };
+      }
+    }
+    // Copying never changes the target page's own content, so the target is no precondition object.
+    const seq = await r.record("confluence.copyAttachment", { attachmentId, sourcePageId, toPageId, name: source.name, size: source.size });
+    return { id: `plan:${seq}` };
   }),
   "confluence.comments": verb(z.tuple([str]), async (r, [pageId], signal) => {
     r.require("confluence:read");
@@ -490,7 +576,7 @@ const VERBS: Record<string, Verb> = {
     r.require("confluence:read");
     return r.port.confluenceAttachments(r.readable(pageId), { signal });
   }),
-  "confluence.createPage": verb(z.tuple([pageInput]), async (r, [input]) => {
+  "confluence.createPage": verb(z.tuple([createPageInput]), async (r, [input]) => {
     r.require(`confluence:write:${input.space}`);
     return { id: `plan:${await createPage(r, input)}` };
   }),
@@ -679,12 +765,24 @@ export function checkExportPath(path: string, format: ExportFormat): string {
 
 const titleObject = (space: string, title: string) => `confluence-title:${space}\u0000${title}`;
 
-function createPage(r: Recorder, input: z.output<typeof pageInput>): Promise<number> {
+/** A host operation this host may not provide (optional in ScriptPort). */
+function hostOp<F>(op: F | undefined, name: string): F {
+  if (!op) throw new Error(`atlcli.${name} is not available on this host`);
+  return op;
+}
+
+function createPage(r: Recorder, input: z.output<typeof createPageInput>): Promise<number> {
   if (r.lastWrite(titleObject(input.space, input.title))) {
     throw new Error(`Page "${input.title}" in ${input.space} is already created by this plan; use updatePage or upsertPage`);
   }
   if (input.parentId) r.notDeleted(input.parentId);
-  const args = { spaceKey: input.space, title: input.title, markdown: input.markdown, ...(input.parentId ? { parentId: input.parentId } : {}) };
+  const args = {
+    spaceKey: input.space,
+    title: input.title,
+    ...(input.storage !== undefined ? { storage: input.storage } : { markdown: input.markdown }),
+    ...(input.parentId ? { parentId: input.parentId } : {}),
+    ...(input.properties ? { properties: input.properties } : {}),
+  };
   return r.record("confluence.createPage", args, titleObject(input.space, input.title), async () => ({
     kind: "confluence-title-absent",
     spaceKey: input.space,
@@ -740,7 +838,7 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
   } catch (error) {
     throw new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
   }
-  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta));
+  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta), options.templating);
   const host: Record<string, HostFunction> = {};
   for (const [name, definition] of Object.entries(VERBS)) {
     host[name] = async (rawArgs, signal) => {
@@ -767,6 +865,9 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
     operations: recorder.operations,
     skipped: recorder.skipped,
     hostCalls: result.hostCalls,
+    // Only a run that rendered depends on the clock and vars, so only it records them.
+    ...(options.templating && recorder.rendered ? { templating: { now: options.templating.now, vars: options.templating.vars } } : {}),
+    renderWarnings: recorder.renderWarnings,
   };
 }
 

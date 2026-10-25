@@ -25,7 +25,7 @@ class StatefulPort implements ScriptPort {
   tick(): string {
     return `2026-10-24T00:00:${String(this.clock++).padStart(2, "0")}Z`;
   }
-  private guard(name: string): void {
+  protected guard(name: string): void {
     this.writes.push(name);
     if (this.failOn === name) throw new Error(`${name} rejected by server`);
   }
@@ -198,7 +198,7 @@ class StatefulPort implements ScriptPort {
     this.guard("confluenceDeletePage");
     this.pages.delete(id);
   }
-  async confluenceAttachments() {
+  async confluenceAttachments(_pageId?: string): Promise<Array<{ id: string; name: string; mediaType: string; size: number; version: number }>> {
     return [];
   }
   async confluenceAttach(pageId: string, file: { name: string; content: string; encoding: string }) {
@@ -245,6 +245,33 @@ async function makePlan(port: ScriptPort, source = SCRIPT): Promise<ScriptPlanV1
   });
 }
 
+describe("templated plans", () => {
+  const source = `export default async () => atlcli.render("{{nope}}")`;
+  class RenderingPort extends StatefulPort {
+    render(input: unknown, o: { unit: string }) {
+      return { value: input, warnings: [{ code: "unresolved", message: "Unresolved {{nope}}", unit: o.unit }] };
+    }
+  }
+  const templating = { vars: { y: 1 }, now: "2026-10-25T00:00:00.000Z", strict: false };
+
+  it("keeps templating and render warnings, covered by the digest", async () => {
+    const run = await planScript(source, { port: new RenderingPort(), templating, variant: DEBUG_VARIANT });
+    const plan = await createScriptPlan(run, { source, baseUrl: BASE_URL });
+    const parsed = await parseScriptPlan(serializeScriptPlan(plan));
+    expect(parsed.templating).toEqual({ now: "2026-10-25T00:00:00.000Z", vars: { y: 1 } });
+    expect(parsed.renderWarnings).toEqual([{ code: "unresolved", message: "Unresolved {{nope}}", unit: "render#1" }]);
+    const tampered = { ...JSON.parse(serializeScriptPlan(plan)), templating: { now: "2027-01-01T00:00:00.000Z", vars: {} } };
+    await expect(parseScriptPlan(tampered)).rejects.toThrow(/digest/);
+  });
+
+  it("a plan that never rendered has neither field", async () => {
+    const run = await planScript(`export default () => 1`, { port: new StatefulPort(), variant: DEBUG_VARIANT });
+    const plan = await createScriptPlan(run, { source: "x", baseUrl: BASE_URL });
+    expect("templating" in plan).toBe(false);
+    expect("renderWarnings" in plan).toBe(false);
+  });
+});
+
 describe("script plan file", () => {
   it("round-trips through canonical JSON and verifies its digest", async () => {
     const plan = await makePlan(new StatefulPort());
@@ -283,6 +310,36 @@ describe("script plan file", () => {
     const plan = JSON.parse(serializeScriptPlan(await makePlan(new StatefulPort())));
     plan.operations[1].dependsOn = [5];
     await expect(parseScriptPlan(plan)).rejects.toThrow("depends on later operation 5");
+  });
+});
+
+describe("applying storage page copies", () => {
+  it("creates with storage and properties, then copies attachments onto the new page", async () => {
+    class CopyPort extends StatefulPort {
+      created: unknown[] = [];
+      copies: string[] = [];
+      override async confluenceCreatePage(input: { spaceKey: string; title: string; markdown?: string; storage?: string; parentId?: string; properties?: Record<string, unknown> }) {
+        this.created.push(input);
+        return super.confluenceCreatePage({ ...input, markdown: input.markdown ?? "" });
+      }
+      override async confluenceAttachments(): Promise<Array<{ id: string; name: string; mediaType: string; size: number; version: number }>> {
+        return [{ id: "att1", name: "board.png", mediaType: "image/png", size: 10, version: 1 }];
+      }
+      async confluenceCopyAttachment(attachmentId: string, sourcePageId: string, toPageId: string) {
+        this.guard("confluenceCopyAttachment");
+        this.copies.push(`${attachmentId}:${sourcePageId}->${toPageId}`);
+        return { id: "att2" };
+      }
+    }
+    const source = `const page = await atlcli.confluence.createPage({ space: "DOCSY", title: "Copy", storage: "<p>x</p>", properties: { "atlcli.copiedFrom": { id: "100" } } });
+await atlcli.confluence.copyAttachment("att1", "100", page.id);`;
+    const port = new CopyPort();
+    const plan = await parseScriptPlan(serializeScriptPlan(await makePlan(port, source)));
+    const report = await applyScriptPlan(plan, { port, baseUrl: BASE_URL });
+    expect(report.status).toBe("applied");
+    expect(port.created).toEqual([{ spaceKey: "DOCSY", title: "Copy", storage: "<p>x</p>", properties: { "atlcli.copiedFrom": { id: "100" } } }]);
+    const id = report.operations[0]!.result as { id: string };
+    expect(port.copies).toEqual([`att1:100->${id.id}`]);
   });
 });
 

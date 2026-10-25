@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import DEBUG_VARIANT from "@jitl/quickjs-ng-wasmfile-debug-sync";
-import type { ConfluencePageView, JiraIssueView, ScriptPort } from "./port.js";
+import type { ConfluenceAttachmentView, ConfluencePageView, JiraIssueView, ScriptPort } from "./port.js";
 import { ScriptError } from "./sandbox.js";
 import { inspectScript, planScript, SCRIPT_VERBS, type PlanScriptOptions } from "./verbs.js";
 
@@ -762,8 +762,10 @@ it("exposes the verb set", () => {
     "confluence.addLabels",
     "confluence.attach",
     "confluence.attachments",
+    "confluence.children",
     "confluence.comment",
     "confluence.comments",
+    "confluence.copyAttachment",
     "confluence.createPage",
     "confluence.deletePage",
     "confluence.export",
@@ -791,5 +793,102 @@ it("exposes the verb set", () => {
     "jira.transition",
     "jira.update",
     "jira.updateSprint",
+    "render",
   ]);
+});
+
+/** A port whose renderer replaces {{year}} and warns on {{nope}}, like the host engine would. */
+class RenderPort extends FakePort {
+  render(input: unknown, o: { vars: Record<string, unknown>; unit: string }) {
+    const text = String(input);
+    return {
+      value: typeof input === "string" ? text.replace("{{year}}", String(o.vars.year)) : input,
+      warnings: text.includes("{{nope}}") ? [{ code: "unresolved", message: "Unresolved {{nope}}", unit: o.unit }] : [],
+    };
+  }
+}
+
+/** Adds raw storage, children and attachment listing to the fake. */
+class StoragePort extends FakePort {
+  async confluenceGetPageStorage(id: string) {
+    this.calls.push(`confluenceGetPageStorage:${id}`);
+    return { id, title: `Page ${id}`, spaceKey: "DOCSY", version: 3, storage: `<p>x ${id}</p>`, properties: {} };
+  }
+  async confluenceChildren(id: string) {
+    return id === "10" ? [{ id: "11", title: "Child", spaceKey: "DOCSY" }] : [];
+  }
+  override async confluenceAttachments(pageId?: string): Promise<ConfluenceAttachmentView[]> {
+    return pageId === "10" ? [{ id: "att1", name: "board.png", mediaType: "image/png", size: 10, version: 1 }] : [];
+  }
+  async confluenceCopyAttachment(): Promise<never> {
+    throw new Error("planning must never write");
+  }
+}
+
+describe("confluence storage copies", () => {
+  it("reads storage and children, creates with storage and properties, copies attachments", async () => {
+    const run = await plan(
+      `export default async () => {
+         const src = await atlcli.confluence.getPage("10", { storage: true });
+         const kids = await atlcli.confluence.children("10");
+         const page = await atlcli.confluence.createPage({ space: "DOCSY", title: "Copy", storage: src.storage, properties: { "atlcli.copiedFrom": { id: src.id } } });
+         await atlcli.confluence.copyAttachment("att1", "10", page.id);
+         return kids.map((k) => k.id);
+       };`,
+      { port: new StoragePort() },
+    );
+    expect(run.value).toEqual(["11"]);
+    expect(run.operations.map((o) => o.verb)).toEqual(["confluence.createPage", "confluence.copyAttachment"]);
+    expect(run.operations[0]!.args).toEqual({ spaceKey: "DOCSY", title: "Copy", storage: "<p>x 10</p>", properties: { "atlcli.copiedFrom": { id: "10" } } });
+    expect(run.operations[1]!.args).toEqual({ attachmentId: "att1", sourcePageId: "10", toPageId: "plan:1", name: "board.png", size: 10 });
+    expect(run.operations[1]!.dependsOn).toEqual([1]);
+  });
+  it("skips an attachment the target already has", async () => {
+    class Existing extends StoragePort {
+      override async confluenceAttachments(pageId?: string): Promise<ConfluenceAttachmentView[]> {
+        return [{ id: pageId === "10" ? "att1" : "att9", name: "board.png", mediaType: "image/png", size: 10, version: 1 }];
+      }
+    }
+    const run = await plan(`await atlcli.confluence.copyAttachment("att1", "10", "100")`, { port: new Existing() });
+    expect(run.operations).toEqual([]);
+    expect(run.skipped).toEqual([{ verb: "confluence.copyAttachment", target: "100", title: "board.png", reason: "unchanged" }]);
+  });
+  it("createPage takes markdown or storage, not both", async () => {
+    const out = await plan(
+      `export default await (async () => { ${attempt(`await atlcli.confluence.createPage({ space: "DOCSY", title: "T", markdown: "a", storage: "<p/>" })`)} })();`,
+    );
+    expect(out.value).toContain("markdown or storage");
+  });
+});
+
+describe("atlcli.render", () => {
+  it("renders with run vars, call vars win, warnings land in the run", async () => {
+    const run = await plan(
+      `export default async () => [await atlcli.render("Y{{year}}"), await atlcli.render("Y{{year}}", { vars: { year: 1 } }), await atlcli.render("{{nope}}")]`,
+      { port: new RenderPort(), templating: { vars: { year: 2026 }, now: "2026-10-25T00:00:00.000Z", strict: false } },
+    );
+    expect(run.value).toEqual(["Y2026", "Y1", "{{nope}}"]);
+    expect(run.renderWarnings).toEqual([{ code: "unresolved", message: "Unresolved {{nope}}", unit: "render#3" }]);
+    expect(run.templating).toEqual({ now: "2026-10-25T00:00:00.000Z", vars: { year: 2026 } });
+    expect(run.operations).toEqual([]);
+  });
+  it("records no templating for a run that never renders", async () => {
+    const run = await plan(`export default 1`, { port: new RenderPort(), templating: { vars: { year: 1 }, now: "2026-10-25T00:00:00.000Z", strict: false } });
+    expect(run.templating).toBeUndefined();
+  });
+  it("a render error ends the run as a template ScriptError", async () => {
+    class Strict extends FakePort {
+      render(): never {
+        const e = new Error("Template warnings with --strict");
+        e.name = "RenderError";
+        throw e;
+      }
+    }
+    const error = await scriptError(plan(`await atlcli.render("x")`, { port: new Strict() }));
+    expect(error.kind).toBe("template");
+  });
+  it("fails clearly on a host without a renderer", async () => {
+    const run = await plan(`export default async () => { try { await atlcli.render("x"); } catch (e) { return e.message; } }`);
+    expect(run.value).toBe("atlcli.render is not available on this host");
+  });
 });

@@ -1,0 +1,85 @@
+// Built-in script behind `atlcli wiki page copy --tree`. It runs in the same
+// sandbox as any `atlcli script`, so the result is an ordinary plan: review
+// it, then apply it (`--apply`, or `atlcli script apply plan.json`). Print it
+// with `atlcli wiki page copy --tree --print-script`.
+//
+// Titles and bodies are templates: `{{sprint}}` from --var/--vars-file,
+// `{{source.title}}`, `{{parent.title}}` (the rendered parent copy), `{{@today}}`.
+// Each copy carries the content property `atlcli.copiedFrom`, so planning
+// again after a partial apply reuses the copies that exist.
+
+export const meta = {
+  name: "copy-pages",
+  description: "Copy a Confluence page tree with templated titles and bodies, attachments included",
+  params: {
+    id: { type: "string", description: "Root page to copy" },
+    space: { type: "string", default: "", description: "Target space (default: the root's space)" },
+    parent: { type: "string", default: "", description: "Parent of the copied root (default: the root's parent)" },
+    title: { type: "string", default: "", description: "Title template for the root copy (default: its own title)" },
+    attachments: { type: "boolean", default: true },
+  },
+};
+
+const MARKER = "atlcli.copiedFrom";
+
+export default async function copyPages(p) {
+  const c = atlcli.confluence;
+  const root = await c.getPage(p.id, { storage: true });
+  const space = p.space || root.spaceKey;
+  const counts = { pages: 0, resumed: 0, attachments: 0 };
+
+  // Parents before children, siblings in page-tree order.
+  const queue = [{ src: root, parent: undefined }];
+  const titles = new Set();
+  while (queue.length > 0) {
+    const { src, parent } = queue.shift();
+    const source = { id: src.id, title: src.title };
+    const unit = (what) => `page ${src.id} ${what}`;
+    const title = await atlcli.render(src === root && p.title ? p.title : src.title, { source, parent, unit: unit("title") });
+    if (titles.has(title)) throw new Error(`Two copies would be titled "${title}"; titles must be unique in ${space}`);
+    titles.add(title);
+
+    let ref = await existingCopy(space, title, src.id);
+    if (ref) counts.resumed++;
+    else {
+      const storage = await atlcli.render(src.storage, { format: "storage", source, parent, unit: unit("body") });
+      // Into another space without --parent, the copy goes to the space's top level.
+      const parentId = parent ? parent.id : p.parent || (space === root.spaceKey ? root.parentId : undefined);
+      const page = await c.createPage({
+        space,
+        title,
+        storage,
+        ...(parentId ? { parentId } : {}),
+        properties: { [MARKER]: { id: src.id, version: src.version } },
+      });
+      ref = page.id;
+      counts.pages++;
+    }
+
+    if (p.attachments) {
+      for (const a of await c.attachments(src.id)) {
+        const copy = await c.copyAttachment(a.id, src.id, ref);
+        if (String(copy.id).startsWith("plan:")) counts.attachments++;
+      }
+    }
+
+    for (const child of await c.children(src.id)) {
+      queue.push({ src: await c.getPage(child.id, { storage: true }), parent: { id: ref, title } });
+    }
+  }
+  return { root: p.id, space, ...counts };
+}
+
+/** The id of an earlier copy of `sourceId` titled `title`; throws when an unrelated page has the title. */
+async function existingCopy(space, title, sourceId) {
+  const cql = `space = "${quote(space)}" AND type = page AND title = "${quote(title)}"`;
+  for await (const hit of atlcli.confluence.search(cql, { limit: 5 })) {
+    if (hit.title !== title) continue;
+    const page = await atlcli.confluence.getPage(hit.id, { storage: true });
+    if (page.properties[MARKER]?.id === sourceId) return hit.id;
+    throw new Error(`A page titled "${title}" already exists in ${space} (${hit.id}); pick another title`);
+  }
+  return undefined;
+}
+
+const quote = (s) => String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');

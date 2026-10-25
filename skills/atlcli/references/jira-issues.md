@@ -329,11 +329,23 @@ attachments; nothing is written without `--apply` or `atlcli script apply
 <plan.json>`. Status, assignee, dates and comments start empty unless
 `--keep-status`/`--status-map`, `--keep-assignee`, `--comments`
 (`--keep-mentions` keeps @mentions, which notifies again) are given;
-`--link-source` adds Cloners links; `--replace find:replace` fills
-`{{placeholders}}`, and leftovers are plan warnings. After a partial apply,
+`--link-source` adds Cloners links; summaries, descriptions, labels and
+comments are templates (`--var version=4.2`, `--vars-file`, `--strict`; the
+legacy `--replace find:replace` runs first). After a partial apply,
 plan again with the same flags (copies are found by their `atlcli.copiedFrom`
 property); never apply the same plan file twice, it would create the issues
-again. Read the plan's warnings before applying.
+again. Read the plan's warnings before applying. `clone` takes the same
+`--var`/`--vars-file`/`--strict`; its warnings are in `templateWarnings`.
+
+Templating (copy-issues, clone, `jira template apply`, `wiki page copy`,
+`atlcli.render`): `{{name}}` from `--var name=value` / `--vars-file vars.yml`,
+`{{source.key}}`/`{{source.title}}` for the original, `{{@today}}` and other
+`@` built-ins, helpers such as `dateAdd @today 14 "d"`. A `{{…}}` nothing fills
+stays as written and is a **template warning** in the plan or output; read
+them, or pass `--strict` so they fail. Code blocks and code macros are never
+rendered. Run `atlcli template vars --jql …|--issue …|--page … [--tree]|--jira-template …`
+first to see which variables a source needs (`--json` gives a `values:`
+skeleton). Re-plan with the plan's `--now` to keep dates identical.
 
 ## Anti-patterns
 

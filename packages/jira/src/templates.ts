@@ -14,6 +14,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { existsSync } from "fs";
 import { mkdir, readdir, readFile, writeFile, unlink, rename as fsRename, cp } from "fs/promises";
+import type { TemplateVariable } from "@atlcli/core";
 import type { JiraIssue, AdfDocument } from "./types";
 
 // ============ Types ============
@@ -47,6 +48,8 @@ export interface JiraTemplate {
   sourceIssue?: string;
   tags?: string[];
   fields: JiraTemplateFields;
+  /** Template variables (`{{name}}` in fields): types, defaults, required. */
+  variables?: TemplateVariable[];
   source?: JiraTemplateSource;
 }
 

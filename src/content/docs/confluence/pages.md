@@ -169,20 +169,48 @@ Options:
 
 ## Copy Page
 
-Duplicate a page:
+Duplicate a page with its attachments:
 
 ```bash
 atlcli wiki page copy --id 12345 --title "Copy of Page"
 ```
+
+The title and the body are [templates](/templating/): `{{sprint}}` takes a value
+from `--var`, `{{source.title}}` is the original's title, `{{@today}}` today's
+date. Code blocks and code macros are copied as written. Macro parameters
+render too, so a Jira macro with `project = {{project}}` points at the right
+project.
 
 Options:
 
 | Flag | Description |
 |------|-------------|
 | `--id` | Source page ID (required) |
-| `--title` | Title for the copy |
+| `--title` | Title for the copy, a template (default: `Copy of <title>`; with `--tree`: the root's own title) |
 | `--space` | Target space (default: same space) |
-| `--parent` | Parent page for the copy |
+| `--parent` | Parent page for the copy (default: the original's parent in the same space, the top level in another) |
+| `--tree` | Copy the page and all its descendants, as a plan |
+| `--no-attachments` | Leave the attachments out |
+| `--var`, `--vars-file`, `--now`, `--strict` | Template values and checks; see [Templating](/templating/#variables) |
+| `--apply`, `--yes`, `--plan-out`, `--print-script` | With `--tree`: as for [`atlcli script`](/reference/scripts/) |
+
+### Copy a page tree
+
+`--tree` copies the page and every descendant, parents first, siblings in
+their order. Each title and body renders on its own; `{{parent.title}}` is the
+rendered title of the parent copy. Like [copy-issues](/jira/copy-issues/), the
+result is a plan you review first:
+
+```bash
+atlcli wiki page copy --id 12345 --tree --title "Retro {{sprint}}" --var sprint=42 --plan-out retro.json
+atlcli script apply retro.json
+```
+
+- Titles must be unique in a space. A rendered title that is taken fails the
+  plan before anything is written.
+- Each copy carries the content property `atlcli.copiedFrom`. Planning again
+  after a partial apply reuses the copies that exist and plans only the rest.
+  Pass the plan's `--now` to get the same dates.
 
 ### Examples
 
@@ -192,6 +220,12 @@ atlcli wiki page copy --id 12345 --title "Page Copy"
 
 # Copy to different space
 atlcli wiki page copy --id 12345 --title "Page Copy" --space DOCS
+
+# A meeting page from a template page, dated today
+atlcli wiki page copy --id 12345 --title "Weekly {{@today}}" --parent 67890
+
+# A handbook tree for this year's audit, failing on any unfilled variable
+atlcli wiki page copy --id 12345 --tree --title "Audit {{year}}" --vars-file audit-2026.yml --strict --apply
 ```
 
 ## List Children

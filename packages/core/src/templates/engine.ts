@@ -1,4 +1,4 @@
-import Handlebars from "handlebars";
+import type Handlebars from "handlebars";
 import type {
   Template,
   RenderContext,
@@ -6,7 +6,8 @@ import type {
   ValidationResult,
   ValidationError,
 } from "./types.js";
-import { getBuiltinVariables, formatDate, BUILTIN_VARIABLE_NAMES } from "./builtins.js";
+import { getBuiltinVariables, BUILTIN_VARIABLE_NAMES } from "./builtins.js";
+import { createTemplateHandlebars } from "./helpers.js";
 import {
   validateTemplate,
   validateVariableValue,
@@ -20,34 +21,7 @@ export class TemplateEngine {
   private handlebars: typeof Handlebars;
 
   constructor() {
-    this.handlebars = Handlebars.create();
-    this.registerHelpers();
-  }
-
-  /**
-   * Register custom Handlebars helpers.
-   */
-  private registerHelpers(): void {
-    // formatDate helper: {{formatDate @date "DD.MM.YYYY"}}
-    this.handlebars.registerHelper(
-      "formatDate",
-      (dateStr: string, format: string) => {
-        if (typeof dateStr !== "string") return "";
-        const date = new Date(dateStr);
-        if (Number.isNaN(date.getTime())) return dateStr;
-        return formatDate(date, format);
-      }
-    );
-
-    // lowercase helper: {{lowercase str}}
-    this.handlebars.registerHelper("lowercase", (str: unknown) => {
-      return typeof str === "string" ? str.toLowerCase() : "";
-    });
-
-    // uppercase helper: {{uppercase str}}
-    this.handlebars.registerHelper("uppercase", (str: unknown) => {
-      return typeof str === "string" ? str.toUpperCase() : "";
-    });
+    this.handlebars = createTemplateHandlebars();
   }
 
   /**
@@ -126,13 +100,8 @@ export class TemplateEngine {
       dateFormat: context.dateFormat,
     });
 
-    // Create a fresh Handlebars instance for this render
-    const hbs = Handlebars.create();
-
-    // Copy registered helpers
-    hbs.registerHelper("formatDate", this.handlebars.helpers.formatDate);
-    hbs.registerHelper("lowercase", this.handlebars.helpers.lowercase);
-    hbs.registerHelper("uppercase", this.handlebars.helpers.uppercase);
+    // A fresh instance per render: per-variable helpers must not leak between renders
+    const hbs = createTemplateHandlebars();
 
     // Register variable helpers for inline defaults
     const varHelpers = this.createVariableHelpers(finalValues);

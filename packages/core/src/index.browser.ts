@@ -15,3 +15,4 @@ export * from "./logger.js";
 export * from "./auth.js";
 export * from "./tls.browser.js";
 export * from "./template-library.js";
+export * from "./templates/render-exports.js";

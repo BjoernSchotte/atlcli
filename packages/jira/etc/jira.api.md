@@ -2818,6 +2818,7 @@ export interface JiraTemplate {
     sourceIssue?: string;
     tags?: string[];
     fields: JiraTemplateFields;
+    variables?: TemplateVariable[];
     source?: JiraTemplateSource;
 }
 
@@ -6521,6 +6522,7 @@ export interface JiraTemplate {
     sourceIssue?: string;
     tags?: string[];
     fields: JiraTemplateFields;
+    variables?: TemplateVariable[];
     source?: JiraTemplateSource;
 }
 

@@ -67,6 +67,12 @@ export interface ScriptPort {
     options: { signal?: AbortSignal },
   ): Promise<{ id: string; version: number } | null>;
   confluenceCreatePage(input: ConfluenceCreateInput): Promise<{ id: string; version: number }>;
+  /** The page's storage XHTML as stored (lossless copies), with its `atlcli.*` content properties. */
+  confluenceGetPageStorage?(id: string, options: { signal?: AbortSignal }): Promise<ConfluencePageStorageView>;
+  /** Direct child pages. */
+  confluenceChildren?(id: string, options: { signal?: AbortSignal }): Promise<ConfluencePageRef[]>;
+  /** Copies an attachment's bytes host-side (they never enter the sandbox or the plan). */
+  confluenceCopyAttachment?(attachmentId: string, sourcePageId: string, toPageId: string): Promise<{ id: string }>;
   confluenceUpdatePage(input: ConfluenceUpdateInput): Promise<{ id: string; version: number }>;
   confluenceAddLabels(pageId: string, labels: string[]): Promise<void>;
   confluenceRemoveLabels(pageId: string, labels: string[]): Promise<void>;
@@ -90,6 +96,34 @@ export interface ScriptPort {
    * that would not change a page.
    */
   confluenceNormalizeMarkdown(markdown: string): string;
+  /**
+   * Pure: renders a template with the host's engine (atlcli.render). Throws
+   * an Error named "RenderError" for --strict warnings or an output limit.
+   * Optional; without it atlcli.render fails.
+   */
+  render?(input: unknown, options: RenderInput): { value: unknown; warnings: TemplateWarningView[] };
+}
+
+export interface RenderInput {
+  format?: "text" | "adf" | "storage" | "wikimarkup";
+  vars: Record<string, unknown>;
+  source?: unknown;
+  parent?: unknown;
+  /** Where, for warnings: "SUP-1 summary". */
+  unit: string;
+  /** A Jira field kind whose rendered text value is checked (label: no whitespace, …). */
+  kind?: "summary" | "label" | "name" | "string" | "number" | "date" | "option";
+  /** Frozen clock (ISO) for @today/@now. */
+  now: string;
+  strict: boolean;
+}
+
+export interface TemplateWarningView {
+  code: string;
+  message: string;
+  unit?: string;
+  line?: number;
+  column?: number;
 }
 
 export interface JiraIssueView {
@@ -140,8 +174,19 @@ export interface ConfluencePageView extends ConfluencePageRef {
 export interface ConfluenceCreateInput {
   spaceKey: string;
   title: string;
-  markdown: string;
+  /** Markdown, converted by the host; or `storage`, sent unchanged. Exactly one. */
+  markdown?: string;
+  storage?: string;
   parentId?: string;
+  /** Content properties set on the new page, by key. */
+  properties?: Record<string, unknown>;
+}
+
+export interface ConfluencePageStorageView extends ConfluencePageRef {
+  version: number;
+  parentId?: string;
+  storage: string;
+  properties: Record<string, unknown>;
 }
 
 export interface ConfluenceUpdateInput {

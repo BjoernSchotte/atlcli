@@ -64,7 +64,9 @@ case.
 | `atlcli.jira.moveToSprint(sprintId, keys)` | |
 | `atlcli.confluence.search(cql, { limit? })` | async iterator of `{ id, title, spaceKey }` |
 | `atlcli.confluence.getPage(id)` | `{ id, title, spaceKey, version, parentId?, markdown }` |
-| `atlcli.confluence.createPage({ space, title, markdown, parentId? })` | |
+| `atlcli.confluence.getPage(id, { storage: true })` | storage XHTML as stored plus `properties` (`atlcli.copiedFrom`), for lossless copies |
+| `atlcli.confluence.children(id)` | direct child pages, page-tree order |
+| `atlcli.confluence.createPage({ space, title, markdown \| storage, parentId?, properties? })` | `storage` is sent unchanged; `properties` become content properties |
 | `atlcli.confluence.updatePage(id, { title?, markdown })` | replaces the whole body |
 | `atlcli.confluence.upsertPage({ space, title, markdown, parentId? })` | updates the page with that exact title, else creates it |
 | `atlcli.confluence.addLabels(pageId, labels)` / `removeLabels` | removing an absent label is fine |
@@ -73,6 +75,8 @@ case.
 | `atlcli.confluence.deletePage(id)` | to the space's trash; later writes to it in the plan throw |
 | `atlcli.confluence.attachments(pageId)` / `attach(pageId, { name, content, encoding? })` | same name → new version |
 | `atlcli.confluence.export(pageId, { format: "pdf" \| "docx", path? })` | file written below the apply directory when applied |
+| `atlcli.confluence.copyAttachment(attachmentId, sourcePageId, toPageId)` | bytes copied on apply, never in the plan; skipped if the target has the same name and size |
+| `await atlcli.render(input, { vars?, format?, source?, parent?, unit? })` | renders a template with `--var`/`--vars-file`/`--now`; strings are text, objects ADF, `format: "storage"` for pages; warnings go to the plan, `--strict` makes them fail (`template` error kind) |
 
 Objects the plan creates are referenced as `plan:<n>`, also inside text (a page
 body naming a new issue key gets the real key at apply). Reads of such objects

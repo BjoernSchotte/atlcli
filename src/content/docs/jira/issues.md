@@ -273,6 +273,7 @@ atlcli jira issue clone PROJ-123
 atlcli jira issue clone PROJ-123 --replace "v1:v2" --replace "Q3:Q4"
 atlcli jira issue clone PROJ-123 --project OTHER --assignee me
 atlcli jira issue clone PROJ-123 --attachments
+atlcli jira issue clone TPL-1 --project REL --var version=4.2
 ```
 
 The clone gets the source's summary, description, type and labels. In the same project it also gets the components and the parent. Priority, assignee, sprint, versions and custom fields are not copied: they may not fit the target project.
@@ -283,7 +284,8 @@ With `--attachments` every attachment of the source is copied to the clone (see 
 
 | Flag | Description |
 |------|-------------|
-| `--replace` | `find:replace` in summary and description, repeatable; split at the first colon |
+| `--replace` | `find:replace` in summary and description, repeatable; split at the first colon; runs before templates |
+| `--var`, `--vars-file`, `--now`, `--strict` | Summary, description and labels are [templates](/templating/); `{{source.key}}` is the source. Warnings are listed under `templateWarnings` |
 | `--summary` | Summary instead of the source's (replacements still apply) |
 | `--project` | Target project (default: the source's) |
 | `--type` | Issue type (default: the source's) |

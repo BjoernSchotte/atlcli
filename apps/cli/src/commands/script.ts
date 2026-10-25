@@ -21,8 +21,10 @@ import type {
   ScriptError,
   ScriptPlanV1,
   ScriptPort,
+  Templating,
 } from "@atlcli/script-runtime";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { parseTemplateFlags, templateValuesFrom } from "./template-flags.js";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -57,6 +59,12 @@ Options for run:
   --yes                  Apply without asking (required without a terminal or with --json)
   --profile <name>       Profile to run against
   --json                 Machine-readable output
+
+Templates for run (atlcli.render):
+  --var <name=value>     Template variable, repeatable (a.b=v nests; JSON values allowed)
+  --vars-file <file>     YAML file with values (and optional variables: declarations)
+  --now <iso>            Freeze the clock for @today/@now (repeat a plan exactly)
+  --strict               Fail on any template warning (unresolved {{…}} and others)
 
 Limits for run (defaults in parentheses):
   --timeout <duration>   Whole run, e.g. 90s, 10m, 1h; a bare number is seconds (5m)
@@ -102,7 +110,16 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
   const source = inline ?? (await readSource(file!, opts));
   const params = parseParams(getFlags(flags, "param"), opts);
   const { limits, maxWrites } = parseLimits(flags, opts);
-  await planAndApply(source, file ? { path: relative(process.cwd(), resolve(file)) } : { name: "inline" }, params, { limits, maxWrites }, flags, opts);
+  const templating = templateValuesFrom(await parseTemplateFlags(flags, opts));
+  await planAndApply(
+    source,
+    file ? { path: relative(process.cwd(), resolve(file)) } : { name: "inline" },
+    params,
+    { limits, maxWrites },
+    flags,
+    opts,
+    templating,
+  );
 }
 
 /**
@@ -118,6 +135,7 @@ export async function planAndApply(
   { limits, maxWrites }: ReturnType<typeof parseLimits>,
   flags: Flags,
   opts: OutputOptions,
+  templating?: Templating,
 ): Promise<void> {
   const { profile, port } = await connect(flags, opts);
   const rt = await runtime();
@@ -128,6 +146,7 @@ export async function planAndApply(
       params,
       limits,
       ...(maxWrites !== undefined ? { maxWrites } : {}),
+      ...(templating ? { templating } : {}),
       onLog: (level, message) => process.stderr.write(`${level === "info" ? "" : `${level}: `}${stripControlChars(message)}\n`),
     }),
   );
@@ -409,6 +428,18 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
       lines.push(`       ${what}${skip.title ? ` ${JSON.stringify(skip.title)}` : ""} (${why[skip.verb] ?? "no change"})`);
     }
   }
+  if (plan.templating) {
+    lines.push(`Templates: rendered at ${plan.templating.now} (re-plan with --now ${plan.templating.now} to repeat it)`);
+  }
+  const warnings = plan.renderWarnings ?? [];
+  if (warnings.length > 0) {
+    lines.push(`Template warnings (${warnings.length}):`);
+    for (const w of warnings.slice(0, 20)) {
+      const at = w.line !== undefined ? ` ${w.line}:${w.column ?? 0}` : "";
+      lines.push(`  ${w.unit ?? ""}${at}  ${stripControlChars(w.message)}`.trimEnd());
+    }
+    if (warnings.length > 20) lines.push(`  … and ${warnings.length - 20} more (see --json)`);
+  }
   if (plan.value !== null) lines.push(`Result: ${JSON.stringify(plan.value)}`);
   if (planOut) lines.push(`Plan written to ${planOut} (digest ${plan.digest.slice(0, 12)})`);
   if (n > 0 && !applying) lines.push("Nothing was changed. Apply with --apply, or: atlcli script apply <plan.json>");
@@ -452,6 +483,8 @@ function describeOperation(op: PlannedOperation): string {
       return `page DELETE      ${ref(a.id)} ${text(a.title)} (to trash)${after}`;
     case "confluence.attach":
       return `page attach      ${ref(a.pageId)} ${a.name} (${size(a)})${after}`;
+    case "confluence.copyAttachment":
+      return `page attach      ${ref(a.toPageId)} ${a.name} (copy of ${a.attachmentId} on page ${a.sourcePageId}, ${Math.ceil(Number(a.size) / 1024)} KB)${after}`;
     case "confluence.export":
       return `page export      ${ref(a.pageId)} → ${a.path}${after}`;
     case "jira.link":

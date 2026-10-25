@@ -1,6 +1,7 @@
 import { canonicalJsonV1, digestCanonicalJsonV1, sha256HexV1 } from "@atlcli/change-set";
 import { z } from "zod";
 import { scriptMetaSchema, type ScriptMeta, type ScriptParams } from "./meta.js";
+import type { TemplateWarningView } from "./port.js";
 import { WRITE_VERBS, type PlannedOperation, type ScriptRunPlan, type SkippedWrite } from "./verbs.js";
 
 export const SCRIPT_PLAN_SCHEMA_V1 = "atlcli.script-plan/1" as const;
@@ -22,6 +23,10 @@ export interface ScriptPlanV1 {
   skipped: SkippedWrite[];
   /** The default export's return value, for summaries. */
   value: unknown;
+  /** Template clock and vars the run rendered with (atlcli.render); absent when not templated. */
+  templating?: { now: string; vars: Record<string, unknown> };
+  /** atlcli.render warnings; absent when there were none. */
+  renderWarnings?: TemplateWarningView[];
   digest: string;
 }
 
@@ -70,6 +75,18 @@ const planSchema = z.strictObject({
     z.strictObject({ verb: operation.shape.verb, target: key, title: z.string().optional(), reason: z.literal("unchanged") }),
   ),
   value: z.unknown(),
+  templating: z.strictObject({ now: z.iso.datetime(), vars: z.record(z.string(), z.unknown()) }).optional(),
+  renderWarnings: z
+    .array(
+      z.strictObject({
+        code: key,
+        message: z.string(),
+        unit: z.string().optional(),
+        line: z.number().int().optional(),
+        column: z.number().int().optional(),
+      }),
+    )
+    .optional(),
   digest: sha256,
 });
 
@@ -88,6 +105,9 @@ export async function createScriptPlan(run: ScriptRunPlan, options: CreateScript
     operations: run.operations,
     skipped: run.skipped,
     value: run.value,
+    // Both optional, so plans of scripts that never render stay as before.
+    ...(run.templating ? { templating: run.templating } : {}),
+    ...(run.renderWarnings?.length ? { renderWarnings: run.renderWarnings } : {}),
   };
   return { ...body, digest: await digestCanonicalJsonV1(body) };
 }

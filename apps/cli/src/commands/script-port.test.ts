@@ -14,3 +14,10 @@ test.each([["--output=/tmp/x"], ["--template=evil.docx"], ["123 --json"], ["plan
     await expect(port.confluenceExport({ pageId, format: "pdf", path: "x.pdf" })).rejects.toThrow("Not a Confluence page id");
   },
 );
+
+test("render uses the core engine with the frozen clock", () => {
+  const port = createCliScriptPort(unused, unused, "https://example.atlassian.net", { profileName: "p", outDir: "/tmp" });
+  const out = port.render!("{{@today}} {{v}} {{nope}}", { vars: { v: 1 }, unit: "u", now: "2026-10-25T00:00:00.000Z", strict: false });
+  expect(out.value).toBe("2026-10-25 1 {{nope}}");
+  expect(out.warnings.map((w) => w.code)).toEqual(["unresolved"]);
+});

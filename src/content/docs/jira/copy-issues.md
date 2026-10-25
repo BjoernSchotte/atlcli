@@ -65,6 +65,12 @@ Typical uses:
 Each copy gets the hidden issue property `atlcli.copiedFrom` with its
 original's key. It is what makes a re-run safe (see below).
 
+Summaries, descriptions, labels, comments, component and version names and
+`--fields` values are [templates](/templating/): `{{year}}` takes a value from
+`--var` or `--vars-file`, `{{source.key}}` names the original, `{{@today}}` the
+date of the plan. A `{{…}}` that nothing fills is copied as written and listed
+under **Template warnings** in the plan.
+
 ## Options
 
 | Flag | Type | Default | Notes |
@@ -76,7 +82,11 @@ original's key. It is what makes a re-run safe (see below).
 | `--no-attachments` | switch | attachments on | |
 | `--no-links` | switch | links on | |
 | `--fields <ids>` | comma-separated field ids | none | Extra fields to copy, e.g. `customfield_10010,duedate` |
-| `--replace <find:replace>` | string, repeatable | none | In summary and description text; split at the first colon |
+| `--var <name=value>` | string, repeatable | none | Template variable; `a.b=v` nests, JSON values (`n=5`, `list=["a"]`) are parsed |
+| `--vars-file <file>` | YAML path | none | Values and optional declarations; see [Templating](/templating/#variables) |
+| `--now <iso>` | ISO date/time | time of planning | Freezes `@today`/`@now`; repeat a plan exactly |
+| `--strict` | switch | off | Fails the plan on any template warning |
+| `--replace <find:replace>` | string, repeatable | none | Legacy find/replace in summary and description, applied before templates; split at the first colon |
 | `--link-source` | switch | off | Links each copy to its original with **Cloners** ("clones") |
 | `--comments` | switch | off | Copies comments in order, each headed *Originally by \<name\> on \<date\>* |
 | `--keep-mentions` | switch | off | With `--comments`: keep @mentions. Without it they become plain names, so nobody is notified again |
@@ -104,17 +114,39 @@ it for every run. A change to the process goes into the template once; every
 run starts clean, without old comments, assignees or steps nobody remembers
 adding.
 
-Put placeholders into summaries and descriptions and fill them per run:
+Write [template variables](/templating/) into summaries and descriptions and
+fill them per run:
 
 ```bash
 atlcli jira project copy-issues --from TPLREL --to REL \
-  --replace "{{version}}:2026.11" --replace "{{date}}:2026-11-15" \
+  --var version=2026.11 --var release_date=2026-11-15 \
   --plan-out release-2026.11.json
 ```
 
-A placeholder left over after the replacements (`{{…}}`) is a plan warning that
-names the issue, so a forgotten `--replace` is caught before anything is
-written. The target can be a project that already holds earlier runs.
+A variable nothing fills stays as written and is listed under **Template
+warnings** with the issue and field, so a forgotten `--var` is caught before
+anything is written; `--strict` makes it fail the plan. The target can be a
+project that already holds earlier runs.
+
+A description can repeat parts per value. With a vars file like
+
+```yaml
+# audit-2026.yml
+values:
+  year: 2026
+  systems: [IAM, Backup, Logging]
+```
+
+a table row whose first cell is `{{#each systems}}`, a row with `{{this}}`, and
+a row with `{{/each}}` become one row per system. See
+[control paragraphs](/templating/#control-paragraphs).
+
+```bash
+atlcli jira project copy-issues --from TPLAUDIT --to AUD26 --vars-file audit-2026.yml --apply
+```
+
+`--replace` still works and runs before the templates, for sources that use
+other placeholder styles.
 
 ### Bulk clone for a project split
 
@@ -139,7 +171,7 @@ review step:
 
 ```bash
 # Scheduled job: plan only, publish the plan (for example as a CI artifact)
-atlcli jira project copy-issues --from TPLREL --to REL --replace "{{version}}:$VERSION" \
+atlcli jira project copy-issues --from TPLREL --to REL --var "version=$VERSION" --strict \
   --plan-out plan.json --json > plan-summary.json
 
 # A person reviews plan.json, then:
@@ -165,6 +197,11 @@ links not yet made. Comments and statuses are only planned for new copies.
 Do **not** apply the same plan file twice: a plan records creates, so it would
 create the issues again. Plan again instead.
 
+The plan header shows the time templates rendered at
+(`Templates: rendered at …`). Pass it as `--now` when you plan again, so
+`{{@today}}` gives the same date as in the copies already made, for example
+after midnight.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
@@ -175,6 +212,8 @@ create the issues again. Plan again instead.
 | `Status unchanged (no direct transition)` after apply | The target workflow has no direct transition into that status | Use `--status-map`, or move those issues by hand |
 | Warning: parent is not copied | A selected issue's parent is outside the selection | Widen the selection, or accept the copy without a parent |
 | Warning: no Cloners link type | The site has no Cloners link type | Copies are made without `--link-source` links |
+| A `{{…}}` stays in the copy | No value given, a typo, or the expression runs across a mention or link | Check **Template warnings**; `atlcli template vars --jql "…"` lists what the source needs |
+| `Script failed (template)` | `--strict` and at least one template warning | Fix the warnings, or run without `--strict` |
 
 After a failed apply, fix the cause and [plan again](#re-running-after-a-partial-apply).
 
@@ -191,3 +230,4 @@ version with `atlcli script run` when you need different rules.
 - [Issues](/jira/issues/#clone-issue): `issue clone --attachments` for one issue
 - [Projects](/jira/projects/): create the target project
 - [Automation scripts](/reference/scripts/): plan files, `script apply`, verbs
+- [Templating](/templating/): variables, built-ins, control paragraphs

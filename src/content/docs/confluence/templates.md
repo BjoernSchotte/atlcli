@@ -131,6 +131,15 @@ Built-in variables use the `@` prefix:
 | `{{@parent.id}}` | Parent page ID | 12345 |
 | `{{@parent.title}}` | Parent page title | Parent Page |
 | `{{@uuid}}` | Random UUID | 550e8400-e29b-... |
+| `{{@today}}` | Current date, always ISO | 2025-01-14 |
+| `{{@now}}` | Same as `@datetime` | 2025-01-14T10:30:00 |
+| `{{@quarter}}` | Quarter | 1 |
+| `{{@week}}` | ISO week | 03 |
+
+The helpers `dateAdd`, `default`, `replace`, `eq`, `ne`, `and`, `or` and `not`
+work in page templates too, next to `formatDate`, `lowercase` and `uppercase`.
+The same built-ins and helpers apply to copies of live pages and issues; see
+[Templating](/templating/).
 
 ## Storage Locations
 

@@ -6,6 +6,10 @@
 //
 // Each copy carries the issue property `atlcli.copiedFrom`. Planning again
 // after a partial apply finds those copies and only plans what is missing.
+//
+// Summary, description, labels, comments, component/version names and extra
+// fields are templates: `{{year}}` from --var/--vars-file, `{{source.key}}`,
+// `{{@today}}`. Unresolved `{{…}}` stays as it is and shows in the plan.
 
 export const meta = {
   name: "copy-issues",
@@ -29,7 +33,6 @@ export const meta = {
 };
 
 const MARKER = "atlcli.copiedFrom";
-const PLACEHOLDER = /\{\{[\w.-]+\}\}/g;
 
 export default async function copyIssues(p) {
   const jira = atlcli.jira;
@@ -95,12 +98,23 @@ export default async function copyIssues(p) {
       ref = existing.key;
       counts.resumed++;
     } else {
+      const source = { key: issue.key, id: issue.id, summary: f.summary, project: issue.key.split("-")[0], fields: f };
+      const render = (value, unit, format, kind) =>
+        atlcli.render(value, { source, unit: `${issue.key} ${unit}`, ...(format ? { format } : {}), ...(kind ? { kind } : {}) });
+      const bodyFormat = (body) => (typeof body === "string" ? "wikimarkup" : "adf");
       const copyFields = {};
-      if (f.description !== null && f.description !== undefined) copyFields.description = replaceBody(f.description, pairs);
-      if (f.labels?.length) copyFields.labels = f.labels;
-      if (f.components?.length) copyFields.components = f.components.map((c) => ({ name: c.name }));
-      if (f.fixVersions?.length) copyFields.fixVersions = f.fixVersions.map((v) => ({ name: v.name }));
-      for (const id of extra) if (f[id] !== null && f[id] !== undefined) copyFields[id] = f[id];
+      if (f.description !== null && f.description !== undefined) {
+        const description = replaceBody(f.description, pairs);
+        copyFields.description = await render(description, "description", bodyFormat(description));
+      }
+      if (f.labels?.length) copyFields.labels = await Promise.all(f.labels.map((l, i) => render(l, `label ${i + 1}`, undefined, "label")));
+      if (f.components?.length) {
+        copyFields.components = await Promise.all(f.components.map(async (c) => ({ name: await render(c.name, "component", undefined, "name") })));
+      }
+      if (f.fixVersions?.length) {
+        copyFields.fixVersions = await Promise.all(f.fixVersions.map(async (v) => ({ name: await render(v.name, "fix version", undefined, "name") })));
+      }
+      for (const id of extra) if (f[id] !== null && f[id] !== undefined) copyFields[id] = await renderLeaves(f[id], (v) => render(v, id));
       if (f.parent?.key) {
         if (refs.has(f.parent.key)) copyFields.parent = { key: refs.get(f.parent.key) };
         else warnings.push(`${issue.key}: parent ${f.parent.key} is not copied, so the copy has no parent`);
@@ -108,10 +122,7 @@ export default async function copyIssues(p) {
       if (p.keepAssignee && f.assignee) {
         copyFields.assignee = f.assignee.accountId ? { accountId: f.assignee.accountId } : { name: f.assignee.name };
       }
-      const summary = replaceText(f.summary, pairs);
-      for (const token of new Set([...summary.matchAll(PLACEHOLDER), ...textOf(copyFields.description).matchAll(PLACEHOLDER)].map((m) => m[0]))) {
-        warnings.push(`${issue.key}: placeholder ${token} is not replaced`);
-      }
+      const summary = await render(replaceText(f.summary, pairs), "summary", undefined, "summary");
       const created = await jira.create({
         project: p.to,
         type: f.issuetype.name,
@@ -125,8 +136,10 @@ export default async function copyIssues(p) {
       if (p.comments) {
         const list = f.comment?.comments ?? [];
         if ((f.comment?.total ?? list.length) > list.length) warnings.push(`${issue.key}: only ${list.length} of ${f.comment.total} comments are copied`);
+        let n = 0;
         for (const comment of list) {
-          await jira.comment(ref, { raw: commentBody(comment, p.keepMentions) });
+          const body = commentBody(comment, p.keepMentions);
+          await jira.comment(ref, { raw: await render(body, `comment ${++n}`, bodyFormat(body)) });
           counts.comments++;
         }
       }
@@ -199,15 +212,16 @@ function replaceBody(body, pairs) {
   return JSON.parse(JSON.stringify(body), (key, value) => (key === "text" && typeof value === "string" ? replaceText(value, pairs) : value));
 }
 
-function textOf(body) {
-  if (body === null || body === undefined) return "";
-  if (typeof body === "string") return body;
-  const parts = [];
-  JSON.stringify(body, (key, value) => {
-    if (key === "text" && typeof value === "string") parts.push(value);
-    return value;
-  });
-  return parts.join(" ");
+/** Renders the strings of a custom field value: plain, `{ value }` options and `{ name }` items. */
+async function renderLeaves(value, render) {
+  if (typeof value === "string") return render(value);
+  if (Array.isArray(value)) return Promise.all(value.map((v) => renderLeaves(v, render)));
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value);
+    if (keys.length === 1 && typeof value.value === "string") return { value: await render(value.value) };
+    if (keys.length === 1 && typeof value.name === "string") return { name: await render(value.name) };
+  }
+  return value;
 }
 
 function commentBody(comment, keepMentions) {

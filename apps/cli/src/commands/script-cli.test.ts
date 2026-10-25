@@ -369,6 +369,19 @@ export default async ({ n }) => { await atlcli.jira.comment("ATLCLI-1", "n=" + (
     }
   });
 
+  test("--var, --now and --strict reach atlcli.render; warnings show in the plan", async () => {
+    const code = `export default async () => atlcli.render("{{a}} {{@today}} {{nope}}")`;
+    const out = await run(["run", "-e", code, "--var", "a=1", "--now", "2026-10-25T08:00:00Z"]);
+    expect(out.exitCode).toBe(0);
+    expect(out.stdout).toContain('Result: "1 2026-10-25 {{nope}}"');
+    expect(out.stdout).toContain("Templates: rendered at 2026-10-25T08:00:00.000Z");
+    expect(out.stdout).toContain("Template warnings (1):");
+
+    const strict = await run(["run", "-e", code, "--strict"]);
+    expect(strict.exitCode).toBe(1);
+    expect(strict.stderr).toContain("Script failed (template)");
+  });
+
   test("guest errors are reported, not thrown", async () => {
     const file = await script("broken.ts", `await atlcli.jira.get("ATLCLI-404");`);
     const { exitCode, stderr } = await run(["run", file]);
