@@ -69,7 +69,12 @@ export interface PlannedOperation {
   dependsOn: number[];
 }
 
-export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "onLog" | "variant" | "item"> {
+export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "onLog" | "variant" | "item" | "items" | "entry" | "prelude"> {
+  /**
+   * Reads only (audits): any write verb ends the run with permission-denied
+   * and this explanation.
+   */
+  readOnly?: string;
   /**
    * Shared across runs (per-issue mode): lookups that do not depend on the
    * issue, such as link types and users, are fetched once.
@@ -243,6 +248,7 @@ class Recorder {
     private readonly maxWrites = maxWritesOf(meta),
     readonly templating: Templating = { vars: {}, now: new Date().toISOString(), strict: false },
     private readonly memo?: Map<string, Promise<unknown>>,
+    private readonly readOnly?: string,
   ) {}
 
   /** Without declared permissions every verb is allowed (writes are still only planned). */
@@ -345,6 +351,7 @@ class Recorder {
     object?: string,
     precondition?: () => Promise<Precondition | undefined>,
   ): Promise<number> {
+    if (this.readOnly) throw new ScriptError("permission-denied", `${verb}: ${this.readOnly}`);
     if (this.operations.length >= this.maxWrites) {
       throw new ScriptError(
         "write-limit",
@@ -955,7 +962,7 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
   } catch (error) {
     throw new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
   }
-  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta), options.templating, options.memo);
+  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta), options.templating, options.memo, options.readOnly);
   const host: Record<string, HostFunction> = {};
   for (const [name, definition] of Object.entries(VERBS)) {
     host[name] = async (rawArgs, signal) => {
@@ -972,6 +979,9 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
     wrappers: WRAPPERS,
     params,
     ...(options.item !== undefined ? { item: options.item } : {}),
+    ...(options.items !== undefined ? { items: options.items } : {}),
+    ...(options.entry !== undefined ? { entry: options.entry } : {}),
+    ...(options.prelude !== undefined ? { prelude: options.prelude } : {}),
     limits: options.limits,
     onLog: options.onLog,
     variant: options.variant,
