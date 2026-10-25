@@ -92,7 +92,7 @@ export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "on
 
 export interface Templating {
   vars: Record<string, unknown>;
-  /** ISO time @today/@now render as. */
+  /** ISO time today/now render as. */
   now: string;
   strict: boolean;
 }
