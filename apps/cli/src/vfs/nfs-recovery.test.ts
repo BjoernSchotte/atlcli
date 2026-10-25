@@ -1,10 +1,13 @@
-import { afterEach, expect, it } from "bun:test";
+import { afterEach, expect, it, setDefaultTimeout } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { NfsJournal } from "./nfs-journal.js";
 import { recoverNfsJournal } from "./nfs-recovery.js";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

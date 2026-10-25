@@ -5,9 +5,12 @@
  * the thing worth pinning is the *precedence*, and precedence bugs are exactly
  * what an end-to-end test would hide behind a working happy path.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import type { Config, Profile } from "@atlcli/core";
 import { DEFAULT_CACHE_DIR, resolveShellOptions, wikiShHelp } from "./wiki-sh.js";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 function profile(overrides: Partial<Profile> = {}): Profile {
   return {

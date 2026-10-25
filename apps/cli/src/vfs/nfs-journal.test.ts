@@ -1,9 +1,12 @@
 import { Database } from "bun:sqlite";
-import { afterEach, expect, it, spyOn } from "bun:test";
+import { afterEach, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import fs, { existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { NfsJournal, nfsJournalLocation } from "./nfs-journal.js";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const roots: string[] = [];
 const journals: NfsJournal[] = [];

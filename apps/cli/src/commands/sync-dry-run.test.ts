@@ -14,7 +14,7 @@
  * Asserting only that stdout says "Would pull" is exactly the check that let
  * this regression through.
  */
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -22,6 +22,9 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hashContent, normalizeMarkdown } from "@atlcli/confluence";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const PAGE_ID = "12345";

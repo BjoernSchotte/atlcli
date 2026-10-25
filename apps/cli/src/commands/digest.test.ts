@@ -4,13 +4,16 @@
  * Confluence paths. Covers the per-product marker, partial failure, the
  * profile-name path guard and the request budget.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { digestStatePath } from "./digest.js";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();

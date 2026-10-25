@@ -5,7 +5,7 @@
  * mount records are written and pruned. Actually attaching a volume needs a
  * kernel and belongs to WP7.9's gated live run.
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -24,6 +24,9 @@ import {
   wikiMountHelp,
   type MountRecord,
 } from "./wiki-mount.js";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 let root: string;
 

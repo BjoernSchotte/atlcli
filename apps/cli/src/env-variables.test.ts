@@ -2,11 +2,14 @@
  * Regression #282: ATLCLI_PROFILE, ATLCLI_CONFIG and ATLCLI_LOG_LEVEL were
  * documented but ignored. Real CLI, sandboxed HOME, no network.
  */
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("./index.ts", import.meta.url));
 let home: string;

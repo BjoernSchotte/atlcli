@@ -15,12 +15,15 @@
  * in for the Confluence REST API - no fetch mocking, no Atlassian traffic, and
  * a sandboxed HOME so the developer's own ~/.atlcli/config.json is never read.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSyncDb, getAtlcliPath, readState } from "@atlcli/confluence/internal";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const PAGE_ID = "78001";

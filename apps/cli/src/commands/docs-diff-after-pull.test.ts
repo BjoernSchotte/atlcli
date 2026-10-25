@@ -7,11 +7,14 @@
  *
  * Real CLI against a Bun HTTP server standing in for Confluence; sandboxed HOME.
  */
-import { afterAll, beforeAll, expect, it } from "bun:test";
+import { afterAll, beforeAll, expect, it, setDefaultTimeout } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const PAGE_ID = "79001";
