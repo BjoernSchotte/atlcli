@@ -95,9 +95,9 @@ describe("renderSegments", () => {
   test("one segment per top-level statement with source offsets", () => {
     const { segments } = renderSegments("a {{year}} b", scope);
     expect(segments).toEqual([
-      { start: 0, end: 2, output: "a " },
-      { start: 2, end: 10, output: "2026" },
-      { start: 10, end: 12, output: " b" },
+      { start: 0, end: 2, output: "a ", kind: "content" },
+      { start: 2, end: 10, output: "2026", kind: "expr" },
+      { start: 10, end: 12, output: " b", kind: "content" },
     ]);
   });
 });

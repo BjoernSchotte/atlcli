@@ -9,6 +9,7 @@ import {
   fail,
   getFlag,
   getFlags,
+  checkFieldValue,
   createTemplateScope,
   hasFlag,
   isInteractive,
@@ -127,8 +128,11 @@ export async function completeTemplateValues(input: TemplateRunInput, flags: Fla
 export function createTemplateRenderer(profile?: string): NonNullable<ScriptPort["render"]> {
   const budget = new RenderBudget();
   return (input, o) => {
-    const scope = createTemplateScope({ vars: o.vars, now: new Date(o.now), profile, source: o.source, parent: o.parent });
-    return renderBody(input, scope, { unit: o.unit, format: o.format, strict: o.strict, budget });
+    const scope = createTemplateScope({ vars: o.vars, now: new Date(o.now), profile, source: o.source, parent: o.parent, seed: o.unit });
+    const out = renderBody(input, scope, { unit: o.unit, format: o.format, strict: o.strict, budget });
+    // Field checks at plan time, so an invalid label fails the plan, not the apply halfway through.
+    if (o.kind && typeof out.value === "string" && out.value !== input) checkFieldValue(o.kind, out.value, o.unit);
+    return out;
   };
 }
 

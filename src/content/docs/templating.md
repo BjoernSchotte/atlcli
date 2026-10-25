@@ -60,7 +60,8 @@ regions keep their `{{…}}` as written.
 
 ### Built-ins
 
-Built-ins start with `@`. Dates use the clock frozen for the run; see
+Built-ins start with `@`. Dates use the clock frozen for the run, read in
+**UTC**, so a plan made again on another machine gives the same dates; see
 [`--now`](#repeating-a-run).
 
 | Built-in | Example | Notes |
@@ -73,7 +74,7 @@ Built-ins start with `@`. Dates use the clock frozen for the run; see
 | `@week` | `43` | ISO week |
 | `@weekday`, `@time` | `Sunday`, `09:30` | |
 | `@user`, `@profile`, `@space`, `@project` | | From the profile and target, where known |
-| `@uuid` | `2f1c…` | The same for the same `--now`, so a re-plan repeats it |
+| `@uuid` | `2f1c…` | Different per field and issue or page; the same again for the same `--now`, so a re-plan repeats it |
 
 ### Helpers
 
@@ -137,7 +138,8 @@ leftover is a bug:
 atlcli jira project copy-issues --from TPLREL --to REL --var version=4.2 --strict
 ```
 
-To keep a literal `{{…}}`, write `\{{…}}`.
+To keep a literal `{{…}}`, write `\{{…}}`. `{{../x}}` and a bare `{{this}}`
+outside a loop also stay as written.
 
 ## Variables
 
@@ -253,6 +255,7 @@ atlcli script apply pages.json
 | Data Center: `{{text}}` monospace changed | Monospace text equals a variable name | Escape it as `\{{text}}` |
 | `Missing required template variables` | A declared required variable has no value and there is no terminal | Pass `--var` or `--vars-file` |
 | `Template output limit exceeded` | A loop produced more than 1 MB in one field, or 16 MB in the run | Check the loop's data |
+| `Template loop limit exceeded` | More than 100,000 `{{#each}}` items in one run (nested loops multiply) | Check the loop's data |
 | Dates differ between two plans | Each plan renders with its own time | Pass the first plan's time as `--now` |
 
 ## wiki template

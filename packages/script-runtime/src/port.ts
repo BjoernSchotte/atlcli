@@ -111,6 +111,8 @@ export interface RenderInput {
   parent?: unknown;
   /** Where, for warnings: "SUP-1 summary". */
   unit: string;
+  /** A Jira field kind whose rendered text value is checked (label: no whitespace, …). */
+  kind?: "summary" | "label" | "name" | "string" | "number" | "date" | "option";
   /** Frozen clock (ISO) for @today/@now. */
   now: string;
   strict: boolean;

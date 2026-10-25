@@ -161,6 +161,7 @@ export interface BuiltinContext {
     parentTitle?: string;
     now?: Date;
     project?: string;
+    seed?: string;
 }
 
 // export: BuiltinVariableName
@@ -211,6 +212,7 @@ export declare function createTemplateScope(input?: {
     project?: string;
     source?: unknown;
     parent?: unknown;
+    seed?: string;
 }): TemplateScope;
 
 // export: dateAdd
@@ -270,7 +272,7 @@ export declare function finish<T>(value: T, warnings: RenderWarning[], opts?: Re
 };
 
 // export: formatDate
-export declare function formatDate(date: Date, format: string): string;
+export declare function formatDate(date: Date, format: string, utc?: boolean): string;
 
 // export: generateRequestId
 export declare function generateRequestId(): string;
@@ -443,8 +445,11 @@ export declare function renderBody(value: unknown, scope: TemplateScope, opts: R
 export declare class RenderBudget {
     readonly perUnit: number;
     readonly perRun: number;
+    readonly maxIterations: number;
     private used;
-    constructor(perUnit?: number, perRun?: number);
+    private iterations;
+    constructor(perUnit?: number, perRun?: number, maxIterations?: number);
+    iterate(unit?: string): void;
     charge(chars: number, unit?: string): void;
 }
 
@@ -554,6 +559,7 @@ export interface Segment {
     start: number;
     end: number;
     output: string;
+    kind?: "content" | "expr";
 }
 
 // export: sha256Hex
@@ -621,6 +627,7 @@ export declare class TemplateResolutionConflictError extends Error {
 export interface TemplateScope {
     context: unknown;
     data: Record<string, unknown>;
+    item?: boolean;
 }
 
 // export: TlsOptions
@@ -820,6 +827,7 @@ export interface BuiltinContext {
     parentTitle?: string;
     now?: Date;
     project?: string;
+    seed?: string;
 }
 
 // export: BuiltinVariableName
@@ -902,6 +910,7 @@ export declare function createTemplateScope(input?: {
     project?: string;
     source?: unknown;
     parent?: unknown;
+    seed?: string;
 }): TemplateScope;
 
 // export: dateAdd
@@ -1058,7 +1067,7 @@ export type FlowConfig = {
 };
 
 // export: formatDate
-export declare function formatDate(date: Date, format: string): string;
+export declare function formatDate(date: Date, format: string, utc?: boolean): string;
 
 // export: generateRequestId
 export declare function generateRequestId(): string;
@@ -1442,8 +1451,11 @@ export declare function renderBody(value: unknown, scope: TemplateScope, opts: R
 export declare class RenderBudget {
     readonly perUnit: number;
     readonly perRun: number;
+    readonly maxIterations: number;
     private used;
-    constructor(perUnit?: number, perRun?: number);
+    private iterations;
+    constructor(perUnit?: number, perRun?: number, maxIterations?: number);
+    iterate(unit?: string): void;
     charge(chars: number, unit?: string): void;
 }
 
@@ -1583,6 +1595,7 @@ export interface Segment {
     start: number;
     end: number;
     output: string;
+    kind?: "content" | "expr";
 }
 
 // export: serializeTemplate
@@ -1789,6 +1802,7 @@ export declare class TemplateResolver {
 export interface TemplateScope {
     context: unknown;
     data: Record<string, unknown>;
+    item?: boolean;
 }
 
 // export: TemplateSource
@@ -2116,6 +2130,7 @@ export interface BuiltinContext {
     parentTitle?: string;
     now?: Date;
     project?: string;
+    seed?: string;
 }
 
 // export: BuiltinVariableName
@@ -2166,6 +2181,7 @@ export declare function createTemplateScope(input?: {
     project?: string;
     source?: unknown;
     parent?: unknown;
+    seed?: string;
 }): TemplateScope;
 
 // export: dateAdd
@@ -2225,7 +2241,7 @@ export declare function finish<T>(value: T, warnings: RenderWarning[], opts?: Re
 };
 
 // export: formatDate
-export declare function formatDate(date: Date, format: string): string;
+export declare function formatDate(date: Date, format: string, utc?: boolean): string;
 
 // export: generateRequestId
 export declare function generateRequestId(): string;
@@ -2398,8 +2414,11 @@ export declare function renderBody(value: unknown, scope: TemplateScope, opts: R
 export declare class RenderBudget {
     readonly perUnit: number;
     readonly perRun: number;
+    readonly maxIterations: number;
     private used;
-    constructor(perUnit?: number, perRun?: number);
+    private iterations;
+    constructor(perUnit?: number, perRun?: number, maxIterations?: number);
+    iterate(unit?: string): void;
     charge(chars: number, unit?: string): void;
 }
 
@@ -2509,6 +2528,7 @@ export interface Segment {
     start: number;
     end: number;
     output: string;
+    kind?: "content" | "expr";
 }
 
 // export: sha256Hex
@@ -2576,6 +2596,7 @@ export declare class TemplateResolutionConflictError extends Error {
 export interface TemplateScope {
     context: unknown;
     data: Record<string, unknown>;
+    item?: boolean;
 }
 
 // export: TlsOptions
@@ -2847,6 +2868,7 @@ export interface BuiltinContext {
     parentTitle?: string;
     now?: Date;
     project?: string;
+    seed?: string;
 }
 
 // export: BuiltinVariableName
@@ -2929,6 +2951,7 @@ export declare function createTemplateScope(input?: {
     project?: string;
     source?: unknown;
     parent?: unknown;
+    seed?: string;
 }): TemplateScope;
 
 // export: dateAdd
@@ -3085,7 +3108,7 @@ export type FlowConfig = {
 };
 
 // export: formatDate
-export declare function formatDate(date: Date, format: string): string;
+export declare function formatDate(date: Date, format: string, utc?: boolean): string;
 
 // export: generateRequestId
 export declare function generateRequestId(): string;
@@ -3469,8 +3492,11 @@ export declare function renderBody(value: unknown, scope: TemplateScope, opts: R
 export declare class RenderBudget {
     readonly perUnit: number;
     readonly perRun: number;
+    readonly maxIterations: number;
     private used;
-    constructor(perUnit?: number, perRun?: number);
+    private iterations;
+    constructor(perUnit?: number, perRun?: number, maxIterations?: number);
+    iterate(unit?: string): void;
     charge(chars: number, unit?: string): void;
 }
 
@@ -3610,6 +3636,7 @@ export interface Segment {
     start: number;
     end: number;
     output: string;
+    kind?: "content" | "expr";
 }
 
 // export: serializeTemplate
@@ -3816,6 +3843,7 @@ export declare class TemplateResolver {
 export interface TemplateScope {
     context: unknown;
     data: Record<string, unknown>;
+    item?: boolean;
 }
 
 // export: TemplateSource

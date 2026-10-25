@@ -43,16 +43,26 @@ const SKIP = new Set(["ac:plain-text-body", "code", "pre"]);
 const VOID = new Set(["br", "hr", "img", "col"]);
 const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
+/** Brackets an entity the decoder does not know (`&hellip;`), so re-encoding puts it back as it was. */
+const KEEP_OPEN = "";
+const KEEP_CLOSE = "";
+
 export function decodeEntities(s: string): string {
-  return s.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (m, e: string) => {
-    if (e[0] !== "#") return NAMED[e.toLowerCase()] ?? m;
+  return s.replace(/&(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/gi, (m, e: string) => {
+    if (e[0] !== "#") return NAMED[e.toLowerCase()] ?? `${KEEP_OPEN}${e}${KEEP_CLOSE}`;
     const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
     return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m;
   });
 }
 
-// ponytail: a literal "&amp;foo;" in a changed token comes back as the entity "&foo;"; exact if it ever matters: track decoded spans
-export const encodeText = (s: string) => s.replace(/&(?![a-z]+;|#\d+;|#x[0-9a-f]+;)/gi, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\u00a0/g, "&nbsp;");
+/** Escapes every `&`, `<`, `>` (values included), then restores the entities the decoder kept. */
+export const encodeText = (s: string) =>
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\u00a0/g, "&nbsp;")
+    .replace(new RegExp(`${KEEP_OPEN}([a-z][a-z0-9]*)${KEEP_CLOSE}`, "gi"), "&$1;");
 
 function parseAttrs(tag: string): Record<string, string> {
   const attrs: Record<string, string> = {};

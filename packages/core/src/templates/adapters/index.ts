@@ -42,16 +42,23 @@ const CONTEXT = new Set(["source", "parent"]);
 export function collectVariables(units: Array<{ unit: string; value: unknown; format?: BodyFormat }>): VariableUse[] {
   const uses: VariableUse[] = [];
   const seen = new Set<string>();
-  const add = (expr: hbs.AST.Expression | undefined, unit: string, line: number) => {
+  /** Inside a loop (`scoped`) only `@root.x` names a run variable; plain paths are item fields. */
+  const add = (expr: hbs.AST.Expression | undefined, unit: string, line: number, scoped = false) => {
     if (!expr) return;
     if (expr.type === "SubExpression") {
-      for (const p of (expr as hbs.AST.SubExpression).params) add(p, unit, line);
+      for (const p of (expr as hbs.AST.SubExpression).params) add(p, unit, line, scoped);
       return;
     }
     if (expr.type !== "PathExpression") return;
     const path = expr as hbs.AST.PathExpression;
     const name = path.parts[0];
-    if (path.data || path.depth > 0 || !name || CONTEXT.has(name)) return;
+    // `@root.x` names a run variable from inside a loop.
+    if (path.data && name === "root" && path.parts[1]) return addName(path.parts[1], unit, line);
+    if (scoped || path.data || path.depth > 0 || !name || CONTEXT.has(name)) return;
+    addName(name, unit, line);
+  };
+  const addName = (name: string, unit: string, line: number) => {
+    if (CONTEXT.has(name)) return;
     const key = `${unit}\0${name}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -62,13 +69,12 @@ export function collectVariables(units: Array<{ unit: string; value: unknown; fo
       const line = s.loc.start.line;
       if (s.type === "MustacheStatement") {
         const m = s as hbs.AST.MustacheStatement;
-        if (scoped) continue;
-        if (m.params.length > 0) m.params.forEach((p) => add(p, unit, line));
-        else if (m.path.type === "SubExpression") add(m.path, unit, line);
-        else if (!HELPERS.has((m.path as hbs.AST.PathExpression).original)) add(m.path, unit, line);
+        if (m.params.length > 0) m.params.forEach((p) => add(p, unit, line, scoped));
+        else if (m.path.type === "SubExpression") add(m.path, unit, line, scoped);
+        else if (!HELPERS.has((m.path as hbs.AST.PathExpression).original)) add(m.path, unit, line, scoped);
       } else if (s.type === "BlockStatement") {
         const b = s as hbs.AST.BlockStatement;
-        if (!scoped) b.params.forEach((p) => add(p, unit, line));
+        b.params.forEach((p) => add(p, unit, line, scoped));
         walk(b.program.body, unit, scoped || ["each", "with"].includes((b.path as hbs.AST.PathExpression).original));
         if (b.inverse) walk(b.inverse.body, unit, scoped);
       }
@@ -84,18 +90,27 @@ export function collectVariables(units: Array<{ unit: string; value: unknown; fo
           : format === "storage"
             ? storageTextUnits(String(u.value))
             : [String(u.value)];
+    // Control paragraphs open and close blocks across units, in document order.
+    const blocks: string[] = [];
     for (const raw of texts) {
       if (!raw.includes("{{")) continue;
-      // A control paragraph alone ("{{#each systems}}") doesn't parse; read its subject.
+      const inLoop = blocks.some((b) => b === "each" || b === "with");
       const control = controlOf(raw);
+      if (control?.kind === "close") {
+        if (blocks.at(-1) === control.name) blocks.pop();
+        continue;
+      }
+      if (control?.kind === "else") continue;
+      // A control paragraph alone ("{{#each systems}}") doesn't parse; read its subject.
       const text = control?.kind === "open" ? `{{__subject ${control.expr}}}` : raw;
+      if (control?.kind === "open") blocks.push(control.name);
       let program: hbs.AST.Program;
       try {
         program = Handlebars.parse(text);
       } catch {
         continue;
       }
-      walk(program.body, u.unit, false);
+      walk(program.body, u.unit, inLoop);
     }
   }
   return uses;

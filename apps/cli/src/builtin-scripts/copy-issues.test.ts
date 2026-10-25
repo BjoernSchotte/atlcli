@@ -189,6 +189,14 @@ describe("copy-issues", () => {
       expect(created("Copy of SUP-2")).toBeDefined();
     });
 
+    it("a label that renders with whitespace fails the plan, not the apply", async () => {
+      const jira = new FakeJira();
+      jira.source[0]!.fields.labels = ["{{team}}"];
+      const error = await plan({}, jira, templating({ team: "ops team", version: "1" })).catch((e: unknown) => e);
+      expect(error).toMatchObject({ name: "ScriptError", kind: "template" });
+      expect(String((error as Error).message)).toContain("whitespace");
+    });
+
     it("strict fails the plan on a leftover placeholder", async () => {
       const error = await plan({}, new FakeJira(), templating({}, true)).catch((e: unknown) => e);
       expect(error).toMatchObject({ name: "ScriptError", kind: "template" });

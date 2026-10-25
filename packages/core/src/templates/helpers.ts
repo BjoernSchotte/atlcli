@@ -32,7 +32,8 @@ const HELPERS: Record<string, Handlebars.HelperDelegate> = {
     if (typeof dateStr !== "string") return "";
     const date = new Date(dateStr);
     if (Number.isNaN(date.getTime())) return dateStr;
-    return formatDate(date, typeof format === "string" ? format : "YYYY-MM-DD");
+    // Dates in templates are calendar dates: read them in UTC, so "2026-10-25" stays the 25th everywhere.
+    return formatDate(date, typeof format === "string" ? format : "YYYY-MM-DD", true);
   },
   lowercase: (s: unknown) => (typeof s === "string" ? s.toLowerCase() : ""),
   uppercase: (s: unknown) => (typeof s === "string" ? s.toUpperCase() : ""),

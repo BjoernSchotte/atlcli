@@ -99,16 +99,21 @@ export default async function copyIssues(p) {
       counts.resumed++;
     } else {
       const source = { key: issue.key, id: issue.id, summary: f.summary, project: issue.key.split("-")[0], fields: f };
-      const render = (value, unit, format) => atlcli.render(value, { source, unit: `${issue.key} ${unit}`, ...(format ? { format } : {}) });
+      const render = (value, unit, format, kind) =>
+        atlcli.render(value, { source, unit: `${issue.key} ${unit}`, ...(format ? { format } : {}), ...(kind ? { kind } : {}) });
       const bodyFormat = (body) => (typeof body === "string" ? "wikimarkup" : "adf");
       const copyFields = {};
       if (f.description !== null && f.description !== undefined) {
         const description = replaceBody(f.description, pairs);
         copyFields.description = await render(description, "description", bodyFormat(description));
       }
-      if (f.labels?.length) copyFields.labels = await Promise.all(f.labels.map((l, i) => render(l, `label ${i + 1}`)));
-      if (f.components?.length) copyFields.components = await Promise.all(f.components.map(async (c) => ({ name: await render(c.name, "component") })));
-      if (f.fixVersions?.length) copyFields.fixVersions = await Promise.all(f.fixVersions.map(async (v) => ({ name: await render(v.name, "fix version") })));
+      if (f.labels?.length) copyFields.labels = await Promise.all(f.labels.map((l, i) => render(l, `label ${i + 1}`, undefined, "label")));
+      if (f.components?.length) {
+        copyFields.components = await Promise.all(f.components.map(async (c) => ({ name: await render(c.name, "component", undefined, "name") })));
+      }
+      if (f.fixVersions?.length) {
+        copyFields.fixVersions = await Promise.all(f.fixVersions.map(async (v) => ({ name: await render(v.name, "fix version", undefined, "name") })));
+      }
       for (const id of extra) if (f[id] !== null && f[id] !== undefined) copyFields[id] = await renderLeaves(f[id], (v) => render(v, id));
       if (f.parent?.key) {
         if (refs.has(f.parent.key)) copyFields.parent = { key: refs.get(f.parent.key) };
@@ -117,7 +122,7 @@ export default async function copyIssues(p) {
       if (p.keepAssignee && f.assignee) {
         copyFields.assignee = f.assignee.accountId ? { accountId: f.assignee.accountId } : { name: f.assignee.name };
       }
-      const summary = await render(replaceText(f.summary, pairs), "summary");
+      const summary = await render(replaceText(f.summary, pairs), "summary", undefined, "summary");
       const created = await jira.create({
         project: p.to,
         type: f.issuetype.name,

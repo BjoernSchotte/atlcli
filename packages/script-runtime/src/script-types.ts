@@ -139,6 +139,8 @@ const atlcli: {
       source?: unknown;
       parent?: unknown;
       unit?: string;
+      /** Checks a rendered text value as this Jira field kind (a label must not contain whitespace, …). */
+      kind?: "summary" | "label" | "name" | "string" | "number" | "date" | "option";
     },
   ): Promise<T>;
   readonly jira: {

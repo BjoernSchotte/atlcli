@@ -85,9 +85,10 @@ export function expandBlock<N, R, C extends Pick<AdfContext, "scope" | "opts" | 
           ? Object.entries(value)
           : [];
       if (entries.length === 0) return emit(block.otherwise, ctx);
-      return entries.flatMap(([key, item], i) =>
-        emit(block.then, { ...ctx, scope: childScope(ctx.scope, item, { index: i, key, first: i === 0, last: i === entries.length - 1 }) }),
-      );
+      return entries.flatMap(([key, item], i) => {
+        ctx.opts.budget.iterate(ctx.opts.unit);
+        return emit(block.then, { ...ctx, scope: childScope(ctx.scope, item, { index: i, key, first: i === 0, last: i === entries.length - 1 }) });
+      });
     }
   }
 }

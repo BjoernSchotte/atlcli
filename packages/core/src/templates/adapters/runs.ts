@@ -21,8 +21,13 @@ export function distribute(pieces: string[], segments: Segment[]): string[] {
     return i;
   };
   for (const seg of segments) {
-    if (source.slice(seg.start, seg.end) !== seg.output) {
-      out[pieceAt(seg.start)] += seg.output;
+    const slice = source.slice(seg.start, seg.end);
+    if (slice !== seg.output) {
+      // Text that only lost characters (`~` trimming, `\` before `{{`) keeps the
+      // rest in place, so marks on it survive; anything else goes to its start.
+      const kept = seg.kind === "content" ? keptOffsets(slice, seg.output) : undefined;
+      if (kept) for (const i of kept) out[pieceAt(seg.start + i)] += slice[i];
+      else out[pieceAt(seg.start)] += seg.output;
       continue;
     }
     for (let i = 0; i < pieces.length; i++) {
@@ -32,4 +37,17 @@ export function distribute(pieces: string[], segments: Segment[]): string[] {
     }
   }
   return out;
+}
+
+/** Offsets in `slice` of the characters `output` keeps, when `output` is `slice` with some deleted; else undefined. */
+function keptOffsets(slice: string, output: string): number[] | undefined {
+  const kept: number[] = [];
+  let j = 0;
+  for (let i = 0; i < slice.length && j < output.length; i++) {
+    if (slice[i] === output[j]) {
+      kept.push(i);
+      j++;
+    }
+  }
+  return j === output.length ? kept : undefined;
 }

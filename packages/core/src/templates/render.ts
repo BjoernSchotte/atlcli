@@ -16,6 +16,8 @@ export interface TemplateScope {
   context: unknown;
   /** Data variables without the `@`: built-ins, `root`, loop data. */
   data: Record<string, unknown>;
+  /** Inside a control-paragraph each/with: `this` is the item. */
+  item?: boolean;
 }
 
 export type RenderWarningCode =
@@ -51,6 +53,8 @@ export interface Segment {
   start: number;
   end: number;
   output: string;
+  /** Plain text (its output only drops characters: `~` trimming, `\` escapes) or an expression. */
+  kind?: "content" | "expr";
 }
 
 export class RenderError extends Error {
@@ -63,13 +67,22 @@ export class RenderError extends Error {
   }
 }
 
-/** Output limits: per unit and per run (characters). */
+/** Output limits: per unit and per run (characters), and loop iterations per run. */
 export class RenderBudget {
   private used = 0;
+  private iterations = 0;
   constructor(
     readonly perUnit = 1_000_000,
     readonly perRun = 16_000_000,
+    readonly maxIterations = 100_000,
   ) {}
+
+  /** One {{#each}} item (text or control paragraphs); counted while rendering, so nesting cannot run away. */
+  iterate(unit?: string): void {
+    if (++this.iterations > this.maxIterations) {
+      throw new RenderError(`Template loop limit exceeded in ${unit ?? "a value"} (more than ${this.maxIterations} {{#each}} items in this run)`);
+    }
+  }
 
   charge(chars: number, unit?: string): void {
     if (chars > this.perUnit) {
@@ -98,6 +111,8 @@ export function createTemplateScope(
     project?: string;
     source?: unknown;
     parent?: unknown;
+    /** Makes @uuid differ between units under one frozen clock. */
+    seed?: string;
   } = {},
 ): TemplateScope {
   const context: Record<string, unknown> = { ...(input.vars ?? {}) };
@@ -109,13 +124,14 @@ export function createTemplateScope(
     profile: input.profile,
     space: input.space,
     project: input.project,
+    seed: input.seed,
   });
   return { context, data: { ...data, root: context } };
 }
 
 /** Scope for an each/with body: `this` becomes `context`; `@root` stays. */
 export function childScope(scope: TemplateScope, context: unknown, data: Record<string, unknown> = {}): TemplateScope {
-  return { context, data: { ...scope.data, ...data } };
+  return { context, data: { ...scope.data, ...data }, item: true };
 }
 
 /** Own-property walk; never reaches the prototype chain. */
@@ -129,9 +145,12 @@ function lookup(base: unknown, parts: string[]): boolean {
   return true;
 }
 
+/** Line starts as Handlebars counts lines: \r\n, \n and a lone \r each end one. */
 function lineStarts(source: string): number[] {
   const starts = [0];
-  for (let i = 0; i < source.length; i++) if (source[i] === "\n") starts.push(i + 1);
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] === "\n" || (source[i] === "\r" && source[i + 1] !== "\n")) starts.push(i + 1);
+  }
   return starts;
 }
 
@@ -163,8 +182,10 @@ function resolves(expr: hbs.AST.Expression, scope: TemplateScope, scoped: boolea
     if (scoped && LOOP_DATA.has(head!)) return true;
     return lookup(scope.data, path.parts);
   }
-  if (scoped || path.depth > 0) return true;
-  if (path.parts.length === 0) return true; // this
+  if (scoped) return true;
+  // ../x has no parent outside a block; `this` at the top is the variables object.
+  if (path.depth > 0) return false;
+  if (path.parts.length === 0) return scope.item === true;
   return lookup(scope.context, path.parts);
 }
 
@@ -286,10 +307,28 @@ function stringifyMustaches(body: hbs.AST.Statement[]): void {
   }
 }
 
-function compile(hbs: typeof Handlebars, source: string, scope: TemplateScope): string {
+function compile(hbs: typeof Handlebars, source: string, scope: TemplateScope, budget: RenderBudget, unit?: string): string {
   const program = hbs.parse(source);
   stringifyMustaches(program.body);
-  hbs.registerHelper(STR, (v: unknown) => (v === undefined || v === null ? "" : String(v)));
+  // Counted while rendering: a nested loop must hit the limit before it builds a huge string.
+  let produced = 0;
+  hbs.registerHelper(STR, (v: unknown) => {
+    const text = v === undefined || v === null ? "" : String(v);
+    produced += text.length;
+    if (produced > budget.perUnit) budget.charge(produced, unit);
+    return text;
+  });
+  const each = hbs.helpers.each!;
+  hbs.registerHelper("each", function (this: unknown, context: unknown, options: Handlebars.HelperOptions) {
+    const fn = options.fn;
+    return each.call(this, context, {
+      ...options,
+      fn: (c: unknown, o?: Handlebars.RuntimeOptions) => {
+        budget.iterate(unit);
+        return fn(c, o);
+      },
+    });
+  });
   return hbs.compile(program, { noEscape: true, strict: false })(scope.context, { data: scope.data });
 }
 
@@ -315,7 +354,7 @@ export function renderText(source: string, scope: TemplateScope, opts: RenderOpt
   }
   const { escapes, warnings } = analyze(program, source, scope, opts.unit);
   finish(null, warnings, opts);
-  const text = compile(hbs, applyEscapes(source, escapes), scope);
+  const text = compile(hbs, applyEscapes(source, escapes), scope, budget, opts.unit);
   budget.charge(text.length, opts.unit);
   return { text, warnings };
 }
@@ -346,7 +385,7 @@ export function renderSegments(source: string, scope: TemplateScope, opts: Rende
   const monotonic = bounds[0] === 0 && bounds.every((b, i) => i === 0 || b > bounds[i - 1]!);
   if (!monotonic) {
     // Unexpected locations: render the unit as one segment.
-    const output = compile(hbs, applyEscapes(source, escapes), scope);
+    const output = compile(hbs, applyEscapes(source, escapes), scope, budget, opts.unit);
     budget.charge(output.length, opts.unit);
     return { segments: [{ start: 0, end: source.length, output }], warnings };
   }
@@ -356,15 +395,15 @@ export function renderSegments(source: string, scope: TemplateScope, opts: Rende
     const start = bounds[i]!;
     const end = bounds[i + 1] ?? source.length;
     const slice = source.slice(start, end);
-    const output =
-      stmt.type === "ContentStatement"
-        ? (stmt as hbs.AST.ContentStatement).value
-        : stmt.type === "CommentStatement"
-          ? ""
-          : compile(hbs, applyEscapes(slice, escapes, start), scope);
+    const content = stmt.type === "ContentStatement";
+    const output = content
+      ? (stmt as hbs.AST.ContentStatement).value
+      : stmt.type === "CommentStatement"
+        ? ""
+        : compile(hbs, applyEscapes(slice, escapes, start), scope, budget, opts.unit);
     total += output.length;
     if (total > budget.perUnit) budget.charge(total, opts.unit);
-    segments.push({ start, end, output });
+    segments.push({ start, end, output, kind: content ? "content" : "expr" });
   });
   budget.charge(total, opts.unit);
   return { segments, warnings };
@@ -392,6 +431,6 @@ export function evaluateExpression(expr: string, scope: TemplateScope, opts: Ren
     value = v;
     return "";
   });
-  compile(hbs, source, scope);
+  compile(hbs, source, scope, opts.budget ?? new RenderBudget(), opts.unit);
   return finish(value, [], opts);
 }

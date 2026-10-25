@@ -332,6 +332,7 @@ const renderOptions = z.strictObject({
   source: z.unknown().optional(),
   parent: z.unknown().optional(),
   unit: z.string().optional(),
+  kind: z.enum(["summary", "label", "name", "string", "number", "date", "option"]).optional(),
 });
 
 const VERBS: Record<string, Verb> = {
@@ -347,6 +348,7 @@ const VERBS: Record<string, Verb> = {
         source: o.source,
         parent: o.parent,
         unit,
+        ...(o.kind ? { kind: o.kind } : {}),
         vars: { ...r.templating.vars, ...(o.vars ?? {}) },
         now: r.templating.now,
         strict: r.templating.strict,
