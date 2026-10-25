@@ -343,7 +343,9 @@ Templating (copy-issues, clone, `jira template apply`, `wiki page copy`,
 `@` built-ins, helpers such as `dateAdd @today 14 "d"`. A `{{…}}` nothing fills
 stays as written and is a **template warning** in the plan or output; read
 them, or pass `--strict` so they fail. Code blocks and code macros are never
-rendered. Run `atlcli template vars --jql …|--issue …|--page … [--tree]|--jira-template …`
+rendered. Only a single backslash escapes (`\{{x}}` stays `{{x}}`; `\\{{x}}`
+is a backslash plus the value); `{{! … }}` comments stay as written. Leave the
+other cells of a `{{#each}}` control row empty: the row is removed whole. Run `atlcli template vars --jql …|--issue …|--page … [--tree]|--jira-template …`
 first to see which variables a source needs (`--json` gives a `values:`
 skeleton). Re-plan with the plan's `--now` to keep dates identical.
 

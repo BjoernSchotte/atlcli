@@ -512,7 +512,7 @@ export interface RenderWarning {
 }
 
 // export: RenderWarningCode
-export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field";
+export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
 
 // export: renderWikiMarkup
 export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
@@ -1533,7 +1533,7 @@ export interface RenderWarning {
 }
 
 // export: RenderWarningCode
-export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field";
+export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
 
 // export: renderWikiMarkup
 export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
@@ -2481,7 +2481,7 @@ export interface RenderWarning {
 }
 
 // export: RenderWarningCode
-export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field";
+export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
 
 // export: renderWikiMarkup
 export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
@@ -3574,7 +3574,7 @@ export interface RenderWarning {
 }
 
 // export: RenderWarningCode
-export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field";
+export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
 
 // export: renderWikiMarkup
 export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {

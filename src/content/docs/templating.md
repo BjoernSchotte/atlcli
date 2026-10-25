@@ -112,7 +112,8 @@ The same works one level up:
   `{{this}}`, and an item with `{{/each}}` give one item per system.
 - **Table rows**: a row whose first cell holds only `{{#each systems}}`, a row
   with `{{this}}` / `{{@root.owners.IAM}}`, and a row with `{{/each}}` give one
-  row per system. The control rows disappear.
+  row per system. The control rows disappear, other cells included: when
+  those hold content, the plan warns (`dropped-content`).
 
 Supported: `#if`, `#unless`, `#each`, `#with`, with `{{else}}`. Inside `#each`
 and `#with`, `this` is the item, `@index`, `@first`, `@last` and `@key` are
@@ -138,8 +139,14 @@ leftover is a bug:
 atlcli jira project copy-issues --from TPLREL --to REL --var version=4.2 --strict
 ```
 
-To keep a literal `{{…}}`, write `\{{…}}`. `{{../x}}` and a bare `{{this}}`
-outside a loop also stay as written.
+To keep a literal `{{…}}`, write `\{{…}}`. As in Handlebars, only a single
+backslash escapes: `C:\\{{dir}}` is a literal backslash followed by the value
+of `dir`. `{{../x}}`, a bare `{{this}}` outside a loop and Handlebars comments
+(`{{! … }}`, with a warning) also stay as written.
+
+In Jira wiki markup and plain-text fields, warnings give the line and column
+in the field. In rich text (ADF descriptions, Confluence pages) they name the
+field or page and the expression, without a position.
 
 ## Variables
 
@@ -253,6 +260,7 @@ atlcli script apply pages.json
 | `{{year}}` is empty inside `#each` | Inside a loop, plain names refer to the item | Write `{{@root.year}}` |
 | Jinja or Helm snippets in a description | They are not Handlebars | They stay as written, with a warning; put them in a code block to silence it |
 | Data Center: `{{text}}` monospace changed | Monospace text equals a variable name | Escape it as `\{{text}}` |
+| `control row is removed with the content of its other cells` | A table row holding `{{#each}}`, `{{else}}` or `{{/each}}` in its first cell has text in other cells | Leave the other cells of control rows empty |
 | `Missing required template variables` | A declared required variable has no value and there is no terminal | Pass `--var` or `--vars-file` |
 | `Template output limit exceeded` | A loop produced more than 1 MB in one field, or 16 MB in the run | Check the loop's data |
 | `Template loop limit exceeded` | More than 100,000 `{{#each}}` items in one run (nested loops multiply) | Check the loop's data |

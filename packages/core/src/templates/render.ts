@@ -29,7 +29,8 @@ export type RenderWarningCode =
   | "crosses-inline-node"
   | "invalid-url"
   | "unused-variable"
-  | "not-rendered-field";
+  | "not-rendered-field"
+  | "dropped-content";
 
 export interface RenderWarning {
   code: RenderWarningCode;
@@ -193,12 +194,14 @@ interface Analysis {
   /** Source ranges whose `{{` must be escaped. */
   escapes: Array<[number, number]>;
   warnings: RenderWarning[];
+  /** A comment was kept: Handlebars stripped whitespace around it in the parsed content. */
+  comments: boolean;
 }
 
 function analyze(program: hbs.AST.Program, source: string, scope: TemplateScope, unit: string | undefined): Analysis {
   const starts = lineStarts(source);
   const offset = (p: hbs.AST.Position) => starts[p.line - 1]! + p.column;
-  const out: Analysis = { escapes: [], warnings: [] };
+  const out: Analysis = { escapes: [], warnings: [], comments: false };
   const warn = (code: RenderWarningCode, node: hbs.AST.Node, message: string) =>
     out.warnings.push({ code, message, unit, line: node.loc.start.line, column: node.loc.start.column });
   const escape = (node: hbs.AST.Node) => out.escapes.push([offset(node.loc.start), offset(node.loc.end)]);
@@ -253,8 +256,14 @@ function analyze(program: hbs.AST.Program, source: string, scope: TemplateScope,
           warn("unsupported", stmt, `Partials and decorators are not supported: ${text(stmt)}`);
           escape(stmt);
           break;
+        case "CommentStatement":
+          // In copied text a comment is the author's text, not a template note.
+          warn("unsupported", stmt, `Comments are kept as written: ${text(stmt)}`);
+          escape(stmt);
+          out.comments = true;
+          break;
         default:
-          break; // ContentStatement, CommentStatement
+          break; // ContentStatement
       }
     }
   };
@@ -262,21 +271,28 @@ function analyze(program: hbs.AST.Program, source: string, scope: TemplateScope,
   return out;
 }
 
-/** Puts a backslash before every unescaped `{{` inside the ranges, so Handlebars prints them. */
+/** Exactly one backslash escapes `{{`; Handlebars reads two or more as a literal backslash plus a mustache. */
+const escapedAt = (source: string, i: number) => source[i - 1] === "\\" && source[i - 2] !== "\\";
+
+/**
+ * Replaces every unescaped `{{` inside the ranges with `{{"{{"}}`, so
+ * Handlebars prints it. A backslash would not do after another backslash:
+ * Handlebars reads `\\{{` as an escaped backslash.
+ */
 function applyEscapes(source: string, ranges: Array<[number, number]>, shift = 0): string {
   const points = new Set<number>();
   for (const [start, end] of ranges) {
     const from = start - shift;
     const to = end - shift;
     for (let i = source.indexOf("{{", Math.max(0, from)); i !== -1 && i < to; i = source.indexOf("{{", i + 2)) {
-      if (source[i - 1] !== "\\") points.add(i);
+      if (!escapedAt(source, i)) points.add(i);
     }
   }
   let out = "";
   let last = 0;
   for (const p of [...points].sort((a, b) => a - b)) {
-    out += source.slice(last, p) + "\\";
-    last = p;
+    out += source.slice(last, p) + '{{"{{"}}';
+    last = p + 2;
   }
   return out + source.slice(last);
 }
@@ -375,7 +391,7 @@ export function renderSegments(source: string, scope: TemplateScope, opts: Rende
   const hbs = createTemplateHandlebars();
   const program = parse(hbs, source);
   if (program instanceof Error) return whole([{ code: "parse-error", message: program.message, unit: opts.unit }]);
-  const { escapes, warnings } = analyze(program, source, scope, opts.unit);
+  const { escapes, warnings, comments } = analyze(program, source, scope, opts.unit);
   finish(null, warnings, opts);
 
   const starts = lineStarts(source);
@@ -383,8 +399,8 @@ export function renderSegments(source: string, scope: TemplateScope, opts: Rende
   const body = program.body;
   const bounds = body.map((s) => offset(s.loc.start));
   const monotonic = bounds[0] === 0 && bounds.every((b, i) => i === 0 || b > bounds[i - 1]!);
-  if (!monotonic) {
-    // Unexpected locations: render the unit as one segment.
+  if (!monotonic || comments) {
+    // Unexpected locations, or content next to a kept comment that Handlebars stripped: one segment.
     const output = compile(hbs, applyEscapes(source, escapes), scope, budget, opts.unit);
     budget.charge(output.length, opts.unit);
     return { segments: [{ start: 0, end: source.length, output }], warnings };
@@ -398,9 +414,7 @@ export function renderSegments(source: string, scope: TemplateScope, opts: Rende
     const content = stmt.type === "ContentStatement";
     const output = content
       ? (stmt as hbs.AST.ContentStatement).value
-      : stmt.type === "CommentStatement"
-        ? ""
-        : compile(hbs, applyEscapes(slice, escapes, start), scope, budget, opts.unit);
+      : compile(hbs, applyEscapes(slice, escapes, start), scope, budget, opts.unit);
     total += output.length;
     if (total > budget.perUnit) budget.charge(total, opts.unit);
     segments.push({ start, end, output, kind: content ? "content" : "expr" });
