@@ -72,8 +72,8 @@ export const LOREMIPSUM_MACRO_REGEX = /^:::loremipsum(?:[ \t]+(.+))?\n?:::\s*$/g
 
 /**
  * One block macro as `markdownToStorage` consumes it. `body` is the capture
- * group whose Markdown is rendered on its own (nested `:::` lines in it end
- * up as literal text); `columns` marks the section/column construct.
+ * group whose Markdown is rendered on its own (nested blocks are replaced first, see
+ * `replaceNestedBlocks`); `columns` marks the section/column construct.
  */
 export interface BlockMacroRule {
   regex: RegExp;
@@ -151,4 +151,44 @@ export function splitMacroTitle(raw: string | undefined): { title: string | unde
   if (split) return { title: split[1] ?? split[2], params: split[3] };
   const quoted = trimmed.match(/^["'](.*)["']$/);
   return { title: quoted ? quoted[1] : trimmed, params: "" };
+}
+
+const BLOCK_OPEN = /^:::([A-Za-z][\w-]*)(?:[ \t].*)?$/;
+const BLOCK_CLOSE = /^:::(?:[\w-]+-end)?\s*$/;
+const CODE_FENCE = /^ {0,3}(`{3,}|~{3,})/;
+
+/**
+ * Replace every `:::` block that sits inside another block with
+ * `replace(block, line)`, innermost first, so the block regexes above (which
+ * stop at the first `:::` line) only ever see one level. `line` is the
+ * 0-based line of the block's opener in the text as it stands then. Columns
+ * stay inside their section, which converts them itself; lines in code
+ * fences are never macro lines.
+ */
+export function replaceNestedBlocks(markdown: string, replace: (block: string, line: number) => string): string {
+  const lines = markdown.split("\n");
+  const open: Array<{ line: number; name: string }> = [];
+  let fence: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fenceMatch = line.match(CODE_FENCE);
+    if (fenceMatch) {
+      if (!fence) fence = fenceMatch[1][0];
+      else if (fenceMatch[1][0] === fence) fence = null;
+      continue;
+    }
+    if (fence) continue;
+    const opener = line.match(BLOCK_OPEN);
+    if (opener && !opener[1].endsWith("-end")) {
+      open.push({ line: i, name: opener[1] });
+    } else if (BLOCK_CLOSE.test(line) && open.length > 0) {
+      const block = open.pop()!;
+      if (open.length === 0 || block.name === "column") continue;
+      const replacement = replace(lines.slice(block.line, i + 1).join("\n"), block.line);
+      const replacementLines = replacement.split("\n");
+      lines.splice(block.line, i - block.line + 1, ...replacementLines);
+      i = block.line + replacementLines.length - 1;
+    }
+  }
+  return lines.join("\n");
 }

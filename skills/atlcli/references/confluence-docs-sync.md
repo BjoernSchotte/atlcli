@@ -227,6 +227,11 @@ Right column.
 
 A section or column closed with a bare `:::` fails `check`.
 
+Blocks nest: a `:::note` with its own closing `:::` inside an `:::expand` or
+a column converts as a nested macro. A `:::confluence name` block holds an
+unrecognized macro, and any macros inside it, as raw XML in `<!--raw ... -->`;
+leave that comment untouched so push restores the macro exactly.
+
 ### Linking between pages
 
 `check` and `status --links` understand a link to another synced page as a

@@ -117,13 +117,13 @@ Left
 ```
 
 Lines inside fenced code blocks are ignored. Macros nested inside another
-macro body (for example `:::note` inside `:::info`) are flagged, because the
-outer body is rendered as plain Markdown and the inner `:::` lines would show
-up as text.
+macro body (for example `:::note` inside `:::info`) are checked on their own,
+the way `push` converts them; problems inside them are reported at their own
+line.
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| `MACRO_UNCLOSED` | Error | A `:::` line that `push` would not turn into a macro: unclosed, unknown, stray close, or nested |
+| `MACRO_UNCLOSED` | Error | A `:::` line that `push` would not turn into a macro: unclosed, unknown, or stray close |
 
 ### Size Validation
 

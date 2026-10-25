@@ -38,6 +38,7 @@ import {
   LOREMIPSUM_MACRO_REGEX,
   TOC_PARAMETERS,
   parseMacroParams,
+  replaceNestedBlocks,
   splitMacroTitle,
 } from "./macro-syntax.js";
 export { KNOWN_MACROS } from "./known-macros.js";
@@ -201,10 +202,19 @@ const DRAWIO_MANAGED_MACRO_REGEX = /^<!--atlcli:drawio(?:\/v1)?\n([\s\S]*?)\n-->
  */
 export function markdownToStorage(markdown: string, options?: ConversionOptions): string {
   // Strip frontmatter before processing (defensive - callers should also strip)
-  const content = stripFrontmatter(markdown);
+  const stripped = stripFrontmatter(markdown);
 
   const macros: { placeholder: string; html: string }[] = [];
   let placeholderIndex = 0;
+
+  // Nested ::: blocks convert on their own first (innermost first), so each
+  // block regex below sees a single level. Their own placeholder namespace
+  // keeps the recursive calls from replacing the outer call's placeholders.
+  const nested: string[] = [];
+  const content = replaceNestedBlocks(stripped, (block) => {
+    nested.push(markdownToStorage(block, options).trim());
+    return `<!--ATLCLI_NESTED_${nested.length - 1}-->`;
+  });
 
   // Handle inline status macros: {status:color}text{status}
   let processed = content.replace(STATUS_REGEX, (_, color, text) => {
@@ -1167,12 +1177,16 @@ ${md.render(trimmedContent).trim()}
   // markdown-it-task-lists produces: <ul class="contains-task-list"><li class="task-list-item"><input type="checkbox" disabled> text</li></ul>
   result = convertTaskListsToConfluence(result);
 
-  // Replace placeholders with actual macro HTML
-  for (const { placeholder, html } of macros) {
+  // Replace placeholders with actual macro HTML. Later placeholders hold the
+  // earlier ones (a status inside an info body), so restore outermost first.
+  // Function replacers keep `$&`-like text in raw macro XML literal.
+  const restore = (placeholder: string, html: string) => {
     // The placeholder might be wrapped in <p> tags
-    result = result.replace(`<p>${placeholder}</p>`, html);
-    result = result.replace(placeholder, html);
-  }
+    result = result.replace(`<p>${placeholder}</p>`, () => html);
+    result = result.replace(placeholder, () => html);
+  };
+  for (const { placeholder, html } of [...macros].reverse()) restore(placeholder, html);
+  for (let i = nested.length - 1; i >= 0; i--) restore(`<!--ATLCLI_NESTED_${i}-->`, nested[i]);
 
   return result;
 }
@@ -1507,6 +1521,16 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     }
   );
 
+  // The per-macro regexes below stop at the first closing tag, so they only
+  // ever run on one macro without nested macros: unknown macros are kept
+  // whole first, then known macros convert innermost first.
+  storage = preserveUnknownMacros(storage);
+  storage = mapLeafMacros(storage, (macro) => convertStorageElements(macro, options));
+  return convertStorageElements(storage, options);
+}
+
+/** Convert known macros and other Confluence elements to placeholder HTML. */
+function convertStorageElements(storage: string, options?: ConversionOptions): string {
   // Convert panel macros (info, note, warning, tip)
   storage = storage.replace(
     /<ac:structured-macro\s+ac:name="(info|note|warning|tip)"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
@@ -2309,34 +2333,95 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     }
   );
 
-  // Preserve all unknown/3rd-party macros (whitelist approach)
-  // IMPORTANT: Handle self-closing macros FIRST to prevent greedy matching
-  storage = storage.replace(
-    /<ac:structured-macro\s+ac:name="([^"]+)"[^>]*\/>/gi,
-    (fullMatch, macroName) => {
-      if (KNOWN_MACROS.includes(macroName.toLowerCase())) {
-        return fullMatch;
-      }
-      const encodedRaw = encodeRawXml(fullMatch);
-      return `<div data-macro="confluence" data-macro-name="${escapeHtml(macroName)}" data-raw="${encodedRaw}">*[${escapeHtml(macroName)} macro]*</div>`;
-    }
-  );
-
-  // Then handle macros with body content
-  storage = storage.replace(
-    /<ac:structured-macro\s+ac:name="([^"]+)"[^>]*(?<!\/)>([\s\S]*?)<\/ac:structured-macro>/gi,
-    (fullMatch, macroName) => {
-      // Skip if it's a known macro (already handled above)
-      if (KNOWN_MACROS.includes(macroName.toLowerCase())) {
-        return fullMatch;
-      }
-      // Preserve unknown macro with raw XML
-      const encodedRaw = encodeRawXml(fullMatch);
-      return `<div data-macro="confluence" data-macro-name="${escapeHtml(macroName)}" data-raw="${encodedRaw}">*[${escapeHtml(macroName)} macro]*</div>`;
-    }
-  );
-
   return storage;
+}
+
+const MACRO_TAG_REGEX = /<!\[CDATA\[[\s\S]*?\]\]>|<ac:structured-macro\b[^>]*>|<\/ac:structured-macro>/gi;
+
+interface MacroSpan {
+  start: number;
+  end: number;
+  name: string;
+  /** Whether another macro sits inside this one. */
+  parent: boolean;
+  /** Whether an enclosing macro is unknown. */
+  inUnknown: boolean;
+}
+
+/**
+ * Every balanced `<ac:structured-macro>` in `storage`, in closing order.
+ * CDATA is skipped, so code bodies never count as macros; stray or unclosed
+ * tags are left out.
+ */
+function scanMacros(storage: string): MacroSpan[] {
+  const spans: MacroSpan[] = [];
+  const stack: MacroSpan[] = [];
+  for (const tag of storage.matchAll(MACRO_TAG_REGEX)) {
+    const text = tag[0];
+    if (text.startsWith("<!")) continue;
+    if (text.startsWith("</")) {
+      const span = stack.pop();
+      if (!span) continue;
+      span.end = tag.index! + text.length;
+      spans.push(span);
+      continue;
+    }
+    const outer = stack[stack.length - 1];
+    if (outer) outer.parent = true;
+    const span: MacroSpan = {
+      start: tag.index!,
+      end: tag.index! + text.length,
+      name: text.match(/\bac:name="([^"]*)"/i)?.[1] ?? "",
+      parent: false,
+      inUnknown: stack.some((s) => !isKnownMacro(s.name)),
+    };
+    if (text.endsWith("/>")) spans.push(span);
+    else stack.push(span);
+  }
+  return spans;
+}
+
+function isKnownMacro(name: string): boolean {
+  return KNOWN_MACROS.includes(name.toLowerCase());
+}
+
+function spliceSpans(storage: string, spans: MacroSpan[], replace: (raw: string, span: MacroSpan) => string): string {
+  let out = storage;
+  for (const span of [...spans].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, span.start) + replace(out.slice(span.start, span.end), span) + out.slice(span.end);
+  }
+  return out;
+}
+
+/**
+ * Keep each unknown/3rd-party macro (whitelist approach) as raw XML,
+ * including any macros nested in it, so a push restores it byte for byte.
+ */
+function preserveUnknownMacros(storage: string): string {
+  const unknown = scanMacros(storage).filter((span) => !isKnownMacro(span.name) && !span.inUnknown);
+  return spliceSpans(storage, unknown, (raw, { name }) =>
+    `<div data-macro="confluence" data-macro-name="${escapeHtml(name)}" data-raw="${encodeRawXml(raw)}">*[${escapeHtml(name)} macro]*</div>`,
+  );
+}
+
+/**
+ * Apply `convert` to macros without nested macros until none are left, so
+ * inner macros are converted before the macro around them. A macro that
+ * `convert` leaves as it is is restored unchanged at the end.
+ */
+function mapLeafMacros(storage: string, convert: (macro: string) => string): string {
+  const kept: string[] = [];
+  for (;;) {
+    const leaves = scanMacros(storage).filter((span) => !span.parent);
+    if (leaves.length === 0) break;
+    storage = spliceSpans(storage, leaves, (raw) => {
+      const converted = convert(raw);
+      if (converted !== raw) return converted;
+      kept.push(raw);
+      return `\uE000${kept.length - 1}\uE001`;
+    });
+  }
+  return storage.replace(/\uE000(\d+)\uE001/g, (_, i: string) => kept[Number(i)]);
 }
 
 /**
