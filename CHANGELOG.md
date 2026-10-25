@@ -2,7 +2,7 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [Unreleased]
+## [2026.10.12] - 2026-10-25
 
 ### Breaking changes
 
@@ -17,6 +17,63 @@ All notable changes to atlcli will be documented in this file.
 
 - **Audit rules are scripts; the audit JSON is `schemaVersion: "3"`.** `audit jira` and `audit wiki` run their checks as TypeScript rule scripts in the sandbox; your own rules load from `.atlcli/audit/`, `~/.atlcli/audit/`, `scripts:` in `audit-rules.yaml` or `--script`. Version 3 adds `product`, `titles` and per finding `target` and `fixable`. `@atlcli/jira` no longer exports the audit API (it moved to the new `@atlcli/audit`).
 - **`audit wiki` changed shape.** It uses the same findings, rules file (`confluence:` section), baseline (`.atlcli/audit-baseline.json` in the synced directory) and `--fail-on` as `audit jira`, so it exits 2 on error-level findings. `--fix` plans changes for review (`--apply`, `--plan-out`) instead of prompting; `--dry-run` is gone. Without check flags the default profile runs.
+
+### Breaking changes
+
+- **templates:** Jinja replaces Handlebars for all templating ([48912dc](https://github.com/bjoernschotte/atlcli/commit/48912dc6c1c86d254d5e493bd67e3e4c4a03bb75))
+- **audit:** Jira audit rules run as sandboxed scripts in @atlcli/audit ([3c0adc1](https://github.com/bjoernschotte/atlcli/commit/3c0adc18ada084f76666ec1877dc3d3733b57351))
+
+@atlcli/jira no longer exports the audit API; audit JSON is v3.
+
+- **audit:** Wiki audit runs as Confluence rule scripts ([2542b24](https://github.com/bjoernschotte/atlcli/commit/2542b24ad706402fb15f190174284d8ae84748d0))
+
+audit wiki output is the v3 report; --fix plans changes
+(review, --apply) instead of prompting, --dry-run is gone; without check
+flags the default profile runs instead of an error; exit 2 on errors.
+
+
+### Bug Fixes
+
+- **core:** Close the deferred template review minors (#346) ([95ea8cc](https://github.com/bjoernschotte/atlcli/commit/95ea8cc536b3fac953a5041a00a211f63cf09925))
+- **script:** Drift hint for reviewed jobs, cap created keys in apply summary; spec notes and E2E evidence ([3487e63](https://github.com/bjoernschotte/atlcli/commit/3487e637be4a497540859a022e04f701da0a9482))
+- **script:** Add a transition comment separately when the transition has no screen ([a4caf6a](https://github.com/bjoernschotte/atlcli/commit/a4caf6a01628720ddfafacd1e79b37cb0ca774e6))
+- **templates:** List values stay lists in page templates; Jinja names in help ([c3b5cc9](https://github.com/bjoernschotte/atlcli/commit/c3b5cc9b613b0daed72583850934bddb8dace9fa))
+- **jira:** Report pages parse --var like every other template command ([a31e214](https://github.com/bjoernschotte/atlcli/commit/a31e214468665eb30976cb68e3711527a56ccd4a))
+- **confluence:** Archive pages through /content/archive; wiki audit scope from the sync config ([5afc686](https://github.com/bjoernschotte/atlcli/commit/5afc6860ff4f52e2720bda033d5ef2d088bead0e))
+- **audit:** Fixes get the run clock; options in the rule config type; drop stale test-lane entry ([043f0bc](https://github.com/bjoernschotte/atlcli/commit/043f0bc1652085147be5c1b15e74f37ae63e898f))
+
+### Documentation
+
+- **spec:** Script runtime at scale (each mode, REST reads, JQL functions) ([28a9751](https://github.com/bjoernschotte/atlcli/commit/28a975142dc6582e1e07616908ab662cade75af4))
+- Per-issue script jobs, apply journal, REST reads and JQL functions; API reports ([70a5c12](https://github.com/bjoernschotte/atlcli/commit/70a5c1240bc9b020870cfe5e19a9c03b1266f0b4))
+- **spec:** Scriptable audit, JWT script verbs, Handlebars to Jinja ([9ceb384](https://github.com/bjoernschotte/atlcli/commit/9ceb384f91fc3275d5d11db083cdd451fe291ca7))
+- Templates use Jinja (breaking), migrate guides and agent skill ([891ef64](https://github.com/bjoernschotte/atlcli/commit/891ef6430696d6af2cd49490bff2dc0c04cb570e))
+- Jira audit rule scripts, fixes and reports; archivePage; breaking notes ([c50575f](https://github.com/bjoernschotte/atlcli/commit/c50575fcefe6ddea705255386e774d5340a5d2fb))
+- Wiki audit as rule scripts, fixes as plans, schema v3; wiki rules in custom audit guide ([c929b3a](https://github.com/bjoernschotte/atlcli/commit/c929b3ac1664bd9a6e5a5c4b67794d98c89512d2))
+
+### Features
+
+- **jira:** Client-side JQL functions (linkedIssuesOf, subtasksOf, has*, …) ([9d0339b](https://github.com/bjoernschotte/atlcli/commit/9d0339ba3a415b6c30927df2170ac6e6ce2c7770))
+- **script:** Read-only REST access (atlcli.jira.rest, atlcli.confluence.rest) ([d5442c5](https://github.com/bjoernschotte/atlcli/commit/d5442c5dc2ae1207a191f6c7c1e6b9087b4f4a13))
+- **script:** Scale whole plans: higher limits (0 = none), resumable apply journal, --concurrency, plan summaries ([abdff3d](https://github.com/bjoernschotte/atlcli/commit/abdff3d9c7768ac9cb6e571b8401c48e30c62aaf))
+- **script:** Per-issue jobs (run --each, resume, jobs, apply <job>) ([05680bd](https://github.com/bjoernschotte/atlcli/commit/05680bd4ff3291d028c46e10cf80e8db77d89f80))
+- **script:** Init --each skeleton, example scripts, help for jobs and JQL functions ([f8a5a4a](https://github.com/bjoernschotte/atlcli/commit/f8a5a4ab178c1aa32fe729d9a4bbd1d00f265b60))
+- **script:** Transition fields/comment, transitions, history, watchers, notify; workflow examples ([4cd88d0](https://github.com/bjoernschotte/atlcli/commit/4cd88d0f5c1487026897edd10fdc09f02b5c6d95))
+- **jinja:** Nunjucks-based Jinja engine rendered inside QuickJS, with tolerant static analysis ([fe6f331](https://github.com/bjoernschotte/atlcli/commit/fe6f3314ba6fee258aa13907cf44f6ca83b5220b))
+- **script-runtime:** Batch item calls, choosable export, guest prelude, read-only mode ([4781753](https://github.com/bjoernschotte/atlcli/commit/4781753c34eb6039fcb0c7a473e5bbdc3dfa9f35))
+- **audit:** Audit init, rule-script types, help; custom flag rules default to warning ([f6d82b3](https://github.com/bjoernschotte/atlcli/commit/f6d82b3aa55ba2aaffbd17eb1dd2a2896c6232f9))
+- **script:** Confluence.archivePage verb ([74eb324](https://github.com/bjoernschotte/atlcli/commit/74eb3241ce635b96341365857b3784f7e19cbca4))
+
+### Miscellaneous
+
+- Today/now instead of @today/@now in help and comments ([2520968](https://github.com/bjoernschotte/atlcli/commit/2520968ade356327cd127bc4ca632e5b3cc14c47))
+
+### Testing
+
+- **audit:** Explicit timeouts for CLI-spawning audit tests ([8cc8374](https://github.com/bjoernschotte/atlcli/commit/8cc8374541098ae24b69927ddb424bc0b093ff2b))
+- Room for the 5 s render deadline; Vite smoke allows the unreferenced QuickJS asset ([3ffc594](https://github.com/bjoernschotte/atlcli/commit/3ffc594ba873d3c18b45056eef9e5f7486b9078e))
+- **cli:** Explicit timeouts for every CLI-spawning test file ([cb1b9f2](https://github.com/bjoernschotte/atlcli/commit/cb1b9f2f778c93b7a49146a65ed33f4fa1c4640c))
+
 
 ## [2026.10.11] - 2026-10-25
 
