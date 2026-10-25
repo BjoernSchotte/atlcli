@@ -872,6 +872,10 @@ describe("atlcli.render", () => {
     expect(run.templating).toEqual({ now: "2026-10-25T00:00:00.000Z", vars: { year: 2026 } });
     expect(run.operations).toEqual([]);
   });
+  it("records no templating for a run that never renders", async () => {
+    const run = await plan(`export default 1`, { port: new RenderPort(), templating: { vars: { year: 1 }, now: "2026-10-25T00:00:00.000Z", strict: false } });
+    expect(run.templating).toBeUndefined();
+  });
   it("a render error ends the run as a template ScriptError", async () => {
     class Strict extends FakePort {
       render(): never {

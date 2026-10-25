@@ -185,7 +185,9 @@ class Recorder {
   readonly sprintDates = new Map<string, { startDate?: string; endDate?: string }>();
   readonly exportPaths = new Set<string>();
   readonly renderWarnings: TemplateWarningView[] = [];
+  /** Unnamed render calls so far (default unit names); `rendered` once any call ran. */
   renderCount = 0;
+  rendered = false;
   private linkTypeList?: Promise<JiraLinkType[]>;
 
   constructor(
@@ -338,6 +340,7 @@ const VERBS: Record<string, Verb> = {
     const render = r.port.render?.bind(r.port);
     if (!render) throw new Error("atlcli.render is not available on this host");
     const unit = o.unit ?? `render#${++r.renderCount}`;
+    r.rendered = true;
     try {
       const out = render(input, {
         format: o.format,
@@ -860,7 +863,8 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
     operations: recorder.operations,
     skipped: recorder.skipped,
     hostCalls: result.hostCalls,
-    ...(options.templating ? { templating: { now: options.templating.now, vars: options.templating.vars } } : {}),
+    // Only a run that rendered depends on the clock and vars, so only it records them.
+    ...(options.templating && recorder.rendered ? { templating: { now: options.templating.now, vars: options.templating.vars } } : {}),
     renderWarnings: recorder.renderWarnings,
   };
 }
