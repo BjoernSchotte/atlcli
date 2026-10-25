@@ -171,6 +171,21 @@ const sprintFields = {
 };
 const exportOptions = z.strictObject({ format: z.enum(["pdf", "docx"]), path: str.optional() });
 
+/** Site-relative REST path; hosts check the product prefix (`/rest/`, `/api/v2/`). */
+const restPath = str.refine(
+  (p) => p.startsWith("/") && !/[?#\\\u0000-\u001f]|%2[ef]/i.test(p) && !p.split("/").some((s) => s === ".." || s === "."),
+  "a site-relative path like /rest/api/3/field, without query string or ..",
+);
+const restOptions = z.strictObject({ query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional() });
+/** Largest REST response a script may receive (serialized JSON). */
+export const MAX_REST_BYTES = 5 * 1024 * 1024;
+
+function capRest(value: unknown, path: string): unknown {
+  const size = JSON.stringify(value ?? null).length;
+  if (size > MAX_REST_BYTES) throw new Error(`Response of ${path} is ${size} bytes; the limit is ${MAX_REST_BYTES}. Page through it with query parameters.`);
+  return value ?? null;
+}
+
 /** One plan recording session; every verb closes over it. */
 class Recorder {
   readonly operations: PlannedOperation[] = [];
@@ -535,6 +550,14 @@ const VERBS: Record<string, Verb> = {
     return null;
   }),
 
+  "jira.rest": verb(z.tuple([restPath, restOptions.optional()]), async (r, [path, o], signal) => {
+    r.require("jira:read");
+    return capRest(await hostOp(r.port.jiraRest?.bind(r.port), "jira.rest")(path, { query: o?.query, signal }), path);
+  }),
+  "confluence.rest": verb(z.tuple([restPath, restOptions.optional()]), async (r, [path, o], signal) => {
+    r.require("confluence:read");
+    return capRest(await hostOp(r.port.confluenceRest?.bind(r.port), "confluence.rest")(path, { query: o?.query, signal }), path);
+  }),
   "confluence.search": verb(
     z.tuple([str, z.strictObject({ cursor: str.optional() }).optional()]),
     async (r, [cql, options], signal) => {

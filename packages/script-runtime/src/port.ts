@@ -97,12 +97,21 @@ export interface ScriptPort {
    */
   confluenceNormalizeMarkdown(markdown: string): string;
   /**
+   * Read-only REST escape hatch (`atlcli.jira.rest`): GET a site-relative Jira
+   * path such as `/rest/api/3/field`, JSON back. Optional; without it the verb fails.
+   */
+  jiraRest?(path: string, options: { query?: RestQuery; signal?: AbortSignal }): Promise<unknown>;
+  /** As jiraRest, relative to the Confluence base: `/rest/api/…` or `/api/v2/…`. */
+  confluenceRest?(path: string, options: { query?: RestQuery; signal?: AbortSignal }): Promise<unknown>;
+  /**
    * Pure: renders a template with the host's engine (atlcli.render). Throws
    * an Error named "RenderError" for --strict warnings or an output limit.
    * Optional; without it atlcli.render fails.
    */
   render?(input: unknown, options: RenderInput): { value: unknown; warnings: TemplateWarningView[] };
 }
+
+export type RestQuery = Record<string, string | number | boolean>;
 
 export interface RenderInput {
   format?: "text" | "adf" | "storage" | "wikimarkup";

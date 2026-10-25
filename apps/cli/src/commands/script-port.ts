@@ -53,6 +53,12 @@ export function createCliScriptPort(
       });
       return { issues: page.issues.map(issueView), ...(page.nextPageToken ? { nextPageToken: page.nextPageToken } : {}) };
     },
+    jiraRest: (path, { query, signal }) => jira().getJson(path, { query, signal }),
+    confluenceRest: (path, { query, signal }) =>
+      confluence().getJson(path, {
+        query: query && Object.fromEntries(Object.entries(query).map(([k, v]) => [k, typeof v === "boolean" ? String(v) : v])),
+        signal,
+      }),
     async jiraGetIssue(key, { fields, signal }) {
       return issueView(await jira().getIssue(key, { fields: withUpdated(fields), signal }));
     },

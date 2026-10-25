@@ -127,6 +127,16 @@ export function jiraErrorText(data: unknown): string {
   return parts.length ? parts.join("; ") : JSON.stringify(data);
 }
 
+/** A REST path for `getJson`: one of `prefixes`, no query, fragment, `..` or control characters. */
+export function checkRestPath(path: string, prefixes: readonly string[]): string {
+  const bad =
+    !prefixes.some((p) => path.startsWith(p)) ||
+    /[?#\\\u0000-\u001f]|%2[ef]/i.test(path) ||
+    path.split("/").some((segment) => segment === ".." || segment === ".");
+  if (bad) throw new Error(`REST path must start with ${prefixes.join(" or ")} and contain no query, "..", or control characters: ${JSON.stringify(path)}`);
+  return path;
+}
+
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
  *
@@ -528,6 +538,24 @@ export class JiraClient {
    *
    * GET /rest/api/3/myself
    */
+  /**
+   * Read-only escape hatch: GET any Jira REST resource of the site, e.g.
+   * `/rest/api/3/field` or `/rest/agile/1.0/board/1/configuration`. Auth,
+   * retries and 429 handling are the client's own. The path must start with
+   * `/rest/` and carry neither a query string (pass `query`) nor `..`.
+   */
+  async getJson(
+    path: string,
+    options: { query?: Record<string, string | number | boolean>; signal?: AbortSignal } = {}
+  ): Promise<unknown> {
+    return this.request(checkRestPath(path, ["/rest/"]), {
+      apiBase: "",
+      query: options.query,
+      signal: options.signal,
+      logBody: "meta-only",
+    });
+  }
+
   async getCurrentUser(): Promise<JiraUser> {
     return this.request<JiraUser>("/myself");
   }
