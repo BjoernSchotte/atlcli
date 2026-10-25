@@ -1,7 +1,7 @@
 # Templating for Jira and Confluence operations
 
-Status: design approved in brainstorming (2026-10-25). Not implemented.
-Implementation lands in **one PR** with logical commits.
+Status: implemented (2026-10-25) in one PR on branch spec/operation-templating;
+see [Implementation notes](#implementation-notes) for where the build differs.
 
 ## Goal
 
@@ -431,3 +431,71 @@ Apply never renders again: it writes the planned values.
    `atlcli template vars`, covering every source.
 3. Output limit: 1 MB per unit and 16 MB per run as fixed defaults; inside
    scripts the runtime's `--max-memory` caps it on top.
+
+## Implementation notes
+
+Built from `specs/operation-templating/IMPLEMENTATION.md` (16 tasks). Where the
+build differs from the design above:
+
+- **Storage adapter:** there is no storage serializer to reuse (`parseXml` in
+  `export-blocks.ts` has neither offsets nor output, and core cannot depend on
+  `@atlcli/confluence`). `adapters/storage.ts` is a small offset tokenizer that
+  prints from the original string: untouched tokens keep their bytes; a text
+  token that changes is re-serialized (entities decoded, `& < >` and nbsp
+  re-encoded).
+- **Numbers concatenate:** with `noEscape`, Handlebars joins mustache values
+  with `+`, so `{{year}}{{year}}` added up to `4052`. `render.ts` rewrites
+  every mustache to `{{__atlcliStr …}}` before compiling (regression test in
+  `render.test.ts`).
+- **`wiki template`** shares the helper factory and built-ins
+  (`createTemplateHandlebars`, `getBuiltinVariables`) but keeps its own render
+  loop: missing values still render empty there, by design.
+- **`default`** may take an unresolved first argument without a warning; that
+  is what it is for.
+- **Control blocks** inside `#each`/`#with` resolve plain paths against the
+  item; the run's variables are `@root.x`. `../x` is not supported in control
+  paragraphs.
+- **`@uuid`** is derived from the frozen clock, so a re-plan with the same
+  `--now` repeats it.
+- **Script runtime:** `ScriptPort.render` and the new Confluence operations
+  (`confluenceGetPageStorage`, `confluenceChildren`, `confluenceCopyAttachment`)
+  are optional, so hosts without them fail with a clear message.
+  `atlcli.render` returns a Promise in the guest. The new read is
+  `confluence.getPage(id, { storage: true })`, not a separate verb. A plan
+  records `templating` only when the run called `atlcli.render`, and
+  `renderWarnings` only when there are any.
+- **Page tree resume** finds earlier copies by a CQL title search plus the
+  `atlcli.copiedFrom` content property (no property search). A copy into
+  another space without `--parent` goes to that space's top level.
+- **Single page copy** now creates the copy from rendered storage instead of
+  `client.copyPage`, and copies the attachments too (`--no-attachments`).
+- **Attachments between pages** are copied in memory (download, then upload).
+- **`page.ts`/`docs.ts`** keep their own `--var` parsing (strings only); only
+  `wiki template` moved to the shared `parseVarAssignments`.
+- **Clone** has no `--fields`; its render warnings are in
+  `cloned.templateWarnings`.
+
+### E2E (2026-10-25)
+
+- **kiteweave**, temporary projects TPLSRC/TPLDST (both deleted to trash):
+  - copy-issues with `--vars-file` and `--comments`: 12 of 12 checks passed.
+    Covered: split placeholder across bold, mention kept, `{{@today}}`, link
+    href `/browse/{{source.key}}`, code block and Jinja untouched, `#each`
+    table rows with `dateAdd @root.kickoff`, `#if` paragraphs, rendered
+    comment, `{{nope}}` kept with a warning.
+  - Re-plan with the plan's `--now`: "No changes planned".
+  - `clone --strict` failed before creating anything.
+  - `clone --vars-file` rendered the summary.
+- **mayflower ATLCLI:**
+  - `jira template save` recorded `version`.
+  - `apply` without `--var` failed naming it; with `--var version=4.2` it
+    created "E2E template release 4.2" with label `rel-4.2`.
+  - Issues ATLCLI-193/194 and the template are deleted.
+- **mayflower DOCSY:**
+  - `wiki page copy --tree`: 11 of 11 checks passed. Covered: titles, parent
+    link, `{{parent.title}}`, Jira macro `jqlQuery` parameter, nested info
+    macro, code macro untouched, `#each` list items, image attachment copied,
+    `atlcli.copiedFrom` property.
+  - Re-plan: nothing to do, attachment unchanged.
+  - Single page copy with attachment.
+  - All five pages are deleted.
