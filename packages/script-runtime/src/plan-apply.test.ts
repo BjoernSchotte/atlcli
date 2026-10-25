@@ -131,6 +131,12 @@ class StatefulPort implements ScriptPort {
     if (!found) throw new Error(`Attachment does not exist: ${id}`);
     return found;
   }
+  async jiraSetStatus(key: string, status: string) {
+    this.guard("jiraSetStatus");
+    if (status === "Nowhere") return { moved: false };
+    this.issues.get(key)!.status = status;
+    return { moved: true, transition: status };
+  }
   async jiraCopyAttachment(id: string, toKey: string) {
     this.guard("jiraCopyAttachment");
     this.attachments.push(`${toKey}/${this.sourceAttachments.get(id)!.filename}:copy`);

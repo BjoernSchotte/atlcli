@@ -1,4 +1,5 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import copyIssuesScript from "../builtin-scripts/copy-issues.script" with { type: "text" };
 import { assertCliAuthSupported } from "./session-guard.js";
 import {
   buildConfluencePageRemoteLink,
@@ -451,6 +452,9 @@ async function handleProject(
     case "types":
       await handleProjectTypes(args[1], flags, opts);
       return;
+    case "copy-issues":
+      await handleProjectCopyIssues(flags, opts);
+      return;
     default:
       unknownSubcommand(sub, projectHelp(), opts);
       return;
@@ -537,6 +541,78 @@ async function handleProjectTypes(
   output({ schemaVersion: "1", issueTypes: types }, opts);
 }
 
+/**
+ * `jira project copy-issues`: the built-in copy-issues script with the flags
+ * as its params, planned and applied like `atlcli script run`.
+ */
+async function handleProjectCopyIssues(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const source = copyIssuesScript;
+  if (hasFlag(flags, "print-script")) {
+    process.stdout.write(source);
+    return;
+  }
+  const params = copyIssuesParams(flags, opts);
+  const { parseLimits, planAndApply } = await import("./script.js");
+  const limits = parseLimits(flags, opts);
+  // A whole project is many writes and reads; the plan is reviewed before
+  // anything is written, so the defaults are sized for that, not for scripts.
+  const sized = {
+    limits: { deadlineMs: 30 * 60_000, memoryBytes: 256 * 1024 * 1024, maxHostCalls: 100_000, ...limits.limits },
+    maxWrites: limits.maxWrites ?? 100_000,
+  };
+  await planAndApply(source, { name: "copy-issues" }, params, sized, flags, opts);
+}
+
+const PROJECT_KEY = /^[A-Z][A-Z0-9_]*$/;
+
+/** Flags → params of the built-in script; every value is checked here, before the sandbox. */
+export function copyIssuesParams(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Record<string, string | boolean> {
+  const from = getFlag(flags, "from") ?? "";
+  const to = getFlag(flags, "to");
+  const jql = getFlag(flags, "jql") ?? "";
+  if (!to) fail(opts, 1, ERROR_CODES.USAGE, "--to <project> is required");
+  if (!from && !jql) fail(opts, 1, ERROR_CODES.USAGE, "Pass --from <project> (optionally with --jql), or --jql <selection>");
+  for (const [name, key] of [["--to", to], ["--from", from]] as const) {
+    if (key && !PROJECT_KEY.test(key)) fail(opts, 1, ERROR_CODES.USAGE, `${name} expects a project key like AUDIT25, got "${key}"`);
+  }
+  if (from && from === to) fail(opts, 1, ERROR_CODES.USAGE, "--from and --to are the same project");
+  if (/\border\s+by\b/i.test(jql)) fail(opts, 1, ERROR_CODES.USAGE, "--jql cannot contain ORDER BY; copy-issues orders the issues itself");
+  let pairs: Array<[string, string]> = [];
+  let statusMap: Array<[string, string]> = [];
+  try {
+    pairs = parseReplacements(getFlags(flags, "replace"));
+    statusMap = parseReplacements(getFlags(flags, "status-map"));
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.USAGE, err instanceof Error ? err.message : String(err));
+  }
+  const fields = getFlag(flags, "fields") ?? "";
+  if (fields && !/^[\w.-]+(,[\w.-]+)*$/.test(fields.replace(/\s+/g, ""))) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--fields expects field ids like customfield_10010,duedate, got "${fields}"`);
+  }
+  return {
+    from,
+    to: to!,
+    jql,
+    attachments: !hasFlag(flags, "no-attachments"),
+    links: !hasFlag(flags, "no-links"),
+    subtasks: !hasFlag(flags, "no-subtasks"),
+    fields: fields.replace(/\s+/g, ""),
+    replace: JSON.stringify(pairs),
+    linkSource: hasFlag(flags, "link-source"),
+    comments: hasFlag(flags, "comments"),
+    keepMentions: hasFlag(flags, "keep-mentions"),
+    keepAssignee: hasFlag(flags, "keep-assignee"),
+    keepStatus: hasFlag(flags, "keep-status") || statusMap.length > 0,
+    statusMap: JSON.stringify(Object.fromEntries(statusMap)),
+  };
+}
+
 function projectHelp(): string {
   return `atlcli jira project <command>
 
@@ -545,6 +621,23 @@ Commands:
   get <key>                           (or --key <key>)
   create --key <KEY> --name <name> [--type software|service_desk|business] [--template <key>] [--description <text>] [--lead <user>]
   types <key>                         List issue types for a project
+  copy-issues --to <KEY> (--from <KEY> [--jql <filter>] | --jql <selection>) [options]
+                                      Plan copies of issues in another project; --apply writes them
+
+copy-issues options:
+  --no-attachments, --no-links, --no-subtasks   Leave those out (all copied by default)
+  --fields <id,id>          Extra fields to copy (custom field ids)
+  --replace <find:replace>  In summary and description (repeatable)
+  --link-source             Link each copy to its original ("Cloners")
+  --comments                Copy comments, headed "Originally by <name> on <date>"
+  --keep-mentions           Keep @mentions in copied comments (notifies those people again)
+  --keep-assignee           Keep the assignee
+  --keep-status             Move each copy to the original's status when a direct transition exists
+  --status-map <from:to>    Status to aim for instead of the same name (repeatable; implies --keep-status)
+  --plan-out <file>         Write the plan; apply later with atlcli script apply <file>
+  --apply [--yes]           Apply after planning (asks first; --yes skips the question)
+  --max-writes <n>, --max-calls <n>, --timeout <duration>, --memory <MB>
+  --print-script            Print the built-in script and exit
 
 Options:
   --profile <name>   Use a specific auth profile

@@ -87,6 +87,7 @@ export default defineConfig({
             { label: 'Issues', link: '/jira/issues/' },
             { label: 'Search', link: '/jira/search/' },
             { label: 'Projects', link: '/jira/projects/' },
+            { label: 'Copy Issues', link: '/jira/copy-issues/' },
             { label: 'Boards & Sprints', link: '/jira/boards-sprints/' },
             { label: 'Release Notes & Sprint Review', link: '/jira/report-pages/' },
             { label: 'Time Tracking', link: '/jira/time-tracking/' },

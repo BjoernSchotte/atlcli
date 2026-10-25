@@ -124,6 +124,7 @@ class FakePort implements ScriptPort {
   jiraEditLabels = this.write;
   jiraAttach = this.write;
   jiraCopyAttachment = this.write;
+  jiraSetStatus = this.write;
   jiraCreateSprint = this.write;
   jiraUpdateSprint = this.write;
   jiraMoveToSprint = this.write;
@@ -785,6 +786,7 @@ it("exposes the verb set", () => {
     "jira.moveToSprint",
     "jira.removeLabels",
     "jira.search",
+    "jira.setStatus",
     "jira.sprints",
     "jira.transition",
     "jira.update",

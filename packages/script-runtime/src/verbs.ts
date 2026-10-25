@@ -20,6 +20,7 @@ export const WRITE_VERBS = [
   "jira.create",
   "jira.update",
   "jira.transition",
+  "jira.setStatus",
   "jira.comment",
   "jira.link",
   "jira.assign",
@@ -328,6 +329,18 @@ const VERBS: Record<string, Verb> = {
       }
     }
     await r.record("jira.transition", { key, transition }, `jira:${key}`, () => issueUnchanged(r, key, signal));
+    return null;
+  }),
+  "jira.setStatus": verb(z.tuple([str, str]), async (r, [key, status], signal) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const issue = await untouchedIssue(r, key, ["status"], signal);
+    if (issue && String((issue.fields.status as { name?: string } | undefined)?.name ?? "").toLowerCase() === status.toLowerCase()) {
+      r.skipped.push({ verb: "jira.setStatus", target: key, title: status, reason: "unchanged" });
+      return null;
+    }
+    await r.record("jira.setStatus", { key, status }, `jira:${key}`, async () =>
+      issue ? { kind: "jira-issue-unchanged", key, updated: issue.fields.updated } : undefined,
+    );
     return null;
   }),
   "jira.comment": verb(z.tuple([str, commentBody]), async (r, [key, body]) => {

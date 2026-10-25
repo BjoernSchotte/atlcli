@@ -102,6 +102,23 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
   const source = inline ?? (await readSource(file!, opts));
   const params = parseParams(getFlags(flags, "param"), opts);
   const { limits, maxWrites } = parseLimits(flags, opts);
+  await planAndApply(source, file ? { path: relative(process.cwd(), resolve(file)) } : { name: "inline" }, params, { limits, maxWrites }, flags, opts);
+}
+
+/**
+ * Plans `source`, prints or writes the plan, and applies it with `--apply`:
+ * the whole of `script run` after argument parsing. Built-in scripts such as
+ * `jira project copy-issues` run through here too, so they share the plan
+ * file, confirmation and apply report.
+ */
+export async function planAndApply(
+  source: string,
+  origin: { path: string } | { name: string },
+  params: Record<string, unknown>,
+  { limits, maxWrites }: ReturnType<typeof parseLimits>,
+  flags: Flags,
+  opts: OutputOptions,
+): Promise<void> {
   const { profile, port } = await connect(flags, opts);
   const rt = await runtime();
 
@@ -116,7 +133,7 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
   );
   const plan = await rt.createScriptPlan(run, {
     source,
-    ...(file ? { path: relative(process.cwd(), resolve(file)) } : { name: "inline" }),
+    ...origin,
     baseUrl: profile.baseUrl,
     profile: profile.name,
   });
@@ -258,7 +275,7 @@ function transpile(source: string, opts: OutputOptions): string {
 }
 
 /** `--timeout`, `--memory`, `--max-calls`, `--max-writes`; unset flags keep the runtime defaults. */
-function parseLimits(
+export function parseLimits(
   flags: Flags,
   opts: OutputOptions,
 ): { limits: { deadlineMs?: number; memoryBytes?: number; maxHostCalls?: number }; maxWrites?: number } {
@@ -361,7 +378,13 @@ function createdSummary(report: ApplyReport): string {
     .filter((o) => o.status === "applied" && (o.verb === "jira.create" || o.verb === "jira.createSprint" || o.verb === "confluence.createPage"))
     .map((o) => `${o.verb === "jira.createSprint" ? "sprint " : ""}${String(o.result?.key ?? o.result?.id)}`);
   const exported = report.operations.filter((o) => o.status === "applied" && o.verb === "confluence.export").map((o) => String(o.result?.path));
-  return `${created.length ? ` Created: ${created.join(", ")}.` : ""}${exported.length ? ` Exported: ${exported.join(", ")}.` : ""}`;
+  const unmoved = report.operations
+    .filter((o) => o.status === "applied" && o.verb === "jira.setStatus" && o.result?.moved === false)
+    .map((o) => `${String(o.result?.key)} → ${String(o.result?.status)}`);
+  return (
+    `${created.length ? ` Created: ${created.join(", ")}.` : ""}${exported.length ? ` Exported: ${exported.join(", ")}.` : ""}` +
+    (unmoved.length ? `\nStatus unchanged (no direct transition): ${unmoved.join(", ")}.` : "")
+  );
 }
 
 export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, applying: boolean): string {
@@ -407,6 +430,8 @@ function describeOperation(op: PlannedOperation): string {
       return `jira update      ${ref(a.key)} ${Object.keys(a).filter((k) => k !== "key").join(", ")}${after}`;
     case "jira.transition":
       return `jira transition  ${ref(a.key)} → ${a.transition}${after}`;
+    case "jira.setStatus":
+      return `jira status      ${ref(a.key)} → ${a.status} (if a direct transition exists)${after}`;
     case "jira.comment":
       return `jira comment     ${ref(a.key)} ${"raw" in a ? "(raw)" : text(a.markdown)}${after}`;
     case "jira.copyAttachment":

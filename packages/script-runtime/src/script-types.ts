@@ -137,6 +137,12 @@ const atlcli: {
     update(key: string, input: { summary?: string; description?: string; fields?: Record<string, Json> }): Promise<null>;
     /** Transition by name (case-insensitive); checked when the plan is made. */
     transition(key: string, to: string): Promise<null>;
+    /**
+     * Best effort, for issues whose workflow is not known yet (e.g. created by
+     * this plan): on apply, takes a direct transition into \`status\` if one is
+     * available, else changes nothing (the apply report says moved: false).
+     */
+    setStatus(key: string, status: string): Promise<null>;
     /** A string is Markdown; \`{ raw }\` is the site's own format (ADF on Cloud, as \`get\` returns it), sent unchanged. */
     comment(key: string, body: string | { raw: Json }): Promise<{ id: PlannedRef }>;
     /** Reads as a sentence: link("A-1", "blocks", "A-2"). \`type\` is a link type name or either of its phrases. */

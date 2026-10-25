@@ -137,6 +137,8 @@ async function execute(
     case "jira.transition":
       await port.jiraTransitionIssue(args.key, args.transition);
       return { key: args.key };
+    case "jira.setStatus":
+      return { key: args.key, status: args.status, ...(await port.jiraSetStatus(args.key, args.status)) };
     case "jira.comment":
       return { key: args.key, ...(await port.jiraAddComment(args.key, "raw" in args ? { raw: args.raw } : args.markdown)) };
     case "confluence.createPage": {

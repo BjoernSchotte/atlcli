@@ -85,6 +85,15 @@ export function createCliScriptPort(
       }
       await jira().transitionIssue(key, { transition: { id: transition.id } });
     },
+    async jiraSetStatus(key, status) {
+      const wanted = status.toLowerCase();
+      const transitions = await jira().getTransitions(key);
+      const transition =
+        transitions.find((t) => t.to?.name?.toLowerCase() === wanted) ?? transitions.find((t) => t.name.toLowerCase() === wanted);
+      if (!transition) return { moved: false };
+      await jira().transitionIssue(key, { transition: { id: transition.id } });
+      return { moved: true, transition: transition.name };
+    },
     async jiraAddComment(key, body) {
       const comment = await jira().addComment(key, typeof body === "string" ? richText(body) : (body.raw as never));
       return { id: String(comment.id) };

@@ -17,6 +17,12 @@ declare module "*.ttf" {
   export default path;
 }
 
+/** A built-in `atlcli script`, imported with `type: "text"` (`src/builtin-scripts/`). */
+declare module "*.script" {
+  const content: string;
+  export default content;
+}
+
 /** Imported with `type: "text"` (the agent skill under `skills/atlcli/`). */
 declare module "*.md" {
   const content: string;

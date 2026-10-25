@@ -1,6 +1,8 @@
 # Copy a recurring Jira project with `atlcli script`
 
-Status: plan, not implemented.
+Status: implemented in one PR (feat/jira-project-copy). See
+[Implementation notes](#implementation-notes) for where the build differs
+from the plan below.
 
 ## Use case
 
@@ -107,7 +109,7 @@ jira.copyAttachment(attachmentId: string, toIssue: string): PlanRef
 - **No-op skip** like the other verbs: if the target issue already has an
   attachment with the same filename and size, the operation is skipped. That
   makes a re-run after a partial apply safe.
-- It is a PRODUCER: the result `plan:n` is the new attachment id.
+- Not a producer: it returns `{ id: plan:n }` like `jira.attach`; nothing consumes an attachment id.
 - The only remaining limit is the Jira attachment size limit of the target
   site. No `MAX_ATTACHMENT_BYTES` check applies, because nothing travels
   through the sandbox.
@@ -236,11 +238,9 @@ clean copies. A bulk clone for a project split adds the opt-ins.
   plan and lists them.
 - Each name in `--fields` resolves to a field id. Whether it is on the `TO`
   create screen is reported, using the create metadata.
-- `TO` already has issues: this is a warning, not an error. The command plans
-  a copy, not a sync. Re-running after a partial apply is done with
-  `script apply` on the same plan, whose skips handle the already-applied
-  part. A fresh `copy-issues` against a half-filled target would duplicate
-  issues, and the warning says so.
+- `TO` already has issues: fine. Copies are recognized by their
+  `atlcli.copiedFrom` property (see Implementation notes), so planning again
+  after a partial apply plans only what is missing.
 
 **Output example (dry run):**
 
@@ -369,7 +369,7 @@ sort by hierarchy, or do two passes.
     one above 10 MB
   - dry run, then apply
   - compare structure, ADF and attachment SHA-256 values
-  - run `script apply` on the same plan again: everything is skipped
+  - plan again: the copies are recognized and everything is skipped
   - a project-split run: `--jql` selecting one parent whose subtask does not
     match, with `--link-source --comments --keep-assignee --keep-status`;
     check that the subtask came along, the Cloners link exists, the comment
@@ -458,7 +458,7 @@ sort by hierarchy, or do two passes.
 3. `jira project copy-issues` as a built-in script, the shared run/apply CLI
    plumbing, and the guide.
 
-These are separate PRs, each with its own live E2E.
+Delivered as one PR with one commit per step, on request.
 
 ## Open questions
 
@@ -470,8 +470,49 @@ These are separate PRs, each with its own live E2E.
    them to exist in `TO`, or create the missing ones as part of the plan?
 4. `copy-issues`: should rank order be kept? That needs `PUT /rank` per
    issue, which adds many writes.
-5. `--comments`: copy the comments' attachments references and @mentions as
-   they are (the mentions then notify people again), or strip mentions to
-   plain names?
-6. `--keep-status`: is the same-name, one-step rule enough, or is an explicit
-   `--status-map "In Progress:Doing"` wanted?
+5. ~~`--comments` and @mentions~~ Decided: mentions become plain names by
+   default; `--keep-mentions` keeps them (and notifies again).
+6. ~~`--keep-status` rule~~ Decided: same name by default, plus an optional
+   `--status-map from:to` (repeatable, implies `--keep-status`).
+
+## Implementation notes
+
+Where the build differs from the plan above, and why.
+
+- **Resume works by re-planning, not by re-applying.** Skips are computed at
+  plan time, so applying the same plan file twice would create every issue
+  again. Each copy is therefore created with the issue property
+  `atlcli.copiedFrom = { key, id }` (`jira.create({ properties })`), and the
+  script reads the target's copies with `jira.search(..., { properties })`.
+  Planning again reuses existing copies, skips attachments of the same name and
+  size, skips links that already exist, and plans comments and statuses only
+  for new copies.
+- **New verb `jira.setStatus(key, status)`.** `jira.transition` needs a
+  transition name known at plan time, which a copy's workflow is not. setStatus
+  is best effort on apply: a transition available then whose target status (or
+  name) matches, else no change; the apply output lists those under
+  `Status unchanged`. Live finding: the test site's statuses are German ("In
+  Arbeit"), which is exactly what `--status-map` is for.
+- **`jira.comment(key, { raw })`.** Raw ADF (Cloud) or wiki markup (DC) for
+  lossless comment copies, as planned under gap 2.
+- **No plan-time checks of issue types, field screens or assignability.** The
+  sandbox has no verbs to read create metadata or assignable users, and adding
+  three read verbs for checks Jira makes on create anyway did not pay off.
+  Those problems fail the apply at the first affected create; the guide's
+  troubleshooting table covers them, and re-planning resumes after the fix.
+  Checked at plan time instead: TO exists (the JQL fails otherwise), TO is not
+  FROM, keys, `--jql` without `ORDER BY`, `--fields` and `--replace` syntax.
+- **Children** are found with `parent in (...)` searches, repeated until no
+  new issues turn up, rather than the `subtasks` field. That covers subtasks
+  and epic children alike.
+- **Limits.** `copy-issues` defaults to 100,000 writes, 100,000 calls, 30
+  minutes and 256 MB, since the plan is reviewed before anything is written.
+- **Live E2E** ran in ATLCLI only:
+  - `issue clone --attachments` with an 11 MB file (SHA-256 identical)
+  - `attachment copy` by key and filename
+  - the script verbs: raw ADF table and panel description, issue property,
+    `copyAttachment`, raw comment, `setStatus` moved and not moved
+  - `search` with properties, and the copy skipped on re-plan
+
+  A cross-project `copy-issues` run needs a second project; that run is
+  pending a target project.

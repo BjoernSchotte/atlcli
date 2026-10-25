@@ -17,6 +17,11 @@ export interface ScriptPort {
   jiraCreateIssue(input: JiraCreateInput): Promise<{ id: string; key: string }>;
   jiraUpdateIssue(key: string, input: JiraUpdateInput): Promise<void>;
   jiraTransitionIssue(key: string, transition: string): Promise<void>;
+  /**
+   * Best effort: takes a transition available right now whose target status
+   * (or name) is `status`; with none, changes nothing and says so.
+   */
+  jiraSetStatus(key: string, status: string): Promise<{ moved: boolean; transition?: string }>;
   /** A string is Markdown; `{ raw }` is sent unchanged (ADF on Cloud, wiki markup on Data Center). */
   jiraAddComment(key: string, body: string | { raw: unknown }): Promise<{ id: string }>;
   /** Link types of the site (name plus the outward/inward phrases). */
