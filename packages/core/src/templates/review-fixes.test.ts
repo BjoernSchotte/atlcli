@@ -18,7 +18,7 @@ describe("1: expansion is bounded while rendering", () => {
     const scope = createTemplateScope({ vars: { a: Array.from({ length: 60 }, (_, i) => i) } });
     const budget = new RenderBudget(100_000, 16_000_000, 100);
     expect(() => renderText("{% for x in a %}{% for y in a %}{% for z in a %}x{% endfor %}{% endfor %}{% endfor %}", scope, { budget })).toThrow(RenderError);
-  });
+  }, 30_000); // may run into the 5 s render deadline on slow runners
   test("nested control paragraphs stop at the iteration cap", () => {
     const scope = createTemplateScope({ vars: { a: Array.from({ length: 50 }, (_, i) => i) } });
     const d = doc(p(t("{% for x in a %}")), p(t("{% for y in a %}")), p(t("{% for z in a %}")), p(t("plain")), p(t("{% endfor %}")), p(t("{% endfor %}")), p(t("{% endfor %}")));

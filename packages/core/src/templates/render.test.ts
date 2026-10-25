@@ -82,7 +82,7 @@ describe("renderText", () => {
   });
   test("a runaway template ends with a RenderError", () => {
     expect(() => r("{% for i in range(1000000000) %}{% endfor %}")).toThrow(RenderError);
-  });
+  }, 30_000); // ends at the 5 s render deadline, Bun's default test timeout
   test("loop variables and outer names resolve inside loops", () => {
     const s = createTemplateScope({ vars: { rows: [{ name: "a" }, { name: "b" }], year: 1 } });
     expect(renderText("{% for row in rows %}{{ row.name }}{{ year }}{% endfor %}", s).text).toBe("a1b1");

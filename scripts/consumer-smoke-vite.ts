@@ -518,7 +518,11 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   const assetsDir = join(distDir, "assets");
   const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
 
-  const wasmAssets = assets.filter((a) => a.endsWith(".wasm"));
+  // @atlcli/core reaches @atlcli/jinja, whose lazily imported QuickJS build
+  // Vite emits as an asset even when tree-shaking drops the code that loads
+  // it. Allowed only while no chunk references it (checked below).
+  const quickjsAssets = assets.filter((a) => /^emscripten-module-[\w-]+\.wasm$/.test(a));
+  const wasmAssets = assets.filter((a) => a.endsWith(".wasm") && !quickjsAssets.includes(a));
   const ttfAssets = assets.filter((a) => a.endsWith(".ttf"));
   if (wasmAssets.length !== 2) {
     throw new Error(
@@ -527,6 +531,10 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   }
 
   const javaScriptAssets = assets.filter((asset) => asset.endsWith(".js"));
+  for (const quickjs of quickjsAssets) {
+    const user = javaScriptAssets.find((asset) => readFileSync(join(assetsDir, asset), "utf8").includes(quickjs));
+    if (user) throw new Error(`the export chunk ${user} loads QuickJS (${quickjs}); templating leaked into the export path`);
+  }
   for (const asset of javaScriptAssets) {
     const source = readFileSync(join(assetsDir, asset), "utf8");
     if (
