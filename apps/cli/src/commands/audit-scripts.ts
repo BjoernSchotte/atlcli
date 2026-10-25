@@ -148,6 +148,7 @@ export async function planAuditFixes(
 ): Promise<ScriptRunPlan> {
   const rt = await runtime();
   const runs: ScriptRunPlan[] = [];
+  const now = Date.now();
   for (const script of scripts) {
     if (!script.hasFix) continue;
     const mine = findings.filter((f) => f.rule === script.meta.id);
@@ -155,7 +156,7 @@ export async function planAuditFixes(
     runs.push(
       await rt.planScript(script.js, {
         port,
-        items: mine.map((finding) => ({ finding, item: itemFor(finding) ?? null, rule: { id: script.meta.id, config: configFor?.(finding) ?? {} } })),
+        items: mine.map((finding) => ({ finding, item: itemFor(finding) ?? null, rule: { id: script.meta.id, config: configFor?.(finding) ?? {}, now } })),
         entry: "fix",
         prelude: "globalThis.__atlcliArgs = (it) => [it.finding, it.item, Object.freeze(it.rule)];",
         limits: { deadlineMs: 60_000 + mine.length * 2_000, maxHostCalls: 1_000 + mine.length * 50 },

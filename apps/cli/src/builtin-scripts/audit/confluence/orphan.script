@@ -18,7 +18,7 @@ export default (page, rule) => {
   if (page.synced && page.orphan) return rule.finding({ detail: "No incoming links and no parent." });
 };
 
-export async function fix(finding, page) {
-  if (!page || !page.lastModified || Date.now() - Date.parse(page.lastModified) < YEAR) return;
+export async function fix(finding, page, rule) {
+  if (!page || !page.lastModified || rule.now - Date.parse(page.lastModified) < YEAR) return;
   await atlcli.confluence.deletePage(page.id);
 }

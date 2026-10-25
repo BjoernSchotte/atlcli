@@ -193,8 +193,7 @@ export default (page: AuditPage, rule: AuditRule) => {
 };
 
 export async function fix(_finding: AuditFinding, page: AuditPage, rule: AuditFixRule) {
-  const options = rule.config.options as { label?: string[] } | undefined;
-  if (page.synced) await atlcli.confluence.addLabels(page.id, [options?.label?.[0] ?? "owner-unknown"]);
+  if (page.synced) await atlcli.confluence.addLabels(page.id, [rule.config.options?.label?.[0] ?? "owner-unknown"]);
 }
 ```
 

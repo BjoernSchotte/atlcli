@@ -86,7 +86,7 @@ interface AuditRule {
   readonly id: string;
   readonly kind: "flag" | "age" | "until";
   /** The effective settings for this item (profile, rules file, overrides). */
-  readonly config: { level?: AuditSeverity; thresholds?: Partial<Record<AuditSeverity, AuditThreshold>>; [option: string]: Json | undefined };
+  readonly config: { level?: AuditSeverity; thresholds?: Partial<Record<AuditSeverity, AuditThreshold>>; /** Values of \`meta.audit.options\`, set in the rules file. */ options?: Record<string, string[]> };
   /** What the host worked out (Jira: category, startedAt, statusName, inOpenSprint, percentiles, …). */
   readonly facts: Record<string, Json>;
   /** Milliseconds since the epoch, frozen for the run. */
@@ -117,6 +117,8 @@ interface AuditFindingInput {
 interface AuditFixRule {
   readonly id: string;
   readonly config: AuditRule["config"];
+  /** Milliseconds since the epoch, the same for every fix of the run. */
+  readonly now: number;
 }
 
 interface AuditUser {
