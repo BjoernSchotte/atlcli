@@ -41,6 +41,7 @@ export const WRITE_VERBS = [
   "confluence.deletePage",
   "confluence.attach",
   "confluence.export",
+  "confluence.copyAttachment",
 ] as const;
 
 export type WriteVerb = (typeof WRITE_VERBS)[number];
@@ -144,6 +145,17 @@ const jiraUpdate = z
   })
   .refine((u) => Object.keys(u).length > 0, "nothing to update");
 const pageInput = z.strictObject({ space: str, title: str, markdown: z.string(), parentId: str.optional() });
+/** createPage also takes raw storage (lossless copies) and content properties. */
+const createPageInput = z
+  .strictObject({
+    space: str,
+    title: str,
+    markdown: z.string().optional(),
+    storage: z.string().optional(),
+    parentId: str.optional(),
+    properties: z.record(str, z.unknown()).optional(),
+  })
+  .refine((p) => (p.markdown === undefined) !== (p.storage === undefined), "pass markdown or storage, exactly one");
 const attachmentInput = z.strictObject({
   name: str.max(255).refine((n) => !/[\\/]/.test(n), "name cannot contain path separators"),
   content: z.string(),
@@ -525,9 +537,31 @@ const VERBS: Record<string, Verb> = {
       return r.port.confluenceSearch(cql, { ...options, limit: SEARCH_PAGE_SIZE, signal });
     },
   ),
-  "confluence.getPage": verb(z.tuple([str]), async (r, [id], signal) => {
+  "confluence.getPage": verb(z.tuple([str, z.strictObject({ storage: z.boolean().optional() }).optional()]), async (r, [id, o], signal) => {
     r.require("confluence:read");
-    return r.port.confluenceGetPage(r.readable(id), { signal });
+    if (!o?.storage) return r.port.confluenceGetPage(r.readable(id), { signal });
+    return hostOp(r.port.confluenceGetPageStorage, "confluence.getPage({ storage: true })").call(r.port, r.readable(id), { signal });
+  }),
+  "confluence.children": verb(z.tuple([str]), async (r, [id], signal) => {
+    r.require("confluence:read");
+    return hostOp(r.port.confluenceChildren, "confluence.children").call(r.port, r.readable(id), { signal });
+  }),
+  "confluence.copyAttachment": verb(z.tuple([str, str, str]), async (r, [attachmentId, sourcePageId, toPageId], signal) => {
+    r.require("confluence:read");
+    const target = await r.confluencePage(toPageId, signal);
+    r.require(`confluence:write:${target.spaceKey}`);
+    const source = (await r.port.confluenceAttachments(r.readable(sourcePageId), { signal })).find((a) => a.id === attachmentId);
+    if (!source) throw new Error(`Page ${sourcePageId} has no attachment ${attachmentId}`);
+    if (target.live) {
+      const existing = (await r.port.confluenceAttachments(toPageId, { signal })).find((a) => a.name === source.name && a.size === source.size);
+      if (existing) {
+        r.skipped.push({ verb: "confluence.copyAttachment", target: toPageId, title: source.name, reason: "unchanged" });
+        return { id: existing.id };
+      }
+    }
+    // Copying never changes the target page's own content, so the target is no precondition object.
+    const seq = await r.record("confluence.copyAttachment", { attachmentId, sourcePageId, toPageId, name: source.name, size: source.size });
+    return { id: `plan:${seq}` };
   }),
   "confluence.comments": verb(z.tuple([str]), async (r, [pageId], signal) => {
     r.require("confluence:read");
@@ -537,7 +571,7 @@ const VERBS: Record<string, Verb> = {
     r.require("confluence:read");
     return r.port.confluenceAttachments(r.readable(pageId), { signal });
   }),
-  "confluence.createPage": verb(z.tuple([pageInput]), async (r, [input]) => {
+  "confluence.createPage": verb(z.tuple([createPageInput]), async (r, [input]) => {
     r.require(`confluence:write:${input.space}`);
     return { id: `plan:${await createPage(r, input)}` };
   }),
@@ -726,12 +760,24 @@ export function checkExportPath(path: string, format: ExportFormat): string {
 
 const titleObject = (space: string, title: string) => `confluence-title:${space}\u0000${title}`;
 
-function createPage(r: Recorder, input: z.output<typeof pageInput>): Promise<number> {
+/** A host operation this host may not provide (optional in ScriptPort). */
+function hostOp<F>(op: F | undefined, name: string): F {
+  if (!op) throw new Error(`atlcli.${name} is not available on this host`);
+  return op;
+}
+
+function createPage(r: Recorder, input: z.output<typeof createPageInput>): Promise<number> {
   if (r.lastWrite(titleObject(input.space, input.title))) {
     throw new Error(`Page "${input.title}" in ${input.space} is already created by this plan; use updatePage or upsertPage`);
   }
   if (input.parentId) r.notDeleted(input.parentId);
-  const args = { spaceKey: input.space, title: input.title, markdown: input.markdown, ...(input.parentId ? { parentId: input.parentId } : {}) };
+  const args = {
+    spaceKey: input.space,
+    title: input.title,
+    ...(input.storage !== undefined ? { storage: input.storage } : { markdown: input.markdown }),
+    ...(input.parentId ? { parentId: input.parentId } : {}),
+    ...(input.properties ? { properties: input.properties } : {}),
+  };
   return r.record("confluence.createPage", args, titleObject(input.space, input.title), async () => ({
     kind: "confluence-title-absent",
     spaceKey: input.space,

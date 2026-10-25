@@ -483,6 +483,8 @@ function describeOperation(op: PlannedOperation): string {
       return `page DELETE      ${ref(a.id)} ${text(a.title)} (to trash)${after}`;
     case "confluence.attach":
       return `page attach      ${ref(a.pageId)} ${a.name} (${size(a)})${after}`;
+    case "confluence.copyAttachment":
+      return `page attach      ${ref(a.toPageId)} ${a.name} (copy of ${a.attachmentId} on page ${a.sourcePageId}, ${Math.ceil(Number(a.size) / 1024)} KB)${after}`;
     case "confluence.export":
       return `page export      ${ref(a.pageId)} → ${a.path}${after}`;
     case "jira.link":

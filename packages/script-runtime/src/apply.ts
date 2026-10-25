@@ -200,6 +200,10 @@ async function execute(
       return { id: args.id };
     case "confluence.attach":
       return { pageId: args.pageId, ...(await port.confluenceAttach(args.pageId, attachment(args))) };
+    case "confluence.copyAttachment": {
+      if (!port.confluenceCopyAttachment) throw new Error("This host cannot copy Confluence attachments");
+      return { pageId: args.toPageId, ...(await port.confluenceCopyAttachment(args.attachmentId, args.sourcePageId, args.toPageId)) };
+    }
     case "confluence.export":
       // A plan file is editable, so the path is checked again right before writing.
       return port.confluenceExport({ pageId: args.pageId, format: args.format, path: checkExportPath(args.path, args.format) });

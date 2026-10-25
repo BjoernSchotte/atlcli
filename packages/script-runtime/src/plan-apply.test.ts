@@ -313,6 +313,36 @@ describe("script plan file", () => {
   });
 });
 
+describe("applying storage page copies", () => {
+  it("creates with storage and properties, then copies attachments onto the new page", async () => {
+    class CopyPort extends StatefulPort {
+      created: unknown[] = [];
+      copies: string[] = [];
+      override async confluenceCreatePage(input: { spaceKey: string; title: string; markdown?: string; storage?: string; parentId?: string; properties?: Record<string, unknown> }) {
+        this.created.push(input);
+        return super.confluenceCreatePage({ ...input, markdown: input.markdown ?? "" });
+      }
+      override async confluenceAttachments(): Promise<Array<{ id: string; name: string; mediaType: string; size: number; version: number }>> {
+        return [{ id: "att1", name: "board.png", mediaType: "image/png", size: 10, version: 1 }];
+      }
+      async confluenceCopyAttachment(attachmentId: string, sourcePageId: string, toPageId: string) {
+        this.guard("confluenceCopyAttachment");
+        this.copies.push(`${attachmentId}:${sourcePageId}->${toPageId}`);
+        return { id: "att2" };
+      }
+    }
+    const source = `const page = await atlcli.confluence.createPage({ space: "DOCSY", title: "Copy", storage: "<p>x</p>", properties: { "atlcli.copiedFrom": { id: "100" } } });
+await atlcli.confluence.copyAttachment("att1", "100", page.id);`;
+    const port = new CopyPort();
+    const plan = await parseScriptPlan(serializeScriptPlan(await makePlan(port, source)));
+    const report = await applyScriptPlan(plan, { port, baseUrl: BASE_URL });
+    expect(report.status).toBe("applied");
+    expect(port.created).toEqual([{ spaceKey: "DOCSY", title: "Copy", storage: "<p>x</p>", properties: { "atlcli.copiedFrom": { id: "100" } } }]);
+    const id = report.operations[0]!.result as { id: string };
+    expect(port.copies).toEqual([`att1:100->${id.id}`]);
+  });
+});
+
 describe("applyScriptPlan", () => {
   it("copies attachments onto a created issue, and reports drift when the source changed", async () => {
     const source = `export const meta = { name: "copy", permissions: ["jira:read", "jira:write:ATLCLI"] };

@@ -13,6 +13,9 @@ import type {
 } from "@atlcli/script-runtime";
 import { createTemplateRenderer } from "./template-flags.js";
 
+/** Content property linking a copied page to its original (read back for resuming). */
+const COPIED_FROM = "atlcli.copiedFrom";
+
 /** A port whose clients are created on first use: a Confluence-only script never builds a Jira client. */
 export function createLazyCliScriptPort(profile: Profile, outDir = process.cwd()): ScriptPort {
   return createCliScriptPort(once(() => new JiraClient(profile)), once(() => new ConfluenceClient(profile)), profile.baseUrl, {
@@ -187,14 +190,41 @@ export function createCliScriptPort(
       const page = await confluence().getPage(matches[0]!.id, { signal });
       return { id: page.id, version: page.version ?? 1 };
     },
-    async confluenceCreatePage({ spaceKey, title, markdown, parentId }) {
+    async confluenceCreatePage({ spaceKey, title, markdown, storage, parentId, properties }) {
       const page = await confluence().createPage({
         spaceKey,
         title,
-        storage: markdownToStorage(markdown, conversion),
+        storage: storage ?? markdownToStorage(markdown ?? "", conversion),
         ...(parentId ? { parentId } : {}),
       });
+      for (const [key, value] of Object.entries(properties ?? {})) await confluence().upsertPageProperty(page.id, key, value);
       return { id: page.id, version: page.version ?? 1 };
+    },
+    async confluenceGetPageStorage(id, { signal }) {
+      const page = await confluence().getPage(id, { signal });
+      const copiedFrom = await confluence().getPagePropertyByKey(page.id, COPIED_FROM);
+      return {
+        id: page.id,
+        title: page.title,
+        spaceKey: page.spaceKey ?? "",
+        version: page.version ?? 1,
+        ...(page.parentId ? { parentId: page.parentId } : {}),
+        storage: page.storage ?? "",
+        properties: copiedFrom === undefined ? {} : { [COPIED_FROM]: copiedFrom },
+      };
+    },
+    async confluenceChildren(id, { signal }) {
+      // In page-tree order, so copies keep their siblings' order.
+      const children = await confluence().getChildrenWithPosition(id, { signal });
+      return children.map((c) => ({ id: c.id, title: c.title, spaceKey: c.spaceKey ?? "" }));
+    },
+    async confluenceCopyAttachment(attachmentId, sourcePageId, toPageId) {
+      // ponytail: in memory, one attachment at a time; stream through a temp file like Jira if pages carry huge files
+      const source = (await confluence().listAttachments(sourcePageId, { limit: 250 })).find((a) => a.id === attachmentId);
+      if (!source) throw new Error(`Page ${sourcePageId} has no attachment ${attachmentId}`);
+      const data = await confluence().downloadAttachment(source);
+      const copy = await confluence().uploadAttachment({ pageId: toPageId, filename: source.filename, data, mimeType: source.mediaType });
+      return { id: copy.id };
     },
     async confluenceUpdatePage({ id, title, markdown, version }) {
       const page = await confluence().updatePage({ id, title, storage: markdownToStorage(markdown, conversion), version: version + 1 });

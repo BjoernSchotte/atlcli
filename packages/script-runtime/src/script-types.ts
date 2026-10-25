@@ -57,6 +57,14 @@ interface ConfluencePage extends ConfluencePageRef {
   markdown: string;
 }
 
+/** A page as stored (storage XHTML), for lossless copies; \`properties\` holds its \`atlcli.*\` content properties. */
+interface ConfluencePageStorage extends ConfluencePageRef {
+  version: number;
+  parentId?: string;
+  storage: string;
+  properties: Record<string, Json>;
+}
+
 /** Ids and keys of objects a plan creates read \`plan:<n>\` until the plan is applied. */
 type PlannedRef = string;
 
@@ -189,7 +197,13 @@ const atlcli: {
     /** All pages matching \`cql\`, paged transparently. */
     search(cql: string, options?: { limit?: number }): AsyncIterable<ConfluencePageRef>;
     getPage(id: string): Promise<ConfluencePage>;
-    createPage(input: { space: string; title: string; markdown: string; parentId?: string }): Promise<{ id: PlannedRef }>;
+    getPage(id: string, options: { storage: true }): Promise<ConfluencePageStorage>;
+    /** Direct child pages, in page-tree order. */
+    children(id: string): Promise<ConfluencePageRef[]>;
+    /** \`markdown\` is converted; \`storage\` is sent as is (pass exactly one). \`properties\` are content properties. */
+    createPage(
+      input: { space: string; title: string; parentId?: string; properties?: Record<string, Json> } & ({ markdown: string } | { storage: string }),
+    ): Promise<{ id: PlannedRef }>;
     /** Keeps the current title unless \`title\` is given. */
     updatePage(id: string, input: { title?: string; markdown: string }): Promise<{ id: string }>;
     /** Updates the page with this exact title in \`space\`, or creates it. */
@@ -207,6 +221,8 @@ const atlcli: {
     attachments(pageId: string): Promise<ConfluenceAttachment[]>;
     /** Replaces an attachment of the same name with a new version. */
     attach(pageId: string, file: AttachmentInput): Promise<{ id: PlannedRef }>;
+    /** Copies an attachment to another page host-side (bytes never enter the plan); skipped when the target has it. */
+    copyAttachment(attachmentId: string, sourcePageId: string, toPageId: string): Promise<{ id: string }>;
     /** Writes a local file when the plan is applied; \`path\` is relative (default "<id>.<format>"). */
     export(pageId: string, options: { format: "pdf" | "docx"; path?: string }): Promise<{ path: string }>;
   };
