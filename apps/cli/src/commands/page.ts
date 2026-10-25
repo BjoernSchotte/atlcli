@@ -16,8 +16,16 @@ import {
   SpaceTemplateStorage,
   TemplateResolver,
   TemplateEngine,
+  createTemplateScope,
+  finish,
+  RenderBudget,
+  renderStorage,
+  renderTextField,
+  type RenderWarning,
 } from "@atlcli/core";
 import { assertCliAuthSupported } from "./session-guard.js";
+import copyPagesScript from "../builtin-scripts/copy-pages.script" with { type: "text" };
+import { parseTemplateFlags, TEMPLATE_FLAGS_HELP, templateValuesFrom } from "./template-flags.js";
 import {
   ConfluenceClient,
   markdownToStorage,
@@ -1554,28 +1562,77 @@ async function resolvePageId(ref: string | undefined, opts: OutputOptions): Prom
 }
 
 async function handleCopy(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const { client, defaults } = await getClient(flags, opts, true);
+  if (hasFlag(flags, "print-script")) {
+    process.stdout.write(copyPagesScript);
+    return;
+  }
   const id = getFlag(flags, "id");
-  const space = getFlag(flags, "space") ?? defaults.space;
-  const title = getFlag(flags, "title");
-  const parentId = getFlag(flags, "parent");
-
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
   }
-  const page = await client.copyPage({
-    sourceId: id,
-    targetSpaceKey: space,
-    newTitle: title,
-    parentId,
-  });
+  if (!/^\d+$/.test(id)) fail(opts, 1, ERROR_CODES.USAGE, `--id expects a page id, got "${id}"`);
+  const templating = await parseTemplateFlags(flags, opts);
 
-  if (opts.json) {
-    output({ schemaVersion: "1", copied: true, page }, opts);
+  if (hasFlag(flags, "tree")) {
+    // A tree is many writes: plan it like a script, apply with --apply.
+    const { parseLimits, planAndApply } = await import("./script.js");
+    const params = {
+      id,
+      space: getFlag(flags, "space") ?? "",
+      parent: getFlag(flags, "parent") ?? "",
+      title: getFlag(flags, "title") ?? "",
+      attachments: !hasFlag(flags, "no-attachments"),
+    };
+    const limits = parseLimits(flags, opts);
+    const sized = {
+      limits: { deadlineMs: 30 * 60_000, memoryBytes: 256 * 1024 * 1024, maxHostCalls: 100_000, ...limits.limits },
+      maxWrites: limits.maxWrites ?? 100_000,
+    };
+    await planAndApply(copyPagesScript, { name: "copy-pages" }, params, sized, flags, opts, templateValuesFrom(templating));
     return;
   }
 
-  output(`Created copy "${page.title}" (id: ${page.id})`, opts);
+  const { client, defaults } = await getClient(flags, opts, true);
+  const source = await client.getPage(id);
+  const space = getFlag(flags, "space") ?? source.spaceKey ?? defaults.space;
+  const parentId = getFlag(flags, "parent") ?? (space === source.spaceKey ? source.parentId ?? undefined : undefined);
+  const scope = createTemplateScope({ vars: templating.values, now: templating.now, space, source: { id: source.id, title: source.title } });
+  let title: string;
+  let storage: string;
+  const warnings: RenderWarning[] = [];
+  try {
+    const budget = new RenderBudget();
+    const t = renderTextField(getFlag(flags, "title") ?? `Copy of ${source.title}`, "name", scope, { unit: "title", budget });
+    const b = renderStorage(source.storage ?? "", scope, { unit: "body", budget });
+    warnings.push(...t.warnings, ...b.warnings);
+    finish(null, warnings, { strict: templating.strict });
+    title = t.value;
+    storage = b.value;
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, err instanceof Error ? err.message : String(err));
+  }
+
+  const page = await client.createPage({ spaceKey: space!, title, storage, ...(parentId ? { parentId } : {}) });
+  const attachments: string[] = [];
+  if (!hasFlag(flags, "no-attachments")) {
+    // ponytail: in memory, one at a time; fine for page attachments, stream if huge files show up
+    for (const a of await client.listAttachments(source.id, { limit: 250 })) {
+      const data = await client.downloadAttachment(a);
+      await client.uploadAttachment({ pageId: page.id, filename: a.filename, data, mimeType: a.mediaType });
+      attachments.push(a.filename);
+    }
+  }
+
+  if (opts.json) {
+    output({ schemaVersion: "1", copied: true, page, attachments, ...(warnings.length ? { warnings } : {}) }, opts);
+    return;
+  }
+  const lines = [`Created copy "${page.title}" (id: ${page.id})${attachments.length ? `, ${attachments.length} attachment(s)` : ""}`];
+  if (warnings.length) {
+    lines.push(`Template warnings (${warnings.length}):`);
+    for (const w of warnings.slice(0, 20)) lines.push(`  ${w.unit ?? ""}${w.line !== undefined ? ` ${w.line}:${w.column ?? 0}` : ""}  ${w.message}`);
+  }
+  output(lines.join("\n"), opts);
 }
 
 async function handleChildren(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -2235,7 +2292,10 @@ Commands:
   sort <file> --alphabetical           Sort children A-Z
   sort <file> --natural                Sort children (numeric-aware)
   sort <file> --by <created|modified>  Sort by date
-  copy --id <id> [--space <key>] [--title <t>] [--parent <p>]  Copy page
+  copy --id <id> [--space <key>] [--title <t>] [--parent <p>] [--tree] [--no-attachments]
+                                       Copy a page (title and body are templates) with its attachments;
+                                       --tree copies descendants as a plan (--apply [--yes], --plan-out,
+                                       --print-script)
   children --id <id> [--limit <n>]     List child pages
   delete --id <id> --confirm           Delete a page
   delete --cql <query> --confirm       Delete pages matching CQL (bulk)
@@ -2273,6 +2333,9 @@ Options:
   --reverse          Reverse sort order (for sort command)
   --issue <key>      Jira issue key (for link-issue/unlink-issue)
   --comment          Add comment to linked issue (for link-issue)
+
+Copy (titles and bodies render {{name}}, {{source.title}}, {{parent.title}}):
+${TEMPLATE_FLAGS_HELP}
 
 Move/Sort targets can be file paths (./docs/page.md) or page IDs.
 
