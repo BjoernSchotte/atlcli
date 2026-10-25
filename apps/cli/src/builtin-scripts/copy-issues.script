@@ -130,7 +130,8 @@ export default async function copyIssues(p) {
           counts.comments++;
         }
       }
-      if (p.keepStatus && f.status?.name) {
+      // A copy starts in its workflow's initial status, so a "To Do" category status needs no move.
+      if (p.keepStatus && f.status?.name && f.status.statusCategory?.key !== "new") {
         await jira.setStatus(ref, statusMap[f.status.name] ?? f.status.name);
         counts.statusMoves++;
       }

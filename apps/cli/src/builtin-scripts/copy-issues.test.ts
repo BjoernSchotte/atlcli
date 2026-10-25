@@ -30,7 +30,7 @@ class FakeJira {
       summary: "Release {{version}} checks",
       description: doc(para(text("Ship {{version}} after "), { type: "mention", attrs: { id: "acc-2", text: "@Bob" } })),
       labels: ["dev"],
-      status: { name: "In Progress" },
+      status: { name: "In Progress", statusCategory: { key: "indeterminate" } },
       assignee: { accountId: "acc-1" },
       attachment: [{ id: "900", filename: "evidence.xlsx", size: 12_000_000 }],
       issuelinks: [
@@ -42,7 +42,7 @@ class FakeJira {
         comments: [{ author: { displayName: "Ann" }, created: "2026-01-02T10:00:00.000+0000", body: doc(para(text("cc "), { type: "mention", attrs: { id: "acc-2", text: "@Bob" } })) }],
       },
     }),
-    issue("SUP-2", { issuelinks: [{ type: { name: "Blocks" }, inwardIssue: { key: "SUP-1" } }, { type: { name: "Relates" }, inwardIssue: { key: "EXT-8" } }] }),
+    issue("SUP-2", { status: { name: "To Do", statusCategory: { key: "new" } }, issuelinks: [{ type: { name: "Blocks" }, inwardIssue: { key: "SUP-1" } }, { type: { name: "Relates" }, inwardIssue: { key: "EXT-8" } }] }),
   ];
   children = [issue("SUP-3", { parent: { key: "SUP-1" }, issuetype: { name: "Sub-task" } })];
   copies: JiraIssueView[] = [];
@@ -157,7 +157,8 @@ describe("copy-issues", () => {
     const { ops, created } = await plan({ linkSource: true, comments: true, keepAssignee: true, keepStatus: true, statusMap: JSON.stringify({ "In Progress": "Doing" }) });
     const one = created("Release {{version}} checks");
     expect(one.args.fields).toMatchObject({ assignee: { accountId: "acc-1" } });
-    expect(ops.find((o) => o.verb === "jira.setStatus")!.args).toEqual({ key: ref(one), status: "Doing" });
+    // Only SUP-1 is past "To Do"; SUP-2 starts in the right status already, SUP-3 has none.
+    expect(ops.filter((o) => o.verb === "jira.setStatus").map((o) => o.args)).toEqual([{ key: ref(one), status: "Doing" }]);
     expect(ops.filter((o) => o.verb === "jira.link" && o.args.type === "Cloners").map((o) => o.args.to)).toEqual(["SUP-1", "SUP-2", "SUP-3"]);
     const comment = ops.find((o) => o.verb === "jira.comment")!.args.raw as ReturnType<typeof doc>;
     expect(comment.content).toEqual([
