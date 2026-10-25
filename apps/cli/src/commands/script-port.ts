@@ -41,6 +41,12 @@ export function createCliScriptPort(
 ): ScriptPort {
   const conversion = { baseUrl };
   const richText = (markdown: string) => toJiraRichText(jira(), markdown);
+  /** Transition body: screen fields plus a comment added with the transition. */
+  const transitionInput = (id: string, options?: { fields?: Record<string, unknown>; comment?: string }) => ({
+    transition: { id },
+    ...(options?.fields ? { fields: options.fields } : {}),
+    ...(options?.comment ? { update: { comment: [{ add: { body: richText(options.comment) } }] } } : {}),
+  });
 
   return {
     async jiraSearch(jql, { fields, properties, pageToken, maxResults, signal }) {
@@ -87,22 +93,73 @@ export function createCliScriptPort(
         },
       });
     },
-    async jiraTransitionIssue(key, name) {
+    async jiraTransitionIssue(key, name, options) {
       const transitions = await jira().getTransitions(key);
       const transition = findTransition(transitions, name);
       if (!transition) {
         throw new Error(`Transition "${name}" is not available for ${key} (available: ${transitions.map((t) => t.name).join(", ") || "none"})`);
       }
-      await jira().transitionIssue(key, { transition: { id: transition.id } });
+      await jira().transitionIssue(key, transitionInput(transition.id, options));
     },
-    async jiraSetStatus(key, status) {
+    async jiraSetStatus(key, status, options) {
       const wanted = status.toLowerCase();
       const transitions = await jira().getTransitions(key);
       const transition =
         transitions.find((t) => t.to?.name?.toLowerCase() === wanted) ?? transitions.find((t) => t.name.toLowerCase() === wanted);
       if (!transition) return { moved: false };
-      await jira().transitionIssue(key, { transition: { id: transition.id } });
+      await jira().transitionIssue(key, transitionInput(transition.id, options));
       return { moved: true, transition: transition.name };
+    },
+    async jiraTransitions(key) {
+      return (await jira().getTransitions(key)).map((t) => ({
+        name: t.name,
+        to: { name: t.to?.name ?? "", ...(t.to?.statusCategory?.key ? { category: t.to.statusCategory.key } : {}) },
+      }));
+    },
+    async jiraHistory(key, { fields }) {
+      const wanted = fields?.map((f) => f.toLowerCase());
+      const changes = [];
+      for (let startAt = 0; ; ) {
+        const page = await jira().getChangelog(key, { startAt, maxResults: 100 });
+        for (const entry of page.values) {
+          for (const item of entry.items) {
+            const field = item.fieldId ?? item.field;
+            if (wanted && !wanted.includes(field.toLowerCase()) && !wanted.includes(item.field.toLowerCase())) continue;
+            changes.push({
+              at: entry.created,
+              ...(entry.author?.displayName ? { author: entry.author.displayName } : {}),
+              field,
+              from: item.fromString ?? item.from ?? null,
+              to: item.toString ?? item.to ?? null,
+            });
+          }
+        }
+        startAt += page.values.length;
+        if (page.isLast || page.values.length === 0) break;
+      }
+      return changes.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    },
+    async jiraWatchers(key) {
+      return (await jira().getWatchers(key)).watchers.map((w) => ({
+        ...(w.accountId ? { accountId: w.accountId } : {}),
+        ...((w as { name?: string }).name ? { name: (w as { name?: string }).name } : {}),
+        ...(w.displayName ? { displayName: w.displayName } : {}),
+      }));
+    },
+    async jiraAddWatcher(key, user) {
+      await jira().addWatcher(key, "accountId" in user ? user.accountId : user.name);
+    },
+    async jiraRemoveWatcher(key, user) {
+      await jira().removeWatcher(key, "accountId" in user ? user.accountId : user.name);
+    },
+    async jiraNotify(key, { subject, markdown, to }) {
+      const { users, groups, ...flags } = to;
+      await jira().notifyIssue(key, {
+        subject,
+        textBody: markdown,
+        htmlBody: markdownToStorage(markdown, conversion),
+        to: { ...flags, ...(users ? { users } : {}), ...(groups ? { groups: groups.map((name) => ({ name })) } : {}) },
+      });
     },
     async jiraAddComment(key, body) {
       const comment = await jira().addComment(key, typeof body === "string" ? richText(body) : (body.raw as never));

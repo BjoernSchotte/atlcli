@@ -2509,6 +2509,31 @@ export class JiraClient {
     });
   }
 
+  /**
+   * Send an e-mail notification about an issue; Jira composes and sends it.
+   *
+   * POST /rest/api/3/issue/{keyOrId}/notify
+   */
+  async notifyIssue(
+    keyOrId: string,
+    input: {
+      subject: string;
+      /** Plain text body (Jira also takes `htmlBody`). */
+      textBody: string;
+      htmlBody?: string;
+      to: {
+        reporter?: boolean;
+        assignee?: boolean;
+        watchers?: boolean;
+        voters?: boolean;
+        users?: Array<{ accountId: string } | { name: string }>;
+        groups?: Array<{ name: string }>;
+      };
+    }
+  ): Promise<void> {
+    await this.request(`/issue/${keyOrId}/notify`, { method: "POST", body: input });
+  }
+
   // ============ Webhook Operations ============
 
   /**

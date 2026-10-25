@@ -25,6 +25,9 @@ export const WRITE_VERBS = [
   "jira.comment",
   "jira.link",
   "jira.assign",
+  "jira.addWatcher",
+  "jira.removeWatcher",
+  "jira.notify",
   "jira.addLabels",
   "jira.removeLabels",
   "jira.attach",
@@ -190,6 +193,30 @@ function capRest(value: unknown, path: string): unknown {
   if (size > MAX_REST_BYTES) throw new Error(`Response of ${path} is ${size} bytes; the limit is ${MAX_REST_BYTES}. Page through it with query parameters.`);
   return value ?? null;
 }
+
+/** Transition screen fields and a Markdown comment (`transition`, `setStatus`). */
+const transitionOptions = z.strictObject({
+  fields: z.record(z.string(), z.unknown()).optional(),
+  comment: z.string().min(1).optional(),
+});
+const withTransitionOptions = (o: z.output<typeof transitionOptions> | undefined) => ({
+  ...(o?.fields && Object.keys(o.fields).length ? { fields: o.fields } : {}),
+  ...(o?.comment ? { comment: o.comment } : {}),
+});
+const notifyInput = z.strictObject({
+  subject: str,
+  markdown: str,
+  to: z
+    .strictObject({
+      users: z.array(str).optional(),
+      groups: z.array(str).optional(),
+      reporter: z.boolean().optional(),
+      assignee: z.boolean().optional(),
+      watchers: z.boolean().optional(),
+      voters: z.boolean().optional(),
+    })
+    .refine((t) => Boolean(t.users?.length || t.groups?.length || t.reporter || t.assignee || t.watchers || t.voters), "name at least one recipient"),
+});
 
 /** One plan recording session; every verb closes over it. */
 class Recorder {
@@ -421,7 +448,7 @@ const VERBS: Record<string, Verb> = {
     await r.record("jira.update", { key, ...input }, `jira:${key}`, () => issueUnchanged(r, key, signal));
     return null;
   }),
-  "jira.transition": verb(z.tuple([str, str]), async (r, [key, transition], signal) => {
+  "jira.transition": verb(z.tuple([str, str, transitionOptions.optional()]), async (r, [key, transition, options], signal) => {
     r.require(`jira:write:${r.jiraProject(key)}`);
     if (!PLACEHOLDER.test(key)) {
       const available = await r.port.jiraGetTransitions(key, { signal });
@@ -429,19 +456,58 @@ const VERBS: Record<string, Verb> = {
         throw new Error(`Transition "${transition}" is not available for ${key} (available: ${available.join(", ") || "none"})`);
       }
     }
-    await r.record("jira.transition", { key, transition }, `jira:${key}`, () => issueUnchanged(r, key, signal));
+    await r.record("jira.transition", { key, transition, ...withTransitionOptions(options) }, `jira:${key}`, () => issueUnchanged(r, key, signal));
     return null;
   }),
-  "jira.setStatus": verb(z.tuple([str, str]), async (r, [key, status], signal) => {
+  "jira.setStatus": verb(z.tuple([str, str, transitionOptions.optional()]), async (r, [key, status, options], signal) => {
     r.require(`jira:write:${r.jiraProject(key)}`);
     const issue = await untouchedIssue(r, key, ["status"], signal);
     if (issue && String((issue.fields.status as { name?: string } | undefined)?.name ?? "").toLowerCase() === status.toLowerCase()) {
       r.skipped.push({ verb: "jira.setStatus", target: key, title: status, reason: "unchanged" });
       return null;
     }
-    await r.record("jira.setStatus", { key, status }, `jira:${key}`, async () =>
+    await r.record("jira.setStatus", { key, status, ...withTransitionOptions(options) }, `jira:${key}`, async () =>
       issue ? { kind: "jira-issue-unchanged", key, updated: issue.fields.updated } : undefined,
     );
+    return null;
+  }),
+  "jira.transitions": verb(z.tuple([str]), async (r, [key], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraTransitions?.bind(r.port), "jira.transitions")(r.readable(key), { signal });
+  }),
+  "jira.history": verb(z.tuple([str, z.strictObject({ fields: z.array(str).optional() }).optional()]), async (r, [key, o], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraHistory?.bind(r.port), "jira.history")(r.readable(key), { ...(o?.fields ? { fields: o.fields } : {}), signal });
+  }),
+  "jira.watchers": verb(z.tuple([str]), async (r, [key], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraWatchers?.bind(r.port), "jira.watchers")(r.readable(key), { signal });
+  }),
+  "jira.addWatcher": verb(z.tuple([str, str]), async (r, [key, user], signal) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const ref = await r.findUser(user, signal);
+    if (!PLACEHOLDER.test(key) && (await watching(r, key, ref, signal))) {
+      r.skipped.push({ verb: "jira.addWatcher", target: key, title: user, reason: "unchanged" });
+      return null;
+    }
+    await r.record("jira.addWatcher", { key, user: ref, query: user });
+    return null;
+  }),
+  "jira.removeWatcher": verb(z.tuple([str, str]), async (r, [key, user], signal) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const ref = await r.findUser(user, signal);
+    if (!PLACEHOLDER.test(key) && !(await watching(r, key, ref, signal))) {
+      r.skipped.push({ verb: "jira.removeWatcher", target: key, title: user, reason: "unchanged" });
+      return null;
+    }
+    await r.record("jira.removeWatcher", { key, user: ref, query: user });
+    return null;
+  }),
+  "jira.notify": verb(z.tuple([str, notifyInput]), async (r, [key, input], signal) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const { users, ...rest } = input.to;
+    const resolved = users ? await Promise.all(users.map((u) => r.findUser(u, signal))) : undefined;
+    await r.record("jira.notify", { key, subject: input.subject, markdown: input.markdown, to: { ...rest, ...(resolved ? { users: resolved } : {}) } });
     return null;
   }),
   "jira.comment": verb(z.tuple([str, commentBody]), async (r, [key, body]) => {
@@ -715,6 +781,12 @@ async function issueUnchanged(r: Recorder, key: string, signal: AbortSignal): Pr
 async function untouchedIssue(r: Recorder, key: string, fields: string[], signal: AbortSignal) {
   if (PLACEHOLDER.test(key) || r.lastWrite(`jira:${key}`) !== undefined) return undefined;
   return r.port.jiraGetIssue(key, { fields: ["updated", ...fields], signal });
+}
+
+/** Whether `user` watches the issue now; hosts without watcher reads count as "not known" (false). */
+async function watching(r: Recorder, key: string, user: JiraUserRef, signal: AbortSignal): Promise<boolean> {
+  if (!r.port.jiraWatchers) return false;
+  return (await r.port.jiraWatchers(key, { signal })).some((w) => sameUser(w, user));
 }
 
 function sameUser(current: unknown, next: JiraUserRef | null): boolean {

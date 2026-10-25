@@ -638,6 +638,12 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
   return lines.join("\n");
 }
 
+/** " with fields resolution, comment" for transitions that set more than the status. */
+function transitionExtras(a: Record<string, any>): string {
+  const parts = [...Object.keys(a.fields ?? {}), ...(a.comment ? ["comment"] : [])];
+  return parts.length ? ` with ${parts.join(", ")}` : "";
+}
+
 export function describeOperation(op: PlannedOperation): string {
   const a = op.args as Record<string, any>;
   const after = op.dependsOn.length ? `  (after #${op.dependsOn.join(", #")})` : "";
@@ -652,9 +658,22 @@ export function describeOperation(op: PlannedOperation): string {
     case "jira.update":
       return `jira update      ${ref(a.key)} ${Object.keys(a).filter((k) => k !== "key").join(", ")}${after}`;
     case "jira.transition":
-      return `jira transition  ${ref(a.key)} → ${a.transition}${after}`;
+      return `jira transition  ${ref(a.key)} → ${a.transition}${transitionExtras(a)}${after}`;
     case "jira.setStatus":
-      return `jira status      ${ref(a.key)} → ${a.status} (if a direct transition exists)${after}`;
+      return `jira status      ${ref(a.key)} → ${a.status} (if a direct transition exists)${transitionExtras(a)}${after}`;
+    case "jira.addWatcher":
+      return `jira watch       ${ref(a.key)} + ${a.query}${after}`;
+    case "jira.removeWatcher":
+      return `jira watch       ${ref(a.key)} - ${a.query}${after}`;
+    case "jira.notify": {
+      const to = a.to as Record<string, unknown>;
+      const who = [
+        ...((to.users as unknown[] | undefined)?.length ? [`${(to.users as unknown[]).length} user(s)`] : []),
+        ...((to.groups as string[] | undefined) ?? []).map((g) => `group ${g}`),
+        ...["reporter", "assignee", "watchers", "voters"].filter((k) => to[k]),
+      ];
+      return `jira notify      ${ref(a.key)} ${text(a.subject)} → ${who.join(", ")}${after}`;
+    }
     case "jira.comment":
       return `jira comment     ${ref(a.key)} ${"raw" in a ? "(raw)" : text(a.markdown)}${after}`;
     case "jira.copyAttachment":

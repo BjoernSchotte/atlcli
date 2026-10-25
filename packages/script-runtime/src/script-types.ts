@@ -117,6 +117,12 @@ interface AttachmentInput {
   encoding?: "utf8" | "base64";
 }
 
+/** Set while transitioning: screen fields (raw Jira values) and a Markdown comment. */
+interface TransitionOptions {
+  fields?: Record<string, Json>;
+  comment?: string;
+}
+
 /** ISO 8601 with offset, e.g. "2026-11-02T09:00:00.000Z". */
 type IsoDate = string;
 
@@ -173,14 +179,39 @@ const atlcli: {
       properties?: Record<string, Json>;
     }): Promise<{ id: PlannedRef; key: PlannedRef }>;
     update(key: string, input: { summary?: string; description?: string; fields?: Record<string, Json> }): Promise<null>;
-    /** Transition by name (case-insensitive); checked when the plan is made. */
-    transition(key: string, to: string): Promise<null>;
+    /**
+     * Transition by name (case-insensitive); checked when the plan is made.
+     * \`fields\` are set on the transition screen (e.g. \`{ resolution: { name: "Done" } }\`),
+     * \`comment\` (Markdown) is added with the transition.
+     */
+    transition(key: string, to: string, options?: TransitionOptions): Promise<null>;
     /**
      * Best effort, for issues whose workflow is not known yet (e.g. created by
      * this plan): on apply, takes a direct transition into \`status\` if one is
      * available, else changes nothing (the apply report says moved: false).
      */
-    setStatus(key: string, status: string): Promise<null>;
+    setStatus(key: string, status: string, options?: TransitionOptions): Promise<null>;
+    /** Transitions available now, with the status each leads to (category: "new" | "indeterminate" | "done"). */
+    transitions(key: string): Promise<Array<{ name: string; to: { name: string; category?: string } }>>;
+    /** Changes from the issue's history, oldest first; \`fields\` limits them (e.g. \`["status"]\`). */
+    history(key: string, options?: { fields?: string[] }): Promise<Array<{ at: IsoDate; author?: string; field: string; from: string | null; to: string | null }>>;
+    watchers(key: string): Promise<Array<{ accountId?: string; displayName?: string }>>;
+    /** \`user\`: "me", an email, a display name or an account id. Skipped when already watching. */
+    addWatcher(key: string, user: string): Promise<null>;
+    /** Skipped when not watching. */
+    removeWatcher(key: string, user: string): Promise<null>;
+    /**
+     * Jira sends an e-mail about the issue (on apply). Name at least one recipient;
+     * \`users\` are resolved like \`assign\`.
+     */
+    notify(
+      key: string,
+      input: {
+        subject: string;
+        markdown: string;
+        to: { users?: string[]; groups?: string[]; reporter?: boolean; assignee?: boolean; watchers?: boolean; voters?: boolean };
+      },
+    ): Promise<null>;
     /** A string is Markdown; \`{ raw }\` is the site's own format (ADF on Cloud, as \`get\` returns it), sent unchanged. */
     comment(key: string, body: string | { raw: Json }): Promise<{ id: PlannedRef }>;
     /** Reads as a sentence: link("A-1", "blocks", "A-2"). \`type\` is a link type name or either of its phrases. */

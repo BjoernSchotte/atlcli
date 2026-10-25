@@ -1,0 +1,26 @@
+// Creates one subtask per checklist line under a parent issue, skipping lines
+// that already exist as a subtask with the same summary.
+//
+//   atlcli script run subtasks-from-checklist.ts --param parent=ATLCLI-12 \
+//     --param items="Laptop bestellen; Accounts anlegen; Einarbeitungsplan"
+export const meta = {
+  description: "Create subtasks from a checklist",
+  params: {
+    parent: { type: "string" },
+    items: { type: "string", description: "Items separated by ; or new lines" },
+    type: { type: "string", default: "Subtask" },
+  },
+};
+
+export default async ({ parent, items, type }: { parent: string; items: string; type: string }) => {
+  const issue = await atlcli.jira.get(parent, { fields: ["subtasks", "project"] });
+  const existing = new Set((issue.fields.subtasks as Array<{ fields: { summary: string } }>).map((s) => s.fields.summary.trim().toLowerCase()));
+  const project = (issue.fields.project as { key: string }).key;
+  const created: string[] = [];
+  for (const summary of items.split(/[;\n]/).map((s) => s.trim()).filter(Boolean)) {
+    if (existing.has(summary.toLowerCase())) continue;
+    await atlcli.jira.create({ project, type, summary, fields: { parent: { key: parent } } });
+    created.push(summary);
+  }
+  return { created };
+};

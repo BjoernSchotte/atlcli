@@ -15,7 +15,19 @@ setDefaultTimeout(60_000);
 const issue = (n: number, fields: Record<string, unknown> = {}): JiraIssueView => ({
   id: String(n),
   key: `ATLCLI-${n}`,
-  fields: { updated: "2026-10-25T00:00:00Z", summary: `Issue ${n}`, labels: ["Front_End", "ui"], status: { name: "Open", statusCategory: { key: "new" } }, customfield_1: "x", ...fields },
+  fields: {
+    updated: "2026-10-25T00:00:00Z",
+    summary: `Issue ${n}`,
+    labels: ["Front_End", "ui"],
+    status: { name: "Open", statusCategory: { key: "new" } },
+    customfield_1: "x",
+    project: { key: "ATLCLI" },
+    parent: { key: "ATLCLI-1" },
+    fixVersions: [],
+    subtasks: [{ key: "ATLCLI-8", fields: { summary: "Done one", status: { statusCategory: { key: "done" } } } }],
+    issuelinks: [{ type: { inward: "is blocked by" }, inwardIssue: { key: "ATLCLI-9", fields: { status: { statusCategory: { key: "done" } } } } }],
+    ...fields,
+  },
 });
 
 /** Reads only; every write verb is planned, never called. */
@@ -26,7 +38,7 @@ const port = {
     return { issues: [issue(7)] };
   },
   async jiraGetIssue(key: string) {
-    return { ...issue(7), key };
+    return key === "ATLCLI-1" ? issue(1, { fixVersions: [{ name: "2026.11" }] }) : { ...issue(7), key };
   },
   async jiraGetTransitions() {
     return ["Done"];
@@ -72,7 +84,12 @@ describe("script examples", () => {
 
   for (const example of SCRIPT_EXAMPLES) {
     it(`${example.name} plans (${example.mode})`, async () => {
-      const params: Record<string, string> = example.name === "copy-field" ? { from: "customfield_1", to: "customfield_2" } : {};
+      const params: Record<string, string> =
+        {
+          "copy-field": { from: "customfield_1", to: "customfield_2" },
+          "unblock-when-blocker-done": { blocked: "Open" },
+          "subtasks-from-checklist": { parent: "ATLCLI-7", items: "Laptop; done one" },
+        }[example.name] ?? {};
       const run = await planScript(transpile(example.source), {
         port,
         params,

@@ -260,10 +260,19 @@ async function execute(
       return { key };
     }
     case "jira.transition":
-      await port.jiraTransitionIssue(args.key, args.transition);
+      await port.jiraTransitionIssue(args.key, args.transition, transitionOptions(args));
       return { key: args.key };
     case "jira.setStatus":
-      return { key: args.key, status: args.status, ...(await port.jiraSetStatus(args.key, args.status)) };
+      return { key: args.key, status: args.status, ...(await port.jiraSetStatus(args.key, args.status, transitionOptions(args))) };
+    case "jira.addWatcher":
+      await required(port.jiraAddWatcher, "jira.addWatcher").call(port, args.key, args.user);
+      return { key: args.key };
+    case "jira.removeWatcher":
+      await required(port.jiraRemoveWatcher, "jira.removeWatcher").call(port, args.key, args.user);
+      return { key: args.key };
+    case "jira.notify":
+      await required(port.jiraNotify, "jira.notify").call(port, args.key, { subject: args.subject, markdown: args.markdown, to: args.to });
+      return { key: args.key };
     case "jira.comment":
       return { key: args.key, ...(await port.jiraAddComment(args.key, "raw" in args ? { raw: args.raw } : args.markdown)) };
     case "confluence.createPage": {
@@ -333,6 +342,15 @@ async function execute(
       // A plan file is editable, so the path is checked again right before writing.
       return port.confluenceExport({ pageId: args.pageId, format: args.format, path: checkExportPath(args.path, args.format) });
   }
+}
+
+/** Only the options a plan recorded, so hosts see `undefined` for a plain transition. */
+const transitionOptions = (args: Record<string, any>) =>
+  args.fields || args.comment ? { ...(args.fields ? { fields: args.fields } : {}), ...(args.comment ? { comment: args.comment } : {}) } : undefined;
+
+function required<F>(fn: F | undefined, verb: string): F {
+  if (!fn) throw new Error(`This host cannot apply ${verb}`);
+  return fn;
 }
 
 const attachment = (args: Record<string, any>): AttachmentInput => ({ name: args.name, content: args.content, encoding: args.encoding });

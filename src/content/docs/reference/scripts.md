@@ -128,8 +128,14 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 | `jira.rest(path, { query? })` | JSON | `jira:read` | read only (GET). `path` is site-relative and starts with `/rest/`, e.g. `/rest/api/3/field`; no query string in it (use `query`), no `..`. Responses up to 5 MB |
 | `jira.create({ project, type, summary, description?, fields?, properties? })` | `{ id, key }` placeholders | `jira:write:<project>` | create; no precondition. `description` is Markdown; `fields.description` is sent unchanged (ADF from `get`, for lossless copies). Not both. `properties` sets issue properties by key |
 | `jira.update(key, { summary?, description?, fields? })` | `null` | `jira:write:<project of key>` | update; issue unchanged |
-| `jira.transition(key, to)` | `null` | `jira:write:<project of key>` | transition; issue unchanged. `to` is matched by name, ignoring case; checked against the issue's transitions when the issue exists |
-| `jira.setStatus(key, status)` | `null` | `jira:write:<project of key>` | best-effort transition; issue unchanged. On apply, takes a transition available then whose target status (or name) is `status`; with none, nothing changes and the apply output lists it under `Status unchanged`. For issues whose workflow is not known at plan time, such as ones the plan creates. Left out when the issue already has that status |
+| `jira.transition(key, to, { fields?, comment? })` | `null` | `jira:write:<project of key>` | transition; issue unchanged. `to` is matched by name, ignoring case; checked against the issue's transitions when the issue exists. `fields` are set on the transition screen as raw Jira values (e.g. `{ resolution: { name: "Done" } }`); `comment` is Markdown, added with the transition |
+| `jira.setStatus(key, status, { fields?, comment? })` | `null` | `jira:write:<project of key>` | best-effort transition; issue unchanged. On apply, takes a transition available then whose target status (or name) is `status`; with none, nothing changes and the apply output lists it under `Status unchanged`. For issues whose workflow is not known at plan time, such as ones the plan creates. Left out when the issue already has that status |
+| `jira.transitions(key)` | `[{ name, to: { name, category? } }]` | `jira:read` | read; transitions available now. `category` is `new`, `indeterminate` or `done` |
+| `jira.history(key, { fields? })` | `[{ at, author?, field, from, to }]` | `jira:read` | read; the issue's changes, oldest first; `fields` limits them, e.g. `["status"]` |
+| `jira.watchers(key)` | `[{ accountId?, displayName? }]` | `jira:read` | read |
+| `jira.addWatcher(key, user)` | `null` | `jira:write:<project of key>` | watcher; no precondition. `user` resolved like `assign`. Left out when the user already watches |
+| `jira.removeWatcher(key, user)` | `null` | `jira:write:<project of key>` | watcher; no precondition. Left out when the user does not watch |
+| `jira.notify(key, { subject, markdown, to })` | `null` | `jira:write:<project of key>` | e-mail sent by Jira on apply; no precondition. `to`: `users` (resolved like `assign`), `groups`, `reporter`, `assignee`, `watchers`, `voters`; at least one |
 | `jira.comment(key, body)` | `{ id }` placeholder | `jira:write:<project of key>` | comment; no precondition. `body` is Markdown, or `{ raw }`: the site's own format (ADF on Cloud, wiki markup on Data Center), sent unchanged |
 | `jira.link(from, type, to)` | `null` | `jira:write` for both projects | link; no precondition. Reads as a sentence: `link("A-1", "blocks", "A-2")`. `type` is the link type's name or either phrase (`"is blocked by"` swaps the issues); checked at plan time |
 | `jira.assign(key, user)` | `null` | `jira:write:<project of key>` | assignment; issue unchanged. `user` is `"me"`, an email, a display name or an account id, resolved at plan time; `null` unassigns. Left out when already assigned so |
@@ -238,6 +244,7 @@ The same applies to the first write of these verbs to an object:
 | Verb | Left out when |
 |---|---|
 | `jira.assign` | the issue already has that assignee (or none, for `null`) |
+| `jira.addWatcher` / `jira.removeWatcher` | the user already watches / does not watch |
 | `jira.addLabels` | every label is already set |
 | `jira.removeLabels` | none of the labels is set |
 | `jira.setStatus` | the issue already has that status |

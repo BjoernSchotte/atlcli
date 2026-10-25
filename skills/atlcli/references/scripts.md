@@ -51,8 +51,11 @@ case.
 | `atlcli.jira.get(key, { fields? })` | raw fields; `updated` always present |
 | `atlcli.jira.create({ project, type, summary, description?, fields?, properties? })` | `description` is Markdown; for a lossless copy pass the raw value as `fields.description` (not both); returns `{ key: "plan:<n>" }` until applied |
 | `atlcli.jira.update(key, { summary?, description?, fields? })` | |
-| `atlcli.jira.transition(key, to)` | checked against available transitions when planning (not for issues the plan creates) |
-| `atlcli.jira.setStatus(key, status)` | best effort on apply: a direct transition into that status, else no change (listed after apply) |
+| `atlcli.jira.transition(key, to, { fields?, comment? })` | checked against available transitions when planning (not for issues the plan creates); `fields` fill the transition screen (e.g. resolution), `comment` is Markdown |
+| `atlcli.jira.transitions(key)` / `history(key, { fields? })` / `watchers(key)` | reads: transitions with target status and category; changelog oldest first; watchers |
+| `atlcli.jira.addWatcher(key, user)` / `removeWatcher` | skipped when nothing would change |
+| `atlcli.jira.notify(key, { subject, markdown, to: { users?, groups?, reporter?, assignee?, watchers?, voters? } })` | Jira sends the e-mail on apply; a write like any other, show it before applying |
+| `atlcli.jira.setStatus(key, status, { fields?, comment? })` | best effort on apply: a direct transition into that status, else no change (listed after apply) |
 | `atlcli.jira.comment(key, markdown \| { raw })` | `{ raw }` sends ADF (Cloud) or wiki markup (DC) unchanged |
 | `atlcli.jira.link(from, type, to)` | reads as a sentence: `link("A-1", "blocks", "A-2")`; type name or either phrase, checked when planning |
 | `atlcli.jira.assign(key, user)` | `"me"`, email, display name or account id, resolved when planning; `null` unassigns |

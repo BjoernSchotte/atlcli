@@ -1,0 +1,23 @@
+// Moves blocked issues on once every issue that blocks them is done, and tells
+// the assignee. Issues with a blocker still open stay where they are.
+//
+//   atlcli script run unblock-when-blocker-done.ts --param blocked=Blocked --param to="In Arbeit"
+export const meta = {
+  description: "Unblock issues whose blockers are all done",
+  each: {
+    jql: 'project = ATLCLI AND status = Blocked AND issue in linkedIssuesOf("statusCategory = Done", "blocks")',
+    fields: ["issuelinks", "status"],
+  },
+  params: { blocked: { type: "string", default: "Blocked" }, to: { type: "string", default: "In Progress" } },
+};
+
+type Link = { type: { inward: string }; inwardIssue?: { key: string; fields: { status: { statusCategory?: { key?: string } } } } };
+
+export default async (issue: JiraIssue, params: { blocked: string; to: string }) => {
+  if ((issue.fields.status as { name: string }).name !== params.blocked) return;
+  const blockers = (issue.fields.issuelinks as Link[]).filter((l) => l.inwardIssue && l.type.inward === "is blocked by");
+  if (blockers.length === 0 || blockers.some((l) => l.inwardIssue!.fields.status.statusCategory?.key !== "done")) return;
+  const keys = blockers.map((l) => l.inwardIssue!.key).join(", ");
+  await atlcli.jira.setStatus(issue.key, params.to, { comment: `Unblocked: ${keys} done.` });
+  await atlcli.jira.notify(issue.key, { subject: `${issue.key} is unblocked`, markdown: `All blockers (${keys}) are done.`, to: { assignee: true } });
+};
