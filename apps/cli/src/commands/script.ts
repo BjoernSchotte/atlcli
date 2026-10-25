@@ -408,7 +408,9 @@ function describeOperation(op: PlannedOperation): string {
     case "jira.transition":
       return `jira transition  ${ref(a.key)} → ${a.transition}${after}`;
     case "jira.comment":
-      return `jira comment     ${ref(a.key)} ${text(a.markdown)}${after}`;
+      return `jira comment     ${ref(a.key)} ${"raw" in a ? "(raw)" : text(a.markdown)}${after}`;
+    case "jira.copyAttachment":
+      return `jira attach copy ${a.filename} (${bytes(a.size)}) ${a.id} → ${ref(a.to)}${after}`;
     case "confluence.createPage":
       return `page create      ${a.spaceKey} ${text(a.title)}${a.parentId ? ` under ${ref(a.parentId)}` : ""}${after}`;
     case "confluence.updatePage":
@@ -448,8 +450,12 @@ function describeOperation(op: PlannedOperation): string {
 
 /** Decoded attachment size for the plan listing. */
 function size(a: Record<string, any>): string {
-  const bytes = a.encoding === "base64" ? Buffer.from(a.content, "base64").length : Buffer.byteLength(a.content);
-  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+  return bytes(a.encoding === "base64" ? Buffer.from(a.content, "base64").length : Buffer.byteLength(a.content));
+}
+
+function bytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  return n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function describePrecondition(pre: ScriptPlanV1["operations"][number]["precondition"] & {}): string {
@@ -458,6 +464,8 @@ function describePrecondition(pre: ScriptPlanV1["operations"][number]["precondit
       return `${pre.key} last updated ${pre.updated}`;
     case "jira-sprint-unchanged":
       return `sprint ${pre.id} ${pre.state}`;
+    case "jira-attachment-unchanged":
+      return `attachment ${pre.id} still ${bytes(pre.size)}`;
     case "confluence-page-unchanged":
       return `page ${pre.id} at version ${pre.version}`;
     case "confluence-title-absent":

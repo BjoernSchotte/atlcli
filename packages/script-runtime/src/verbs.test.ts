@@ -108,6 +108,13 @@ class FakePort implements ScriptPort {
   async confluenceAttachments() {
     return [{ id: "att1", name: "a.txt", mediaType: "text/plain", size: 3, version: 1 }];
   }
+  jiraAttachmentList = [{ id: "900", filename: "evidence.xlsx", size: 12_000_000, mimeType: "application/vnd.ms-excel" }];
+  async jiraAttachmentInfo(id: string) {
+    this.calls.push(`jiraAttachmentInfo:${id}`);
+    const found = this.jiraAttachmentList.find((a) => a.id === id);
+    if (!found) throw new Error(`Attachment does not exist: ${id}`);
+    return found;
+  }
   jiraCreateIssue = this.write;
   jiraUpdateIssue = this.write;
   jiraTransitionIssue = this.write;
@@ -116,6 +123,7 @@ class FakePort implements ScriptPort {
   jiraAssignIssue = this.write;
   jiraEditLabels = this.write;
   jiraAttach = this.write;
+  jiraCopyAttachment = this.write;
   jiraCreateSprint = this.write;
   jiraUpdateSprint = this.write;
   jiraMoveToSprint = this.write;
@@ -150,6 +158,68 @@ async function scriptError(promise: Promise<unknown>): Promise<ScriptError> {
   }
   throw new Error("expected the script to fail");
 }
+
+describe("copying issues losslessly", () => {
+  it("plans copyAttachment by reference, with no bytes in the plan", async () => {
+    const result = await plan(meta(ALL) + `export default await atlcli.jira.copyAttachment("900", "ATLCLI-2")`);
+    expect(result.operations).toEqual([
+      {
+        seq: 1,
+        verb: "jira.copyAttachment",
+        args: { id: "900", to: "ATLCLI-2", filename: "evidence.xlsx", size: 12_000_000 },
+        precondition: { kind: "jira-attachment-unchanged", id: "900", size: 12_000_000 },
+        dependsOn: [],
+      },
+    ]);
+    expect(result.value).toEqual({ id: "plan:1" });
+  });
+
+  it("copies onto an issue created by the same plan", async () => {
+    const result = await plan(
+      meta(ALL) +
+        `const { key } = await atlcli.jira.create({ project: "ATLCLI", type: "Task", summary: "Copy" });
+await atlcli.jira.copyAttachment("900", key);`,
+    );
+    expect(result.operations[1]).toMatchObject({ verb: "jira.copyAttachment", args: { to: "plan:1" }, dependsOn: [1] });
+  });
+
+  it("skips a copy the target already has (same name and size)", async () => {
+    const port = new FakePort();
+    port.issues.get("ATLCLI-2")!.fields.attachment = [{ id: "77", filename: "evidence.xlsx", size: 12_000_000 }] as never;
+    const result = await plan(meta(ALL) + `export default await atlcli.jira.copyAttachment("900", "ATLCLI-2")`, { port });
+    expect(result.operations).toEqual([]);
+    expect(result.skipped).toEqual([{ verb: "jira.copyAttachment", target: "ATLCLI-2", title: "evidence.xlsx", reason: "unchanged" }]);
+    expect(result.value).toEqual({ id: "77" });
+  });
+
+  it("fails at plan time for a missing attachment", async () => {
+    const error = await scriptError(plan(meta(ALL) + `await atlcli.jira.copyAttachment("404", "ATLCLI-2")`));
+    expect(error.message).toContain("Attachment does not exist: 404");
+  });
+
+  it("needs write permission on the target project", async () => {
+    const error = await scriptError(plan(meta(["jira:read"]) + `await atlcli.jira.copyAttachment("900", "ATLCLI-2")`));
+    expect(error.kind).toBe("permission-denied");
+  });
+
+  it("rejects description together with fields.description", async () => {
+    const error = await scriptError(
+      plan(meta(ALL) + `await atlcli.jira.create({ project: "ATLCLI", type: "Task", summary: "x", description: "md", fields: { description: { type: "doc" } } })`),
+    );
+    expect(error.message).toContain("not both");
+  });
+
+  it("passes a raw description, issue properties and a raw comment through unchanged", async () => {
+    const adf = { type: "doc", version: 1, content: [{ type: "table", content: [] }] };
+    const result = await plan(
+      meta(ALL) +
+        `const { key } = await atlcli.jira.create({ project: "ATLCLI", type: "Task", summary: "x", fields: { description: ${JSON.stringify(adf)} }, properties: { "atlcli.copiedFrom": { key: "OLD-1" } } });
+await atlcli.jira.comment(key, { raw: ${JSON.stringify(adf)} });`,
+    );
+    expect(result.operations[0].args).toMatchObject({ fields: { description: adf }, properties: { "atlcli.copiedFrom": { key: "OLD-1" } } });
+    expect(result.operations[1].args).toEqual({ key: "plan:1", raw: adf });
+  });
+});
 
 describe("planScript", () => {
   it("validates meta and resolves params before running", async () => {
@@ -707,6 +777,7 @@ it("exposes the verb set", () => {
     "jira.attach",
     "jira.boards",
     "jira.comment",
+    "jira.copyAttachment",
     "jira.create",
     "jira.createSprint",
     "jira.get",

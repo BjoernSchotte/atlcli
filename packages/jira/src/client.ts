@@ -1156,6 +1156,8 @@ export class JiraClient {
       fields?: string[];
       expand?: string;
       nextPageToken?: string;
+      /** Issue property keys to return per issue (`issue.properties`). */
+      properties?: string[];
       /** Cancels the in-flight request (spec 010 wave 2). */
       signal?: AbortSignal;
     } = {}
@@ -1178,6 +1180,7 @@ export class JiraClient {
         fields,
         expand: options.expand,
         nextPageToken: options.nextPageToken,
+        ...(options.properties?.length ? { properties: options.properties } : {}),
       },
       signal: options.signal,
       logBody: "meta-only",

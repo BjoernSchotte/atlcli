@@ -41,6 +41,8 @@ interface JiraIssue {
   key: string;
   /** Raw Jira fields; \`updated\` is always present. */
   fields: { updated: string; [field: string]: Json };
+  /** Issue properties asked for with \`search(jql, { properties })\`, when set. */
+  properties?: Record<string, Json>;
 }
 
 interface ConfluencePageRef {
@@ -117,21 +119,26 @@ const atlcli: {
   readonly params: Readonly<Record<string, string | number | boolean>>;
   readonly jira: {
     /** All issues matching \`jql\`, paged transparently. */
-    search(jql: string, options?: { fields?: string[]; limit?: number }): AsyncIterable<JiraIssue>;
+    search(jql: string, options?: { fields?: string[]; properties?: string[]; limit?: number }): AsyncIterable<JiraIssue>;
     get(key: string, options?: { fields?: string[] }): Promise<JiraIssue>;
-    /** \`description\` is Markdown. */
+    /**
+     * \`description\` is Markdown. To copy a description losslessly, pass the
+     * raw value from \`get\`/\`search\` as \`fields.description\` instead (not both).
+     * \`properties\` are issue properties set on create, by key.
+     */
     create(input: {
       project: string;
       type: string;
       summary: string;
       description?: string;
       fields?: Record<string, Json>;
+      properties?: Record<string, Json>;
     }): Promise<{ id: PlannedRef; key: PlannedRef }>;
     update(key: string, input: { summary?: string; description?: string; fields?: Record<string, Json> }): Promise<null>;
     /** Transition by name (case-insensitive); checked when the plan is made. */
     transition(key: string, to: string): Promise<null>;
-    /** \`markdown\` becomes the comment body. */
-    comment(key: string, markdown: string): Promise<{ id: PlannedRef }>;
+    /** A string is Markdown; \`{ raw }\` is the site's own format (ADF on Cloud, as \`get\` returns it), sent unchanged. */
+    comment(key: string, body: string | { raw: Json }): Promise<{ id: PlannedRef }>;
     /** Reads as a sentence: link("A-1", "blocks", "A-2"). \`type\` is a link type name or either of its phrases. */
     link(from: string, type: string, to: string): Promise<null>;
     /** "me", an email, a display name or an account id; \`null\` unassigns. */
@@ -139,6 +146,12 @@ const atlcli: {
     addLabels(key: string, labels: string[]): Promise<null>;
     removeLabels(key: string, labels: string[]): Promise<null>;
     attach(key: string, file: AttachmentInput): Promise<{ id: PlannedRef }>;
+    /**
+     * Copies attachment \`id\` (from \`fields.attachment\`) to \`toIssue\`. The bytes are
+     * copied on apply and never enter the script or the plan, so there is no
+     * size cap. Skipped when \`toIssue\` already has a file of that name and size.
+     */
+    copyAttachment(id: string, toIssue: string): Promise<{ id: PlannedRef | string }>;
     boards(options?: { project?: string; name?: string; limit?: number }): AsyncIterable<JiraBoard>;
     sprints(boardId: number, options?: { state?: "future" | "active" | "closed"; limit?: number }): AsyncIterable<JiraSprint>;
     /** Needs a scrum board. */

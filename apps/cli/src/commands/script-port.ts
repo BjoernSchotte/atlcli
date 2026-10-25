@@ -2,7 +2,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { ConfluenceClient, type FooterComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
 import type { Profile } from "@atlcli/core";
-import { findTransition, JiraClient, type JiraIssue, type JiraSprint, resolveUser, toJiraRichText } from "@atlcli/jira";
+import { copyAttachment, findTransition, JiraClient, type JiraIssue, type JiraSprint, resolveUser, toJiraRichText } from "@atlcli/jira";
 import type {
   AttachmentInput,
   ConfluenceCommentView,
@@ -39,9 +39,10 @@ export function createCliScriptPort(
   const richText = (markdown: string) => toJiraRichText(jira(), markdown);
 
   return {
-    async jiraSearch(jql, { fields, pageToken, maxResults, signal }) {
+    async jiraSearch(jql, { fields, properties, pageToken, maxResults, signal }) {
       const page = await jira().search(jql, {
         fields: withUpdated(fields),
+        ...(properties?.length ? { properties } : {}),
         maxResults,
         ...(pageToken ? { nextPageToken: pageToken } : {}),
         signal,
@@ -54,7 +55,7 @@ export function createCliScriptPort(
     async jiraGetTransitions(key) {
       return (await jira().getTransitions(key)).map((t) => t.name);
     },
-    async jiraCreateIssue({ project, type, summary, description, fields }) {
+    async jiraCreateIssue({ project, type, summary, description, fields, properties }) {
       const issue = await jira().createIssue({
         fields: {
           ...fields,
@@ -63,6 +64,7 @@ export function createCliScriptPort(
           summary,
           ...(description !== undefined ? { description: richText(description) } : {}),
         },
+        ...(properties ? { properties: Object.entries(properties).map(([key, value]) => ({ key, value })) } : {}),
       });
       return { id: issue.id, key: issue.key };
     },
@@ -83,8 +85,8 @@ export function createCliScriptPort(
       }
       await jira().transitionIssue(key, { transition: { id: transition.id } });
     },
-    async jiraAddComment(key, markdown) {
-      const comment = await jira().addComment(key, richText(markdown));
+    async jiraAddComment(key, body) {
+      const comment = await jira().addComment(key, typeof body === "string" ? richText(body) : (body.raw as never));
       return { id: String(comment.id) };
     },
     async jiraLinkTypes() {
@@ -110,6 +112,13 @@ export function createCliScriptPort(
     async jiraAttach(key, file) {
       const [attachment] = await jira().uploadAttachment(key, file.name, Buffer.from(decode(file)));
       return { id: String(attachment?.id ?? "") };
+    },
+    async jiraAttachmentInfo(id) {
+      const { filename, size, mimeType } = await jira().getAttachment(id);
+      return { id, filename, size, mimeType };
+    },
+    async jiraCopyAttachment(id, toKey) {
+      return { id: String((await copyAttachment(jira(), id, toKey)).id) };
     },
     async jiraBoards({ project, name, startAt, maxResults }) {
       const page = await jira().listBoards({ startAt, maxResults, ...(project ? { projectKeyOrId: project } : {}), ...(name ? { name } : {}) });
@@ -257,7 +266,13 @@ function withUpdated(fields: string[] | undefined): string[] | undefined {
 
 function issueView(issue: JiraIssue): JiraIssueView {
   const fields = (issue.fields ?? {}) as unknown as Record<string, unknown> & { updated?: string };
-  return { id: issue.id, key: issue.key, fields: { ...fields, updated: String(fields.updated ?? "") } };
+  const properties = (issue as { properties?: Record<string, unknown> }).properties;
+  return {
+    id: issue.id,
+    key: issue.key,
+    fields: { ...fields, updated: String(fields.updated ?? "") },
+    ...(properties && Object.keys(properties).length ? { properties } : {}),
+  };
 }
 
 function boardView(board: { id: number; name: string; type: string; location?: { projectKey?: string } }): JiraBoardView {

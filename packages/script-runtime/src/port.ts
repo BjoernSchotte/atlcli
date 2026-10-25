@@ -9,7 +9,7 @@
 export interface ScriptPort {
   jiraSearch(
     jql: string,
-    options: { fields?: string[]; pageToken?: string; maxResults: number; signal?: AbortSignal },
+    options: { fields?: string[]; properties?: string[]; pageToken?: string; maxResults: number; signal?: AbortSignal },
   ): Promise<{ issues: JiraIssueView[]; nextPageToken?: string }>;
   jiraGetIssue(key: string, options: { fields?: string[]; signal?: AbortSignal }): Promise<JiraIssueView>;
   /** Names of the transitions currently available for the issue. */
@@ -17,7 +17,8 @@ export interface ScriptPort {
   jiraCreateIssue(input: JiraCreateInput): Promise<{ id: string; key: string }>;
   jiraUpdateIssue(key: string, input: JiraUpdateInput): Promise<void>;
   jiraTransitionIssue(key: string, transition: string): Promise<void>;
-  jiraAddComment(key: string, markdown: string): Promise<{ id: string }>;
+  /** A string is Markdown; `{ raw }` is sent unchanged (ADF on Cloud, wiki markup on Data Center). */
+  jiraAddComment(key: string, body: string | { raw: unknown }): Promise<{ id: string }>;
   /** Link types of the site (name plus the outward/inward phrases). */
   jiraLinkTypes(options: { signal?: AbortSignal }): Promise<JiraLinkType[]>;
   /** Creates "`from` <outward phrase> `to`" for the link type named `type`. */
@@ -28,6 +29,9 @@ export interface ScriptPort {
   jiraAssignIssue(key: string, user: JiraUserRef | null): Promise<void>;
   jiraEditLabels(key: string, change: { add?: string[]; remove?: string[] }): Promise<void>;
   jiraAttach(key: string, file: AttachmentInput): Promise<{ id: string }>;
+  jiraAttachmentInfo(id: string, options: { signal?: AbortSignal }): Promise<JiraAttachmentView>;
+  /** Copies the bytes host-side (they never enter the sandbox or the plan). */
+  jiraCopyAttachment(id: string, toKey: string): Promise<{ id: string }>;
   jiraBoards(options: {
     project?: string;
     name?: string;
@@ -88,15 +92,26 @@ export interface JiraIssueView {
   key: string;
   /** Raw Jira fields as requested; `updated` is always present (precondition basis). */
   fields: Record<string, unknown> & { updated: string };
+  /** Issue properties requested by key (`jira.search` `properties`), when set. */
+  properties?: Record<string, unknown>;
+}
+
+export interface JiraAttachmentView {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType: string;
 }
 
 export interface JiraCreateInput {
   project: string;
   type: string;
   summary: string;
-  /** Markdown; the host converts it. */
+  /** Markdown; the host converts it. For a lossless copy pass `fields.description` (raw) instead. */
   description?: string;
   fields?: Record<string, unknown>;
+  /** Issue properties set on create, by key. */
+  properties?: Record<string, unknown>;
 }
 
 export interface JiraUpdateInput {
