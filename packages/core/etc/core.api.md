@@ -370,6 +370,9 @@ export interface LogSink {
     reset?(): void;
 }
 
+// export: parseVarsFile
+export declare function parseVarsFile(yamlText: string): VarsFile;
+
 // export: PatternRegistry
 export interface PatternRegistry {
     version: number;
@@ -526,6 +529,18 @@ export declare function resolveDeploymentType(profile: ConfluenceProfile): Deplo
 // export: resolveTemplate
 export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): TemplateLibraryEntry | undefined;
 
+// export: resolveTemplateValues
+export declare function resolveTemplateValues(input: {
+    cli: Record<string, unknown>;
+    file?: VarsFile;
+    declarations?: TemplateVariable[];
+}): {
+    values: Record<string, unknown>;
+    missing: TemplateVariable[];
+    errors: string[];
+    declarations: TemplateVariable[];
+};
+
 // export: ResultData
 export interface ResultData {
     command: string[];
@@ -617,11 +632,20 @@ export type TlsOptions = {
 // export: TokenResolver
 export type TokenResolver = (profile: Profile) => string | null;
 
+// export: unusedVariables
+export declare function unusedVariables(values: Record<string, unknown>, declarations: TemplateVariable[], used: Set<string>): string[];
+
 // export: VariableUse
 export interface VariableUse {
     name: string;
     unit: string;
     line?: number;
+}
+
+// export: VarsFile
+export interface VarsFile {
+    variables: TemplateVariable[];
+    values: Record<string, unknown>;
 }
 
 // export: verifyTemplateBytes
@@ -1298,6 +1322,9 @@ export interface ParsedTemplate {
 // export: parseTemplate
 export declare function parseTemplate(raw: string): ParsedTemplate;
 
+// export: parseVarsFile
+export declare function parseVarsFile(yamlText: string): VarsFile;
+
 // export: PatternRegistry
 export interface PatternRegistry {
     version: number;
@@ -1518,6 +1545,18 @@ export declare function resolveDeploymentType(profile: ConfluenceProfile): Deplo
 
 // export: resolveTemplate
 export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): TemplateLibraryEntry | undefined;
+
+// export: resolveTemplateValues
+export declare function resolveTemplateValues(input: {
+    cli: Record<string, unknown>;
+    file?: VarsFile;
+    declarations?: TemplateVariable[];
+}): {
+    values: Record<string, unknown>;
+    missing: TemplateVariable[];
+    errors: string[];
+    declarations: TemplateVariable[];
+};
 
 // export: resolveToken
 export declare function resolveToken(profile: Profile): string | null;
@@ -1828,6 +1867,9 @@ export type TuiViewSetting = {
 // export: unsetFlag
 export declare function unsetFlag(name: string, scope: "global" | "project"): Promise<boolean>;
 
+// export: unusedVariables
+export declare function unusedVariables(values: Record<string, unknown>, declarations: TemplateVariable[], used: Set<string>): string[];
+
 // export: UpdateInfo
 export interface UpdateInfo {
     currentVersion: string;
@@ -1892,6 +1934,12 @@ export interface VariableValidationResult {
     valid: boolean;
     error?: string;
     coerced?: unknown;
+}
+
+// export: VarsFile
+export interface VarsFile {
+    variables: TemplateVariable[];
+    values: Record<string, unknown>;
 }
 
 // export: verifyTemplateBytes
@@ -2277,6 +2325,9 @@ export interface LogSink {
     reset?(): void;
 }
 
+// export: parseVarsFile
+export declare function parseVarsFile(yamlText: string): VarsFile;
+
 // export: PatternRegistry
 export interface PatternRegistry {
     version: number;
@@ -2433,6 +2484,18 @@ export declare function resolveDeploymentType(profile: ConfluenceProfile): Deplo
 // export: resolveTemplate
 export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): TemplateLibraryEntry | undefined;
 
+// export: resolveTemplateValues
+export declare function resolveTemplateValues(input: {
+    cli: Record<string, unknown>;
+    file?: VarsFile;
+    declarations?: TemplateVariable[];
+}): {
+    values: Record<string, unknown>;
+    missing: TemplateVariable[];
+    errors: string[];
+    declarations: TemplateVariable[];
+};
+
 // export: ResultData
 export interface ResultData {
     command: string[];
@@ -2524,11 +2587,20 @@ export type TlsOptions = {
 // export: TokenResolver
 export type TokenResolver = (profile: Profile) => string | null;
 
+// export: unusedVariables
+export declare function unusedVariables(values: Record<string, unknown>, declarations: TemplateVariable[], used: Set<string>): string[];
+
 // export: VariableUse
 export interface VariableUse {
     name: string;
     unit: string;
     line?: number;
+}
+
+// export: VarsFile
+export interface VarsFile {
+    variables: TemplateVariable[];
+    values: Record<string, unknown>;
 }
 
 // export: verifyTemplateBytes
@@ -3277,6 +3349,9 @@ export interface ParsedTemplate {
 // export: parseTemplate
 export declare function parseTemplate(raw: string): ParsedTemplate;
 
+// export: parseVarsFile
+export declare function parseVarsFile(yamlText: string): VarsFile;
+
 // export: PatternRegistry
 export interface PatternRegistry {
     version: number;
@@ -3497,6 +3572,18 @@ export declare function resolveDeploymentType(profile: ConfluenceProfile): Deplo
 
 // export: resolveTemplate
 export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): TemplateLibraryEntry | undefined;
+
+// export: resolveTemplateValues
+export declare function resolveTemplateValues(input: {
+    cli: Record<string, unknown>;
+    file?: VarsFile;
+    declarations?: TemplateVariable[];
+}): {
+    values: Record<string, unknown>;
+    missing: TemplateVariable[];
+    errors: string[];
+    declarations: TemplateVariable[];
+};
 
 // export: resolveToken
 export declare function resolveToken(profile: Profile): string | null;
@@ -3807,6 +3894,9 @@ export type TuiViewSetting = {
 // export: unsetFlag
 export declare function unsetFlag(name: string, scope: "global" | "project"): Promise<boolean>;
 
+// export: unusedVariables
+export declare function unusedVariables(values: Record<string, unknown>, declarations: TemplateVariable[], used: Set<string>): string[];
+
 // export: UpdateInfo
 export interface UpdateInfo {
     currentVersion: string;
@@ -3871,6 +3961,12 @@ export interface VariableValidationResult {
     valid: boolean;
     error?: string;
     coerced?: unknown;
+}
+
+// export: VarsFile
+export interface VarsFile {
+    variables: TemplateVariable[];
+    values: Record<string, unknown>;
 }
 
 // export: verifyTemplateBytes

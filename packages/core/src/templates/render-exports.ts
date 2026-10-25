@@ -21,3 +21,5 @@ export { collectVariables, renderBody } from "./adapters/index.js";
 export type { BodyFormat, VariableUse } from "./adapters/index.js";
 export { BUILTIN_VARIABLE_NAMES, formatDate, getBuiltinVariables } from "./builtins.js";
 export type { BuiltinContext, BuiltinVariableName } from "./builtins.js";
+export { parseVarsFile, resolveTemplateValues, unusedVariables } from "./vars-file.js";
+export type { VarsFile } from "./vars-file.js";

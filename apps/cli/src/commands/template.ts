@@ -11,6 +11,7 @@ import {
   OutputOptions,
   fail,
   getFlag,
+  getFlags,
   hasFlag,
   output,
   loadConfig,
@@ -46,6 +47,7 @@ import {
 } from "@atlcli/core";
 import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence/internal";
 import { unknownSubcommand } from "./unknown-subcommand.js";
+import { parseVarAssignments } from "./template-flags.js";
 import { checkTemplateRender } from "./template-render-check.js";
 
 type Flags = Record<string, string | boolean | string[]>;
@@ -1359,30 +1361,7 @@ async function handleCopy(
  * Parse --var key=value flags into a variables object.
  */
 function parseVarFlags(flags: Flags): Record<string, unknown> {
-  const variables: Record<string, unknown> = {};
-  const varFlags = flags.var;
-
-  if (!varFlags) return variables;
-
-  const vars = Array.isArray(varFlags) ? varFlags : [varFlags];
-  for (const v of vars) {
-    if (typeof v !== "string") continue;
-    const eqIndex = v.indexOf("=");
-    if (eqIndex === -1) {
-      variables[v] = true; // Boolean flag
-    } else {
-      const key = v.slice(0, eqIndex);
-      const value = v.slice(eqIndex + 1);
-      // Try to parse as JSON for complex types
-      try {
-        variables[key] = JSON.parse(value);
-      } catch {
-        variables[key] = value;
-      }
-    }
-  }
-
-  return variables;
+  return parseVarAssignments(getFlags(flags, "var"));
 }
 
 /**
