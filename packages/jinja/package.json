@@ -1,0 +1,30 @@
+{
+  "name": "@atlcli/jinja",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "vendor": "bun scripts/vendor-nunjucks.ts"
+  },
+  "dependencies": {
+    "@atlcli/script-runtime": "workspace:*",
+    "quickjs-emscripten-core": "0.32.0"
+  },
+  "devDependencies": {
+    "nunjucks": "3.2.4"
+  }
+}
