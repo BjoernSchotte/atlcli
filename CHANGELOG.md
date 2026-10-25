@@ -2,6 +2,41 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.11] - 2026-10-25
+
+### Bug Fixes
+
+- **script:** Record templating only in plans that rendered ([0d8fdf0](https://github.com/bjoernschotte/atlcli/commit/0d8fdf05c287c8f8e10286f97365355b0c1926ec))
+- **core:** Harden template rendering after review ([89cd91c](https://github.com/bjoernschotte/atlcli/commit/89cd91cd0f7c1e5b1b12f04cea5945ecc8fab473))
+
+### Documentation
+
+- **spec:** Design for templating Jira and Confluence operations ([0121d3d](https://github.com/bjoernschotte/atlcli/commit/0121d3d4b015920db84c48fb4d5bc4ec4d422466))
+- **spec:** Resolve templating open questions ([243c4b5](https://github.com/bjoernschotte/atlcli/commit/243c4b54353c00b793decbcaae3d4da737f01b02))
+- **spec:** Implementation plan for operation templating ([d088fc6](https://github.com/bjoernschotte/atlcli/commit/d088fc6f379c0b509191361864616537101d6827))
+- Templating guide, operation pages and agent skill ([ca0fa4f](https://github.com/bjoernschotte/atlcli/commit/ca0fa4f6c30db3adb3c85c6970e15907a9096f4d))
+- **spec:** Templating implementation notes and E2E evidence ([c8469ca](https://github.com/bjoernschotte/atlcli/commit/c8469cae8ca0224f78598c2457deb6f693b84256))
+
+### Features
+
+- **core:** Shared template helpers and built-ins (@today, @now, @quarter, @week, @project) ([c72eba3](https://github.com/bjoernschotte/atlcli/commit/c72eba36977e9bae985a0a0b3314d81b8edd7fb3))
+- **core:** Tolerant Handlebars render core with budget and strict mode ([0b26e1e](https://github.com/bjoernschotte/atlcli/commit/0b26e1ef88371a4ec09ace6bf8e29fd285e2834d))
+- **core:** Text template adapter with Jira field checks ([f87e934](https://github.com/bjoernschotte/atlcli/commit/f87e9349bf3035dcb81a64fee46795bfe4edcc87))
+- **core:** ADF template adapter for inline text and links ([a24ab7e](https://github.com/bjoernschotte/atlcli/commit/a24ab7ea1ac939962d2704e494ead34a45640fd7))
+- **core:** ADF control paragraphs for if, unless, each and with ([a018c6b](https://github.com/bjoernschotte/atlcli/commit/a018c6b74906562fe64e33fa2cf155a3113bf826))
+- **core:** Byte-preserving storage XHTML template adapter ([a72b29e](https://github.com/bjoernschotte/atlcli/commit/a72b29e2f2a8a1f90085531e41c38e1ec3865e68))
+- **core:** Wiki markup adapter, renderBody dispatch and variable collection ([3b44a84](https://github.com/bjoernschotte/atlcli/commit/3b44a848ba5d0892ab2074043f20e8f1e7c32b73))
+- **cli:** Shared --var, --vars-file, --now and --strict parsing ([46d3a11](https://github.com/bjoernschotte/atlcli/commit/46d3a117dc85cc6a3ddd3c10a8d3a6a20b576a51))
+- **script:** Atlcli.render with frozen clock, vars and plan-recorded warnings ([e9b9bf3](https://github.com/bjoernschotte/atlcli/commit/e9b9bf33da854fa468e8401788da3617708b3600))
+- **jira:** Render templates in copy-issues and clone ([9422b63](https://github.com/bjoernschotte/atlcli/commit/9422b63ffd348201e90424fcbeefdfa890fc6861))
+- **jira:** Template variables for jira template save, get and apply ([ff01986](https://github.com/bjoernschotte/atlcli/commit/ff01986c11ae3fe174ab7eb19e5739e640b25761))
+- **script:** Confluence storage page copies, children and attachment copy verbs ([efcbc6e](https://github.com/bjoernschotte/atlcli/commit/efcbc6ef85162546f303929b2698134ffbb705c9))
+- **confluence:** Templated wiki page copy with --tree plan/apply ([f14a38e](https://github.com/bjoernschotte/atlcli/commit/f14a38ea3386bc9197ad6351d031c3f81a5890e6))
+- **cli:** Atlcli template vars lists template variables per source ([882e256](https://github.com/bjoernschotte/atlcli/commit/882e25632c1c5933833654504092c3b9075484c5))
+
+### Testing
+
+- **script:** Type the storage-copy apply fake ([232feb0](https://github.com/bjoernschotte/atlcli/commit/232feb09d913469398a0a88ca73656b49715f4ba))
 ## [2026.10.10] - 2026-10-25
 
 ### Bug Fixes
