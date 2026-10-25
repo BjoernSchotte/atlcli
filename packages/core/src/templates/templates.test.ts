@@ -223,6 +223,17 @@ describe("engine", () => {
     expect(result.usedVariables).toContain("title");
   });
 
+  test("a JSON list value stays a list for {% for %} (not its string form)", () => {
+    const engine = new TemplateEngine();
+    const template: Template = {
+      metadata: { name: "t", variables: [{ name: "items", type: "list" as never }, { name: "undeclared-type-free", type: "string" }] },
+      content: "{% for i in items %}- {{ i }}\n{% endfor %}",
+      source: { level: "global", path: "" },
+    };
+    const result = engine.render(template, { variables: { items: ["Budget", "Hiring"] }, builtins: {} });
+    expect(result.content).toBe("- Budget\n- Hiring\n");
+  });
+
   test("render reports missing required and undeclared variables (#298)", () => {
     const engine = new TemplateEngine();
     const template: Template = {

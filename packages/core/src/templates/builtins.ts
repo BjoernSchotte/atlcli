@@ -91,7 +91,7 @@ export function getBuiltinVariables(ctx: BuiltinContext): Record<string, unknown
   const iso = now.toISOString();
 
   return {
-    // Date/time variables; @today is always ISO so it feeds dateAdd
+    // Date/time variables; today is always ISO so it feeds dateAdd
     date: formatDate(now, dateFormat, utc),
     today: formatDate(now, "YYYY-MM-DD", utc),
     datetime: iso,

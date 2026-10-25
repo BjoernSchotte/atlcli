@@ -142,6 +142,7 @@ import { readAttachmentFile, resolveAttachmentFile } from "./docs-attachments.js
 import { handleSync, syncHelp } from "./sync.js";
 import { unknownSubcommand } from "./unknown-subcommand.js";
 import { checkTemplateRender } from "./template-render-check.js";
+import { parseVarAssignments } from "./template-flags.js";
 
 /** Sync state for bidirectional sync tracking */
 export type SyncState = "synced" | "local-modified" | "remote-modified" | "conflict";
@@ -3088,17 +3089,10 @@ function parseVarFlags(flags: Record<string, string | boolean | string[]>): Reco
     }
   }
 
-  // Handle --var key=value (supports multiple --var flags)
+  // --var key=value, repeatable; JSON values and a.b=v nesting as everywhere else.
   const varFlag = flags["var"];
   const varValues = Array.isArray(varFlag) ? varFlag : typeof varFlag === "string" ? [varFlag] : [];
-  for (const v of varValues) {
-    const eqIdx = v.indexOf("=");
-    if (eqIdx > 0) {
-      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
-    }
-  }
-
-  return vars;
+  return { ...vars, ...parseVarAssignments(varValues.filter((v) => v.indexOf("=") > 0)) };
 }
 
 function titleFromFilename(path: string): string {

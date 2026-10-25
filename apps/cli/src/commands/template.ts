@@ -1788,7 +1788,7 @@ Validate options:
 Render options:
   --var <key=value>   Set variable value (repeatable)
   --interactive       Prompt for missing required variables
-  --title <title>     Set @title built-in variable
+  --title <title>     Set the title built-in variable
 
 Init options:
   --from <source>       Page ID, title, or file path (required)
@@ -1823,9 +1823,9 @@ Update options:
   --source <url>        Update only from this source
                         (updates always replace and re-track the source)
 
-Built-in @variables available in templates:
-  @date, @datetime, @time, @year, @month, @day, @weekday
-  @user, @space, @profile, @title, @parent, @uuid
+Built-in variables available in templates (Jinja: {{ date }}, {% if title %}…):
+  date, datetime, time, year, month, day, weekday, today, now
+  user, space, profile, title, parent, uuid
 
 Examples:
   atlcli wiki template list

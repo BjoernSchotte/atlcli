@@ -110,7 +110,8 @@ export function validateVariableValue(
     }
 
     default:
-      return { valid: true, coerced: strValue };
+      // Lists and objects (JSON --var values, vars files) stay structured for {% for %}.
+      return { valid: true, coerced: typeof value === "object" ? value : strValue };
   }
 }
 

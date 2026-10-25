@@ -42,7 +42,7 @@ export interface TemplateRunInput {
 export const TEMPLATE_FLAGS_HELP = `Templates:
   --var <name=value>     Template variable, repeatable (a.b=v nests; JSON values allowed)
   --vars-file <file>     YAML file with values (and optional variables: declarations)
-  --now <iso>            Freeze the clock for @today/@now (repeat a plan exactly)
+  --now <iso>            Freeze the clock for today/now (repeat a plan exactly)
   --strict               Fail on any template warning (unresolved {{…}} and others)`;
 
 /** `key` alone is true, JSON values are parsed, anything else is a string; `a.b=v` nests. */
