@@ -114,7 +114,7 @@ boundary):
 - No partials or helper registration from content.
 - Handlebars' prototype-access protection stays on (the default since 4.6).
 - `noEscape: true`; escaping is the adapter's job.
-- Output limit per unit (default 1 MB) and per run, so `{{#each}}` over a
+- Output limit per unit (default 1 MB) and per run (default 16 MB), so `{{#each}}` over a
   large array can't explode; exceeding it is an error.
 
 **Determinism**: `@now` is captured once per run. The plan records it, and
@@ -423,11 +423,11 @@ Apply never renders again: it writes the planned values.
 7. `atlcli template vars`.
 8. Docs, skill, API report, live E2E.
 
-## Open questions
+## Resolved questions (2026-10-25)
 
-1. `--replace`: keep it indefinitely as legacy, or announce removal for a
-   later release?
-2. `atlcli template vars`: top-level `template` namespace (new), or
-   `jira template vars` / `wiki template vars` separately?
-3. Output limit: is 1 MB per unit and 16 MB per run right, or should it
-   follow the script runtime's `--max-memory`?
+1. `--replace` stays indefinitely as legacy: no deprecation warning, applied
+   before rendering, docs point to `--var`.
+2. The variable listing lives in a new top-level namespace:
+   `atlcli template vars`, covering every source.
+3. Output limit: 1 MB per unit and 16 MB per run as fixed defaults; inside
+   scripts the runtime's `--max-memory` caps it on top.
