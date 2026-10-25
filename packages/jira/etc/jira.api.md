@@ -1054,6 +1054,7 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    hasScreen?: boolean;
     fields?: Record<string, JiraTransitionField>;
 }
 
@@ -2835,6 +2836,7 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    hasScreen?: boolean;
     fields?: Record<string, JiraTransitionField>;
 }
 
@@ -4688,6 +4690,7 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    hasScreen?: boolean;
     fields?: Record<string, JiraTransitionField>;
 }
 
@@ -6469,6 +6472,7 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    hasScreen?: boolean;
     fields?: Record<string, JiraTransitionField>;
 }
 

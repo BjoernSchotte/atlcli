@@ -161,6 +161,8 @@ export interface JiraTransition {
   id: string;
   name: string;
   to: JiraStatus;
+  /** Whether the transition shows a screen; without one Jira ignores a comment sent with it. */
+  hasScreen?: boolean;
   /** Fields available/required during transition */
   fields?: Record<string, JiraTransitionField>;
 }

@@ -103,7 +103,7 @@ beforeAll(async () => {
       }
       if ((m = /^\/rest\/api\/3\/issue\/([A-Z]+-\d+)\/transitions$/.exec(path))) {
         const issue = issues.get(m[1]!)!;
-        if (req.method === "GET") return Response.json({ transitions: [{ id: "31", name: "Done" }, { id: "41", name: "Won't Do" }] });
+        if (req.method === "GET") return Response.json({ transitions: [{ id: "31", name: "Done", hasScreen: true }, { id: "41", name: "Won't Do", hasScreen: false }] });
         bodies.push(["transition", body]);
         issue.fields.status = { name: body.transition.id === "31" ? "Done" : "Won't Do" };
         issue.fields.updated = tick();
@@ -442,6 +442,15 @@ await atlcli.jira.notify("ATLCLI-1", { subject: "Done", markdown: "It is *done*"
     const notify = bodies.find(([kind]) => kind === "notify")![1] as any;
     expect(notify).toMatchObject({ subject: "Done", textBody: "It is *done*", to: { assignee: true, users: [{ accountId: "acc-bob" }] } });
     expect(notify.htmlBody).toContain("<em>done</em>");
+  });
+
+  test("a transition without a screen gets its comment added separately (Jira would drop it)", async () => {
+    const file = await script("noscreen.ts", `await atlcli.jira.transition("ATLCLI-1", "Won't Do", { comment: "Not needed" });`);
+    const out = await run(["run", file, "--apply", "--yes"]);
+    expect(out.exitCode, out.stderr).toBe(0);
+    const transition = bodies.find(([kind]) => kind === "transition")![1] as any;
+    expect(transition).toEqual({ transition: { id: "41" } });
+    expect(issues.get("ATLCLI-1")!.comments).toHaveLength(1);
   });
 });
 

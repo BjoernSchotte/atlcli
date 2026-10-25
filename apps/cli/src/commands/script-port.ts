@@ -2,7 +2,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { ConfluenceClient, type FooterComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
 import type { Profile } from "@atlcli/core";
-import { copyAttachment, findTransition, JiraClient, type JiraIssue, type JiraSprint, resolveUser, toJiraRichText } from "@atlcli/jira";
+import { copyAttachment, findTransition, JiraClient, type JiraIssue, type JiraSprint, type JiraTransition, resolveUser, toJiraRichText } from "@atlcli/jira";
 import type {
   AttachmentInput,
   ConfluenceCommentView,
@@ -41,12 +41,19 @@ export function createCliScriptPort(
 ): ScriptPort {
   const conversion = { baseUrl };
   const richText = (markdown: string) => toJiraRichText(jira(), markdown);
-  /** Transition body: screen fields plus a comment added with the transition. */
-  const transitionInput = (id: string, options?: { fields?: Record<string, unknown>; comment?: string }) => ({
-    transition: { id },
-    ...(options?.fields ? { fields: options.fields } : {}),
-    ...(options?.comment ? { update: { comment: [{ add: { body: richText(options.comment) } }] } } : {}),
-  });
+  /**
+   * Moves an issue with screen fields and a comment. Jira drops a comment sent
+   * with a transition that has no screen (silently), so it is added after.
+   */
+  const transitionWith = async (key: string, transition: JiraTransition, options?: { fields?: Record<string, unknown>; comment?: string }) => {
+    const inline = options?.comment && transition.hasScreen !== false;
+    await jira().transitionIssue(key, {
+      transition: { id: transition.id },
+      ...(options?.fields ? { fields: options.fields } : {}),
+      ...(inline ? { update: { comment: [{ add: { body: richText(options!.comment!) } }] } } : {}),
+    });
+    if (options?.comment && !inline) await jira().addComment(key, richText(options.comment));
+  };
 
   return {
     async jiraSearch(jql, { fields, properties, pageToken, maxResults, signal }) {
@@ -99,7 +106,7 @@ export function createCliScriptPort(
       if (!transition) {
         throw new Error(`Transition "${name}" is not available for ${key} (available: ${transitions.map((t) => t.name).join(", ") || "none"})`);
       }
-      await jira().transitionIssue(key, transitionInput(transition.id, options));
+      await transitionWith(key, transition, options);
     },
     async jiraSetStatus(key, status, options) {
       const wanted = status.toLowerCase();
@@ -107,7 +114,7 @@ export function createCliScriptPort(
       const transition =
         transitions.find((t) => t.to?.name?.toLowerCase() === wanted) ?? transitions.find((t) => t.name.toLowerCase() === wanted);
       if (!transition) return { moved: false };
-      await jira().transitionIssue(key, transitionInput(transition.id, options));
+      await transitionWith(key, transition, options);
       return { moved: true, transition: transition.name };
     },
     async jiraTransitions(key) {
@@ -324,6 +331,9 @@ export function createCliScriptPort(
     async confluenceMovePage(id, parentId) {
       const page = await confluence().movePage(id, parentId);
       return { id: page.id, version: page.version ?? 1 };
+    },
+    async confluenceArchivePage(id) {
+      await confluence().archivePage(id);
     },
     async confluenceDeletePage(id) {
       await confluence().deletePage(id);
