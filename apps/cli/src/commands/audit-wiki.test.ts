@@ -3,12 +3,15 @@
  * snapshot the rules see, the older check flags, baseline, --fail-on, a
  * custom rule and the rules file's confluence: section.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSyncDb, initAtlcliDir, type PageRecord } from "@atlcli/confluence/internal";
+
+// Each test spawns the CLI several times; CI runners need more than Bun's 5 s.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const DAY = 24 * 60 * 60 * 1000;

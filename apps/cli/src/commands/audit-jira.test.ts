@@ -2,12 +2,15 @@
  * `audit jira` through the real CLI against a local Bun HTTP server speaking
  * the Jira Cloud paths.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { auditRulesCandidates, parseStaleDays } from "./audit-jira.js";
+
+// Each test spawns the CLI several times; CI runners need more than Bun's 5 s.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const DAY = 24 * 60 * 60 * 1000;
