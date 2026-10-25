@@ -1,4 +1,7 @@
-import type { Segment } from "../render.js";
+import type { RenderWarning, Segment } from "../render.js";
+
+/** A run's line and column say nothing about where it sits in the page or description. */
+export const withoutPosition = ({ line: _line, column: _column, ...w }: RenderWarning): RenderWarning => w;
 
 /**
  * Maps rendered segments of a joined run back onto its pieces (ADF text

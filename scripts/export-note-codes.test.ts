@@ -104,6 +104,7 @@ const NON_EXPORT_NOTE_CODES = new Set([
   "invalid-url",
   "not-rendered-field",
   "unbalanced-block",
+  "dropped-content",
   // Zod refinement issues emitted while validating HITL question proposals.
   "custom",
   // ActionUnavailableReasonCodeV1 is a separate palette availability

@@ -16,7 +16,13 @@ export function renderWikiMarkup(text: string, scope: TemplateScope, opts: Rende
   let last = 0;
   const render = (part: string) => {
     const r = renderText(part, scope, inner);
-    warnings.push(...r.warnings);
+    // Positions count from the part; shift them to the whole text.
+    const before = text.slice(0, last).split(/\r\n?|\n/);
+    const line = before.length - 1;
+    const column = before.at(-1)!.length;
+    for (const w of r.warnings) {
+      warnings.push(w.line === undefined ? w : { ...w, line: w.line + line, column: (w.column ?? 0) + (w.line === 1 ? column : 0) });
+    }
     return r.text;
   };
   for (const m of text.matchAll(CODE)) {

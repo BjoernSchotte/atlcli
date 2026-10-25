@@ -7,7 +7,7 @@
  */
 import { finish, RenderBudget, renderSegments, renderText, type RenderOptions, type RenderWarning, type TemplateScope } from "../render.js";
 import { renderAdfBlocks } from "./adf-blocks.js";
-import { distribute } from "./runs.js";
+import { distribute, withoutPosition } from "./runs.js";
 
 export interface AdfMark {
   type: string;
@@ -68,7 +68,7 @@ function renderInline(children: AdfNode[], ctx: AdfContext): AdfNode[] {
       out.push(...run.map((n) => renderLinkMarks(n, ctx)));
     } else {
       const { segments, warnings } = renderSegments(joined, ctx.scope, ctx.opts);
-      ctx.warnings.push(...warnings);
+      ctx.warnings.push(...warnings.map(withoutPosition));
       const texts = distribute(pieces, segments);
       run.forEach((n, i) => {
         // ADF forbids empty text nodes.
@@ -96,7 +96,7 @@ function renderLinkMarks(node: AdfNode, ctx: AdfContext): AdfNode {
     if (!templated(m)) return m;
     const href = m.attrs!.href as string;
     const { text, warnings } = renderText(href, ctx.scope, ctx.opts);
-    ctx.warnings.push(...warnings);
+    ctx.warnings.push(...warnings.map(withoutPosition));
     let ok = URL_OK.test(text);
     if (ok && /^https?:/.test(text)) {
       try {

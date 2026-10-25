@@ -113,6 +113,23 @@ function nodeControl(n: AdfNode): Control | undefined {
   return text === undefined ? undefined : controlOf(text);
 }
 
+/** Text of a cell, with other nodes as `[type]`, so a non-empty cell never reads as empty. */
+const plainText = (n: AdfNode): string =>
+  n.type === "text"
+    ? (n.text ?? "")
+    : ["paragraph", "tableCell", "tableHeader", "hardBreak"].includes(n.type)
+      ? (n.content ?? []).map(plainText).join("")
+      : `[${n.type}]`;
+
+/** A control row is removed whole; content in its other cells goes with it. */
+export function droppedContent(ctx: Pick<AdfContext, "opts" | "warnings">, lost: string): void {
+  ctx.warnings.push({
+    code: "dropped-content",
+    message: `${ctx.opts.unit}: a {{#…}} control row is removed with the content of its other cells ("${lost.slice(0, 60)}")`,
+    unit: ctx.opts.unit,
+  });
+}
+
 export function renderAdfBlocks(nodes: AdfNode[], ctx: AdfContext, render: (n: AdfNode, c: AdfContext) => AdfNode): AdfNode[] {
   if (!nodes.some((n) => nodeControl(n))) return nodes.map((n) => render(n, ctx));
   const items = structure(nodes, nodeControl);
@@ -123,6 +140,10 @@ export function renderAdfBlocks(nodes: AdfNode[], ctx: AdfContext, render: (n: A
       unit: ctx.opts.unit,
     });
     return nodes.map((n) => (nodeControl(n) ? n : render(n, ctx)));
+  }
+  for (const n of nodes) {
+    const lost = nodeControl(n) && n.type === "tableRow" ? (n.content ?? []).slice(1).map(plainText).join(" ").trim() : "";
+    if (lost) droppedContent(ctx, lost);
   }
   const emit = (list: Item<AdfNode>[], c: AdfContext): AdfNode[] =>
     list.flatMap((item) => ("node" in item ? [render(item.node, c)] : expandBlock(item.block, c, emit)));

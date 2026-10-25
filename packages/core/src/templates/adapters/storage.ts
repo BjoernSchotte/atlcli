@@ -10,8 +10,8 @@
  */
 import { finish, RenderBudget, renderSegments, type RenderOptions, type RenderWarning, type TemplateScope } from "../render.js";
 import type { AdfContext } from "./adf.js";
-import { controlOf, expandBlock, structure, type Control, type Item } from "./adf-blocks.js";
-import { distribute } from "./runs.js";
+import { controlOf, droppedContent, expandBlock, structure, type Control, type Item } from "./adf-blocks.js";
+import { distribute, withoutPosition } from "./runs.js";
 
 interface Text {
   kind: "text";
@@ -132,6 +132,16 @@ const onlyChild = (el: El) => {
   return kids.length === 1 && kids[0]!.kind === "el" ? (kids[0] as El) : undefined;
 };
 
+/** Text of a cell, with other elements as `[name]`, so a non-empty cell never reads as empty. */
+const plainText = (n: Node): string =>
+  n.kind === "text"
+    ? n.decoded
+    : n.kind === "opaque"
+      ? ""
+      : ["td", "th", "p", "br"].includes(n.name) || inRun(n)
+        ? n.children.map(plainText).join("")
+        : `[${n.name}]`;
+
 function controlFor(n: Node): Control | undefined {
   if (n.kind !== "el") return undefined;
   let text: string | undefined;
@@ -168,6 +178,11 @@ export function renderStorage(storage: string, scope: TemplateScope, opts: Rende
       c.warnings.push({ code: "unbalanced-block", message: `${c.opts.unit}: {{#…}} control paragraphs don't pair up; left as is`, unit: c.opts.unit });
       return nodes.map((n) => (controlFor(n) ? raw(n) : printList([n], c))).join("");
     }
+    for (const n of nodes) {
+      if (n.kind !== "el" || n.name !== "tr" || !controlFor(n)) continue;
+      const lost = n.children.filter((k): k is El => k.kind === "el").slice(1).map(plainText).join(" ").trim();
+      if (lost) droppedContent(c, lost);
+    }
     const emit = (list: Item<Node>[], cc: Ctx): string[] => {
       const out: string[] = [];
       let plain: Node[] = [];
@@ -200,7 +215,7 @@ export function renderStorage(storage: string, scope: TemplateScope, opts: Rende
         continue;
       }
       const { segments, warnings } = renderSegments(joined, c.scope, c.opts);
-      c.warnings.push(...warnings);
+      c.warnings.push(...warnings.map(withoutPosition));
       distribute(pieces, segments).forEach((text, i) => {
         if (text !== pieces[i]) replaced.set(run.texts[i]!, encodeText(text));
       });
