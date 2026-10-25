@@ -171,6 +171,7 @@ Once `meta.permissions` is declared, sprint writes on a board that belongs to no
 | `confluence.comment(pageId, markdown)` | `{ id }` placeholder | `confluence:write:<space of page>` | footer comment; no precondition |
 | `confluence.movePage(id, { parentId })` | `{ id }` | `confluence:write:<space of page>` | move; page version unchanged. Within the page's space. Left out when the page already has that parent |
 | `confluence.deletePage(id)` | `null` | `confluence:write:<space of page>` | moves the page to the space's trash; page version unchanged. Later writes to it in the same plan throw |
+| `confluence.archivePage(id)` | `null` | `confluence:write:<space of page>` | archives the page; page version unchanged. Confluence archives in the background, so the page can read as current for a moment |
 | `confluence.attachments(pageId)` | `[{ id, name, mediaType, size, version }]` | `confluence:read` | read |
 | `confluence.attach(pageId, { name, content, encoding? })` | `{ id }` placeholder | `confluence:write:<space of page>` | attachment; no precondition. An attachment of the same name gets a new version |
 | `confluence.copyAttachment(attachmentId, sourcePageId, toPageId)` | `{ id }` | `confluence:write:<space of target>` | copies the bytes host-side when applied; left out when the target already has a file of that name and size |
@@ -217,7 +218,7 @@ The first write to an existing object records the state the plan saw. Later writ
 | Issue unchanged | `jira.update`, `jira.transition`, `jira.setStatus`, `jira.assign`, `jira.addLabels`, `jira.removeLabels` | `fields.updated` is the same |
 | Attachment unchanged | `jira.copyAttachment` (on the source attachment) | the attachment still exists with the same size |
 | Sprint unchanged | `jira.updateSprint` on an existing sprint | `state` is the same |
-| Page unchanged | `confluence.updatePage`, `upsertPage` on an existing page, `movePage`, `deletePage` | `version` is the same |
+| Page unchanged | `confluence.updatePage`, `upsertPage` on an existing page, `movePage`, `deletePage`, `archivePage` | `version` is the same |
 | Title absent | `confluence.createPage`, `upsertPage` on a new page | no page with that title in the space |
 
 All preconditions are checked before the first write. If any fails, nothing is written. Between that check and each write there is a short window. A concurrent page edit in it makes the update fail on the version check. A concurrent issue edit in it is overwritten, because Jira has no conditional update.

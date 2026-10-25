@@ -77,6 +77,7 @@ case.
 | `atlcli.confluence.comments(pageId)` / `comment(pageId, markdown)` | footer comments |
 | `atlcli.confluence.movePage(id, { parentId })` | within the page's space |
 | `atlcli.confluence.deletePage(id)` | to the space's trash; later writes to it in the plan throw |
+| `atlcli.confluence.archivePage(id)` | archives the page (Confluence finishes it in the background) |
 | `atlcli.confluence.attachments(pageId)` / `attach(pageId, { name, content, encoding? })` | same name → new version |
 | `atlcli.confluence.export(pageId, { format: "pdf" \| "docx", path? })` | file written below the apply directory when applied |
 | `atlcli.confluence.copyAttachment(attachmentId, sourcePageId, toPageId)` | bytes copied on apply, never in the plan; skipped if the target has the same name and size |

@@ -11,7 +11,9 @@ description: "atlcli audit jira: stuck, stale, overdue or flagged work and workf
 - gaps such as missing epics or estimates;
 - workflows whose done statuses sit in the wrong category.
 
-It only reports; it never changes an issue.
+It only reports. Changes happen only when you ask for them with `--fix`, as a plan you review first.
+
+Every rule is a TypeScript script that runs read-only in the [script sandbox](../scripts.md). You can print a built-in rule, replace it with your own version, or add rules of your own: see [Custom Audit Rules](../audit-scripts.md).
 
 Which findings are loud, quiet or silent is up to you: a [rules file](audit-rules.md) sets severities, thresholds and exceptions per project, status or issue type, and a baseline accepts findings you already know about.
 
@@ -55,7 +57,14 @@ Flow metrics answer "how fast do we deliver" ([Flow Metrics](flow-metrics.md)). 
          workflow/resolved-not-done: off
    ```
 
-4. Use it in CI or cron: the audit exits 2 when an error-level finding remains.
+4. Optional: add a rule of your own. `atlcli audit init` writes a skeleton to `./.atlcli/audit/`, and every rule there runs with the built-ins:
+
+   ```bash
+   atlcli audit init
+   atlcli audit jira --project ATLCLI --list-rules
+   ```
+
+5. Use it in CI or cron: the audit exits 2 when an error-level finding remains.
 
    ```bash
    atlcli audit jira --board 42 --markdown > jira-audit.md || echo "audit errors"
@@ -63,7 +72,7 @@ Flow metrics answer "how fast do we deliver" ([Flow Metrics](flow-metrics.md)). 
 
 ## Rules
 
-The audit reads the open issues of the selection and, for some rules, the issues done in the last 90 days. Each rule has an id `<category>/<name>`.
+The audit reads the open issues of the selection and, for some rules, the issues done in the last 90 days. Each rule has an id `<category>/<name>`. `--list-rules` lists them with their source, and `--print-rule <id>` prints a rule's script.
 
 | Rule | Default (profile `default`) | Finds |
 |---|---|---|
@@ -112,8 +121,18 @@ The issue history shows which of two cases applies, and the finding says so:
 | `--points-field` | field id | auto-detected | Story points field for `hygiene/unestimated-in-sprint` |
 | `--flagged-field` | field id | auto-detected | Flagged field for `hygiene/flagged` |
 | `--limit` | integer ≥ 1 | `1000` | Most issues per query; hitting it marks the report partial |
-| `--markdown` | flag | off | Markdown report with one table per rule |
-| `--json` | flag | off | JSON report (`schemaVersion: "2"`) |
+| `--markdown` | flag | off | Markdown report with one table per rule (a Jinja template; `--print-template` prints it) |
+| `--template` | file path | — | Render the report with your own [Jinja](../templating.md) template; other templates in its directory can be included |
+| `--report` | file path | stdout | Write the Markdown report to this file |
+| `--report-script` | rule id | last rule with one | Build the report with this rule's `report` export |
+| `--json` | flag | off | JSON report (`schemaVersion: "3"`) |
+| `--script` | file path, repeatable | — | Add a rule script (see [Custom Audit Rules](../audit-scripts.md)) |
+| `--list-rules` | flag | off | List the rules with their source, fix and report exports |
+| `--print-rule` | rule id | — | Print a rule's script, built-ins included |
+| `--fix` | flag | off | Plan the `fix` exports of the listed findings; nothing changes |
+| `--apply` | flag | off | With `--fix`: apply the plan (asks first; `--yes` skips the question) |
+| `--plan-out` | file path | — | With `--fix`: save the plan for `atlcli script apply` |
+| `--concurrency` | 1–32 | `1` | With `--fix --apply`: operations in flight at once |
 
 ### Configuration
 
@@ -160,8 +179,10 @@ atlcli audit jira --jql "project = ATLCLI AND component = API" --rules team-rule
 
 ```json
 {
-  "schemaVersion": "2",
+  "schemaVersion": "3",
+  "product": "jira",
   "generatedAt": "2026-10-22T08:00:00.000Z",
+  "query": "project = ATLCLI AND component = API",
   "rules": { "source": "/work/atlcli/team-rules.yaml", "extends": "default", "minLevel": "warning" },
   "summary": {
     "total": 1,
@@ -174,6 +195,7 @@ atlcli audit jira --jql "project = ATLCLI AND component = API" --rules team-rule
       "rule": "flow/unassigned-wip",
       "category": "flow",
       "severity": "warning",
+      "target": { "kind": "issue", "key": "ATLCLI-12", "url": "https://example.atlassian.net/browse/ATLCLI-12" },
       "key": "ATLCLI-12",
       "summary": "Retry uploads",
       "status": "In Progress",
@@ -187,11 +209,22 @@ atlcli audit jira --jql "project = ATLCLI AND component = API" --rules team-rule
   "staleBaselineEntries": 0,
   "partial": [],
   "diagnostics": [],
-  "query": "project = ATLCLI AND component = API"
+  "titles": { "flow/unassigned-wip": "In progress without assignee" }
 }
 ```
 
-`subject` is what the baseline records: the issue key, or `status:<id>` for `workflow/resolved-not-done`.
+`subject` is what the baseline records: the issue key, or `status:<id>` for `workflow/resolved-not-done`. A finding of a rule with a `fix` export carries `"fixable": true`.
+
+Advanced: plan the fixes of a team rule, review, then apply:
+
+```bash
+atlcli audit jira --project ATLCLI --checks team/bug-without-component --fix --plan-out fixes.json
+atlcli script apply fixes.json
+```
+
+### Schema version 3
+
+`schemaVersion` 3 replaced 2 when the rules became scripts. Version 3 adds `product`, `titles` and, per finding, `target` and `fixable`; `query` moved to the top. Everything version 2 had is still there with the same meaning.
 
 ## Exit codes
 
@@ -221,12 +254,19 @@ Check `workflow/resolved-not-done` first. A done status in the In Progress categ
 **The rules file is ignored.**
 Only the first file found is used: `--rules`, then `./.atlcli/audit-rules.yaml`, then the profile's, then the global one. The report's `Rules:` line names the file in use.
 
+**`Audit rule … failed (permission-denied): audit rules only read`.**
+A rule called a write verb such as `atlcli.jira.update`. Rules only read; move the change into `export async function fix(finding, issue)` and run with `--fix`.
+
+**`… replaces the built-in rule`.**
+A script in `.atlcli/audit/`, `~/.atlcli/audit/`, `scripts:` or `--script` has a built-in rule's id, so it runs instead of the built-in. That is how you adapt one; rename the id to run both.
+
 **A finding I accepted is back.**
 The baseline matches rule and issue (or rule and status). A finding under a renamed custom rule id is new. `--prune-baseline` removes entries that no longer match.
 
 ## Related topics
 
 - [Audit Rules](audit-rules.md)
+- [Custom Audit Rules](../audit-scripts.md)
 - [Flow Metrics](flow-metrics.md)
 - [Daily Digest](../digest.md): lists audit errors for its projects
 - [Wiki Audit](../confluence/audit.md)
