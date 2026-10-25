@@ -6681,7 +6681,7 @@ interface JiraTemplateContext {
   projectKey?: string;
 }
 
-async function getJiraTemplateContext(
+export async function getJiraTemplateContext(
   flags: Record<string, string | boolean | string[]>
 ): Promise<JiraTemplateContext> {
   // Check for migration

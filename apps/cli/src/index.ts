@@ -31,6 +31,7 @@ import { handleJira, jiraHelpFor } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
 import { handleSkill } from "./commands/skill.js";
 import { handleScript } from "./commands/script.js";
+import { handleTemplateCommand, templateCommandHelp } from "./commands/template-vars.js";
 import {
   chatHelp,
   handleChat,
@@ -196,6 +197,9 @@ async function main(): Promise<void> {
       case "script":
         await handleScript(rest, parsed.flags, opts);
         break;
+      case "template":
+        await handleTemplateCommand(rest, parsed.flags, opts);
+        break;
       case "update":
         await handleUpdate(rest, parsed.flags, opts);
         break;
@@ -326,6 +330,9 @@ function showCommandHelp(
       break;
     case "skill":
       handleSkill(subArgs, helpFlags, opts);
+      break;
+    case "template":
+      output(templateCommandHelp(), opts);
       break;
     case "update":
       handleUpdate(subArgs, helpFlags, opts);

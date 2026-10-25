@@ -17,6 +17,7 @@ export const ROOT_COMMANDS: ReadonlyArray<readonly [name: string, description: s
   ["research", "Run bounded read-only Jira + Confluence research"],
   ["chat", "Ask a read-only Jira or Confluence question"],
   ["script", "Run TypeScript automation scripts (plan, then apply)"],
+  ["template", "Inspect template variables across Jira and Confluence"],
   ["pdf-template", "Create reviewed PDF template packs from Word documents"],
   ["log", "Query and manage logs"],
   ["models", "Optional local models (table structure for PDF import)"],

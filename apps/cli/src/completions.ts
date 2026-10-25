@@ -24,6 +24,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   audit: ["jira", "wiki"],
   auth: ["delete", "init", "list", "login", "logout", "rename", "status", "switch"],
   completion: ["bash", "zsh"],
+  template: ["vars"],
   config: ["get", "list", "set", "unset"],
   jira: [
     "analyze",
@@ -624,6 +625,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
 
   // skill flags
   skill: ["--install", "--list"],
+  "template vars": ["--file", "--issue", "--jira-template", "--jql", "--page", "--tree", "--vars-file"],
 };
 
 /**
