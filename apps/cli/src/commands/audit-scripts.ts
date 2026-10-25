@@ -12,6 +12,7 @@ import {
   AuditRegistry,
   type AuditFinding,
   type AuditReportV3,
+  type AuditRuleConfig,
   type AuditRuleScript,
   AuditScriptError,
   DEFAULT_MARKDOWN_TEMPLATE,
@@ -133,7 +134,7 @@ export function handleRuleListing(scripts: AuditRuleScript[], flags: Flags, opts
 }
 
 /**
- * Plans the fixes for the listed findings: each rule's `fix(finding, item)`
+ * Plans the fixes for the listed findings: each rule's `fix(finding, item, rule)`
  * runs once per finding of that rule (all in one sandbox run per rule), and
  * the plans are merged into one. Writes are planned, never executed here.
  */
@@ -143,6 +144,7 @@ export async function planAuditFixes(
   itemFor: (finding: AuditFinding) => unknown,
   port: ScriptPort,
   onLog?: (level: "info" | "warn" | "error", message: string) => void,
+  configFor?: (finding: AuditFinding) => AuditRuleConfig | undefined,
 ): Promise<ScriptRunPlan> {
   const rt = await runtime();
   const runs: ScriptRunPlan[] = [];
@@ -153,9 +155,9 @@ export async function planAuditFixes(
     runs.push(
       await rt.planScript(script.js, {
         port,
-        items: mine.map((finding) => ({ finding, item: itemFor(finding) ?? null })),
+        items: mine.map((finding) => ({ finding, item: itemFor(finding) ?? null, rule: { id: script.meta.id, config: configFor?.(finding) ?? {} } })),
         entry: "fix",
-        prelude: "globalThis.__atlcliArgs = (it) => [it.finding, it.item];",
+        prelude: "globalThis.__atlcliArgs = (it) => [it.finding, it.item, Object.freeze(it.rule)];",
         limits: { deadlineMs: 60_000 + mine.length * 2_000, maxHostCalls: 1_000 + mine.length * 50 },
         maxWrites: Math.max(100, mine.length * 20),
         ...(onLog ? { onLog } : {}),
@@ -196,7 +198,7 @@ export async function runAuditFixes(
   report: AuditReportV3,
   scripts: AuditRuleScript[],
   itemFor: (finding: AuditFinding) => unknown,
-  ctx: { profile: Profile; port: ScriptPort },
+  ctx: { profile: Profile; port: ScriptPort; configFor?: (finding: AuditFinding) => AuditRuleConfig | undefined },
   flags: Flags,
   opts: OutputOptions,
 ): Promise<void> {
@@ -205,8 +207,13 @@ export async function runAuditFixes(
     output(opts.json ? { schemaVersion: "1", fixes: 0 } : "No listed finding has a fix (a rule proposes one with export async function fix(finding, item)).", opts);
     return;
   }
-  const run = await planAuditFixes(fixable, scripts, itemFor, ctx.port, (level, message) =>
-    process.stderr.write(`${level === "info" ? "" : `${level}: `}${message}\n`),
+  const run = await planAuditFixes(
+    fixable,
+    scripts,
+    itemFor,
+    ctx.port,
+    (level, message) => process.stderr.write(`${level === "info" ? "" : `${level}: `}${message}\n`),
+    ctx.configFor,
   );
   const rt = await runtime();
   const plan = await rt.createScriptPlan(run, {

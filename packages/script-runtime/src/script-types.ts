@@ -59,13 +59,19 @@ interface AuditMeta {
   category?: string;
   /** flag (default): a finding or not; age / until: \`rule.severity(days)\` against thresholds. */
   kind?: "flag" | "age" | "until";
-  /** item (default): \`default(item, rule)\` per item; run: \`default(data, rule)\` once. */
+  /**
+   * item (default): \`default(item, rule)\` per issue or AuditPage; run: \`default(data, rule)\`
+   * once, with Jira \`{ open, done, now }\` or Confluence \`{ pages, folderIssues, now }\`.
+   */
   scope?: "item" | "run";
-  /** Jira: which issues the rule gets: open (default) or done (last 90 days). */
+  /** Jira: which issues the rule gets: open (default) or done (last 90 days). Confluence: every page. */
   items?: string;
   /** Extra Jira fields to load for the items. */
   fields?: string[];
-  /** Host data: changelog, sprint, versions, points, flagged, cycle-percentiles, status-percentiles. */
+  /**
+   * Host data. Jira: changelog, sprint, versions, points, flagged, cycle-percentiles,
+   * status-percentiles. Confluence: links, http, contributors, remote, folders.
+   */
   needs?: string[];
   /** Settings for every profile, unless the rules file says otherwise (flag rules: "warning"). */
   defaults?: AuditPatch;
@@ -107,7 +113,53 @@ interface AuditFindingInput {
   updated?: string;
 }
 
-/** A finding as \`fix(finding, item)\` and reports see it. */
+/** The third argument of \`fix(finding, item, rule)\`: the rule's settings. */
+interface AuditFixRule {
+  readonly id: string;
+  readonly config: AuditRule["config"];
+}
+
+interface AuditUser {
+  id: string;
+  displayName: string | null;
+  /** null: not checked yet (\`audit wiki --refresh-users\`). */
+  active: boolean | null;
+}
+
+/** What a Confluence rule gets per page in \`atlcli audit wiki\`. */
+interface AuditPage {
+  id: string;
+  title: string;
+  spaceKey: string;
+  /** Local file, relative to the sync root; null for a page not synced. */
+  path: string | null;
+  url?: string;
+  /** False for a page only in Confluence (\`--include-remote\`). */
+  synced: boolean;
+  parentId: string | null;
+  ancestors: string[];
+  contentType: string;
+  /** current, draft, archived, … */
+  status: string;
+  version: number;
+  versionCount: number;
+  wordCount: number | null;
+  createdAt: string | null;
+  createdBy: AuditUser | null;
+  lastModified: string | null;
+  lastModifiedBy: AuditUser | null;
+  labels: string[];
+  restricted: boolean;
+  /** No incoming links and no parent (rules with needs: ["links"]). */
+  orphan: boolean;
+  brokenLinks: Array<{ target: string | null; text: string | null; line: number | null }>;
+  /** With --check-external (needs: ["http"]) each link carries its HTTP result. */
+  externalLinks: Array<{ url: string; domain: string; text: string | null; line: number | null; httpStatus?: number | "error"; httpError?: string; broken?: boolean }>;
+  /** Filled for rules with needs: ["contributors"]. */
+  contributors: AuditUser[];
+}
+
+/** A finding as \`fix(finding, item, rule)\` and reports see it. */
 interface AuditFinding {
   rule: string;
   category: string;
@@ -367,6 +419,8 @@ const atlcli: {
     movePage(id: string, input: { parentId: string }): Promise<{ id: string }>;
     /** Moves the page to the space's trash. */
     deletePage(id: string): Promise<null>;
+    /** Archives the page: it leaves the page tree and stays readable in the space archive. */
+    archivePage(id: string): Promise<null>;
     attachments(pageId: string): Promise<ConfluenceAttachment[]>;
     /** Replaces an attachment of the same name with a new version. */
     attach(pageId: string, file: AttachmentInput): Promise<{ id: PlannedRef }>;

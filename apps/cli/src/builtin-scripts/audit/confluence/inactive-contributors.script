@@ -1,0 +1,17 @@
+// Pages whose contributors have all left (checked with --refresh-users).
+export const meta = {
+  audit: {
+    id: "people/inactive-contributors",
+    product: "confluence",
+    title: "No active maintainer",
+    category: "people",
+    legacy: "inactive-contributors",
+    needs: ["contributors"],
+    profiles: { default: "warning", strict: "warning" },
+  },
+};
+
+export default (page, rule) => {
+  const c = page.contributors;
+  if (c.length && c.every((u) => u.active === false)) return rule.finding({ detail: `All ${c.length} contributors inactive` });
+};

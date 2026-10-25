@@ -28,7 +28,7 @@ export interface AuditRuleDef {
   expensive?: boolean;
   /** Name in `--checks` before rule ids existed. */
   legacy?: string;
-  /** List options a patch may set, with their allowed values, e.g. `include: [todo, wip]`. */
+  /** List options a patch may set, with their allowed values, e.g. `include: [todo, wip]`; an empty list allows any text. */
   options?: Record<string, readonly string[]>;
   /** Settings per built-in profile (patch grammar); a profile without an entry leaves the rule off. */
   profiles?: Partial<Record<AuditProfileName, Patch>>;
@@ -167,8 +167,8 @@ export function applyRulePatch(current: AuditRuleConfig, patch: unknown, ruleId:
     } else if (def?.options && key in def.options) {
       const allowed = def.options[key]!;
       const list = Array.isArray(value) ? value : [value];
-      if (list.length === 0 || list.some((v) => typeof v !== "string" || !allowed.includes(v))) {
-        throw new AuditRulesError(`${at}: expected a list of ${allowed.join(" and ")}.`);
+      if (list.length === 0 || list.some((v) => typeof v !== "string" || (allowed.length > 0 && !allowed.includes(v)))) {
+        throw new AuditRulesError(`${at}: expected ${allowed.length ? `a list of ${allowed.join(" and ")}` : "text or a list of texts"}.`);
       }
       next.options = { ...next.options, [key]: list as string[] };
     } else if (key === "digest") {
@@ -214,7 +214,8 @@ export function defaultAuditRules(registry: AuditRegistry, profile: AuditProfile
 }
 
 const CUSTOM_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
-const TOP_LEVEL = new Set(["version", "extends", "minLevel", "rules", "custom", "overrides", "baseline", "flagged", "scripts"]);
+const TOP_LEVEL = new Set(["version", "extends", "minLevel", "rules", "custom", "overrides", "baseline", "flagged", "scripts", "confluence"]);
+const CONFLUENCE_KEYS = new Set(["extends", "minLevel", "rules", "scripts"]);
 
 function stringList(value: unknown, path: string): string[] {
   const list = Array.isArray(value) ? value : [value];
@@ -326,6 +327,27 @@ export function parseAuditRules(raw: unknown, source: string, registry: AuditReg
 
   if (file.scripts !== undefined) rules.scripts = stringList(file.scripts, "scripts");
   return rules;
+}
+
+/**
+ * The rules for `audit wiki`: the file's `confluence:` section (extends,
+ * minLevel, rules, scripts), resolved like the top level. Pages have no
+ * legacy cutoff: a stale page is by definition not updated.
+ */
+export function parseConfluenceAuditRules(raw: unknown, source: string, registry: AuditRegistry): AuditRules {
+  const section = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).confluence : undefined;
+  if (section !== undefined && section !== null) {
+    if (typeof section !== "object" || Array.isArray(section)) throw new AuditRulesError(`${source}: confluence: expected a mapping.`);
+    for (const key of Object.keys(section)) {
+      if (!CONFLUENCE_KEYS.has(key)) throw new AuditRulesError(`${source}: confluence: unknown key "${key}". Use ${[...CONFLUENCE_KEYS].join(", ")}.`);
+    }
+  }
+  try {
+    return { ...parseAuditRules(section ?? null, source, registry), legacyDays: null };
+  } catch (err) {
+    if (err instanceof AuditRulesError && !err.message.startsWith(source)) throw new AuditRulesError(`confluence.${err.message}`);
+    throw err;
+  }
 }
 
 /** What an issue looks like to override matching. */

@@ -1,0 +1,16 @@
+// Local folder structure: empty folders, folders without index.md.
+export const meta = {
+  audit: {
+    id: "structure/folders",
+    product: "confluence",
+    title: "Folder structure",
+    category: "structure",
+    legacy: "folders",
+    scope: "run",
+    needs: ["folders"],
+    profiles: { minimal: "warning", default: "warning", strict: "warning" },
+  },
+};
+
+export default ({ folderIssues }) =>
+  folderIssues.map((f) => ({ key: f.file, summary: f.file, status: f.code, detail: f.message, subject: `folder:${f.file}` }));

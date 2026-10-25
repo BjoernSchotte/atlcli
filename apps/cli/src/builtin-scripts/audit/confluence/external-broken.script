@@ -1,0 +1,22 @@
+// External URLs that do not answer (checked over HTTP: --check-external).
+export const meta = {
+  audit: {
+    id: "links/external-broken",
+    product: "confluence",
+    title: "Broken external links",
+    category: "links",
+    legacy: "check-external",
+    needs: ["links", "http"],
+    defaults: "off",
+  },
+};
+
+export default (page, rule) =>
+  page.externalLinks
+    .filter((l) => l.broken)
+    .map((l) =>
+      rule.finding({
+        detail: `${l.url} is broken (${l.httpError ?? `HTTP ${l.httpStatus}`}).`,
+        subject: `${page.id}:${l.url}`,
+      }),
+    );

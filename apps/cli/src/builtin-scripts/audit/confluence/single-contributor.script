@@ -1,0 +1,18 @@
+// Pages only one person ever edited (bus factor).
+export const meta = {
+  audit: {
+    id: "people/single-contributor",
+    product: "confluence",
+    title: "Single contributor",
+    category: "people",
+    legacy: "single-contributor",
+    needs: ["contributors"],
+    profiles: { default: "info", strict: "warning" },
+  },
+};
+
+export default (page, rule) => {
+  if (page.contributors.length !== 1) return;
+  const [only] = page.contributors;
+  return rule.finding({ detail: `Only contributor: ${only.displayName ?? only.id}` });
+};

@@ -1,0 +1,20 @@
+// Internal links whose target is gone: one finding per link.
+export const meta = {
+  audit: {
+    id: "links/broken",
+    product: "confluence",
+    title: "Broken links",
+    category: "links",
+    legacy: "broken-links",
+    needs: ["links"],
+    profiles: { minimal: "warning", default: "warning", strict: "error" },
+  },
+};
+
+export default (page, rule) =>
+  page.brokenLinks.map((l) =>
+    rule.finding({
+      detail: `Broken link to ${l.target ?? "(unknown)"}${l.line ? ` (line ${l.line})` : ""}.`,
+      subject: `${page.id}:${l.target ?? ""}`,
+    }),
+  );

@@ -1,0 +1,15 @@
+// Archived pages still in the synced tree.
+export const meta = {
+  audit: {
+    id: "content/archived",
+    product: "confluence",
+    title: "Archived pages",
+    category: "content",
+    legacy: "archived",
+    profiles: { default: "info", strict: "info" },
+  },
+};
+
+export default (page, rule) => {
+  if (page.status === "archived") return rule.finding({ detail: "Archived." });
+};

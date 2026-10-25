@@ -61,16 +61,15 @@ Run 'atlcli audit wiki --help' or 'atlcli audit jira --help' for target options.
 Setup:
   1. Enable the feature:  atlcli flag set audit true --global
   2. Sync content first:  atlcli wiki docs pull
-  3. Run audit:          atlcli audit wiki --all --stale-high 12
+  3. Run audit:          atlcli audit wiki
 
 Examples:
-  atlcli audit wiki --all --stale-high 12 --stale-medium 6
-  atlcli audit wiki --orphans
-  atlcli audit wiki --broken-links
-  atlcli audit wiki --single-contributor
-  atlcli audit wiki --external-links
+  atlcli audit wiki
+  atlcli audit wiki --stale-high 12 --stale-medium 6 --orphans
+  atlcli audit wiki --checks links --fail-on warning
   atlcli audit wiki --all --json > report.json
   atlcli audit wiki --all --markdown > AUDIT-REPORT.md
+  atlcli audit wiki --stale-high 12 --fix
   atlcli audit jira --project ATLCLI
   atlcli audit jira --board 123 --checks stuck-wip --json
   atlcli audit init --product jira`;

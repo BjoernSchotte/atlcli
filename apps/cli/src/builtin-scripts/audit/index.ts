@@ -10,6 +10,20 @@ import statusAging from "./jira/status-aging.script" with { type: "text" };
 import stuckWip from "./jira/stuck-wip.script" with { type: "text" };
 import unassignedWip from "./jira/unassigned-wip.script" with { type: "text" };
 import unestimatedInSprint from "./jira/unestimated-in-sprint.script" with { type: "text" };
+import c_stale from "./confluence/stale.script" with { type: "text" };
+import c_orphan from "./confluence/orphan.script" with { type: "text" };
+import c_brokenLinks from "./confluence/broken-links.script" with { type: "text" };
+import c_externalLinks from "./confluence/external-links.script" with { type: "text" };
+import c_externalBroken from "./confluence/external-broken.script" with { type: "text" };
+import c_singleContributor from "./confluence/single-contributor.script" with { type: "text" };
+import c_inactiveContributors from "./confluence/inactive-contributors.script" with { type: "text" };
+import c_missingLabel from "./confluence/missing-label.script" with { type: "text" };
+import c_restricted from "./confluence/restricted.script" with { type: "text" };
+import c_drafts from "./confluence/drafts.script" with { type: "text" };
+import c_archived from "./confluence/archived.script" with { type: "text" };
+import c_highChurn from "./confluence/high-churn.script" with { type: "text" };
+import c_folders from "./confluence/folders.script" with { type: "text" };
+import c_unsynced from "./confluence/unsynced.script" with { type: "text" };
 
 export const BUILTIN_JIRA_AUDIT_RULES: readonly string[] = [
   resolvedNotDone,
@@ -25,5 +39,20 @@ export const BUILTIN_JIRA_AUDIT_RULES: readonly string[] = [
   doneWithoutVersion,
 ];
 
-/** Wiki (Confluence) rules; filled in with the wiki audit. */
-export const BUILTIN_CONFLUENCE_AUDIT_RULES: readonly string[] = [];
+/** Wiki (Confluence) rules, in report order. */
+export const BUILTIN_CONFLUENCE_AUDIT_RULES: readonly string[] = [
+  c_stale,
+  c_orphan,
+  c_brokenLinks,
+  c_externalLinks,
+  c_externalBroken,
+  c_singleContributor,
+  c_inactiveContributors,
+  c_missingLabel,
+  c_restricted,
+  c_drafts,
+  c_archived,
+  c_highChurn,
+  c_folders,
+  c_unsynced,
+];

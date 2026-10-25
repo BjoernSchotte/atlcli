@@ -1,0 +1,16 @@
+// Heavily edited pages: thresholds count versions (--high-churn <N>).
+export const meta = {
+  audit: {
+    id: "content/high-churn",
+    product: "confluence",
+    title: "High churn",
+    category: "content",
+    kind: "age",
+    legacy: "high-churn",
+  },
+};
+
+export default (page, rule) => {
+  const hit = rule.severity(page.versionCount);
+  if (hit) return rule.finding({ severity: hit.severity, detail: `${page.versionCount} versions.` });
+};
