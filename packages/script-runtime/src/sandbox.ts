@@ -50,6 +50,11 @@ export interface RunScriptOptions {
   wrappers?: Readonly<Record<string, string>>;
   /** JSON object exposed as frozen `atlcli.params` and passed to a default-export function. */
   params?: Readonly<Record<string, unknown>>;
+  /**
+   * Per-item mode: the default export must be a function and is called as
+   * `default(item, params)` (e.g. one Jira issue of `script run --each`).
+   */
+  item?: unknown;
   limits?: Partial<SandboxLimits>;
   onLog?: (level: SandboxLogLevel, message: string) => void;
   /** Override the WASM build (tests use the sync debug build for leak detection). */
@@ -262,6 +267,9 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
     );
     ctx.newString(JSON.stringify(wrappers)).consume((w) => ctx.setProp(ctx.global, "__atlcliWrappers", w));
     ctx.newString(JSON.stringify(options.params ?? {})).consume((p) => ctx.setProp(ctx.global, "__atlcliParams", p));
+    if (options.item !== undefined) {
+      ctx.newString(JSON.stringify(options.item)).consume((i) => ctx.setProp(ctx.global, "__atlcliItem", i));
+    }
 
     // The CPU deadline also covers the prelude: under load a tiny deadline can
     // interrupt it, which must surface as a ScriptError, not a raw QuickJS error.
@@ -274,11 +282,15 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
     prelude.value.dispose();
 
     const entry = `(async () => {
-  const done = globalThis.__atlcliDone, stringify = JSON.stringify;
-  delete globalThis.__atlcliDone;
+  const done = globalThis.__atlcliDone, { stringify, parse } = JSON, item = globalThis.__atlcliItem;
+  delete globalThis.__atlcliDone; delete globalThis.__atlcliItem;
   try {
     const m = await import(${JSON.stringify(SCRIPT_MODULE)});
-    const r = typeof m.default === "function" ? await m.default(atlcli.params) : m.default;
+    if (item !== undefined && typeof m.default !== "function") {
+      throw new SyntaxError("In per-issue mode (--each) the script must export a function: export default async (issue) => { … }");
+    }
+    const r = item !== undefined ? await m.default(parse(item), atlcli.params)
+      : typeof m.default === "function" ? await m.default(atlcli.params) : m.default;
     done(true, stringify(r === undefined ? null : r) ?? "null");
   } catch (e) { done(false, e); }
 })();`;

@@ -30,10 +30,16 @@ interface ScriptMeta {
   description?: string;
   /** Once given, everything else is denied. Write grants name one project or space, e.g. "jira:write:ATLCLI". */
   permissions?: ScriptPermission[];
-  /** Planned writes per run (default 100). */
+  /** Planned writes per run (default 10000; per issue with --each: 50). */
   limits?: { maxWrites?: number };
   /** Parameters passed with \`--param name=value\`. */
   params?: Record<string, ScriptParamSpec>;
+  /**
+   * Per-issue mode (\`atlcli script run file.ts --each\`): \`export default async (issue, params) => …\`
+   * runs once per issue of \`jql\` (\`--each "<jql>"\` overrides it). Each issue comes
+   * with \`fields\` (default: summary, status, assignee, priority, issuetype, labels).
+   */
+  each?: { jql?: string; fields?: string[] };
 }
 
 interface JiraIssue {

@@ -31,6 +31,12 @@ export const scriptMetaSchema = z.strictObject({
     .optional(),
   limits: z.strictObject({ maxWrites: z.number().int().positive().optional() }).optional(),
   params: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), paramSpec).optional(),
+  /**
+   * Per-issue mode (`script run --each`): the default export runs once per
+   * issue of `jql`, which `--each <jql>` overrides; `fields` are the fields
+   * each issue comes with.
+   */
+  each: z.strictObject({ jql: z.string().min(1).optional(), fields: z.array(z.string().min(1)).optional() }).optional(),
 });
 
 export type ScriptMeta = z.output<typeof scriptMetaSchema>;

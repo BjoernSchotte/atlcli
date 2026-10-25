@@ -57,7 +57,10 @@ export interface ApplyReport {
  * Jira has no conditional update, so a concurrent edit in that window wins
  * silently. Add a per-write re-check if that window ever matters.
  */
-export async function applyScriptPlan(plan: ScriptPlanV1, options: ApplyScriptPlanOptions): Promise<ApplyReport> {
+export async function applyScriptPlan(
+  plan: Pick<ScriptPlanV1, "target" | "operations">,
+  options: ApplyScriptPlanOptions,
+): Promise<ApplyReport> {
   if (normalizeBaseUrl(options.baseUrl) !== plan.target.baseUrl) {
     throw new ScriptPlanError(`Plan targets ${plan.target.baseUrl}, but the active profile is ${normalizeBaseUrl(options.baseUrl)}`);
   }

@@ -26,7 +26,7 @@ import type {
 import { assertCliAuthSupported } from "./session-guard.js";
 import { parseTemplateFlags, templateValuesFrom } from "./template-flags.js";
 
-type Flags = Record<string, string | boolean | string[]>;
+export type Flags = Record<string, string | boolean | string[]>;
 
 /** The runtime (zod, QuickJS, WASM) loads only when a script command runs. */
 const runtime = () => import("@atlcli/script-runtime");
@@ -92,8 +92,15 @@ export async function handleScript(args: string[], flags: Flags, opts: OutputOpt
   switch (command) {
     case "run":
       return runCommand(rest, flags, opts);
-    case "apply":
+    case "apply": {
+      const { applyJobCommand, isJobRef } = await import("./script-jobs.js");
+      if (rest[0] && isJobRef(rest[0])) return applyJobCommand(rest[0], flags, opts);
       return applyCommand(rest, flags, opts);
+    }
+    case "resume":
+      return (await import("./script-jobs.js")).resumeCommand(rest, flags, opts);
+    case "jobs":
+      return (await import("./script-jobs.js")).jobsCommand(rest, opts);
     case "check":
       return checkCommand(rest, opts);
     case "init":
@@ -111,9 +118,19 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
   const params = parseParams(getFlags(flags, "param"), opts);
   const { limits, maxWrites } = parseLimits(flags, opts);
   const templating = templateValuesFrom(await parseTemplateFlags(flags, opts));
+  const origin = file ? { path: relative(process.cwd(), resolve(file)) } : { name: "inline" };
+  // Per-issue mode: --each, or meta.each (only scripts mentioning it pay for the meta read).
+  if (flags.each !== undefined || /\beach\b/.test(source)) {
+    const rt = await runtime();
+    const meta = await guard(opts, () => rt.inspectScript(transpile(source, opts)));
+    if (flags.each !== undefined || meta.each) {
+      const { runEach } = await import("./script-jobs.js");
+      return runEach(source, origin, meta, params, templating, flags, opts);
+    }
+  }
   await planAndApply(
     source,
-    file ? { path: relative(process.cwd(), resolve(file)) } : { name: "inline" },
+    origin,
     params,
     { limits, maxWrites },
     flags,
@@ -272,7 +289,7 @@ async function openJournal(planFile: string, plan: ScriptPlanV1, mode: { fresh?:
   };
 }
 
-function parseConcurrency(flags: Flags, opts: OutputOptions, fallback: number): number {
+export function parseConcurrency(flags: Flags, opts: OutputOptions, fallback: number): number {
   const raw = getFlag(flags, "concurrency");
   if (raw === undefined) return fallback;
   if (!/^[1-9]\d*$/.test(raw) || Number(raw) > 32) fail(opts, 1, ERROR_CODES.USAGE, `--concurrency expects 1 to 32, got "${raw}"`);
@@ -360,7 +377,7 @@ async function initCommand(args: string[], flags: Flags, opts: OutputOptions): P
 
 // ============ Helpers ============
 
-async function readSource(file: string, opts: OutputOptions): Promise<string> {
+export async function readSource(file: string, opts: OutputOptions): Promise<string> {
   try {
     return await readFile(file, "utf8");
   } catch (error) {
@@ -369,7 +386,7 @@ async function readSource(file: string, opts: OutputOptions): Promise<string> {
 }
 
 /** Type stripping only; scripts are erasable-syntax TypeScript or plain JavaScript. */
-function transpile(source: string, opts: OutputOptions): string {
+export function transpile(source: string, opts: OutputOptions): string {
   try {
     return new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(source);
   } catch (error) {
@@ -409,7 +426,7 @@ export function parseLimits(
   return { limits, ...(maxWrites !== undefined ? { maxWrites } : {}) };
 }
 
-function parseParams(raw: string[], opts: OutputOptions): Record<string, string> {
+export function parseParams(raw: string[], opts: OutputOptions): Record<string, string> {
   const params: Record<string, string> = {};
   for (const entry of raw) {
     const eq = entry.indexOf("=");
@@ -419,7 +436,7 @@ function parseParams(raw: string[], opts: OutputOptions): Record<string, string>
   return params;
 }
 
-async function connect(flags: Flags, opts: OutputOptions): Promise<{ profile: Profile; port: ScriptPort }> {
+export async function connect(flags: Flags, opts: OutputOptions): Promise<{ profile: Profile; port: ScriptPort }> {
   const config = await loadConfig();
   const profile = getActiveProfile(config, getFlag(flags, "profile"));
   if (!profile) fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.");
@@ -429,7 +446,7 @@ async function connect(flags: Flags, opts: OutputOptions): Promise<{ profile: Pr
 }
 
 /** Script errors (invalid meta, limits, denied permissions, guest exceptions) as CLI failures. */
-async function guard<T>(opts: OutputOptions, fn: () => Promise<T>): Promise<T> {
+export async function guard<T>(opts: OutputOptions, fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (error) {
@@ -559,7 +576,7 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
   return lines.join("\n");
 }
 
-function describeOperation(op: PlannedOperation): string {
+export function describeOperation(op: PlannedOperation): string {
   const a = op.args as Record<string, any>;
   const after = op.dependsOn.length ? `  (after #${op.dependsOn.join(", #")})` : "";
   const text = (s: unknown, max = 60) => {
@@ -665,7 +682,7 @@ async function typeCheck(file: string): Promise<{ status: "ok" } | { status: "sk
 }
 
 /** Relative when below the working directory, else absolute. */
-function displayPath(path: string): string {
+export function displayPath(path: string): string {
   const rel = relative(process.cwd(), path);
   return rel && !rel.startsWith("..") ? rel : path;
 }
