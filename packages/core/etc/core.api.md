@@ -7,6 +7,22 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, unknown>;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    text?: string;
+    marks?: AdfMark[];
+    attrs?: Record<string, unknown>;
+    content?: AdfNode[];
+    [key: string]: unknown;
+}
+
 // export: ApiRateLimitData
 export interface ApiRateLimitData {
     requestId: string;
@@ -100,6 +116,9 @@ export interface BaseLogEntry {
     sessionId: string;
 }
 
+// export: BodyFormat
+export type BodyFormat = "text" | "adf" | "storage" | "wikimarkup";
+
 // export: buildAuthHeader
 export declare function buildAuthHeader(profile: Profile, resolveToken?: TokenResolver): string;
 
@@ -108,6 +127,57 @@ export declare function buildConfluenceUrl(profile: ConfluenceProfile, path?: st
 
 // export: buildTlsOptions
 export declare function buildTlsOptions(profile: Profile): TlsOptions | undefined;
+
+// export: BUILTIN_VARIABLE_NAMES
+export declare const BUILTIN_VARIABLE_NAMES: readonly [
+    "date",
+    "today",
+    "datetime",
+    "now",
+    "time",
+    "year",
+    "month",
+    "day",
+    "weekday",
+    "quarter",
+    "week",
+    "user",
+    "space",
+    "profile",
+    "project",
+    "title",
+    "parent",
+    "uuid"
+];
+
+// export: BuiltinContext
+export interface BuiltinContext {
+    user?: string;
+    space?: string;
+    profile?: string;
+    dateFormat?: string;
+    title?: string;
+    parentId?: string;
+    parentTitle?: string;
+    now?: Date;
+    project?: string;
+}
+
+// export: BuiltinVariableName
+export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
+
+// export: checkFieldValue
+export declare function checkFieldValue(kind: FieldKind, value: string, unit: string): void;
+
+// export: childScope
+export declare function childScope(scope: TemplateScope, context: unknown, data?: Record<string, unknown>): TemplateScope;
+
+// export: collectVariables
+export declare function collectVariables(units: Array<{
+    unit: string;
+    value: unknown;
+    format?: BodyFormat;
+}>): VariableUse[];
 
 // export: CommandData
 export interface CommandData {
@@ -127,6 +197,24 @@ export declare class ConsoleLogSink implements LogSink {
     constructor(minLevel?: LogLevel);
     write(entry: LogEntry): void;
 }
+
+// export: createTemplateHandlebars
+export declare function createTemplateHandlebars(): typeof Handlebars;
+
+// export: createTemplateScope
+export declare function createTemplateScope(input?: {
+    vars?: Record<string, unknown>;
+    now?: Date;
+    user?: string;
+    profile?: string;
+    space?: string;
+    project?: string;
+    source?: unknown;
+    parent?: unknown;
+}): TemplateScope;
+
+// export: dateAdd
+export declare function dateAdd(date: unknown, n: unknown, unit: unknown): unknown;
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
@@ -163,11 +251,32 @@ export interface ErrorData {
     };
 }
 
+// export: evaluateExpression
+export declare function evaluateExpression(expr: string, scope: TemplateScope, opts?: RenderOptions): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
 // export: extractEntityFromUrl
 export declare function extractEntityFromUrl(url: string, registry?: PatternRegistry): AtlassianEntity | null;
 
+// export: FieldKind
+export type FieldKind = "summary" | "label" | "string" | "number" | "date" | "option" | "name";
+
+// export: finish
+export declare function finish<T>(value: T, warnings: RenderWarning[], opts?: RenderOptions): {
+    value: T;
+    warnings: RenderWarning[];
+};
+
+// export: formatDate
+export declare function formatDate(date: Date, format: string): string;
+
 // export: generateRequestId
 export declare function generateRequestId(): string;
+
+// export: getBuiltinVariables
+export declare function getBuiltinVariables(ctx: BuiltinContext): Record<string, unknown>;
 
 // export: getConfluenceBaseUrl
 export declare function getConfluenceBaseUrl(profile: ConfluenceProfile): string;
@@ -310,6 +419,101 @@ export declare function redactSensitive<T>(obj: T): T;
 // export: redactValue
 export declare function redactValue(value: string): string;
 
+// export: renderAdf
+export declare function renderAdf<T>(doc: T, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: T;
+    warnings: RenderWarning[];
+};
+
+// export: renderBody
+export declare function renderBody(value: unknown, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+    format?: BodyFormat;
+}): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
+// export: RenderBudget
+export declare class RenderBudget {
+    readonly perUnit: number;
+    readonly perRun: number;
+    private used;
+    constructor(perUnit?: number, perRun?: number);
+    charge(chars: number, unit?: string): void;
+}
+
+// export: RenderError
+export declare class RenderError extends Error {
+    readonly warnings: RenderWarning[];
+    constructor(message: string, warnings?: RenderWarning[]);
+}
+
+// export: renderJiraFieldValue
+export declare function renderJiraFieldValue(value: unknown, schemaType: string | undefined, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
+// export: RenderOptions
+export interface RenderOptions {
+    unit?: string;
+    strict?: boolean;
+    budget?: RenderBudget;
+}
+
+// export: renderSegments
+export declare function renderSegments(source: string, scope: TemplateScope, opts?: RenderOptions): {
+    segments: Segment[];
+    warnings: RenderWarning[];
+};
+
+// export: renderStorage
+export declare function renderStorage(storage: string, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
+// export: renderText
+export declare function renderText(source: string, scope: TemplateScope, opts?: RenderOptions): {
+    text: string;
+    warnings: RenderWarning[];
+};
+
+// export: renderTextField
+export declare function renderTextField(value: string, kind: FieldKind, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
+// export: RenderWarning
+export interface RenderWarning {
+    code: RenderWarningCode;
+    message: string;
+    unit?: string;
+    line?: number;
+    column?: number;
+}
+
+// export: RenderWarningCode
+export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field";
+
+// export: renderWikiMarkup
+export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
 // export: resolveAndLoadTemplate
 export declare function resolveAndLoadTemplate(library: TemplateLibrary, id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<{
     entry: TemplateLibraryEntry;
@@ -330,6 +534,13 @@ export interface ResultData {
     result?: unknown;
 }
 
+// export: Segment
+export interface Segment {
+    start: number;
+    end: number;
+    output: string;
+}
+
 // export: sha256Hex
 export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
 
@@ -342,6 +553,9 @@ export interface SyncEventData {
     message?: string;
     details?: unknown;
 }
+
+// export: TEMPLATE_HELPER_NAMES
+export declare const TEMPLATE_HELPER_NAMES: readonly string[];
 
 // export: TemplateIntegrityError
 export declare class TemplateIntegrityError extends Error {
@@ -388,6 +602,12 @@ export declare class TemplateResolutionConflictError extends Error {
     constructor(id: string, engine: TemplateLibraryEntry["engine"], scope: TemplateLibraryEntry["scope"], spaceKey: string | undefined, count: number);
 }
 
+// export: TemplateScope
+export interface TemplateScope {
+    context: unknown;
+    data: Record<string, unknown>;
+}
+
 // export: TlsOptions
 export type TlsOptions = {
     ca?: string;
@@ -397,6 +617,13 @@ export type TlsOptions = {
 // export: TokenResolver
 export type TokenResolver = (profile: Profile) => string | null;
 
+// export: VariableUse
+export interface VariableUse {
+    name: string;
+    unit: string;
+    line?: number;
+}
+
 // export: verifyTemplateBytes
 export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
 ```
@@ -404,6 +631,22 @@ export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: 
 ### Entry point `. (default)`
 
 ```ts
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, unknown>;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    text?: string;
+    marks?: AdfMark[];
+    attrs?: Record<string, unknown>;
+    content?: AdfNode[];
+    [key: string]: unknown;
+}
+
 // export: ApiRateLimitData
 export interface ApiRateLimitData {
     requestId: string;
@@ -508,6 +751,9 @@ export interface BaseLogEntry {
     sessionId: string;
 }
 
+// export: BodyFormat
+export type BodyFormat = "text" | "adf" | "storage" | "wikimarkup";
+
 // export: buildAuthHeader
 export declare function buildAuthHeader(profile: Profile): string;
 
@@ -520,15 +766,20 @@ export declare function buildTlsOptions(profile: Profile): TlsOptions | undefine
 // export: BUILTIN_VARIABLE_NAMES
 export declare const BUILTIN_VARIABLE_NAMES: readonly [
     "date",
+    "today",
     "datetime",
+    "now",
     "time",
     "year",
     "month",
     "day",
     "weekday",
+    "quarter",
+    "week",
     "user",
     "space",
     "profile",
+    "project",
     "title",
     "parent",
     "uuid"
@@ -543,10 +794,15 @@ export interface BuiltinContext {
     title?: string;
     parentId?: string;
     parentTitle?: string;
+    now?: Date;
+    project?: string;
 }
 
 // export: BuiltinVariableName
 export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
+
+// export: checkFieldValue
+export declare function checkFieldValue(kind: FieldKind, value: string, unit: string): void;
 
 // export: checkForUpdates
 export declare function checkForUpdates(options?: {
@@ -555,8 +811,18 @@ export declare function checkForUpdates(options?: {
     platform?: string;
 }): Promise<UpdateInfo>;
 
+// export: childScope
+export declare function childScope(scope: TemplateScope, context: unknown, data?: Record<string, unknown>): TemplateScope;
+
 // export: clearProfileAuth
 export declare function clearProfileAuth(config: Config, name: string): boolean;
+
+// export: collectVariables
+export declare function collectVariables(units: Array<{
+    unit: string;
+    value: unknown;
+    format?: BodyFormat;
+}>): VariableUse[];
 
 // export: CommandData
 export interface CommandData {
@@ -598,6 +864,24 @@ export declare class ConsoleLogSink implements LogSink {
     constructor(minLevel?: LogLevel);
     write(entry: LogEntry): void;
 }
+
+// export: createTemplateHandlebars
+export declare function createTemplateHandlebars(): typeof Handlebars;
+
+// export: createTemplateScope
+export declare function createTemplateScope(input?: {
+    vars?: Record<string, unknown>;
+    now?: Date;
+    user?: string;
+    profile?: string;
+    space?: string;
+    project?: string;
+    source?: unknown;
+    parent?: unknown;
+}): TemplateScope;
+
+// export: dateAdd
+export declare function dateAdd(date: unknown, n: unknown, unit: unknown): unknown;
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
@@ -684,6 +968,12 @@ export interface ErrorData {
     };
 }
 
+// export: evaluateExpression
+export declare function evaluateExpression(expr: string, scope: TemplateScope, opts?: RenderOptions): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
 // export: exportSingleTemplate
 export declare function exportSingleTemplate(resolver: TemplateResolver, name: string, level?: "global" | "profile" | "space", profile?: string, space?: string): Promise<string | null>;
 
@@ -702,6 +992,9 @@ export declare function extractUsedVariables(content: string): Set<string>;
 // export: fail
 export declare function fail(opts: OutputOptions, code: number, errCode: string, message: string, details?: Record<string, unknown>): never;
 
+// export: FieldKind
+export type FieldKind = "summary" | "label" | "string" | "number" | "date" | "option" | "name";
+
 // export: FileLogSink
 export declare class FileLogSink implements LogSink {
     private enableGlobal;
@@ -715,6 +1008,12 @@ export declare class FileLogSink implements LogSink {
 
 // export: findProjectConfigPath
 export declare function findProjectConfigPath(startDir?: string): string | undefined;
+
+// export: finish
+export declare function finish<T>(value: T, warnings: RenderWarning[], opts?: RenderOptions): {
+    value: T;
+    warnings: RenderWarning[];
+};
 
 // export: FlagEntry
 export type FlagEntry = {
@@ -1095,11 +1394,58 @@ export declare function removeProfile(config: Config, name: string): void;
 // export: renameProfile
 export declare function renameProfile(config: Config, oldName: string, newName: string): boolean;
 
+// export: renderAdf
+export declare function renderAdf<T>(doc: T, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: T;
+    warnings: RenderWarning[];
+};
+
+// export: renderBody
+export declare function renderBody(value: unknown, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+    format?: BodyFormat;
+}): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
+// export: RenderBudget
+export declare class RenderBudget {
+    readonly perUnit: number;
+    readonly perRun: number;
+    private used;
+    constructor(perUnit?: number, perRun?: number);
+    charge(chars: number, unit?: string): void;
+}
+
 // export: RenderContext
 export interface RenderContext {
     variables: Record<string, unknown>;
     builtins: Record<string, unknown>;
     dateFormat?: string;
+}
+
+// export: RenderError
+export declare class RenderError extends Error {
+    readonly warnings: RenderWarning[];
+    constructor(message: string, warnings?: RenderWarning[]);
+}
+
+// export: renderJiraFieldValue
+export declare function renderJiraFieldValue(value: unknown, schemaType: string | undefined, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
+// export: RenderOptions
+export interface RenderOptions {
+    unit?: string;
+    strict?: boolean;
+    budget?: RenderBudget;
 }
 
 // export: RenderResult
@@ -1109,6 +1455,54 @@ export interface RenderResult {
     missingVariables: string[];
     undeclaredVariables: string[];
 }
+
+// export: renderSegments
+export declare function renderSegments(source: string, scope: TemplateScope, opts?: RenderOptions): {
+    segments: Segment[];
+    warnings: RenderWarning[];
+};
+
+// export: renderStorage
+export declare function renderStorage(storage: string, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
+// export: renderText
+export declare function renderText(source: string, scope: TemplateScope, opts?: RenderOptions): {
+    text: string;
+    warnings: RenderWarning[];
+};
+
+// export: renderTextField
+export declare function renderTextField(value: string, kind: FieldKind, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
+// export: RenderWarning
+export interface RenderWarning {
+    code: RenderWarningCode;
+    message: string;
+    unit?: string;
+    line?: number;
+    column?: number;
+}
+
+// export: RenderWarningCode
+export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field";
+
+// export: renderWikiMarkup
+export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
 
 // export: resolveAndLoadTemplate
 export declare function resolveAndLoadTemplate(library: TemplateLibrary, id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<{
@@ -1144,6 +1538,13 @@ export declare function saveConfig(config: Config): Promise<void>;
 
 // export: saveUpdateState
 export declare function saveUpdateState(state: Partial<UpdateState>): Promise<void>;
+
+// export: Segment
+export interface Segment {
+    start: number;
+    end: number;
+    output: string;
+}
 
 // export: serializeTemplate
 export declare function serializeTemplate(metadata: TemplateMetadata, content: string): string;
@@ -1233,11 +1634,13 @@ export interface Template {
     source: TemplateSource;
 }
 
+// export: TEMPLATE_HELPER_NAMES
+export declare const TEMPLATE_HELPER_NAMES: readonly string[];
+
 // export: TemplateEngine
 export declare class TemplateEngine {
     private handlebars;
     constructor();
-    private registerHelpers;
     private createVariableHelpers;
     render(template: Template, context: RenderContext): RenderResult;
     private checkHandlebarsSyntax;
@@ -1341,6 +1744,12 @@ export declare class TemplateResolver {
     exists(name: string): Promise<boolean>;
     getTemplateLocations(name: string): Promise<TemplateSummary[]>;
     getStorage(level: "global" | "profile" | "space"): TemplateStorage | undefined;
+}
+
+// export: TemplateScope
+export interface TemplateScope {
+    context: unknown;
+    data: Record<string, unknown>;
 }
 
 // export: TemplateSource
@@ -1471,6 +1880,13 @@ export interface ValidationWarning {
 // export: VariableType
 export type VariableType = "string" | "number" | "date" | "boolean" | "select";
 
+// export: VariableUse
+export interface VariableUse {
+    name: string;
+    unit: string;
+    line?: number;
+}
+
 // export: VariableValidationResult
 export interface VariableValidationResult {
     valid: boolean;
@@ -1498,6 +1914,22 @@ export declare function writeTextFile(path: string, contents: string): Promise<v
 ### Entry point `./browser`
 
 ```ts
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, unknown>;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    text?: string;
+    marks?: AdfMark[];
+    attrs?: Record<string, unknown>;
+    content?: AdfNode[];
+    [key: string]: unknown;
+}
+
 // export: ApiRateLimitData
 export interface ApiRateLimitData {
     requestId: string;
@@ -1591,6 +2023,9 @@ export interface BaseLogEntry {
     sessionId: string;
 }
 
+// export: BodyFormat
+export type BodyFormat = "text" | "adf" | "storage" | "wikimarkup";
+
 // export: buildAuthHeader
 export declare function buildAuthHeader(profile: Profile, resolveToken?: TokenResolver): string;
 
@@ -1599,6 +2034,57 @@ export declare function buildConfluenceUrl(profile: ConfluenceProfile, path?: st
 
 // export: buildTlsOptions
 export declare function buildTlsOptions(profile: Profile): TlsOptions | undefined;
+
+// export: BUILTIN_VARIABLE_NAMES
+export declare const BUILTIN_VARIABLE_NAMES: readonly [
+    "date",
+    "today",
+    "datetime",
+    "now",
+    "time",
+    "year",
+    "month",
+    "day",
+    "weekday",
+    "quarter",
+    "week",
+    "user",
+    "space",
+    "profile",
+    "project",
+    "title",
+    "parent",
+    "uuid"
+];
+
+// export: BuiltinContext
+export interface BuiltinContext {
+    user?: string;
+    space?: string;
+    profile?: string;
+    dateFormat?: string;
+    title?: string;
+    parentId?: string;
+    parentTitle?: string;
+    now?: Date;
+    project?: string;
+}
+
+// export: BuiltinVariableName
+export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
+
+// export: checkFieldValue
+export declare function checkFieldValue(kind: FieldKind, value: string, unit: string): void;
+
+// export: childScope
+export declare function childScope(scope: TemplateScope, context: unknown, data?: Record<string, unknown>): TemplateScope;
+
+// export: collectVariables
+export declare function collectVariables(units: Array<{
+    unit: string;
+    value: unknown;
+    format?: BodyFormat;
+}>): VariableUse[];
 
 // export: CommandData
 export interface CommandData {
@@ -1618,6 +2104,24 @@ export declare class ConsoleLogSink implements LogSink {
     constructor(minLevel?: LogLevel);
     write(entry: LogEntry): void;
 }
+
+// export: createTemplateHandlebars
+export declare function createTemplateHandlebars(): typeof Handlebars;
+
+// export: createTemplateScope
+export declare function createTemplateScope(input?: {
+    vars?: Record<string, unknown>;
+    now?: Date;
+    user?: string;
+    profile?: string;
+    space?: string;
+    project?: string;
+    source?: unknown;
+    parent?: unknown;
+}): TemplateScope;
+
+// export: dateAdd
+export declare function dateAdd(date: unknown, n: unknown, unit: unknown): unknown;
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
@@ -1654,11 +2158,32 @@ export interface ErrorData {
     };
 }
 
+// export: evaluateExpression
+export declare function evaluateExpression(expr: string, scope: TemplateScope, opts?: RenderOptions): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
 // export: extractEntityFromUrl
 export declare function extractEntityFromUrl(url: string, registry?: PatternRegistry): AtlassianEntity | null;
 
+// export: FieldKind
+export type FieldKind = "summary" | "label" | "string" | "number" | "date" | "option" | "name";
+
+// export: finish
+export declare function finish<T>(value: T, warnings: RenderWarning[], opts?: RenderOptions): {
+    value: T;
+    warnings: RenderWarning[];
+};
+
+// export: formatDate
+export declare function formatDate(date: Date, format: string): string;
+
 // export: generateRequestId
 export declare function generateRequestId(): string;
+
+// export: getBuiltinVariables
+export declare function getBuiltinVariables(ctx: BuiltinContext): Record<string, unknown>;
 
 // export: getConfluenceBaseUrl
 export declare function getConfluenceBaseUrl(profile: ConfluenceProfile): string;
@@ -1801,6 +2326,101 @@ export declare function redactSensitive<T>(obj: T): T;
 // export: redactValue
 export declare function redactValue(value: string): string;
 
+// export: renderAdf
+export declare function renderAdf<T>(doc: T, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: T;
+    warnings: RenderWarning[];
+};
+
+// export: renderBody
+export declare function renderBody(value: unknown, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+    format?: BodyFormat;
+}): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
+// export: RenderBudget
+export declare class RenderBudget {
+    readonly perUnit: number;
+    readonly perRun: number;
+    private used;
+    constructor(perUnit?: number, perRun?: number);
+    charge(chars: number, unit?: string): void;
+}
+
+// export: RenderError
+export declare class RenderError extends Error {
+    readonly warnings: RenderWarning[];
+    constructor(message: string, warnings?: RenderWarning[]);
+}
+
+// export: renderJiraFieldValue
+export declare function renderJiraFieldValue(value: unknown, schemaType: string | undefined, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
+// export: RenderOptions
+export interface RenderOptions {
+    unit?: string;
+    strict?: boolean;
+    budget?: RenderBudget;
+}
+
+// export: renderSegments
+export declare function renderSegments(source: string, scope: TemplateScope, opts?: RenderOptions): {
+    segments: Segment[];
+    warnings: RenderWarning[];
+};
+
+// export: renderStorage
+export declare function renderStorage(storage: string, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
+// export: renderText
+export declare function renderText(source: string, scope: TemplateScope, opts?: RenderOptions): {
+    text: string;
+    warnings: RenderWarning[];
+};
+
+// export: renderTextField
+export declare function renderTextField(value: string, kind: FieldKind, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
+// export: RenderWarning
+export interface RenderWarning {
+    code: RenderWarningCode;
+    message: string;
+    unit?: string;
+    line?: number;
+    column?: number;
+}
+
+// export: RenderWarningCode
+export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field";
+
+// export: renderWikiMarkup
+export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
 // export: resolveAndLoadTemplate
 export declare function resolveAndLoadTemplate(library: TemplateLibrary, id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<{
     entry: TemplateLibraryEntry;
@@ -1821,6 +2441,13 @@ export interface ResultData {
     result?: unknown;
 }
 
+// export: Segment
+export interface Segment {
+    start: number;
+    end: number;
+    output: string;
+}
+
 // export: sha256Hex
 export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
 
@@ -1833,6 +2460,9 @@ export interface SyncEventData {
     message?: string;
     details?: unknown;
 }
+
+// export: TEMPLATE_HELPER_NAMES
+export declare const TEMPLATE_HELPER_NAMES: readonly string[];
 
 // export: TemplateIntegrityError
 export declare class TemplateIntegrityError extends Error {
@@ -1879,6 +2509,12 @@ export declare class TemplateResolutionConflictError extends Error {
     constructor(id: string, engine: TemplateLibraryEntry["engine"], scope: TemplateLibraryEntry["scope"], spaceKey: string | undefined, count: number);
 }
 
+// export: TemplateScope
+export interface TemplateScope {
+    context: unknown;
+    data: Record<string, unknown>;
+}
+
 // export: TlsOptions
 export type TlsOptions = {
     ca?: string;
@@ -1887,6 +2523,13 @@ export type TlsOptions = {
 
 // export: TokenResolver
 export type TokenResolver = (profile: Profile) => string | null;
+
+// export: VariableUse
+export interface VariableUse {
+    name: string;
+    unit: string;
+    line?: number;
+}
 
 // export: verifyTemplateBytes
 export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
@@ -1967,6 +2610,22 @@ export interface SessionRedirectPolicy {
 ### Entry point `./node`
 
 ```ts
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, unknown>;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    text?: string;
+    marks?: AdfMark[];
+    attrs?: Record<string, unknown>;
+    content?: AdfNode[];
+    [key: string]: unknown;
+}
+
 // export: ApiRateLimitData
 export interface ApiRateLimitData {
     requestId: string;
@@ -2071,6 +2730,9 @@ export interface BaseLogEntry {
     sessionId: string;
 }
 
+// export: BodyFormat
+export type BodyFormat = "text" | "adf" | "storage" | "wikimarkup";
+
 // export: buildAuthHeader
 export declare function buildAuthHeader(profile: Profile): string;
 
@@ -2083,15 +2745,20 @@ export declare function buildTlsOptions(profile: Profile): TlsOptions | undefine
 // export: BUILTIN_VARIABLE_NAMES
 export declare const BUILTIN_VARIABLE_NAMES: readonly [
     "date",
+    "today",
     "datetime",
+    "now",
     "time",
     "year",
     "month",
     "day",
     "weekday",
+    "quarter",
+    "week",
     "user",
     "space",
     "profile",
+    "project",
     "title",
     "parent",
     "uuid"
@@ -2106,10 +2773,15 @@ export interface BuiltinContext {
     title?: string;
     parentId?: string;
     parentTitle?: string;
+    now?: Date;
+    project?: string;
 }
 
 // export: BuiltinVariableName
 export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
+
+// export: checkFieldValue
+export declare function checkFieldValue(kind: FieldKind, value: string, unit: string): void;
 
 // export: checkForUpdates
 export declare function checkForUpdates(options?: {
@@ -2118,8 +2790,18 @@ export declare function checkForUpdates(options?: {
     platform?: string;
 }): Promise<UpdateInfo>;
 
+// export: childScope
+export declare function childScope(scope: TemplateScope, context: unknown, data?: Record<string, unknown>): TemplateScope;
+
 // export: clearProfileAuth
 export declare function clearProfileAuth(config: Config, name: string): boolean;
+
+// export: collectVariables
+export declare function collectVariables(units: Array<{
+    unit: string;
+    value: unknown;
+    format?: BodyFormat;
+}>): VariableUse[];
 
 // export: CommandData
 export interface CommandData {
@@ -2161,6 +2843,24 @@ export declare class ConsoleLogSink implements LogSink {
     constructor(minLevel?: LogLevel);
     write(entry: LogEntry): void;
 }
+
+// export: createTemplateHandlebars
+export declare function createTemplateHandlebars(): typeof Handlebars;
+
+// export: createTemplateScope
+export declare function createTemplateScope(input?: {
+    vars?: Record<string, unknown>;
+    now?: Date;
+    user?: string;
+    profile?: string;
+    space?: string;
+    project?: string;
+    source?: unknown;
+    parent?: unknown;
+}): TemplateScope;
+
+// export: dateAdd
+export declare function dateAdd(date: unknown, n: unknown, unit: unknown): unknown;
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
@@ -2247,6 +2947,12 @@ export interface ErrorData {
     };
 }
 
+// export: evaluateExpression
+export declare function evaluateExpression(expr: string, scope: TemplateScope, opts?: RenderOptions): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
 // export: exportSingleTemplate
 export declare function exportSingleTemplate(resolver: TemplateResolver, name: string, level?: "global" | "profile" | "space", profile?: string, space?: string): Promise<string | null>;
 
@@ -2265,6 +2971,9 @@ export declare function extractUsedVariables(content: string): Set<string>;
 // export: fail
 export declare function fail(opts: OutputOptions, code: number, errCode: string, message: string, details?: Record<string, unknown>): never;
 
+// export: FieldKind
+export type FieldKind = "summary" | "label" | "string" | "number" | "date" | "option" | "name";
+
 // export: FileLogSink
 export declare class FileLogSink implements LogSink {
     private enableGlobal;
@@ -2278,6 +2987,12 @@ export declare class FileLogSink implements LogSink {
 
 // export: findProjectConfigPath
 export declare function findProjectConfigPath(startDir?: string): string | undefined;
+
+// export: finish
+export declare function finish<T>(value: T, warnings: RenderWarning[], opts?: RenderOptions): {
+    value: T;
+    warnings: RenderWarning[];
+};
 
 // export: FlagEntry
 export type FlagEntry = {
@@ -2658,11 +3373,58 @@ export declare function removeProfile(config: Config, name: string): void;
 // export: renameProfile
 export declare function renameProfile(config: Config, oldName: string, newName: string): boolean;
 
+// export: renderAdf
+export declare function renderAdf<T>(doc: T, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: T;
+    warnings: RenderWarning[];
+};
+
+// export: renderBody
+export declare function renderBody(value: unknown, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+    format?: BodyFormat;
+}): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
+// export: RenderBudget
+export declare class RenderBudget {
+    readonly perUnit: number;
+    readonly perRun: number;
+    private used;
+    constructor(perUnit?: number, perRun?: number);
+    charge(chars: number, unit?: string): void;
+}
+
 // export: RenderContext
 export interface RenderContext {
     variables: Record<string, unknown>;
     builtins: Record<string, unknown>;
     dateFormat?: string;
+}
+
+// export: RenderError
+export declare class RenderError extends Error {
+    readonly warnings: RenderWarning[];
+    constructor(message: string, warnings?: RenderWarning[]);
+}
+
+// export: renderJiraFieldValue
+export declare function renderJiraFieldValue(value: unknown, schemaType: string | undefined, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: unknown;
+    warnings: RenderWarning[];
+};
+
+// export: RenderOptions
+export interface RenderOptions {
+    unit?: string;
+    strict?: boolean;
+    budget?: RenderBudget;
 }
 
 // export: RenderResult
@@ -2672,6 +3434,54 @@ export interface RenderResult {
     missingVariables: string[];
     undeclaredVariables: string[];
 }
+
+// export: renderSegments
+export declare function renderSegments(source: string, scope: TemplateScope, opts?: RenderOptions): {
+    segments: Segment[];
+    warnings: RenderWarning[];
+};
+
+// export: renderStorage
+export declare function renderStorage(storage: string, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
+// export: renderText
+export declare function renderText(source: string, scope: TemplateScope, opts?: RenderOptions): {
+    text: string;
+    warnings: RenderWarning[];
+};
+
+// export: renderTextField
+export declare function renderTextField(value: string, kind: FieldKind, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
+
+// export: RenderWarning
+export interface RenderWarning {
+    code: RenderWarningCode;
+    message: string;
+    unit?: string;
+    line?: number;
+    column?: number;
+}
+
+// export: RenderWarningCode
+export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field";
+
+// export: renderWikiMarkup
+export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
+    unit: string;
+}): {
+    value: string;
+    warnings: RenderWarning[];
+};
 
 // export: resolveAndLoadTemplate
 export declare function resolveAndLoadTemplate(library: TemplateLibrary, id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<{
@@ -2707,6 +3517,13 @@ export declare function saveConfig(config: Config): Promise<void>;
 
 // export: saveUpdateState
 export declare function saveUpdateState(state: Partial<UpdateState>): Promise<void>;
+
+// export: Segment
+export interface Segment {
+    start: number;
+    end: number;
+    output: string;
+}
 
 // export: serializeTemplate
 export declare function serializeTemplate(metadata: TemplateMetadata, content: string): string;
@@ -2796,11 +3613,13 @@ export interface Template {
     source: TemplateSource;
 }
 
+// export: TEMPLATE_HELPER_NAMES
+export declare const TEMPLATE_HELPER_NAMES: readonly string[];
+
 // export: TemplateEngine
 export declare class TemplateEngine {
     private handlebars;
     constructor();
-    private registerHelpers;
     private createVariableHelpers;
     render(template: Template, context: RenderContext): RenderResult;
     private checkHandlebarsSyntax;
@@ -2904,6 +3723,12 @@ export declare class TemplateResolver {
     exists(name: string): Promise<boolean>;
     getTemplateLocations(name: string): Promise<TemplateSummary[]>;
     getStorage(level: "global" | "profile" | "space"): TemplateStorage | undefined;
+}
+
+// export: TemplateScope
+export interface TemplateScope {
+    context: unknown;
+    data: Record<string, unknown>;
 }
 
 // export: TemplateSource
@@ -3033,6 +3858,13 @@ export interface ValidationWarning {
 
 // export: VariableType
 export type VariableType = "string" | "number" | "date" | "boolean" | "select";
+
+// export: VariableUse
+export interface VariableUse {
+    name: string;
+    unit: string;
+    line?: number;
+}
 
 // export: VariableValidationResult
 export interface VariableValidationResult {

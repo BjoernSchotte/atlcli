@@ -5,13 +5,8 @@ export * from "./types.js";
 export { parseTemplate, serializeTemplate, hasFrontmatter } from "./parser.js";
 export type { ParsedTemplate } from "./parser.js";
 
-// Built-in variables
-export {
-  getBuiltinVariables,
-  formatDate,
-  BUILTIN_VARIABLE_NAMES,
-} from "./builtins.js";
-export type { BuiltinContext, BuiltinVariableName } from "./builtins.js";
+// Render engine and built-in variables (browser-safe; also in index.browser.ts)
+export * from "./render-exports.js";
 
 // Validation
 export {
