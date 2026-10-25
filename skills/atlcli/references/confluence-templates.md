@@ -72,7 +72,11 @@ tracked sources and replaces what they provide (`--source <url>` limits it).
 
 Built-in variables available inside a template: `@date`, `@datetime`, `@time`,
 `@year`, `@month`, `@day`, `@weekday`, `@user`, `@space`, `@profile`, `@title`,
-`@parent`, `@uuid`.
+`@parent`, `@uuid`, plus `@today` (always ISO), `@now`, `@quarter`, `@week`.
+Helpers: `formatDate`, `lowercase`, `uppercase`, `dateAdd`, `default`,
+`replace`, `eq`, `ne`, `and`, `or`, `not`. The same engine renders copies of
+live issues and pages (`copy-issues`, `wiki page copy`), but there unknown
+`{{…}}` stays literal with a warning; in page templates it renders empty.
 
 ## Rendering and creating from a template
 

@@ -97,6 +97,13 @@ const NON_EXPORT_NOTE_CODES = new Set([
   "truncated-source",
   "unresolved-reference",
   "wrong-source",
+  // RenderWarningCode of the template engine (packages/core/src/templates):
+  // template warnings in plans, not export notes.
+  "parse-error",
+  "crosses-inline-node",
+  "invalid-url",
+  "not-rendered-field",
+  "unbalanced-block",
   // Zod refinement issues emitted while validating HITL question proposals.
   "custom",
   // ActionUnavailableReasonCodeV1 is a separate palette availability

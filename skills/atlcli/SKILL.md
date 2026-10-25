@@ -100,6 +100,7 @@ path as linked, for example `atlcli skill references/safety.md`.
 | Find issues: JQL, convenience filters, saved filters, CSV/JSON export and import | [references/jira-search.md](references/jira-search.md) |
 | Boards, sprints, sprint review pages, epics, velocity/burndown, flow metrics (cycle time, aging, cumulative flow), the status map, worklogs and timers | [references/jira-agile.md](references/jira-agile.md) |
 | Bulk JQL changes and moves, projects, components, versions, release notes pages, custom fields, issue templates, watchers, webhooks | [references/jira-bulk-and-admin.md](references/jira-bulk-and-admin.md) |
+| Templating copies and templates: `{{var}}`, `--var`, `--vars-file`, `--strict`, `atlcli template vars` | [references/jira-issues.md](references/jira-issues.md#copying-many-issues) |
 | Confluence: find pages, create/delete/copy/move them, replace a whole body, page tasks to Jira issues, and page metadata: labels, comments, history, Jira links, spaces | [references/confluence-pages.md](references/confluence-pages.md) |
 | **Editing text that already exists on a page**, one page or many: `wiki docs` init/pull/status/push/sync, conflicts, file format, macros, the git plugin | [references/confluence-docs-sync.md](references/confluence-docs-sync.md) |
 | Confluence as a shell or filesystem: `wiki sh`, `wiki mount`, `wiki vfs` | [references/confluence-vfs.md](references/confluence-vfs.md) |

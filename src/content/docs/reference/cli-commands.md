@@ -208,6 +208,8 @@ atlcli wiki page move <file> --last              # Last child position
 atlcli wiki page move --id <id> --position <n>   # Specific position
 atlcli wiki page copy --id <id> --title <title>
 atlcli wiki page copy --id <id> --title <title> --space <key>
+atlcli wiki page copy --id <id> --title "Retro {{sprint}}" --var sprint=42   # Title and body are templates
+atlcli wiki page copy --id <id> --tree [--title <tpl>] [--vars-file <file>] [--plan-out <file>] [--apply [--yes]]   # Page tree as a plan
 atlcli wiki page children --id <id>          # List child pages
 atlcli wiki page children --id <id> --limit <n> --json
 atlcli wiki page sort <file> --alphabetical
@@ -547,6 +549,7 @@ atlcli jira project types <key>         # Issue types; or --key <key>
 atlcli jira project copy-issues --to <KEY> (--from <KEY> [--jql <filter>] | --jql <selection>) \
   [--no-attachments] [--no-links] [--no-subtasks] [--fields <ids>] [--replace <find:replace>]... \
   [--link-source] [--comments] [--keep-mentions] [--keep-assignee] [--keep-status] [--status-map <from:to>]... \
+  [--var <name=value>]... [--vars-file <file>] [--now <iso>] [--strict] \
   [--plan-out <file>] [--apply [--yes]] [--print-script]   # See /jira/copy-issues/
 ```
 
@@ -573,7 +576,7 @@ atlcli jira issue update --key <key> --remove-labels <labels>
 atlcli jira issue update --key <key> --assignee <user>  # me, email, name, account id, none
 atlcli jira issue update --key <key> --edit  # Edit the description in $EDITOR
 atlcli jira issue delete --key <key> --confirm
-atlcli jira issue clone <key> [--replace <find:replace>]... [--project <key>] [--summary <text>] [--attachments]
+atlcli jira issue clone <key> [--replace <find:replace>]... [--project <key>] [--summary <text>] [--attachments] [--var <name=value>]... [--vars-file <file>] [--strict]
 atlcli jira issue transition --key <key> --to <status>
 atlcli jira issue transitions --key <key>  # List available transitions
 atlcli jira issue assign --key <key> --assignee <user>
@@ -806,6 +809,7 @@ atlcli jira template save <name> --issue <key> --tags bug,urgent  # With tags
 atlcli jira template save <name> --issue <key> --force            # Overwrite
 
 atlcli jira template apply <name> --project <key> --summary <text>
+atlcli jira template apply <name> --project <key> --var version=4.2 [--vars-file <file>] [--now <iso>] [--strict]
 atlcli jira template delete <name> --confirm
 atlcli jira template export <name> -o <file>
 atlcli jira template import --file <path>
@@ -954,9 +958,23 @@ atlcli script run <file> --apply               # Plan, ask, apply
 atlcli script run <file> --apply --yes         # Plan and apply without asking
 atlcli script run -e '<code>'                  # Inline code
 atlcli script run <file> --timeout 30m --max-writes 2000   # Raise limits
+atlcli script run <file> --var year=2026 --vars-file v.yml --now <iso> --strict   # Values for atlcli.render
 atlcli script apply plan.json --yes            # Apply a reviewed plan (exit 2 on drift)
 atlcli script check <file>                     # Validate meta, type-check with tsc
 atlcli script init [dir]                       # atlcli.d.ts, tsconfig.json, example.ts
+```
+
+## Templates
+
+Variables for copies and templates; see [Templating](../templating.md).
+
+```bash
+atlcli template vars --jira-template <name>    # Variables of a saved Jira template
+atlcli template vars --issue <key>             # ... of a template issue
+atlcli template vars --jql <query>             # ... of template issues (up to 500)
+atlcli template vars --page <id> [--tree]      # ... of a template page or page tree
+atlcli template vars --file <path>             # ... of a local .json Jira template or .md wiki template
+atlcli template vars ... --json                # Includes a values: skeleton for --vars-file
 ```
 
 ## Logging

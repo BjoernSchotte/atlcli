@@ -37,11 +37,28 @@ Options:
 | `--project` | Project key for project-level storage |
 | `--force` | Overwrite existing template |
 
+Placeholders in the source issue are kept, and every [template variable](/templating/)
+the fields use is recorded in the template as a required string:
+
+```json
+{
+  "name": "release",
+  "fields": { "summary": "Release {{version}}", "labels": ["rel-{{version}}"] },
+  "variables": [{ "name": "version", "type": "string", "required": true }]
+}
+```
+
+Edit `variables` (in the file, or export, edit and import) to give a type,
+a default, `select` options or a description. Older templates without
+`variables` keep working; their variables are then only inferred.
+
 ## View Template
 
 ```bash
 atlcli jira template get bug-report
 ```
+
+The output includes the template's `variables`.
 
 ## Apply Template
 
@@ -59,6 +76,20 @@ Options:
 | `--summary` | Issue summary (default: the template's summary; required if the template has none) |
 | `--description` | Description instead of the template's |
 | `--assignee` | Assignee (see [Users](issues.md#users)) |
+| `--var <name=value>` | Template variable, repeatable |
+| `--vars-file <file>` | Values and declarations, see [Templating](/templating/#variables) |
+| `--now <iso>` | Freezes `@today`/`@now` |
+| `--strict` | Fails on any template warning, before the issue is created |
+
+Summary, description, labels, the due date and other fields render as
+templates; `--summary` and `--description` do too. At a terminal, atlcli asks
+for required variables you didn't pass. Without one (CI, `--json`, `--yes`) it
+fails and names them:
+
+```bash
+atlcli jira template apply release --project REL --var version=4.2
+# Due in two weeks, from a template with  "duedate": "{{dateAdd @today 14 \"d\"}}"
+```
 
 :::note[Data Center]
 `--assignee` needs a Cloud account ID. On Data Center it is ignored; assign the issue afterwards with `issue assign`.

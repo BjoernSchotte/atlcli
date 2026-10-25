@@ -13,6 +13,7 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 - [Globals](#globals)
 - [meta](#meta)
 - [Verbs](#verbs)
+- [atlcli.render](#atlclirender)
 - [Attachments](#attachments)
 - [Exports](#exports)
 - [Placeholders](#placeholders)
@@ -45,6 +46,10 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `--max-writes <n>` | run | positive integer | `meta.limits.maxWrites`, else 100 | Overrides `meta.limits.maxWrites` |
 | `--max-calls <n>` | run | positive integer | 10,000 | Jira and Confluence calls per run |
 | `--memory <MB>` | run | positive integer | 64 | Script memory |
+| `--var <name=value>` | run | string, repeatable | none | Template variable for [`atlcli.render`](#atlclirender); `a.b=v` nests, JSON values are parsed |
+| `--vars-file <file>` | run | YAML path | none | Template values and declarations; see [Templating](/templating/#variables) |
+| `--now <iso>` | run | ISO date/time | time of planning | Clock for `@today`/`@now`; recorded in the plan |
+| `--strict` | run | switch | off | Any template warning ends the run (`template` error kind) |
 | `--json` | all | switch | off | One JSON document on stdout; script output stays on stderr |
 | `--force` | init | switch | off | Overwrites `tsconfig.json` and `example.ts`; `atlcli.d.ts` is always refreshed |
 
@@ -54,6 +59,7 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 |---|---|---|
 | `atlcli.params` | `Readonly<Record<string, string \| number \| boolean>>` | Frozen. Strings unless declared in `meta.params` |
 | `atlcli.jira`, `atlcli.confluence` | objects of verbs | Frozen; see [Verbs](#verbs) |
+| `atlcli.render(input, options?)` | function | Renders a template; see [atlcli.render](#atlclirender) |
 | `console.log`, `info`, `warn`, `error` | functions | To stderr; objects are printed as JSON |
 | `export default` | value or function | Optional. A function is awaited with `atlcli.params`; its result, or the value, becomes `plan.value` |
 
@@ -131,7 +137,9 @@ Once `meta.permissions` is declared, sprint writes on a board that belongs to no
 |---|---|---|---|
 | `confluence.search(cql, { limit? })` | async iterator of `{ id, title, spaceKey }` | `confluence:read` | read; pages of 100 |
 | `confluence.getPage(id)` | `{ id, title, spaceKey, version, parentId?, markdown }` | `confluence:read` | read |
-| `confluence.createPage({ space, title, markdown, parentId? })` | `{ id }` placeholder | `confluence:write:<space>` | create; title still absent |
+| `confluence.getPage(id, { storage: true })` | `{ id, title, spaceKey, version, parentId?, storage, properties }` | `confluence:read` | read; storage XHTML as stored, `properties` holds `atlcli.copiedFrom` when set |
+| `confluence.children(id)` | `[{ id, title, spaceKey }]` | `confluence:read` | read; direct child pages in page-tree order |
+| `confluence.createPage({ space, title, markdown \| storage, parentId?, properties? })` | `{ id }` placeholder | `confluence:write:<space>` | create; title still absent. `storage` is sent unchanged (lossless copies); `properties` become content properties |
 | `confluence.updatePage(id, { title?, markdown })` | `{ id }` | `confluence:write:<space of page>` | replaces the body; page version unchanged. Keeps the title unless given. Left out when body and title would not change |
 | `confluence.upsertPage({ space, title, markdown, parentId? })` | `{ id, created }` | `confluence:write:<space>` | becomes an update of the page with that exact title, else a create |
 | `confluence.addLabels(pageId, labels)` | `null` | `confluence:write:<space of page>` | labels; no precondition |
@@ -142,6 +150,7 @@ Once `meta.permissions` is declared, sprint writes on a board that belongs to no
 | `confluence.deletePage(id)` | `null` | `confluence:write:<space of page>` | moves the page to the space's trash; page version unchanged. Later writes to it in the same plan throw |
 | `confluence.attachments(pageId)` | `[{ id, name, mediaType, size, version }]` | `confluence:read` | read |
 | `confluence.attach(pageId, { name, content, encoding? })` | `{ id }` placeholder | `confluence:write:<space of page>` | attachment; no precondition. An attachment of the same name gets a new version |
+| `confluence.copyAttachment(attachmentId, sourcePageId, toPageId)` | `{ id }` | `confluence:write:<space of target>` | copies the bytes host-side when applied; left out when the target already has a file of that name and size |
 | `confluence.export(pageId, { format, path? })` | `{ path }` | `confluence:read` | writes a local `pdf` or `docx` file when applied. See [Exports](#exports) |
 
 Creating the same title twice in one plan is an error; use `upsertPage`, which also finds pages the plan itself creates.
@@ -253,6 +262,29 @@ Other verbs are always planned. Re-running a script that only uses verbs from th
 
 `report.operations[]` entries are `{ seq, verb, status: "applied" | "failed" | "skipped", result?, error? }`. Failures print the standard error shape, `{ "error": { "code", "message", "details" } }`. For a script error, `details.kind` holds the error kind. For drift or a failed write, `details.report` holds the report.
 
+## atlcli.render
+
+```ts
+const summary = await atlcli.render("Audit {{year}}: {{source.summary}}", { source: issue.fields });
+const body = await atlcli.render(page.storage, { format: "storage", parent: { title } });
+```
+
+Renders a [template](/templating/) with the run's `--var`/`--vars-file`
+values and the frozen `--now`. It is not a write and needs no permission.
+
+| Option | Type | Default | Notes |
+|---|---|---|---|
+| `vars` | object | none | Merged over the run's values for this call |
+| `format` | `"text"`, `"adf"`, `"storage"`, `"wikimarkup"` | a string is text, an object ADF | Storage and wiki markup must be named |
+| `source` | any JSON | none | Available as `{{source.…}}` |
+| `parent` | any JSON | none | Available as `{{parent.…}}` |
+| `unit` | string | `render#<n>` | Names the value in warnings |
+
+Unresolved expressions stay as written; each becomes a template warning in the
+plan (`plan.renderWarnings`) and in the text output. With `--strict` the first
+call that warns ends the run. The plan records the clock as
+`plan.templating.now`.
+
 ## Exit codes and error kinds
 
 | Exit | Meaning |
@@ -271,6 +303,7 @@ Other verbs are always planned. Re-running a script that only uses verbs from th
 | `deadline` | Run time limit while waiting |
 | `memory` | Memory limit |
 | `host-call-limit` | More than 10,000 calls |
+| `template` | `atlcli.render` with `--strict` and warnings, or a template output limit |
 
 ## Related topics
 
