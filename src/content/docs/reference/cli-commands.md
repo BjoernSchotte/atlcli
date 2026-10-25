@@ -957,12 +957,23 @@ atlcli script run <file> --plan-out plan.json  # Write the plan for review or CI
 atlcli script run <file> --apply               # Plan, ask, apply
 atlcli script run <file> --apply --yes         # Plan and apply without asking
 atlcli script run -e '<code>'                  # Inline code
-atlcli script run <file> --timeout 30m --max-writes 2000   # Raise limits
+atlcli script run <file> --timeout 0 --max-writes 50000    # Raise limits (0 = none)
 atlcli script run <file> --var year=2026 --vars-file v.yml --now <iso> --strict   # Values for atlcli.render
 atlcli script apply plan.json --yes            # Apply a reviewed plan (exit 2 on drift)
+atlcli script apply plan.json --resume --yes   # Continue an apply that stopped
+atlcli script apply plan.json --concurrency 8  # Independent operations in parallel
+atlcli script run <file> --each "<jql>"        # Per-issue job: plan once per issue
+atlcli script run <file> --each "<jql>" --apply --yes   # Plan and apply issue by issue
+atlcli script apply <job-id> --yes             # Apply a reviewed per-issue job
+atlcli script resume <job-id> [--script <file>]   # Continue a job that stopped
+atlcli script jobs [job-id]                    # List jobs, or show one
 atlcli script check <file>                     # Validate meta, type-check with tsc
 atlcli script init [dir]                       # atlcli.d.ts, tsconfig.json, example.ts
+atlcli script init [dir] --each "<jql>"        # Per-issue skeleton (each.ts)
+atlcli script init [dir] --example <name>      # A bundled example; --list-examples
 ```
+
+Per-issue jobs: see [Per-Issue Script Jobs](../script-jobs.md).
 
 ## Templates
 

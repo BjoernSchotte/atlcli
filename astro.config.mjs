@@ -29,6 +29,7 @@ export default defineConfig({
         { label: 'Getting Started', link: '/getting-started/' },
         { label: 'Daily Digest', link: '/digest/' },
         { label: 'Automation Scripts', link: '/scripts/' },
+        { label: 'Per-Issue Script Jobs', link: '/script-jobs/' },
         { label: 'Templating', link: '/templating/' },
         { label: 'Terminal UI', link: '/tui/' },
         {

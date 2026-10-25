@@ -21,6 +21,8 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 - [Sandbox limits](#sandbox-limits)
 - [Unchanged updates](#unchanged-updates)
 - [Plan file](#plan-file)
+- [Apply journal](#apply-journal)
+- [Per-issue jobs](#per-issue-jobs)
 - [JSON output](#json-output)
 - [Exit codes and error kinds](#exit-codes-and-error-kinds)
 - [Related topics](#related-topics)
@@ -31,20 +33,31 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 |---|---|
 | `atlcli script run <file>` | Runs the script and prints the plan. Writes nothing |
 | `atlcli script run -e <code>` | Same, for inline code (`--eval` is the long form) |
-| `atlcli script apply <plan.json>` | Applies a plan written with `--plan-out` |
+| `atlcli script apply <plan.json>` | Applies a plan written with `--plan-out`; `--resume` continues a stopped apply |
+| `atlcli script run <file> --each "<jql>"` | Per-issue job: plans (or with `--apply` applies) the script once per issue. See [Per-issue jobs](#per-issue-jobs) |
+| `atlcli script apply <job-id>` | Applies the reviewed plans of a per-issue job |
+| `atlcli script resume <job-id>` | Continues a per-issue job that stopped |
+| `atlcli script jobs [job-id]` | Lists per-issue jobs, or shows one with the issues not done |
 | `atlcli script check <file>` | Validates `meta`; type-checks with `tsc --noEmit` when `tsc` is on `PATH` |
-| `atlcli script init [dir]` | Writes `atlcli.d.ts`, `tsconfig.json` and `example.ts` (default dir: `.`) |
+| `atlcli script init [dir]` | Writes `atlcli.d.ts`, `tsconfig.json` and `example.ts` (default dir: `.`); `--each "<jql>"` writes `each.ts`, `--example <name>` a bundled example |
 
 | Flag | Commands | Type | Default | Notes |
 |---|---|---|---|---|
 | `--param <name=value>` | run | string, repeatable | none | Available as `atlcli.params`; typed when declared in `meta.params` |
 | `--plan-out <file>` | run | path | none | Writes the plan file, also when `--apply` is given |
 | `--apply` | run | switch | off | Applies after planning; asks first |
-| `--yes` | run, apply | switch | off | Applies without asking. Required without a terminal or with `--json` |
+| `--yes` | run, apply, resume | switch | off | Applies without asking. Required without a terminal or with `--json` |
+| `--resume` | apply | switch | off | Continues an apply of this plan that stopped; see [Apply journal](#apply-journal) |
+| `--concurrency <n>` | run, apply, resume | 1–32 | 1 for plans, 4 for jobs | Operations (plans) or issues (jobs) in flight at once |
+| `--each <jql>` | run, init | JQL | `meta.each.jql` | Per-issue mode; for `init`, writes `each.ts` for this query |
+| `--max-failures <n\|n%>` | run, resume | count or percentage | `10%`, at least 10 | Failed issues after which a job stops |
+| `--max-items <n>` | run, resume | positive integer | all | Issues a job processes in this run |
+| `--script <file>` | resume | path | the job's script | Continue a planning or streaming job with a fixed script |
+| `--example <name>` | init | string | none | Writes `<name>.ts`; `--list-examples` lists them |
 | `--profile <name>` | run, apply | string | active profile | Also `ATLCLI_PROFILE` |
-| `--timeout <duration>` | run | `90s`, `10m`, `1h`, `500ms`; bare number = seconds | `5m` | Whole run, CPU and waiting |
-| `--max-writes <n>` | run | positive integer | `meta.limits.maxWrites`, else 100 | Overrides `meta.limits.maxWrites` |
-| `--max-calls <n>` | run | positive integer | 10,000 | Jira and Confluence calls per run |
+| `--timeout <duration>` | run | `90s`, `10m`, `1h`, `500ms`; bare number = seconds; `0` = none | `1h` (jobs: `60s` per issue) | Whole run, CPU and waiting |
+| `--max-writes <n>` | run | integer ≥ 0; `0` = none | `meta.limits.maxWrites`, else 10,000 (jobs: 50 per issue) | Overrides `meta.limits.maxWrites` |
+| `--max-calls <n>` | run | integer ≥ 0; `0` = none | 100,000 (jobs: 500 per issue) | Jira and Confluence calls per run |
 | `--memory <MB>` | run | positive integer | 64 | Script memory |
 | `--var <name=value>` | run | string, repeatable | none | Template variable for [`atlcli.render`](#atlclirender); `a.b=v` nests, JSON values are parsed |
 | `--vars-file <file>` | run | YAML path | none | Template values and declarations; see [Templating](/templating/#variables) |
@@ -61,7 +74,7 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `atlcli.jira`, `atlcli.confluence` | objects of verbs | Frozen; see [Verbs](#verbs) |
 | `atlcli.render(input, options?)` | function | Renders a template; see [atlcli.render](#atlclirender) |
 | `console.log`, `info`, `warn`, `error` | functions | To stderr; objects are printed as JSON |
-| `export default` | value or function | Optional. A function is awaited with `atlcli.params`; its result, or the value, becomes `plan.value` |
+| `export default` | value or function | Optional. A function is awaited with `atlcli.params`; its result, or the value, becomes `plan.value`. In a per-issue job it is required and called as `default(issue, params)` |
 
 The sandbox has no `fetch`, timers, `process`, `require`, file system or imports.
 
@@ -74,7 +87,9 @@ Optional. It is read statically before the script runs, so it must be written as
 | `name` | string | file name, `inline` for `-e` | no | lowercase letters, digits, `-` |
 | `description` | string | none | no | |
 | `permissions` | string[] | none: all verbs allowed | no | each `jira:read`, `jira:write:<PROJECT>`, `confluence:read` or `confluence:write:<SPACE>`. Once given, everything else is denied |
-| `limits.maxWrites` | integer | 100 | no | > 0; most operations in one plan |
+| `limits.maxWrites` | integer | 10,000 | no | > 0; most operations in one plan |
+| `each.jql` | string | none | no | Per-issue mode: the issues the default export runs for. `--each` overrides it |
+| `each.fields` | string[] | `summary`, `status`, `assignee`, `priority`, `issuetype`, `labels` | no | Fields each issue comes with |
 | `params.<name>.type` | `"string"` \| `"number"` \| `"boolean"` | none | yes, per param | name: letters, digits, `_`, not starting with a digit |
 | `params.<name>.default` | matches `type` | none (then the param is required) | no | |
 | `params.<name>.description` | string | none | no | |
@@ -110,6 +125,7 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 |---|---|---|---|
 | `jira.search(jql, { fields?, properties?, limit? })` | async iterator of `{ id, key, fields, properties? }` | `jira:read` | read; pages of 100. `properties` names issue property keys to return |
 | `jira.get(key, { fields? })` | `{ id, key, fields }`, `fields.updated` always present | `jira:read` | read |
+| `jira.rest(path, { query? })` | JSON | `jira:read` | read only (GET). `path` is site-relative and starts with `/rest/`, e.g. `/rest/api/3/field`; no query string in it (use `query`), no `..`. Responses up to 5 MB |
 | `jira.create({ project, type, summary, description?, fields?, properties? })` | `{ id, key }` placeholders | `jira:write:<project>` | create; no precondition. `description` is Markdown; `fields.description` is sent unchanged (ADF from `get`, for lossless copies). Not both. `properties` sets issue properties by key |
 | `jira.update(key, { summary?, description?, fields? })` | `null` | `jira:write:<project of key>` | update; issue unchanged |
 | `jira.transition(key, to)` | `null` | `jira:write:<project of key>` | transition; issue unchanged. `to` is matched by name, ignoring case; checked against the issue's transitions when the issue exists |
@@ -137,6 +153,7 @@ Once `meta.permissions` is declared, sprint writes on a board that belongs to no
 |---|---|---|---|
 | `confluence.search(cql, { limit? })` | async iterator of `{ id, title, spaceKey }` | `confluence:read` | read; pages of 100 |
 | `confluence.getPage(id)` | `{ id, title, spaceKey, version, parentId?, markdown }` | `confluence:read` | read |
+| `confluence.rest(path, { query? })` | JSON | `confluence:read` | read only (GET), relative to the Confluence base (`/wiki` on Cloud): `/rest/api/…` or `/api/v2/…`. Same rules as `jira.rest` |
 | `confluence.getPage(id, { storage: true })` | `{ id, title, spaceKey, version, parentId?, storage, properties }` | `confluence:read` | read; storage XHTML as stored, `properties` holds `atlcli.copiedFrom` when set |
 | `confluence.children(id)` | `[{ id, title, spaceKey }]` | `confluence:read` | read; direct child pages in page-tree order |
 | `confluence.createPage({ space, title, markdown \| storage, parentId?, properties? })` | `{ id }` placeholder | `confluence:write:<space>` | create; title still absent. `storage` is sent unchanged (lossless copies); `properties` become content properties |
@@ -205,10 +222,10 @@ All preconditions are checked before the first write. If any fails, nothing is w
 |---|---|---|---|
 | Memory | 64 MB | `--memory` | `memory` |
 | Stack | 512 KB | fixed | `guest` (stack overflow) |
-| Run time, CPU and waiting | 5 minutes | `--timeout` | `interrupted` (busy loop) or `deadline` (waiting) |
+| Run time, CPU and waiting | 1 hour (jobs: 60 seconds per issue) | `--timeout`; `0` = none | `interrupted` (busy loop) or `deadline` (waiting) |
 | One Jira or Confluence call | 60 seconds | fixed | catchable error `Host call timed out` |
-| Calls per run | 10,000 | `--max-calls` | `host-call-limit` |
-| Planned writes | 100 | `meta.limits.maxWrites`, `--max-writes` (wins) | `write-limit` |
+| Calls per run | 100,000 (jobs: 500 per issue) | `--max-calls`; `0` = none | `host-call-limit` |
+| Planned writes | 10,000 (jobs: 50 per issue) | `meta.limits.maxWrites`, `--max-writes` (wins); `0` = none | `write-limit` |
 
 `host-call-limit`, `write-limit` and `permission-denied` end the run even if the script catches the error.
 
@@ -251,6 +268,55 @@ Other verbs are always planned. Re-running a script that only uses verbs from th
 
 `apply` refuses a file whose digest does not match, whose operations are out of order, or whose `target.baseUrl` differs from the profile's site.
 
+## Apply journal
+
+Applying a plan file writes `<plan file>.journal.jsonl` next to it: a first line `{ "plan": "<digest>" }`, then `{ "seq", "result" }` for each applied operation, written before the next one starts.
+
+| Situation | What `apply` does |
+|---|---|
+| No journal, or a journal with no applied operation | Applies the plan |
+| Journal of this plan with applied operations, no `--resume` | Refuses: applying twice would repeat writes |
+| `--resume` | Skips the applied operations; their results stand in for `plan:<n>` references and page versions. Preconditions are checked only for the rest |
+| Every operation already applied | Reports that and writes nothing |
+| Journal of another plan | Refuses; move the journal away |
+
+`run --plan-out` starts a new journal (and removes an old one at that path) when it writes the plan.
+
+With `--concurrency` above 1, an operation waits for its `dependsOn` and for every earlier operation that names the same issue, page or sprint. After a failure no new operation starts; the ones in flight finish.
+
+## Per-issue jobs
+
+`script run --each` (or a script with `meta.each`) runs the default export once per issue. See the [guide](../script-jobs.md).
+
+1. **Snapshot.** The query runs once; the id and key of every issue go to `items.jsonl`.
+2. **Batches of 100.** The issues are read by id with `meta.each.fields`. Each runs in its own sandbox with the per-issue limits, `--concurrency` at a time.
+3. **Outcome per issue,** one JSON line `{ id, key, status, operations?, ops?, value?, error? }`:
+
+| Status | Meaning | Done on resume? |
+|---|---|---|
+| `planned` | Plan stored in `plans.jsonl` (review mode) | yes |
+| `unchanged` | The script planned nothing | yes |
+| `applied` | All operations applied | yes |
+| `gone` | Deleted or no longer visible since the snapshot | yes |
+| `error` | The script failed for this issue (`kind: message`) | no, retried |
+| `failed` | A write failed; earlier writes of this issue stay applied | no, retried |
+| `drift` | The issue changed between plan and apply; nothing written | no |
+
+A job stops when `--max-failures` is reached, when the script is invalid, or on Ctrl-C (in-flight issues finish). `job.json` records the state:
+
+| Field | Notes |
+|---|---|
+| `schema` | `"atlcli.script-job/1"` |
+| `id`, `createdAt`, `updatedAt` | |
+| `script` | `{ name, path?, sha256 }`; the source is kept as `script.ts` |
+| `params`, `jql`, `fields`, `target` | as run |
+| `mode` | `plan` (review first) or `stream` (`--apply`) |
+| `phase` | `planning`, `planned` or `applying` |
+| `stopped` | why the last run stopped early; absent otherwise |
+| `limits`, `concurrency`, `maxFailures` | per-issue limits and settings |
+| `total` | issues in the snapshot |
+| `plansDigest` | SHA-256 of `plans.jsonl` once planning finished; `apply` refuses an edited file |
+
 ## JSON output
 
 | Command | stdout |
@@ -259,6 +325,8 @@ Other verbs are always planned. Re-running a script that only uses verbs from th
 | `run --apply`, `apply` | `{ "schemaVersion": "1", "plan": { … }, "report": { "status": "applied", "drift": [], "operations": [ … ] } }` |
 | `check` | `{ "schemaVersion": "1", "meta": { … }, "typecheck": { "status": "ok" \| "skipped" \| "errors", … } }` |
 | `init` | `{ "schemaVersion": "1", "dir": "…", "written": [ … ], "kept": [ … ] }` |
+| `run --each`, `apply <job-id>`, `resume` | `{ "schemaVersion": "1", "job": { … }, "run": { "<status>": n }, "counts": { "done", "byStatus" }, "operations": { "<verb>": n } }` |
+| `jobs` | `{ "schemaVersion": "1", "jobs": [ … ] }`; with an id `{ "schemaVersion": "1", "job", "counts", "errors": [ … ] }` |
 
 `report.operations[]` entries are `{ seq, verb, status: "applied" | "failed" | "skipped", result?, error? }`. Failures print the standard error shape, `{ "error": { "code", "message", "details" } }`. For a script error, `details.kind` holds the error kind. For drift or a failed write, `details.report` holds the report.
 
@@ -290,7 +358,7 @@ call that warns ends the run. The plan records the clock as
 | Exit | Meaning |
 |---|---|
 | 0 | Planned, or applied |
-| 1 | Script error, failed write, invalid plan, usage error |
+| 1 | Script error, failed write, invalid plan, usage error, or a job that stopped early |
 | 2 | Drift: targets changed since the plan; nothing written |
 
 | Kind | Cause |
@@ -302,12 +370,13 @@ call that warns ends the run. The plan records the clock as
 | `interrupted` | CPU time limit (busy loop) |
 | `deadline` | Run time limit while waiting |
 | `memory` | Memory limit |
-| `host-call-limit` | More than 10,000 calls |
+| `host-call-limit` | More calls than `--max-calls` |
 | `template` | `atlcli.render` with `--strict` and warnings, or a template output limit |
 
 ## Related topics
 
 - [Automation Scripts](../scripts.md): the guide, with examples and troubleshooting
+- [Per-Issue Script Jobs](../script-jobs.md): running a script over thousands of issues
 - [Scripts in CI](../recipes/scripts-in-ci.md): plans as pull request artifacts, apply after approval
 - [CLI Commands](cli-commands.md#scripts): the command overview
 - [Authentication](../authentication.md): profiles a script runs with

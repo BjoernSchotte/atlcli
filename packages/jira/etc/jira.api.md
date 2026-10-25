@@ -72,6 +72,9 @@ export interface BurndownDataPoint {
     completed: number;
 }
 
+// export: checkRestPath
+export declare function checkRestPath(path: string, prefixes: readonly string[]): string;
+
 // export: CreateFilterInput
 export interface CreateFilterInput {
     name: string;
@@ -149,6 +152,12 @@ export interface CreateRemoteLinkInput {
     };
 }
 
+// export: DEFAULT_JQL_FUNCTION_LIMITS
+export declare const DEFAULT_JQL_FUNCTION_LIMITS: JqlFunctionLimits;
+
+// export: expandJqlFunctions
+export declare function expandJqlFunctions(jql: string, search: JqlSearchPage, limits?: JqlFunctionLimits): Promise<string>;
+
 // export: ExportData
 export interface ExportData {
     exportedAt: string;
@@ -194,6 +203,12 @@ export interface ExportOptions {
     includeAttachments?: boolean;
     outputPath: string;
 }
+
+// export: findJqlFunctions
+export declare function findJqlFunctions(jql: string): JqlFunctionCall[];
+
+// export: hasJqlFunctions
+export declare function hasJqlFunctions(jql: string): boolean;
 
 // export: ImportIssue
 export interface ImportIssue {
@@ -289,6 +304,9 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    private jqlFunctions;
+    private expandedJql;
+    expandJql(jql: string): Promise<string>;
     get isCloudSite(): boolean;
     get siteUrl(): string;
     private get apiPath();
@@ -297,6 +315,10 @@ export declare class JiraClient {
     private applyFetchOptions;
     private emitTransport;
     private request;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number | boolean>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getCurrentUser(): Promise<JiraUser>;
     searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
@@ -439,6 +461,7 @@ export declare class JiraClient {
         properties?: string[];
         signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
+    private searchNative;
     searchGet(jql: string, options?: {
         maxResults?: number;
         fields?: string;
@@ -721,6 +744,7 @@ export declare class JiraClient {
 export interface JiraClientOptions {
     guardTransport?: (event: JiraTransportEvent) => void;
     observeTransport?: (event: JiraTransportEvent) => void;
+    jqlFunctions?: false | Partial<JqlFunctionLimits>;
 }
 
 // export: JiraComment
@@ -1085,6 +1109,54 @@ export interface JiraWorklog {
     timeSpentSeconds: number;
     issueId: string;
 }
+
+// export: JQL_FUNCTIONS
+export declare const JQL_FUNCTIONS: readonly [
+    "linkedIssuesOf",
+    "subtasksOf",
+    "childrenOf",
+    "issuesInEpics",
+    "parentsOf",
+    "epicsOf",
+    "hasSubtasks",
+    "hasLinks",
+    "hasAttachments",
+    "hasComments",
+    "hasWorklogs"
+];
+
+// export: JqlFunctionCall
+export interface JqlFunctionCall {
+    start: number;
+    end: number;
+    name: (typeof JQL_FUNCTIONS)[number];
+    negated: boolean;
+    args: string[];
+}
+
+// export: JqlFunctionError
+export declare class JqlFunctionError extends Error {
+    constructor(message: string);
+}
+
+// export: JqlFunctionLimits
+export interface JqlFunctionLimits {
+    maxKeys: number;
+    maxScan: number;
+}
+
+// export: JqlSearchPage
+export type JqlSearchPage = (jql: string, options: {
+    fields: string[];
+    nextPageToken?: string;
+    maxResults: number;
+}) => Promise<{
+    issues: Array<{
+        key: string;
+        fields: Record<string, any>;
+    }>;
+    nextPageToken?: string;
+}>;
 
 // export: markdownToAdf
 export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
@@ -1504,6 +1576,9 @@ export declare function changelogRows(entries: JiraChangelogEntry[]): {
     to: string | null;
 }[];
 
+// export: checkRestPath
+export declare function checkRestPath(path: string, prefixes: readonly string[]): string;
+
 // export: clearTimer
 export declare function clearTimer(): void;
 
@@ -1649,6 +1724,9 @@ export declare const DEFAULT_JIRA_STALE_DAYS: [
     number
 ];
 
+// export: DEFAULT_JQL_FUNCTION_LIMITS
+export declare const DEFAULT_JQL_FUNCTION_LIMITS: JqlFunctionLimits;
+
 // export: defaultAuditRules
 export declare function defaultAuditRules(profile?: AuditProfileName, source?: string): AuditRules;
 
@@ -1677,6 +1755,9 @@ export declare function escapeCsvValue(value: unknown): string;
 
 // export: escapeMarkdown
 export declare function escapeMarkdown(text: string): string;
+
+// export: expandJqlFunctions
+export declare function expandJqlFunctions(jql: string, search: JqlSearchPage, limits?: JqlFunctionLimits): Promise<string>;
 
 // export: ExportData
 export interface ExportData {
@@ -1729,6 +1810,9 @@ export declare function extractStatusTransitions(issue: JiraIssue): StatusTransi
 
 // export: findFlaggedField
 export declare function findFlaggedField(fields: JiraField[]): string | undefined;
+
+// export: findJqlFunctions
+export declare function findJqlFunctions(jql: string): JqlFunctionCall[];
 
 // export: findTransition
 export declare function findTransition<T extends {
@@ -1870,6 +1954,9 @@ export declare class GlobalJiraTemplateStorage extends BaseJiraTemplateStorage {
     protected getSource(path: string): JiraTemplateSource;
     protected getLevel(): "global";
 }
+
+// export: hasJqlFunctions
+export declare function hasJqlFunctions(jql: string): boolean;
 
 // export: ImportIssue
 export interface ImportIssue {
@@ -2093,6 +2180,9 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    private jqlFunctions;
+    private expandedJql;
+    expandJql(jql: string): Promise<string>;
     get isCloudSite(): boolean;
     get siteUrl(): string;
     private get apiPath();
@@ -2101,6 +2191,10 @@ export declare class JiraClient {
     private applyFetchOptions;
     private emitTransport;
     private request;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number | boolean>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getCurrentUser(): Promise<JiraUser>;
     searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
@@ -2243,6 +2337,7 @@ export declare class JiraClient {
         properties?: string[];
         signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
+    private searchNative;
     searchGet(jql: string, options?: {
         maxResults?: number;
         fields?: string;
@@ -2525,6 +2620,7 @@ export declare class JiraClient {
 export interface JiraClientOptions {
     guardTransport?: (event: JiraTransportEvent) => void;
     observeTransport?: (event: JiraTransportEvent) => void;
+    jqlFunctions?: false | Partial<JqlFunctionLimits>;
 }
 
 // export: JiraComment
@@ -3080,14 +3176,62 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: JQL_FUNCTIONS
+export declare const JQL_FUNCTIONS: readonly [
+    "linkedIssuesOf",
+    "subtasksOf",
+    "childrenOf",
+    "issuesInEpics",
+    "parentsOf",
+    "epicsOf",
+    "hasSubtasks",
+    "hasLinks",
+    "hasAttachments",
+    "hasComments",
+    "hasWorklogs"
+];
+
 // export: jqlAssignee
 export declare function jqlAssignee(user: string, negate: boolean): string;
 
 // export: jqlBefore
 export declare function jqlBefore(field: string, value: string): string | undefined;
 
+// export: JqlFunctionCall
+export interface JqlFunctionCall {
+    start: number;
+    end: number;
+    name: (typeof JQL_FUNCTIONS)[number];
+    negated: boolean;
+    args: string[];
+}
+
+// export: JqlFunctionError
+export declare class JqlFunctionError extends Error {
+    constructor(message: string);
+}
+
+// export: JqlFunctionLimits
+export interface JqlFunctionLimits {
+    maxKeys: number;
+    maxScan: number;
+}
+
 // export: jqlIn
 export declare function jqlIn(field: string, raw: string, nullable?: boolean): string;
+
+// export: JqlSearchPage
+export type JqlSearchPage = (jql: string, options: {
+    fields: string[];
+    nextPageToken?: string;
+    maxResults: number;
+}) => Promise<{
+    issues: Array<{
+        key: string;
+        fields: Record<string, any>;
+    }>;
+    nextPageToken?: string;
+}>;
 
 // export: jqlSince
 export declare function jqlSince(field: string, value: string): string | undefined;
@@ -3776,6 +3920,9 @@ export interface BurndownDataPoint {
     completed: number;
 }
 
+// export: checkRestPath
+export declare function checkRestPath(path: string, prefixes: readonly string[]): string;
+
 // export: CreateFilterInput
 export interface CreateFilterInput {
     name: string;
@@ -3853,6 +4000,12 @@ export interface CreateRemoteLinkInput {
     };
 }
 
+// export: DEFAULT_JQL_FUNCTION_LIMITS
+export declare const DEFAULT_JQL_FUNCTION_LIMITS: JqlFunctionLimits;
+
+// export: expandJqlFunctions
+export declare function expandJqlFunctions(jql: string, search: JqlSearchPage, limits?: JqlFunctionLimits): Promise<string>;
+
 // export: ExportData
 export interface ExportData {
     exportedAt: string;
@@ -3898,6 +4051,12 @@ export interface ExportOptions {
     includeAttachments?: boolean;
     outputPath: string;
 }
+
+// export: findJqlFunctions
+export declare function findJqlFunctions(jql: string): JqlFunctionCall[];
+
+// export: hasJqlFunctions
+export declare function hasJqlFunctions(jql: string): boolean;
 
 // export: ImportIssue
 export interface ImportIssue {
@@ -3993,6 +4152,9 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    private jqlFunctions;
+    private expandedJql;
+    expandJql(jql: string): Promise<string>;
     get isCloudSite(): boolean;
     get siteUrl(): string;
     private get apiPath();
@@ -4001,6 +4163,10 @@ export declare class JiraClient {
     private applyFetchOptions;
     private emitTransport;
     private request;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number | boolean>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getCurrentUser(): Promise<JiraUser>;
     searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
@@ -4143,6 +4309,7 @@ export declare class JiraClient {
         properties?: string[];
         signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
+    private searchNative;
     searchGet(jql: string, options?: {
         maxResults?: number;
         fields?: string;
@@ -4425,6 +4592,7 @@ export declare class JiraClient {
 export interface JiraClientOptions {
     guardTransport?: (event: JiraTransportEvent) => void;
     observeTransport?: (event: JiraTransportEvent) => void;
+    jqlFunctions?: false | Partial<JqlFunctionLimits>;
 }
 
 // export: JiraComment
@@ -4789,6 +4957,54 @@ export interface JiraWorklog {
     timeSpentSeconds: number;
     issueId: string;
 }
+
+// export: JQL_FUNCTIONS
+export declare const JQL_FUNCTIONS: readonly [
+    "linkedIssuesOf",
+    "subtasksOf",
+    "childrenOf",
+    "issuesInEpics",
+    "parentsOf",
+    "epicsOf",
+    "hasSubtasks",
+    "hasLinks",
+    "hasAttachments",
+    "hasComments",
+    "hasWorklogs"
+];
+
+// export: JqlFunctionCall
+export interface JqlFunctionCall {
+    start: number;
+    end: number;
+    name: (typeof JQL_FUNCTIONS)[number];
+    negated: boolean;
+    args: string[];
+}
+
+// export: JqlFunctionError
+export declare class JqlFunctionError extends Error {
+    constructor(message: string);
+}
+
+// export: JqlFunctionLimits
+export interface JqlFunctionLimits {
+    maxKeys: number;
+    maxScan: number;
+}
+
+// export: JqlSearchPage
+export type JqlSearchPage = (jql: string, options: {
+    fields: string[];
+    nextPageToken?: string;
+    maxResults: number;
+}) => Promise<{
+    issues: Array<{
+        key: string;
+        fields: Record<string, any>;
+    }>;
+    nextPageToken?: string;
+}>;
 
 // export: markdownToAdf
 export declare function markdownToAdf(markdown: string, options?: MarkdownToAdfOptions): AdfDocument;
@@ -5208,6 +5424,9 @@ export declare function changelogRows(entries: JiraChangelogEntry[]): {
     to: string | null;
 }[];
 
+// export: checkRestPath
+export declare function checkRestPath(path: string, prefixes: readonly string[]): string;
+
 // export: clearTimer
 export declare function clearTimer(): void;
 
@@ -5353,6 +5572,9 @@ export declare const DEFAULT_JIRA_STALE_DAYS: [
     number
 ];
 
+// export: DEFAULT_JQL_FUNCTION_LIMITS
+export declare const DEFAULT_JQL_FUNCTION_LIMITS: JqlFunctionLimits;
+
 // export: defaultAuditRules
 export declare function defaultAuditRules(profile?: AuditProfileName, source?: string): AuditRules;
 
@@ -5381,6 +5603,9 @@ export declare function escapeCsvValue(value: unknown): string;
 
 // export: escapeMarkdown
 export declare function escapeMarkdown(text: string): string;
+
+// export: expandJqlFunctions
+export declare function expandJqlFunctions(jql: string, search: JqlSearchPage, limits?: JqlFunctionLimits): Promise<string>;
 
 // export: ExportData
 export interface ExportData {
@@ -5433,6 +5658,9 @@ export declare function extractStatusTransitions(issue: JiraIssue): StatusTransi
 
 // export: findFlaggedField
 export declare function findFlaggedField(fields: JiraField[]): string | undefined;
+
+// export: findJqlFunctions
+export declare function findJqlFunctions(jql: string): JqlFunctionCall[];
 
 // export: findTransition
 export declare function findTransition<T extends {
@@ -5574,6 +5802,9 @@ export declare class GlobalJiraTemplateStorage extends BaseJiraTemplateStorage {
     protected getSource(path: string): JiraTemplateSource;
     protected getLevel(): "global";
 }
+
+// export: hasJqlFunctions
+export declare function hasJqlFunctions(jql: string): boolean;
 
 // export: ImportIssue
 export interface ImportIssue {
@@ -5797,6 +6028,9 @@ export declare class JiraClient {
     private observeTransport;
     private sessionRedirectPolicy;
     constructor(profile: Profile, options?: JiraClientOptions);
+    private jqlFunctions;
+    private expandedJql;
+    expandJql(jql: string): Promise<string>;
     get isCloudSite(): boolean;
     get siteUrl(): string;
     private get apiPath();
@@ -5805,6 +6039,10 @@ export declare class JiraClient {
     private applyFetchOptions;
     private emitTransport;
     private request;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number | boolean>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getCurrentUser(): Promise<JiraUser>;
     searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
@@ -5947,6 +6185,7 @@ export declare class JiraClient {
         properties?: string[];
         signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
+    private searchNative;
     searchGet(jql: string, options?: {
         maxResults?: number;
         fields?: string;
@@ -6229,6 +6468,7 @@ export declare class JiraClient {
 export interface JiraClientOptions {
     guardTransport?: (event: JiraTransportEvent) => void;
     observeTransport?: (event: JiraTransportEvent) => void;
+    jqlFunctions?: false | Partial<JqlFunctionLimits>;
 }
 
 // export: JiraComment
@@ -6784,14 +7024,62 @@ export interface JiraWorklog {
     issueId: string;
 }
 
+// export: JQL_FUNCTIONS
+export declare const JQL_FUNCTIONS: readonly [
+    "linkedIssuesOf",
+    "subtasksOf",
+    "childrenOf",
+    "issuesInEpics",
+    "parentsOf",
+    "epicsOf",
+    "hasSubtasks",
+    "hasLinks",
+    "hasAttachments",
+    "hasComments",
+    "hasWorklogs"
+];
+
 // export: jqlAssignee
 export declare function jqlAssignee(user: string, negate: boolean): string;
 
 // export: jqlBefore
 export declare function jqlBefore(field: string, value: string): string | undefined;
 
+// export: JqlFunctionCall
+export interface JqlFunctionCall {
+    start: number;
+    end: number;
+    name: (typeof JQL_FUNCTIONS)[number];
+    negated: boolean;
+    args: string[];
+}
+
+// export: JqlFunctionError
+export declare class JqlFunctionError extends Error {
+    constructor(message: string);
+}
+
+// export: JqlFunctionLimits
+export interface JqlFunctionLimits {
+    maxKeys: number;
+    maxScan: number;
+}
+
 // export: jqlIn
 export declare function jqlIn(field: string, raw: string, nullable?: boolean): string;
+
+// export: JqlSearchPage
+export type JqlSearchPage = (jql: string, options: {
+    fields: string[];
+    nextPageToken?: string;
+    maxResults: number;
+}) => Promise<{
+    issues: Array<{
+        key: string;
+        fields: Record<string, any>;
+    }>;
+    nextPageToken?: string;
+}>;
 
 // export: jqlSince
 export declare function jqlSince(field: string, value: string): string | undefined;

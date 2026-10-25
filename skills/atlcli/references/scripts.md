@@ -19,6 +19,7 @@ links).
 - [Writing a script](#writing-a-script)
 - [Verbs](#verbs)
 - [Plan, then apply](#plan-then-apply)
+- [Many issues: per-issue jobs](#many-issues-per-issue-jobs)
 - [Restricting a script](#restricting-a-script)
 - [Output and exit codes](#output-and-exit-codes)
 - [Anti-patterns](#anti-patterns)
@@ -76,6 +77,7 @@ case.
 | `atlcli.confluence.attachments(pageId)` / `attach(pageId, { name, content, encoding? })` | same name → new version |
 | `atlcli.confluence.export(pageId, { format: "pdf" \| "docx", path? })` | file written below the apply directory when applied |
 | `atlcli.confluence.copyAttachment(attachmentId, sourcePageId, toPageId)` | bytes copied on apply, never in the plan; skipped if the target has the same name and size |
+| `atlcli.jira.rest(path, { query? })` / `atlcli.confluence.rest(path, { query? })` | read-only GET of any REST resource (`/rest/…`; Confluence also `/api/v2/…`), up to 5 MB; for data no verb covers. There is no write counterpart |
 | `await atlcli.render(input, { vars?, format?, source?, parent?, unit? })` | renders a template with `--var`/`--vars-file`/`--now`; strings are text, objects ADF, `format: "storage"` for pages; warnings go to the plan, `--strict` makes them fail (`template` error kind) |
 
 Objects the plan creates are referenced as `plan:<n>`, also inside text (a page
@@ -101,7 +103,10 @@ atlcli script run cleanup.ts --apply --yes                         # plan + appl
   state the plan saw (issue `updated`, page version, a title still absent).
   Any drift aborts with nothing written; re-run the script to plan again.
 - **First failure stops the run.** Earlier operations stay written, and the
-  report says which ran.
+  report says which ran. A plan applied from a file keeps a journal
+  (`plan.json.journal.jsonl`): after fixing the cause, continue with
+  `atlcli script apply plan.json --resume`. Without `--resume` a second apply
+  of the same plan is refused.
 
 - **Unchanged writes are skipped.** An `updatePage` or `upsertPage` that would
   leave body and title as they are is not planned; so are an `assign` to the
@@ -110,14 +115,52 @@ atlcli script run cleanup.ts --apply --yes                         # plan + appl
   `plan.skipped`. "No changes planned" after a re-run is the expected result.
 - **`deletePage` is a write like any other** but the plan shows it as
   `page DELETE`. Point it out to the user before applying.
-- **Limits:** the defaults are 5 minutes, 10,000 calls, 100 writes and 64 MB.
-  Raise them only for a run the user expects to be large: `--timeout 30m`,
-  `--max-calls`, `--max-writes` (overrides `meta.limits.maxWrites`),
-  `--memory <MB>`.
+- **Limits:** the defaults are 1 hour, 100,000 calls, 10,000 writes and 64 MB;
+  `0` lifts `--timeout`, `--max-calls` or `--max-writes`. Large plans print
+  counts per verb and the first 50 operations; `--concurrency <n>` applies
+  independent operations in parallel (same issue/page stays in order).
 
 `atlcli script check <file>` validates `meta` and type-checks the file against
 `atlcli.d.ts` when `tsc` is on PATH. `atlcli script init [dir]` writes
-`atlcli.d.ts`, `tsconfig.json` and an example script.
+`atlcli.d.ts`, `tsconfig.json` and an example script (`--each "<jql>"`: a
+per-issue skeleton; `--example <name>`, `--list-examples`: bundled examples).
+
+JQL in `atlcli.jira.search` and `--each` may use the client-side functions
+`linkedIssuesOf`, `subtasksOf`, `childrenOf`, `issuesInEpics`, `parentsOf`,
+`epicsOf`, `hasSubtasks`, `hasLinks`, `hasAttachments`, `hasComments`,
+`hasWorklogs`, see [jira-search.md](jira-search.md#jql-functions).
+
+## Many issues: per-issue jobs
+
+For hundreds or tens of thousands of issues, write the script for one issue
+and let atlcli run it as a resumable job:
+
+```ts
+export const meta = { each: { jql: "project = PROJ AND updated < -365d", fields: ["status"] } };
+export default async (issue, params) => {
+  await atlcli.jira.setStatus(issue.key, "Won't Do");
+};
+```
+
+```bash
+atlcli script run close.ts --json                # plans every issue into a job; writes nothing
+atlcli script jobs <job-id> --json               # counts and failed issues, for the user
+atlcli script apply <job-id> --yes --json        # after the user agreed
+atlcli script run close.ts --apply --yes         # plan + apply issue by issue (trusted routine)
+atlcli script resume <job-id> --yes              # after a stop; --script <file> with a fix
+```
+
+- `--each "<jql>"` works without `meta.each`; the default export is then
+  required. Limits apply per issue (60 s, 500 calls, 50 writes); there is no
+  total limit. `--concurrency` (default 4), `--max-failures` (default 10%).
+- The job snapshots the matching issue ids first; outcomes go to
+  `~/.atlcli/jobs/<id>/`. Failed and unfinished issues are retried on resume.
+- **Make the script safe to run twice.** Resume may repeat an issue. Status,
+  labels, assignee and page updates that change nothing are skipped
+  automatically; comments, creates and attachments are not, so guard them
+  (e.g. skip issues that already carry a marker label).
+- Applying a job is a write like any other: show the user the counts from
+  `run`/`jobs` first.
 
 ## Restricting a script
 
@@ -127,7 +170,7 @@ atlcli script run cleanup.ts --apply --yes                         # plan + appl
 export const meta = {
   name: "close-stale",
   permissions: ["jira:read", "jira:write:PROJ"],   // anything else is denied
-  limits: { maxWrites: 50 },                        // default 100
+  limits: { maxWrites: 50 },                        // default 10000
   params: { days: { type: "number", default: 180 } },
 };
 ```
@@ -153,6 +196,8 @@ pass through as strings.
 ## Anti-patterns
 
 - Running `--apply --yes` before the user has seen the plan.
-- Re-applying a plan after a `failed` report. Its first operations already ran, so run the script again for a fresh plan instead.
+- Re-applying a plan after a `failed` report without `--resume`: its first operations already ran. Use `apply plan.json --resume`, or plan again.
+- One big plan for thousands of issues, when each issue's change stands alone. Use a per-issue job (`--each`).
+- Comments or creates in a per-issue script without a guard against running twice.
 - Reading back a page or issue the same script just planned to write and expecting the new state.
 - Guessing transition names. Read them with `atlcli jira issue transitions <key>` first.

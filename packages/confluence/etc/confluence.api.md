@@ -1037,6 +1037,10 @@ export declare class ConfluenceClient {
         keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getSpace(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpace>;
@@ -4478,6 +4482,10 @@ export declare class ConfluenceClient {
         keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getSpace(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpace>;
@@ -7919,6 +7927,10 @@ export declare class ConfluenceClient {
         keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getSpace(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpace>;
@@ -11054,6 +11066,10 @@ export declare class ConfluenceClient {
         keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getSpace(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpace>;
@@ -14867,6 +14883,10 @@ export declare class ConfluenceClient {
         keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getSpace(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpace>;
@@ -17500,6 +17520,10 @@ export declare class ConfluenceClient {
         keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
+    getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getSpace(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpace>;

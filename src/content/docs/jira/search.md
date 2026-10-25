@@ -76,6 +76,30 @@ atlcli jira search --jql "project = PROJ ORDER BY rank" --watching --updated -14
 # → (project = PROJ) AND watcher = currentUser() AND updated >= -14d ORDER BY rank
 ```
 
+## JQL functions
+
+Jira Cloud has no functions to follow links, parents or subtasks in JQL. atlcli resolves these itself, with the names ScriptRunner uses, wherever it accepts JQL: `--jql` of `search`, `bulk`, `export` and the other commands, and `atlcli.jira.search` in [scripts](../scripts.md):
+
+```bash
+atlcli jira search --jql 'issue in linkedIssuesOf("project = PROJ AND status = Blocked", "blocks")'
+atlcli jira bulk label add needs-review --jql 'issue in subtasksOf("fixVersion = 2026.11")'
+atlcli jira search --jql 'project = PROJ AND issue not in hasAttachments("project = PROJ AND type = Bug")'
+```
+
+| Function | Matches |
+|---|---|
+| `linkedIssuesOf("<jql>"[, "<link>"])` | Issues linked to the matches. `<link>` is a link type name (both directions) or one of its phrases, such as `"blocks"` or `"is blocked by"` (that direction only) |
+| `subtasksOf("<jql>")`, `childrenOf("<jql>")`, `issuesInEpics("<jql>")` | Child issues of the matches (subtasks, and issues in epics); becomes a native `parent in (…)` |
+| `parentsOf("<jql>")` | Parents of the matches |
+| `epicsOf("<jql>")` | Epics above the matches, also through a story (subtask → story → epic) |
+| `hasSubtasks("<jql>")`, `hasLinks`, `hasAttachments`, `hasComments`, `hasWorklogs` | Those matches that have subtasks, links, attachments, comments or worklogs |
+
+Each function takes a quoted inner query and works with `in` and `not in`. Before the search, atlcli runs the inner query and replaces the call with native JQL, either `parent in (…)` or a list of keys.
+
+**Limits.** An inner query may match up to 2,000 issues, and a function may stand for up to 1,000 keys. Above that the search fails with a message instead of quietly returning part of the result: narrow the inner query, or move the condition into a [per-issue script](../script-jobs.md). Functions cannot be nested.
+
+**Sites with ScriptRunner.** ScriptRunner provides functions with the same names. atlcli resolves them first. To send JQL to Jira unchanged, set `ATLCLI_JQL_FUNCTIONS=off`.
+
 ## Filter flags
 
 Each flag expands to JQL:
@@ -199,6 +223,9 @@ atlcli jira search --watching --plain --no-headers --columns key
 | `--jql 'status = Fertig'` finds nothing, but the table shows "Fertig" | JQL matches the untranslated status name | Use `--status Fertig`, or the untranslated name (`status = Done`) |
 | `--status ~me` matches the wrong value | The shell expanded `~me` to a home directory | Quote it: `--status '~me'` |
 | A just-changed issue still matches the old value | Jira's search index lags a few seconds behind writes | Search again |
+| `linkedIssuesOf() matched 1400 issues, more than the limit of 1000` | A JQL function stands for too many keys | Narrow the inner query, or use a [per-issue script](../script-jobs.md) |
+| `functions cannot be nested` | A JQL function inside another one's query | Combine the conditions in one inner query, or in a script |
+| A JQL function behaves differently than in ScriptRunner | atlcli resolves functions of that name itself | Set `ATLCLI_JQL_FUNCTIONS=off` to let ScriptRunner answer |
 
 ## Related Topics
 
