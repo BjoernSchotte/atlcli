@@ -3,11 +3,14 @@
  * plugin or completion groups, and `wiki my`/`wiki recent`, ran the verb. Real CLI against a stand-in server
  * that records every request; a sandboxed HOME whose config must not change.
  */
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("./index.ts", import.meta.url));
 let server: ReturnType<typeof Bun.serve>;

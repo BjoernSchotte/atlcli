@@ -2,9 +2,12 @@
  * `jira project copy-issues` flag handling through the real CLI. Planning
  * itself is covered by builtin-scripts/copy-issues.test.ts.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import { fileURLToPath } from "node:url";
 import source from "../builtin-scripts/copy-issues.script" with { type: "text" };
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 

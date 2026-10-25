@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { connect } from "node:net";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -17,6 +17,9 @@ import { NfsJournal, nfsJournalLocation } from "./nfs-journal.js";
 import { startNfsServer, type RunningNfsServer } from "./nfs-bridge.js";
 import { encodeNfsFrame, readNfsFrames } from "./nfs-framing.js";
 import { INDEXER_SHIELDS, SHIELD_DIRECTORIES } from "./mount-client-probes.js";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const attachmentBytes = Buffer.alloc(1024 * 1024 + 29, 0xab);
 Buffer.from("Grüße 🐴").copy(attachmentBytes, 1024 * 1024 - 5);

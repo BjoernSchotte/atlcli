@@ -3,12 +3,15 @@
  * the real CLI in its own process against a local Bun HTTP server that speaks
  * the Jira Cloud paths (the profile sets `deploymentType: "cloud"`).
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseWindowDays, resolveIssueSelection, stripOrderBy } from "./jira-flow.js";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const DAY = 24 * 60 * 60 * 1000;

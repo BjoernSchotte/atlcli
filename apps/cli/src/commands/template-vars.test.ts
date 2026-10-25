@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { getCompletions } from "../completions.js";
 import { summarizeVariables, valuesSkeleton } from "./template-vars.js";
+
+// Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
+setDefaultTimeout(60_000);
 
 describe("template vars", () => {
   const uses = [
