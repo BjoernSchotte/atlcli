@@ -40,6 +40,159 @@ interface ScriptMeta {
    * with \`fields\` (default: summary, status, assignee, priority, issuetype, labels).
    */
   each?: { jql?: string; fields?: string[] };
+  /** Makes the script an audit rule (\`atlcli audit jira|wiki\`); see AuditMeta. */
+  audit?: AuditMeta;
+}
+
+type AuditSeverity = "info" | "warning" | "error";
+type AuditThreshold = { days: number } | { percentile: number };
+/** A rule's settings: \`"off"\`, a level, or thresholds; the same grammar as audit-rules.yaml. */
+type AuditPatch = "off" | AuditSeverity | { level?: AuditSeverity; info?: string | number; warning?: string | number; error?: string | number; [option: string]: Json | undefined };
+
+/** \`meta.audit\` of an audit rule script. */
+interface AuditMeta {
+  /** "<group>/<name>" in lower case; a built-in's id replaces that built-in. */
+  id: string;
+  product: "jira" | "confluence";
+  title?: string;
+  /** Defaults to the id's group. */
+  category?: string;
+  /** flag (default): a finding or not; age / until: \`rule.severity(days)\` against thresholds. */
+  kind?: "flag" | "age" | "until";
+  /**
+   * item (default): \`default(item, rule)\` per issue or AuditPage; run: \`default(data, rule)\`
+   * once, with Jira \`{ open, done, now }\` or Confluence \`{ pages, folderIssues, now }\`.
+   */
+  scope?: "item" | "run";
+  /** Jira: which issues the rule gets: open (default) or done (last 90 days). Confluence: every page. */
+  items?: string;
+  /** Extra Jira fields to load for the items. */
+  fields?: string[];
+  /**
+   * Host data. Jira: changelog, sprint, versions, points, flagged, cycle-percentiles,
+   * status-percentiles. Confluence: links, http, contributors, remote, folders.
+   */
+  needs?: string[];
+  /** Settings for every profile, unless the rules file says otherwise (flag rules: "warning"). */
+  defaults?: AuditPatch;
+  profiles?: Partial<Record<"minimal" | "default" | "strict", AuditPatch>>;
+  /** Option names with their allowed values (\`include: [todo, wip]\`). */
+  options?: Record<string, string[]>;
+  description?: string;
+}
+
+/** The second argument of a rule. */
+interface AuditRule {
+  readonly id: string;
+  readonly kind: "flag" | "age" | "until";
+  /** The effective settings for this item (profile, rules file, overrides). */
+  readonly config: { level?: AuditSeverity; thresholds?: Partial<Record<AuditSeverity, AuditThreshold>>; /** Values of \`meta.audit.options\`, set in the rules file. */ options?: Record<string, string[]> };
+  /** What the host worked out (Jira: category, startedAt, statusName, inOpenSprint, percentiles, …). */
+  readonly facts: Record<string, Json>;
+  /** Milliseconds since the epoch, frozen for the run. */
+  readonly now: number;
+  /** The most severe threshold \`value\` passes, or undefined. */
+  severity(value: number, config?: AuditRule["config"]): { severity: AuditSeverity; threshold: AuditThreshold; limit: number } | undefined;
+  finding(f: AuditFindingInput): AuditFindingInput;
+}
+
+/** What a rule returns (one, a list, or nothing). */
+interface AuditFindingInput {
+  detail: string;
+  /** Defaults to the rule's configured level. */
+  severity?: AuditSeverity;
+  ageDays?: number;
+  /** For run-scope rules: what the finding is about. */
+  key?: string;
+  summary?: string;
+  status?: string;
+  assignee?: string;
+  /** What the baseline records (default: the key). */
+  subject?: string;
+  /** When the item last changed (ISO), for the legacy cutoff. */
+  updated?: string;
+}
+
+/** The third argument of \`fix(finding, item, rule)\`: the rule's settings. */
+interface AuditFixRule {
+  readonly id: string;
+  readonly config: AuditRule["config"];
+  /** Milliseconds since the epoch, the same for every fix of the run. */
+  readonly now: number;
+}
+
+interface AuditUser {
+  id: string;
+  displayName: string | null;
+  /** null: not checked yet (\`audit wiki --refresh-users\`). */
+  active: boolean | null;
+}
+
+/** What a Confluence rule gets per page in \`atlcli audit wiki\`. */
+interface AuditPage {
+  id: string;
+  title: string;
+  spaceKey: string;
+  /** Local file, relative to the sync root; null for a page not synced. */
+  path: string | null;
+  url?: string;
+  /** False for a page only in Confluence (\`--include-remote\`). */
+  synced: boolean;
+  parentId: string | null;
+  ancestors: string[];
+  contentType: string;
+  /** current, draft, archived, … */
+  status: string;
+  version: number;
+  versionCount: number;
+  wordCount: number | null;
+  createdAt: string | null;
+  createdBy: AuditUser | null;
+  lastModified: string | null;
+  lastModifiedBy: AuditUser | null;
+  labels: string[];
+  restricted: boolean;
+  /** No incoming links and no parent (rules with needs: ["links"]). */
+  orphan: boolean;
+  brokenLinks: Array<{ target: string | null; text: string | null; line: number | null }>;
+  /** With --check-external (needs: ["http"]) each link carries its HTTP result. */
+  externalLinks: Array<{ url: string; domain: string; text: string | null; line: number | null; httpStatus?: number | "error"; httpError?: string; broken?: boolean }>;
+  /** Filled for rules with needs: ["contributors"]. */
+  contributors: AuditUser[];
+}
+
+/** A finding as \`fix(finding, item, rule)\` and reports see it. */
+interface AuditFinding {
+  rule: string;
+  category: string;
+  severity: AuditSeverity;
+  target: { kind: "issue" | "page" | "status" | "space" | "other"; key: string; url?: string };
+  key: string;
+  summary: string;
+  status: string;
+  assignee?: string;
+  detail: string;
+  ageDays?: number;
+  subject: string;
+  fixable?: boolean;
+}
+
+/** The report model (\`--json\` schemaVersion 3) that \`report(model)\` and \`--template\` get. */
+interface AuditReport {
+  schemaVersion: "3";
+  product: "jira" | "confluence";
+  generatedAt: string;
+  query: string;
+  rules: { source: string; extends: string; minLevel: AuditSeverity };
+  summary: { total: number; bySeverity: Record<AuditSeverity, number>; byRule: Record<string, number>; suppressed: { quiet: number; baseline: number; legacy: number } };
+  findings: AuditFinding[];
+  quiet: Record<string, number>;
+  legacy: Record<string, number>;
+  legacyDays: number | null;
+  staleBaselineEntries: number;
+  partial: string[];
+  diagnostics: string[];
+  titles: Record<string, string>;
 }
 
 interface JiraIssue {
@@ -117,6 +270,12 @@ interface AttachmentInput {
   encoding?: "utf8" | "base64";
 }
 
+/** Set while transitioning: screen fields (raw Jira values) and a Markdown comment. */
+interface TransitionOptions {
+  fields?: Record<string, Json>;
+  comment?: string;
+}
+
 /** ISO 8601 with offset, e.g. "2026-11-02T09:00:00.000Z". */
 type IsoDate = string;
 
@@ -132,7 +291,7 @@ const atlcli: {
   /** Values passed with \`--param name=value\` (typed when declared in meta.params). */
   readonly params: Readonly<Record<string, string | number | boolean>>;
   /**
-   * Renders a template (Handlebars, tolerant) with \`--var\`/\`--vars-file\` values
+   * Renders a Jinja template (tolerant) with \`--var\`/\`--vars-file\` values
    * and the frozen \`--now\`. A string is plain text unless \`format\` says
    * otherwise; an object with \`type: "doc"\` is ADF. Unresolved \`{{…}}\` stays
    * literal and is reported in the plan; with \`--strict\` it fails the run.
@@ -173,14 +332,39 @@ const atlcli: {
       properties?: Record<string, Json>;
     }): Promise<{ id: PlannedRef; key: PlannedRef }>;
     update(key: string, input: { summary?: string; description?: string; fields?: Record<string, Json> }): Promise<null>;
-    /** Transition by name (case-insensitive); checked when the plan is made. */
-    transition(key: string, to: string): Promise<null>;
+    /**
+     * Transition by name (case-insensitive); checked when the plan is made.
+     * \`fields\` are set on the transition screen (e.g. \`{ resolution: { name: "Done" } }\`),
+     * \`comment\` (Markdown) is added with the transition.
+     */
+    transition(key: string, to: string, options?: TransitionOptions): Promise<null>;
     /**
      * Best effort, for issues whose workflow is not known yet (e.g. created by
      * this plan): on apply, takes a direct transition into \`status\` if one is
      * available, else changes nothing (the apply report says moved: false).
      */
-    setStatus(key: string, status: string): Promise<null>;
+    setStatus(key: string, status: string, options?: TransitionOptions): Promise<null>;
+    /** Transitions available now, with the status each leads to (category: "new" | "indeterminate" | "done"). */
+    transitions(key: string): Promise<Array<{ name: string; to: { name: string; category?: string } }>>;
+    /** Changes from the issue's history, oldest first; \`fields\` limits them (e.g. \`["status"]\`). */
+    history(key: string, options?: { fields?: string[] }): Promise<Array<{ at: IsoDate; author?: string; field: string; from: string | null; to: string | null }>>;
+    watchers(key: string): Promise<Array<{ accountId?: string; displayName?: string }>>;
+    /** \`user\`: "me", an email, a display name or an account id. Skipped when already watching. */
+    addWatcher(key: string, user: string): Promise<null>;
+    /** Skipped when not watching. */
+    removeWatcher(key: string, user: string): Promise<null>;
+    /**
+     * Jira sends an e-mail about the issue (on apply). Name at least one recipient;
+     * \`users\` are resolved like \`assign\`.
+     */
+    notify(
+      key: string,
+      input: {
+        subject: string;
+        markdown: string;
+        to: { users?: string[]; groups?: string[]; reporter?: boolean; assignee?: boolean; watchers?: boolean; voters?: boolean };
+      },
+    ): Promise<null>;
     /** A string is Markdown; \`{ raw }\` is the site's own format (ADF on Cloud, as \`get\` returns it), sent unchanged. */
     comment(key: string, body: string | { raw: Json }): Promise<{ id: PlannedRef }>;
     /** Reads as a sentence: link("A-1", "blocks", "A-2"). \`type\` is a link type name or either of its phrases. */
@@ -237,6 +421,8 @@ const atlcli: {
     movePage(id: string, input: { parentId: string }): Promise<{ id: string }>;
     /** Moves the page to the space's trash. */
     deletePage(id: string): Promise<null>;
+    /** Archives the page: it leaves the page tree and stays readable in the space archive. */
+    archivePage(id: string): Promise<null>;
     attachments(pageId: string): Promise<ConfluenceAttachment[]>;
     /** Replaces an attachment of the same name with a new version. */
     attach(pageId: string, file: AttachmentInput): Promise<{ id: PlannedRef }>;

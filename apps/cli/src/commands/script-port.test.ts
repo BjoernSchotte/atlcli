@@ -1,5 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, test, beforeAll } from "bun:test";
+import { initJinja } from "@atlcli/core";
 import { createCliScriptPort } from "./script-port.js";
+
+beforeAll(() => initJinja());
 
 const unused = (): never => {
   throw new Error("no client call expected");
@@ -15,9 +18,9 @@ test.each([["--output=/tmp/x"], ["--template=evil.docx"], ["123 --json"], ["plan
   },
 );
 
-test("render uses the core engine with the frozen clock", () => {
+test("render uses the core engine with the frozen clock", async () => {
   const port = createCliScriptPort(unused, unused, "https://example.atlassian.net", { profileName: "p", outDir: "/tmp" });
-  const out = port.render!("{{@today}} {{v}} {{nope}}", { vars: { v: 1 }, unit: "u", now: "2026-10-25T00:00:00.000Z", strict: false });
+  const out = await port.render!("{{ today }} {{v}} {{nope}}", { vars: { v: 1 }, unit: "u", now: "2026-10-25T00:00:00.000Z", strict: false });
   expect(out.value).toBe("2026-10-25 1 {{nope}}");
   expect(out.warnings.map((w) => w.code)).toEqual(["unresolved"]);
 });

@@ -5,7 +5,7 @@ description: "Templates - atlcli documentation"
 
 # Templates
 
-Create Confluence pages from reusable templates with variable substitution and Handlebars syntax.
+Create Confluence pages from reusable templates with variable substitution and [Jinja](/templating/) syntax.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ Create Confluence pages from reusable templates with variable substitution and H
 The template system provides:
 - **Hierarchical storage**: Global, profile, and space-level templates
 - **Precedence**: Space > Profile > Global (most specific wins)
-- **Handlebars syntax**: Full logic support (if, unless, each, with)
+- **Jinja syntax**: Conditions, loops, filters and `{% set %}`
 - **Built-in variables**: Date, time, user, space, and more
 - **Import/export**: Share template packs via directories, Git, or URLs
 
@@ -73,20 +73,20 @@ variables:
       - retro
     required: true
 ---
-# {{title}}
+# {{ title }}
 
-**Date:** {{@date}}
-**Type:** {{type}}
-**Attendees:** {{attendees}}
+**Date:** {{ date }}
+**Type:** {{ type }}
+**Attendees:** {{ attendees }}
 
 ## Agenda
 
-{{#if agenda}}
-{{agenda}}
-{{else}}
+{% if agenda %}
+{{ agenda }}
+{% else %}
 - Item 1
 - Item 2
-{{/if}}
+{% endif %}
 
 ## Notes
 
@@ -113,33 +113,42 @@ variables:
 
 ## Built-in Variables
 
-Built-in variables use the `@` prefix:
+Built-in variables are plain names. A declared or passed variable of the same name wins: in the example above, `date` and `title` are the values you pass.
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `{{@date}}` | Current date | 2025-01-14 |
-| `{{@datetime}}` | Date and time | 2025-01-14T10:30:00 |
-| `{{@time}}` | Current time | 10:30 |
-| `{{@year}}` | Current year | 2025 |
-| `{{@month}}` | Current month | 01 |
-| `{{@day}}` | Current day | 14 |
-| `{{@weekday}}` | Day of week | Tuesday |
-| `{{@user}}` | Current user | john.doe |
-| `{{@space}}` | Space key | TEAM |
-| `{{@profile}}` | Profile name | work |
-| `{{@title}}` | Page title | From context |
-| `{{@parent.id}}` | Parent page ID | 12345 |
-| `{{@parent.title}}` | Parent page title | Parent Page |
-| `{{@uuid}}` | Random UUID | 550e8400-e29b-... |
-| `{{@today}}` | Current date, always ISO | 2025-01-14 |
-| `{{@now}}` | Same as `@datetime` | 2025-01-14T10:30:00 |
-| `{{@quarter}}` | Quarter | 1 |
-| `{{@week}}` | ISO week | 03 |
+| `{{ date }}` | Current date | 2025-01-14 |
+| `{{ datetime }}` | Date and time | 2025-01-14T10:30:00 |
+| `{{ time }}` | Current time | 10:30 |
+| `{{ year }}` | Current year | 2025 |
+| `{{ month }}` | Current month | 01 |
+| `{{ day }}` | Current day | 14 |
+| `{{ weekday }}` | Day of week | Tuesday |
+| `{{ user }}` | Current user | john.doe |
+| `{{ space }}` | Space key | TEAM |
+| `{{ profile }}` | Profile name | work |
+| `{{ title }}` | Page title | From context |
+| `{{ parent.id }}` | Parent page ID | 12345 |
+| `{{ parent.title }}` | Parent page title | Parent Page |
+| `{{ uuid }}` | Random UUID | 550e8400-e29b-... |
+| `{{ today }}` | Current date, always ISO | 2025-01-14 |
+| `{{ now }}` | Same as `datetime` | 2025-01-14T10:30:00 |
+| `{{ quarter }}` | Quarter | 1 |
+| `{{ week }}` | ISO week | 03 |
 
-The helpers `dateAdd`, `default`, `replace`, `eq`, `ne`, `and`, `or` and `not`
-work in page templates too, next to `formatDate`, `lowercase` and `uppercase`.
-The same built-ins and helpers apply to copies of live pages and issues; see
+The filters `date`, `dateAdd`, `default`, `replace`, `lower` and `upper`, the
+operators `==`, `!=`, `and`, `or`, `not` and the other Nunjucks built-in
+filters work in page templates too: `{{ today | dateAdd(7, "d") | date("DD.MM.YYYY") }}`.
+The same built-ins and filters apply to copies of live pages and issues; see
 [Templating](/templating/).
+
+:::caution
+**Breaking change.** Templates used Handlebars before (`{{@date}}`,
+`{{#if x}}…{{/if}}`). Rewrite existing templates with the
+[migration table](/templating/#breaking-templates-use-jinja); there is no
+converter. `atlcli wiki template validate --all` finds the ones that no longer
+parse.
+:::
 
 ## Storage Locations
 
@@ -329,7 +338,7 @@ atlcli wiki template validate --all
 |---------|-----------|
 | Valid, no warnings | `0` |
 | Valid, with warnings (e.g. undeclared variable) | `0` |
-| Invalid (e.g. unclosed `{{#if}}`) | `1` |
+| Invalid (e.g. unclosed `{% if %}`, `Jinja syntax error: …`) | `1` |
 | Template or file not found | `1` |
 
 The report is written to stdout either way; with `--json` it stays a single JSON document whose `valid` field carries the verdict.
@@ -483,48 +492,59 @@ atlcli wiki page create --template meeting-notes \
 
 `atlcli jira version notes` and `atlcli jira sprint review` render Jira data through templates too. They look for a template by name at the space, profile and global level first, then fall back to the bundled `release-notes`, `release-notes-by-epic` and `sprint-review`. See [Release Notes and Sprint Review Pages](../jira/report-pages.md#templates) for the available variables.
 
-## Handlebars Syntax
+## Jinja Syntax
 
-Templates support full Handlebars syntax:
+Templates use Jinja syntax. A line that holds only a block tag (`{% if %}`,
+`{% endfor %}`) disappears with its line break, so block tags can stand on
+their own lines without leaving blank lines. Missing values render empty. See
+[Templating](/templating/) for the full reference.
 
 ### Conditionals
 
-```handlebars
-{{#if attendees}}
-**Attendees:** {{attendees}}
-{{else}}
+```jinja
+{% if attendees %}
+**Attendees:** {{ attendees }}
+{% else %}
 **Attendees:** TBD
-{{/if}}
+{% endif %}
 
-{{#unless draft}}
+{% if not draft %}
 This is published content.
-{{/unless}}
+{% endif %}
 ```
 
 ### Loops
 
-```handlebars
-{{#each items}}
-- {{this}}
-{{/each}}
+```jinja
+{% for item in items %}
+- {{ item }}
+{% endfor %}
 
-{{#each tasks}}
-- [ ] {{this.title}} ({{this.assignee}})
-{{/each}}
+{% for task in tasks %}
+- [ ] {{ task.title }} ({{ task.assignee }})
+{% else %}
+- No tasks yet
+{% endfor %}
 ```
 
-### With Context
+`loop.index` (from 1), `loop.first` and `loop.last` are set inside a loop.
 
-```handlebars
-{{#with author}}
-**Author:** {{name}} ({{email}})
-{{/with}}
+### Nested Values
+
+```jinja
+**Author:** {{ author.name }} ({{ author.email }})
 ```
 
 ### Default Values
 
-```handlebars
-{{attendees "TBD"}}
+```jinja
+{{ attendees | default("TBD") }}
+```
+
+### Literal Template Syntax
+
+```jinja
+{% raw %}Write {{ name }} to insert a variable.{% endraw %}
 ```
 
 ## Tips
@@ -537,16 +557,24 @@ This is published content.
 
 ## Troubleshooting
 
-### Variable Not Replaced
+### Variable Renders Empty
 
-**Symptom**: `{{variable}}` appears literally in output.
+**Symptom**: A `{{ variable }}` renders as nothing.
 
 **Causes**:
 - Variable name typo
 - Variable not passed with `--var`
-- Missing `@` prefix for built-in variables
+- An `@` left over from Handlebars (`{{@date}}` is a syntax error; write `{{ date }}`)
 
-**Fix**: Check variable names match frontmatter definitions. Use `--interactive` to see prompts.
+**Fix**: Check variable names match frontmatter definitions. Use `--interactive` to see prompts, or `{{ variable | default("…") }}` for an inline fallback.
+
+### Template Render Failed
+
+**Symptom**: `Template render failed: …` when rendering, or `Jinja syntax error: … (line N)` from `validate`.
+
+**Cause**: The template does not parse as Jinja: an unclosed `{% if %}` or `{% for %}`, or Handlebars syntax such as `{{#each}}` or `{{/if}}`.
+
+**Fix**: Close every block (`{% endif %}`, `{% endfor %}`) and rewrite Handlebars syntax with the [migration table](/templating/#breaking-templates-use-jinja).
 
 ### Template Not Found
 

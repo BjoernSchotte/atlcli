@@ -1,0 +1,20 @@
+// Gives every child issue (subtasks, issues in epics) the fix versions of its
+// parent. Children that already have them are left alone.
+//
+//   atlcli script run propagate-fix-version.ts
+export const meta = {
+  description: "Copy the parent's fix versions to its children",
+  each: { jql: 'issue in childrenOf("project = ATLCLI AND fixVersion is not EMPTY")', fields: ["parent", "fixVersions"] },
+};
+
+type Version = { name: string };
+
+export default async (issue: JiraIssue) => {
+  const parentKey = (issue.fields.parent as { key?: string } | null)?.key;
+  if (!parentKey) return;
+  const parent = await atlcli.jira.get(parentKey, { fields: ["fixVersions"] });
+  const wanted = (parent.fields.fixVersions as Version[]).map((v) => v.name).sort();
+  const current = (issue.fields.fixVersions as Version[]).map((v) => v.name).sort();
+  if (wanted.join("\n") === current.join("\n")) return;
+  await atlcli.jira.update(issue.key, { fields: { fixVersions: wanted.map((name) => ({ name })) } });
+};

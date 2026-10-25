@@ -33,12 +33,17 @@ let clock = 0;
 let nextId = 100;
 /** Issues whose comment endpoint answers 400 (no retry), to make an apply fail midway. */
 let rejectComments = new Set<string>();
+/** Bodies of transition, watcher and notify requests, for assertions. */
+let bodies: Array<[string, unknown]> = [];
+let watchers = new Map<string, string[]>();
 
 const tick = () => `2026-10-24T10:00:${String(clock++).padStart(2, "0")}.000+0000`;
 
 function reset(): void {
   writes = [];
   rejectComments = new Set();
+  bodies = [];
+  watchers = new Map([["ATLCLI-1", ["acc-ada"]]]);
   links = [];
   clock = 0;
   nextId = 100;
@@ -98,10 +103,25 @@ beforeAll(async () => {
       }
       if ((m = /^\/rest\/api\/3\/issue\/([A-Z]+-\d+)\/transitions$/.exec(path))) {
         const issue = issues.get(m[1]!)!;
-        if (req.method === "GET") return Response.json({ transitions: [{ id: "31", name: "Done" }, { id: "41", name: "Won't Do" }] });
+        if (req.method === "GET") return Response.json({ transitions: [{ id: "31", name: "Done", hasScreen: true }, { id: "41", name: "Won't Do", hasScreen: false }] });
+        bodies.push(["transition", body]);
         issue.fields.status = { name: body.transition.id === "31" ? "Done" : "Won't Do" };
         issue.fields.updated = tick();
         return new Response(null, { status: 204 });
+      }
+      if ((m = /^\/rest\/api\/3\/issue\/([A-Z]+-\d+)\/watchers$/.exec(path))) {
+        const list = watchers.get(m[1]!) ?? [];
+        if (req.method === "GET") return Response.json({ watchers: list.map((accountId) => ({ accountId })), watchCount: list.length, isWatching: false });
+        if (req.method === "POST") watchers.set(m[1]!, [...list, body]);
+        if (req.method === "DELETE") watchers.set(m[1]!, list.filter((a) => a !== url.searchParams.get("accountId")));
+        return new Response(null, { status: 204 });
+      }
+      if ((m = /^\/rest\/api\/3\/issue\/([A-Z]+-\d+)\/notify$/.exec(path))) {
+        bodies.push(["notify", body]);
+        return new Response(null, { status: 204 });
+      }
+      if (path === "/rest/api/3/user/search") {
+        return Response.json([{ accountId: `acc-${url.searchParams.get("query")?.split("@")[0]}`, displayName: url.searchParams.get("query") }]);
       }
       if (path === "/rest/api/3/issueLinkType") {
         return Response.json({ issueLinkTypes: [{ id: "1", name: "Blocks", inward: "is blocked by", outward: "blocks" }] });
@@ -379,7 +399,7 @@ export default async ({ n }) => { await atlcli.jira.comment("ATLCLI-1", "n=" + (
   });
 
   test("--var, --now and --strict reach atlcli.render; warnings show in the plan", async () => {
-    const code = `export default async () => atlcli.render("{{a}} {{@today}} {{nope}}")`;
+    const code = `export default async () => atlcli.render("{{a}} {{ today }} {{nope}}")`;
     const out = await run(["run", "-e", code, "--var", "a=1", "--now", "2026-10-25T08:00:00Z"]);
     expect(out.exitCode).toBe(0);
     expect(out.stdout).toContain('Result: "1 2026-10-25 {{nope}}"');
@@ -397,6 +417,40 @@ export default async ({ n }) => { await atlcli.jira.comment("ATLCLI-1", "n=" + (
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Script failed (guest)");
     expect(stderr).toContain("Jira API error (404)");
+  });
+});
+
+describe("workflow verbs", () => {
+  test("transition with fields and comment, watchers and notify reach Jira as expected", async () => {
+    const file = await script(
+      "wf.ts",
+      `await atlcli.jira.transition("ATLCLI-1", "Done", { fields: { resolution: { name: "Fixed" } }, comment: "Closed **now**" });
+await atlcli.jira.addWatcher("ATLCLI-1", "bob@example.com");
+await atlcli.jira.addWatcher("ATLCLI-1", "ada@example.com");
+await atlcli.jira.notify("ATLCLI-1", { subject: "Done", markdown: "It is *done*", to: { assignee: true, users: ["bob@example.com"] } });`,
+    );
+    const out = await run(["run", file, "--apply", "--yes"]);
+    expect(out.exitCode, out.stderr).toBe(0);
+    expect(out.stdout).toContain("jira transition  ATLCLI-1 → Done with resolution, comment");
+    expect(out.stdout).toContain("jira watch       ATLCLI-1 + bob@example.com");
+    expect(out.stdout).toContain("Unchanged, not planned: 1");
+    const transition = bodies.find(([kind]) => kind === "transition")![1] as any;
+    expect(transition.transition).toEqual({ id: "31" });
+    expect(transition.fields).toEqual({ resolution: { name: "Fixed" } });
+    expect(transition.update.comment[0].add.body.type).toBe("doc");
+    expect(watchers.get("ATLCLI-1")).toEqual(["acc-ada", "acc-bob"]);
+    const notify = bodies.find(([kind]) => kind === "notify")![1] as any;
+    expect(notify).toMatchObject({ subject: "Done", textBody: "It is *done*", to: { assignee: true, users: [{ accountId: "acc-bob" }] } });
+    expect(notify.htmlBody).toContain("<em>done</em>");
+  });
+
+  test("a transition without a screen gets its comment added separately (Jira would drop it)", async () => {
+    const file = await script("noscreen.ts", `await atlcli.jira.transition("ATLCLI-1", "Won't Do", { comment: "Not needed" });`);
+    const out = await run(["run", file, "--apply", "--yes"]);
+    expect(out.exitCode, out.stderr).toBe(0);
+    const transition = bodies.find(([kind]) => kind === "transition")![1] as any;
+    expect(transition).toEqual({ transition: { id: "41" } });
+    expect(issues.get("ATLCLI-1")!.comments).toHaveLength(1);
   });
 });
 

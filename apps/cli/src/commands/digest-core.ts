@@ -4,7 +4,8 @@
  * rendering. No IO; `now` is always passed in.
  */
 import type { ConfluenceSearchResult } from "@atlcli/confluence";
-import type { JiraAuditFinding, JiraChangelogEntry, JiraIssue, StatusCategoryResolver } from "@atlcli/jira";
+import type { AuditFinding } from "@atlcli/audit";
+import type { JiraChangelogEntry, JiraIssue, StatusCategoryResolver } from "@atlcli/jira";
 import { buildMyIssuesJql } from "./jira.js";
 import { buildMyPagesCql, buildRecentPagesCql } from "./search.js";
 
@@ -280,7 +281,7 @@ export interface DigestRawInput {
     /** Status resolver after the status map; without one, the Jira status category. */
     resolve?: StatusCategoryResolver;
     /** The audit section's findings (already errors only), and inputs it read only in part. */
-    audit?: { findings: JiraAuditFinding[]; partial: string[] };
+    audit?: { findings: AuditFinding[]; partial: string[] };
     /** Open issues of the configured projects, for the team section. */
     teamIssues?: JiraIssue[];
     /** Days without an update that make an open issue stale (default 30). */

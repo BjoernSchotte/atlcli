@@ -77,6 +77,7 @@ The [digest](../digest.md) skips the file in the current directory: it runs from
 | `overrides` | list | `[]` | Settings for matching issues, see [Overrides](#overrides) |
 | `baseline.olderThan` | days (`180d`) or `off` | from the profile | Legacy cutoff, see [Baseline](#baseline) |
 | `flagged.field` | field id | auto-detected | The Flagged field for `hygiene/flagged` |
+| `scripts` | list of file paths | `[]` | Rule scripts to load, relative to this file, see [Rule scripts](#rule-scripts) |
 
 Unknown keys, rule ids and options are errors that name their path, e.g. `rules.hygiene/stale.warning: expected days (30d, 2w, 30) — got "soon"`.
 
@@ -188,6 +189,19 @@ custom:
 
 The query is used as written. Add `statusCategory != Done` yourself if done issues should not count. `--checks custom` runs only the custom rules, and overrides can change their level.
 
+### Rule scripts
+
+A check that JQL cannot express, or that should propose a fix, is a TypeScript rule script (see [Custom Audit Rules](../audit-scripts.md)). The rules file can load them:
+
+```yaml
+scripts:
+  - audit/bug-without-component.ts
+rules:
+  team/bug-without-component: error
+```
+
+Scripts in `./.atlcli/audit/` and `~/.atlcli/audit/` load without being listed. A script's `meta.audit.defaults` and `profiles` take the place of the profile table above; `rules`, `overrides` and `--checks` treat its id like a built-in one. A script with a built-in rule's id replaces that rule.
+
 ### Baseline
 
 The baseline lists accepted findings, as rule plus issue key, or rule plus `status:<id>` for workflow findings. It lives per profile in `~/.atlcli/profiles/<profile>/audit-baseline.json`.
@@ -259,7 +273,7 @@ atlcli audit jira --board 42 --markdown > audit.md   # exits 2 when an error rem
 ## Troubleshooting
 
 **`unknown rule "…"`.**
-Use the full id, e.g. `hygiene/stale`. `atlcli audit jira --help` lists all rule ids.
+Use the full id, e.g. `hygiene/stale`. `atlcli audit jira --list-rules` lists all rule ids, your scripts included. A rule from a script is only known when the script is loaded: list it under `scripts:` or put it in `.atlcli/audit/`.
 
 **`percentiles are only allowed for …`.**
 Use days (`45d`) for rules other than `flow/stuck-wip` and `flow/status-aging`.
@@ -275,6 +289,7 @@ Use days (`45d`) for rules other than `flow/stuck-wip` and `flow/status-aging`.
 ## Related topics
 
 - [Jira Audit](audit.md)
+- [Custom Audit Rules](../audit-scripts.md)
 - [Flow Metrics](flow-metrics.md): status mapping and percentiles
 - [Daily Digest](../digest.md): shows error-level audit findings for its projects
 - [Configuration](../configuration.md)

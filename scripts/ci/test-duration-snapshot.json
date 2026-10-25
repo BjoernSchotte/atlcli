@@ -69,14 +69,6 @@
       "skipped": 0
     },
     {
-      "file": "apps/cli/src/commands/audit-formatters.test.ts",
-      "durationSeconds": 0.0046580000000000015,
-      "tests": 38,
-      "passed": 38,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "apps/cli/src/commands/audit.test.ts",
       "durationSeconds": 0.25849799999999995,
       "tests": 18,

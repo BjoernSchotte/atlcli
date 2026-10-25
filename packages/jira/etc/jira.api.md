@@ -709,6 +709,25 @@ export declare class JiraClient {
     }>;
     addWatcher(keyOrId: string, accountId: string): Promise<void>;
     removeWatcher(keyOrId: string, accountId: string): Promise<void>;
+    notifyIssue(keyOrId: string, input: {
+        subject: string;
+        textBody: string;
+        htmlBody?: string;
+        to: {
+            reporter?: boolean;
+            assignee?: boolean;
+            watchers?: boolean;
+            voters?: boolean;
+            users?: Array<{
+                accountId: string;
+            } | {
+                name: string;
+            }>;
+            groups?: Array<{
+                name: string;
+            }>;
+        };
+    }): Promise<void>;
     registerWebhooks(webhooks: Array<{
         jqlFilter: string;
         events: string[];
@@ -1035,6 +1054,7 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    hasScreen?: boolean;
     fields?: Record<string, JiraTransitionField>;
 }
 
@@ -1317,9 +1337,6 @@ export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: st
     to: string;
 }, groupBy?: "issue" | "date"): WorklogReport;
 
-// export: applyRulePatch
-export declare function applyRulePatch(current: AuditRuleConfig, patch: unknown, ruleId: string, path: string): AuditRuleConfig;
-
 // export: attachChangelogs
 export declare function attachChangelogs(issues: JiraIssue[], logs: Map<string, JiraChangelogEntry[]>): JiraIssue[];
 
@@ -1369,110 +1386,6 @@ export type AttachRequestResult = {
 } | {
     ok: false;
     error: string;
-};
-
-// export: AUDIT_PROFILES
-export declare const AUDIT_PROFILES: AuditProfileName[];
-
-// export: AUDIT_SEVERITY_RANK
-export declare const AUDIT_SEVERITY_RANK: Record<AuditSeverity, number>;
-
-// export: AuditCategory
-export type AuditCategory = "workflow" | "flow" | "hygiene" | "custom";
-
-// export: AuditCustomRule
-export interface AuditCustomRule {
-    id: string;
-    jql: string;
-    message: string;
-}
-
-// export: AuditIssueContext
-export interface AuditIssueContext {
-    key: string;
-    project?: string;
-    issueType?: {
-        id?: string;
-        name?: string;
-    };
-    status?: {
-        id?: string;
-        name?: string;
-    };
-}
-
-// export: auditJiraIssues
-export declare function auditJiraIssues(input: JiraAuditInput): {
-    report: JiraAuditReportV2;
-    candidates: JiraAuditFinding[];
-};
-
-// export: AuditLevel
-export type AuditLevel = "off" | AuditSeverity;
-
-// export: AuditOverride
-export interface AuditOverride {
-    match: AuditOverrideMatch;
-    rules: Record<string, unknown>;
-}
-
-// export: AuditOverrideMatch
-export interface AuditOverrideMatch {
-    project?: string[];
-    issueType?: string[];
-    status?: string[];
-    jql?: string;
-}
-
-// export: AuditProfileName
-export type AuditProfileName = "minimal" | "default" | "strict";
-
-// export: AuditRuleConfig
-export interface AuditRuleConfig {
-    level?: AuditLevel;
-    thresholds?: Partial<Record<AuditSeverity, AuditThreshold>>;
-    include?: Array<"todo" | "wip">;
-    digest?: boolean;
-}
-
-// export: AuditRuleDef
-export interface AuditRuleDef {
-    id: string;
-    category: Exclude<AuditCategory, "custom">;
-    kind: AuditRuleKind;
-    title: string;
-    percentiles?: boolean;
-    expensive?: boolean;
-    legacy?: string;
-}
-
-// export: AuditRuleKind
-export type AuditRuleKind = "flag" | "age" | "until";
-
-// export: AuditRules
-export interface AuditRules {
-    extends: AuditProfileName;
-    minLevel: AuditSeverity;
-    legacyDays: number | null;
-    rules: Record<string, AuditRuleConfig>;
-    custom: AuditCustomRule[];
-    overrides: AuditOverride[];
-    flaggedField?: string;
-    source: string;
-}
-
-// export: AuditRulesError
-export declare class AuditRulesError extends Error {
-}
-
-// export: AuditSeverity
-export type AuditSeverity = "info" | "warning" | "error";
-
-// export: AuditThreshold
-export type AuditThreshold = {
-    days: number;
-} | {
-    percentile: number;
 };
 
 // export: buildIssueFlowTimeline
@@ -1613,9 +1526,6 @@ export interface CopyAttachmentOptions {
     tempRoot?: string;
 }
 
-// export: createAuditBaseline
-export declare function createAuditBaseline(candidates: JiraAuditFinding[], now: Date, previous?: JiraAuditBaseline): JiraAuditBaseline;
-
 // export: CreateFilterInput
 export interface CreateFilterInput {
     name: string;
@@ -1717,18 +1627,8 @@ export interface CumulativeFlowV1 {
 // export: DEFAULT_COLUMNS
 export declare const DEFAULT_COLUMNS: string[];
 
-// export: DEFAULT_JIRA_STALE_DAYS
-export declare const DEFAULT_JIRA_STALE_DAYS: [
-    number,
-    number,
-    number
-];
-
 // export: DEFAULT_JQL_FUNCTION_LIMITS
 export declare const DEFAULT_JQL_FUNCTION_LIMITS: JqlFunctionLimits;
-
-// export: defaultAuditRules
-export declare function defaultAuditRules(profile?: AuditProfileName, source?: string): AuditRules;
 
 // export: deleteTemplate
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
@@ -1736,12 +1636,6 @@ export declare function deleteTemplate(name: string): Promise<void>;
 
 // export: descriptionExcerpt
 export declare function descriptionExcerpt(description: unknown, max?: number): string | undefined;
-
-// export: digestAuditRules
-export declare function digestAuditRules(rules: AuditRules): AuditRules;
-
-// export: effectiveRule
-export declare function effectiveRule(rules: AuditRules, ruleId: string, issue: AuditIssueContext, jqlMatches?: Array<Set<string> | undefined>): AuditRuleConfig;
 
 // export: ensureMigrated
 export declare function ensureMigrated(): Promise<{
@@ -1807,9 +1701,6 @@ export interface ExportOptions {
 
 // export: extractStatusTransitions
 export declare function extractStatusTransitions(issue: JiraIssue): StatusTransition[];
-
-// export: findFlaggedField
-export declare function findFlaggedField(fields: JiraField[]): string | undefined;
 
 // export: findJqlFunctions
 export declare function findJqlFunctions(jql: string): JqlFunctionCall[];
@@ -2008,12 +1899,6 @@ export declare function isIssueComplete(issue: JiraIssue, resolve?: StatusCatego
 // export: isoWeek
 export declare function isoWeek(date: string | Date): string;
 
-// export: isRuleActive
-export declare function isRuleActive(rules: AuditRules, ruleId: string): boolean;
-
-// export: isRuleOff
-export declare function isRuleOff(config: AuditRuleConfig | undefined, ruleId: string): boolean;
-
 // export: issueAt
 export declare function issueAt(issue: JiraIssue, sprintId: number, at: Date, pointsField: string, resolve?: StatusCategoryResolver): SprintIssueSnapshot;
 
@@ -2040,9 +1925,6 @@ export declare function issuesToJson(data: ExportData): string;
 // export: issueToTemplate
 export declare function issueToTemplate(issue: JiraIssue, name: string, description?: string): JiraTemplate;
 
-// export: JIRA_AUDIT_RULES
-export declare const JIRA_AUDIT_RULES: readonly AuditRuleDef[];
-
 // export: JiraAttachment
 export interface JiraAttachment {
     id: string;
@@ -2053,83 +1935,6 @@ export interface JiraAttachment {
     mimeType: string;
     content: string;
 }
-
-// export: JiraAuditBaseline
-export interface JiraAuditBaseline {
-    schemaVersion: 1;
-    entries: Array<{
-        rule: string;
-        subject: string;
-        acceptedAt: string;
-    }>;
-}
-
-// export: JiraAuditFinding
-export interface JiraAuditFinding {
-    rule: string;
-    category: AuditCategory;
-    severity: JiraAuditSeverity;
-    key: string;
-    summary: string;
-    status: string;
-    assignee?: string;
-    detail: string;
-    ageDays?: number;
-    subject: string;
-}
-
-// export: JiraAuditInput
-export interface JiraAuditInput {
-    rules: AuditRules;
-    open: JiraIssue[];
-    done: JiraIssue[];
-    resolve: StatusCategoryResolver;
-    now: Date;
-    pointsField?: string;
-    inOpenSprint?: Set<string>;
-    projectsUsingVersions: Set<string>;
-    resolvedNotDone?: {
-        issues: JiraIssue[];
-        truncated: boolean;
-    };
-    flaggedField?: string;
-    custom?: Map<string, JiraIssue[]>;
-    jqlMatches?: Array<Set<string> | undefined>;
-    baseline?: JiraAuditBaseline;
-    useBaseline: boolean;
-    partial?: string[];
-}
-
-// export: JiraAuditReportV2
-export interface JiraAuditReportV2 {
-    schemaVersion: "2";
-    generatedAt: string;
-    rules: {
-        source: string;
-        extends: string;
-        minLevel: JiraAuditSeverity;
-    };
-    summary: {
-        total: number;
-        bySeverity: Record<JiraAuditSeverity, number>;
-        byRule: Record<string, number>;
-        suppressed: {
-            quiet: number;
-            baseline: number;
-            legacy: number;
-        };
-    };
-    findings: JiraAuditFinding[];
-    quiet: Record<string, number>;
-    legacy: Record<string, number>;
-    legacyDays: number | null;
-    staleBaselineEntries: number;
-    partial: string[];
-    diagnostics: string[];
-}
-
-// export: JiraAuditSeverity
-export type JiraAuditSeverity = AuditSeverity;
 
 // export: JiraBoard
 export interface JiraBoard {
@@ -2585,6 +2390,25 @@ export declare class JiraClient {
     }>;
     addWatcher(keyOrId: string, accountId: string): Promise<void>;
     removeWatcher(keyOrId: string, accountId: string): Promise<void>;
+    notifyIssue(keyOrId: string, input: {
+        subject: string;
+        textBody: string;
+        htmlBody?: string;
+        to: {
+            reporter?: boolean;
+            assignee?: boolean;
+            watchers?: boolean;
+            voters?: boolean;
+            users?: Array<{
+                accountId: string;
+            } | {
+                name: string;
+            }>;
+            groups?: Array<{
+                name: string;
+            }>;
+        };
+    }): Promise<void>;
     registerWebhooks(webhooks: Array<{
         jqlFilter: string;
         events: string[];
@@ -3012,6 +2836,7 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    hasScreen?: boolean;
     fields?: Record<string, JiraTransitionField>;
 }
 
@@ -3266,9 +3091,6 @@ export interface MarkdownToAdfOptions {
     sentinels?: boolean;
 }
 
-// export: maxRuleSeverity
-export declare function maxRuleSeverity(rules: AuditRules, ruleId: string): AuditSeverity | undefined;
-
 // export: migrateTemplates
 export declare function migrateTemplates(): Promise<{
     migrated: string[];
@@ -3300,12 +3122,6 @@ export declare function parseAttachmentTarget(args: string[]): AttachmentTargetR
 
 // export: parseAttachRequest
 export declare function parseAttachRequest(args: string[], keyFlag?: string): AttachRequestResult;
-
-// export: parseAuditBaseline
-export declare function parseAuditBaseline(raw: unknown): JiraAuditBaseline;
-
-// export: parseAuditRules
-export declare function parseAuditRules(raw: unknown, source: string): AuditRules;
 
 // export: parseCsv
 export declare function parseCsv(content: string, options?: CsvImportOptions): ImportIssue[];
@@ -3390,9 +3206,6 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getProject(): string;
 }
 
-// export: pruneAuditBaseline
-export declare function pruneAuditBaseline(baseline: JiraAuditBaseline, candidates: JiraAuditFinding[]): JiraAuditBaseline;
-
 // export: renderAgingText
 export declare function renderAgingText(metrics: FlowMetricsV1): string;
 
@@ -3413,12 +3226,6 @@ export declare function renderFlowText(metrics: FlowMetricsV1, query: string): s
 
 // export: renderIssueView
 export declare function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount?: number): string;
-
-// export: renderJiraAuditMarkdown
-export declare function renderJiraAuditMarkdown(report: JiraAuditReportV2, query: string, baseUrl?: string, titles?: (rule: string) => string): string;
-
-// export: renderJiraAuditText
-export declare function renderJiraAuditText(report: JiraAuditReportV2, query: string, titles?: (rule: string) => string): string;
 
 // export: renderSparkline
 export declare function renderSparkline(values: number[]): string;
@@ -3520,9 +3327,6 @@ export interface ReportSource {
 // export: ReportStatusCategory
 export type ReportStatusCategory = "todo" | "inprogress" | "done";
 
-// export: resolveAuditChecks
-export declare function resolveAuditChecks(value: string, customIds?: string[]): Set<string> | string;
-
 // export: resolveColumns
 export declare function resolveColumns(columns: string[], fields?: JiraField[]): string[];
 
@@ -3537,17 +3341,8 @@ export declare function resolveStatusMap(...maps: Array<Record<string, FlowCateg
 // export: resolveUser
 export declare function resolveUser(client: JiraClient, value: string): Promise<UserRef | null>;
 
-// export: restrictAuditRules
-export declare function restrictAuditRules(rules: AuditRules, keep: Set<string>): AuditRules;
-
 // export: roundTime
 export declare function roundTime(seconds: number, intervalMinutes: number, mode?: "nearest" | "up" | "down"): number;
-
-// export: ruleDef
-export declare function ruleDef(id: string): AuditRuleDef | undefined;
-
-// export: ruleTitle
-export declare function ruleTitle(id: string, custom?: AuditCustomRule[]): string;
 
 // export: sanitizeAttachmentFilename
 export declare function sanitizeAttachmentFilename(filename: string, id: string): string;
@@ -3613,13 +3408,6 @@ export declare function secondsToJiraFormat(seconds: number, config?: TimeConfig
 export declare function selectAttachmentsByFilename<T extends {
     filename: string;
 }>(attachments: readonly T[], filename: string): T[];
-
-// export: severityForValue
-export declare function severityForValue(config: AuditRuleConfig, kind: AuditRuleKind, value: number, percentileValue: (p: number) => number | undefined): {
-    severity: AuditSeverity;
-    threshold: AuditThreshold;
-    limit: number;
-} | undefined;
 
 // export: splitNegation
 export declare function splitNegation(value: string): {
@@ -4557,6 +4345,25 @@ export declare class JiraClient {
     }>;
     addWatcher(keyOrId: string, accountId: string): Promise<void>;
     removeWatcher(keyOrId: string, accountId: string): Promise<void>;
+    notifyIssue(keyOrId: string, input: {
+        subject: string;
+        textBody: string;
+        htmlBody?: string;
+        to: {
+            reporter?: boolean;
+            assignee?: boolean;
+            watchers?: boolean;
+            voters?: boolean;
+            users?: Array<{
+                accountId: string;
+            } | {
+                name: string;
+            }>;
+            groups?: Array<{
+                name: string;
+            }>;
+        };
+    }): Promise<void>;
     registerWebhooks(webhooks: Array<{
         jqlFilter: string;
         events: string[];
@@ -4883,6 +4690,7 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    hasScreen?: boolean;
     fields?: Record<string, JiraTransitionField>;
 }
 
@@ -5165,9 +4973,6 @@ export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: st
     to: string;
 }, groupBy?: "issue" | "date"): WorklogReport;
 
-// export: applyRulePatch
-export declare function applyRulePatch(current: AuditRuleConfig, patch: unknown, ruleId: string, path: string): AuditRuleConfig;
-
 // export: attachChangelogs
 export declare function attachChangelogs(issues: JiraIssue[], logs: Map<string, JiraChangelogEntry[]>): JiraIssue[];
 
@@ -5217,110 +5022,6 @@ export type AttachRequestResult = {
 } | {
     ok: false;
     error: string;
-};
-
-// export: AUDIT_PROFILES
-export declare const AUDIT_PROFILES: AuditProfileName[];
-
-// export: AUDIT_SEVERITY_RANK
-export declare const AUDIT_SEVERITY_RANK: Record<AuditSeverity, number>;
-
-// export: AuditCategory
-export type AuditCategory = "workflow" | "flow" | "hygiene" | "custom";
-
-// export: AuditCustomRule
-export interface AuditCustomRule {
-    id: string;
-    jql: string;
-    message: string;
-}
-
-// export: AuditIssueContext
-export interface AuditIssueContext {
-    key: string;
-    project?: string;
-    issueType?: {
-        id?: string;
-        name?: string;
-    };
-    status?: {
-        id?: string;
-        name?: string;
-    };
-}
-
-// export: auditJiraIssues
-export declare function auditJiraIssues(input: JiraAuditInput): {
-    report: JiraAuditReportV2;
-    candidates: JiraAuditFinding[];
-};
-
-// export: AuditLevel
-export type AuditLevel = "off" | AuditSeverity;
-
-// export: AuditOverride
-export interface AuditOverride {
-    match: AuditOverrideMatch;
-    rules: Record<string, unknown>;
-}
-
-// export: AuditOverrideMatch
-export interface AuditOverrideMatch {
-    project?: string[];
-    issueType?: string[];
-    status?: string[];
-    jql?: string;
-}
-
-// export: AuditProfileName
-export type AuditProfileName = "minimal" | "default" | "strict";
-
-// export: AuditRuleConfig
-export interface AuditRuleConfig {
-    level?: AuditLevel;
-    thresholds?: Partial<Record<AuditSeverity, AuditThreshold>>;
-    include?: Array<"todo" | "wip">;
-    digest?: boolean;
-}
-
-// export: AuditRuleDef
-export interface AuditRuleDef {
-    id: string;
-    category: Exclude<AuditCategory, "custom">;
-    kind: AuditRuleKind;
-    title: string;
-    percentiles?: boolean;
-    expensive?: boolean;
-    legacy?: string;
-}
-
-// export: AuditRuleKind
-export type AuditRuleKind = "flag" | "age" | "until";
-
-// export: AuditRules
-export interface AuditRules {
-    extends: AuditProfileName;
-    minLevel: AuditSeverity;
-    legacyDays: number | null;
-    rules: Record<string, AuditRuleConfig>;
-    custom: AuditCustomRule[];
-    overrides: AuditOverride[];
-    flaggedField?: string;
-    source: string;
-}
-
-// export: AuditRulesError
-export declare class AuditRulesError extends Error {
-}
-
-// export: AuditSeverity
-export type AuditSeverity = "info" | "warning" | "error";
-
-// export: AuditThreshold
-export type AuditThreshold = {
-    days: number;
-} | {
-    percentile: number;
 };
 
 // export: buildIssueFlowTimeline
@@ -5461,9 +5162,6 @@ export interface CopyAttachmentOptions {
     tempRoot?: string;
 }
 
-// export: createAuditBaseline
-export declare function createAuditBaseline(candidates: JiraAuditFinding[], now: Date, previous?: JiraAuditBaseline): JiraAuditBaseline;
-
 // export: CreateFilterInput
 export interface CreateFilterInput {
     name: string;
@@ -5565,18 +5263,8 @@ export interface CumulativeFlowV1 {
 // export: DEFAULT_COLUMNS
 export declare const DEFAULT_COLUMNS: string[];
 
-// export: DEFAULT_JIRA_STALE_DAYS
-export declare const DEFAULT_JIRA_STALE_DAYS: [
-    number,
-    number,
-    number
-];
-
 // export: DEFAULT_JQL_FUNCTION_LIMITS
 export declare const DEFAULT_JQL_FUNCTION_LIMITS: JqlFunctionLimits;
-
-// export: defaultAuditRules
-export declare function defaultAuditRules(profile?: AuditProfileName, source?: string): AuditRules;
 
 // export: deleteTemplate
 // @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
@@ -5584,12 +5272,6 @@ export declare function deleteTemplate(name: string): Promise<void>;
 
 // export: descriptionExcerpt
 export declare function descriptionExcerpt(description: unknown, max?: number): string | undefined;
-
-// export: digestAuditRules
-export declare function digestAuditRules(rules: AuditRules): AuditRules;
-
-// export: effectiveRule
-export declare function effectiveRule(rules: AuditRules, ruleId: string, issue: AuditIssueContext, jqlMatches?: Array<Set<string> | undefined>): AuditRuleConfig;
 
 // export: ensureMigrated
 export declare function ensureMigrated(): Promise<{
@@ -5655,9 +5337,6 @@ export interface ExportOptions {
 
 // export: extractStatusTransitions
 export declare function extractStatusTransitions(issue: JiraIssue): StatusTransition[];
-
-// export: findFlaggedField
-export declare function findFlaggedField(fields: JiraField[]): string | undefined;
 
 // export: findJqlFunctions
 export declare function findJqlFunctions(jql: string): JqlFunctionCall[];
@@ -5856,12 +5535,6 @@ export declare function isIssueComplete(issue: JiraIssue, resolve?: StatusCatego
 // export: isoWeek
 export declare function isoWeek(date: string | Date): string;
 
-// export: isRuleActive
-export declare function isRuleActive(rules: AuditRules, ruleId: string): boolean;
-
-// export: isRuleOff
-export declare function isRuleOff(config: AuditRuleConfig | undefined, ruleId: string): boolean;
-
 // export: issueAt
 export declare function issueAt(issue: JiraIssue, sprintId: number, at: Date, pointsField: string, resolve?: StatusCategoryResolver): SprintIssueSnapshot;
 
@@ -5888,9 +5561,6 @@ export declare function issuesToJson(data: ExportData): string;
 // export: issueToTemplate
 export declare function issueToTemplate(issue: JiraIssue, name: string, description?: string): JiraTemplate;
 
-// export: JIRA_AUDIT_RULES
-export declare const JIRA_AUDIT_RULES: readonly AuditRuleDef[];
-
 // export: JiraAttachment
 export interface JiraAttachment {
     id: string;
@@ -5901,83 +5571,6 @@ export interface JiraAttachment {
     mimeType: string;
     content: string;
 }
-
-// export: JiraAuditBaseline
-export interface JiraAuditBaseline {
-    schemaVersion: 1;
-    entries: Array<{
-        rule: string;
-        subject: string;
-        acceptedAt: string;
-    }>;
-}
-
-// export: JiraAuditFinding
-export interface JiraAuditFinding {
-    rule: string;
-    category: AuditCategory;
-    severity: JiraAuditSeverity;
-    key: string;
-    summary: string;
-    status: string;
-    assignee?: string;
-    detail: string;
-    ageDays?: number;
-    subject: string;
-}
-
-// export: JiraAuditInput
-export interface JiraAuditInput {
-    rules: AuditRules;
-    open: JiraIssue[];
-    done: JiraIssue[];
-    resolve: StatusCategoryResolver;
-    now: Date;
-    pointsField?: string;
-    inOpenSprint?: Set<string>;
-    projectsUsingVersions: Set<string>;
-    resolvedNotDone?: {
-        issues: JiraIssue[];
-        truncated: boolean;
-    };
-    flaggedField?: string;
-    custom?: Map<string, JiraIssue[]>;
-    jqlMatches?: Array<Set<string> | undefined>;
-    baseline?: JiraAuditBaseline;
-    useBaseline: boolean;
-    partial?: string[];
-}
-
-// export: JiraAuditReportV2
-export interface JiraAuditReportV2 {
-    schemaVersion: "2";
-    generatedAt: string;
-    rules: {
-        source: string;
-        extends: string;
-        minLevel: JiraAuditSeverity;
-    };
-    summary: {
-        total: number;
-        bySeverity: Record<JiraAuditSeverity, number>;
-        byRule: Record<string, number>;
-        suppressed: {
-            quiet: number;
-            baseline: number;
-            legacy: number;
-        };
-    };
-    findings: JiraAuditFinding[];
-    quiet: Record<string, number>;
-    legacy: Record<string, number>;
-    legacyDays: number | null;
-    staleBaselineEntries: number;
-    partial: string[];
-    diagnostics: string[];
-}
-
-// export: JiraAuditSeverity
-export type JiraAuditSeverity = AuditSeverity;
 
 // export: JiraBoard
 export interface JiraBoard {
@@ -6433,6 +6026,25 @@ export declare class JiraClient {
     }>;
     addWatcher(keyOrId: string, accountId: string): Promise<void>;
     removeWatcher(keyOrId: string, accountId: string): Promise<void>;
+    notifyIssue(keyOrId: string, input: {
+        subject: string;
+        textBody: string;
+        htmlBody?: string;
+        to: {
+            reporter?: boolean;
+            assignee?: boolean;
+            watchers?: boolean;
+            voters?: boolean;
+            users?: Array<{
+                accountId: string;
+            } | {
+                name: string;
+            }>;
+            groups?: Array<{
+                name: string;
+            }>;
+        };
+    }): Promise<void>;
     registerWebhooks(webhooks: Array<{
         jqlFilter: string;
         events: string[];
@@ -6860,6 +6472,7 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    hasScreen?: boolean;
     fields?: Record<string, JiraTransitionField>;
 }
 
@@ -7114,9 +6727,6 @@ export interface MarkdownToAdfOptions {
     sentinels?: boolean;
 }
 
-// export: maxRuleSeverity
-export declare function maxRuleSeverity(rules: AuditRules, ruleId: string): AuditSeverity | undefined;
-
 // export: migrateTemplates
 export declare function migrateTemplates(): Promise<{
     migrated: string[];
@@ -7148,12 +6758,6 @@ export declare function parseAttachmentTarget(args: string[]): AttachmentTargetR
 
 // export: parseAttachRequest
 export declare function parseAttachRequest(args: string[], keyFlag?: string): AttachRequestResult;
-
-// export: parseAuditBaseline
-export declare function parseAuditBaseline(raw: unknown): JiraAuditBaseline;
-
-// export: parseAuditRules
-export declare function parseAuditRules(raw: unknown, source: string): AuditRules;
 
 // export: parseCsv
 export declare function parseCsv(content: string, options?: CsvImportOptions): ImportIssue[];
@@ -7238,9 +6842,6 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getProject(): string;
 }
 
-// export: pruneAuditBaseline
-export declare function pruneAuditBaseline(baseline: JiraAuditBaseline, candidates: JiraAuditFinding[]): JiraAuditBaseline;
-
 // export: renderAgingText
 export declare function renderAgingText(metrics: FlowMetricsV1): string;
 
@@ -7261,12 +6862,6 @@ export declare function renderFlowText(metrics: FlowMetricsV1, query: string): s
 
 // export: renderIssueView
 export declare function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount?: number): string;
-
-// export: renderJiraAuditMarkdown
-export declare function renderJiraAuditMarkdown(report: JiraAuditReportV2, query: string, baseUrl?: string, titles?: (rule: string) => string): string;
-
-// export: renderJiraAuditText
-export declare function renderJiraAuditText(report: JiraAuditReportV2, query: string, titles?: (rule: string) => string): string;
 
 // export: renderSparkline
 export declare function renderSparkline(values: number[]): string;
@@ -7368,9 +6963,6 @@ export interface ReportSource {
 // export: ReportStatusCategory
 export type ReportStatusCategory = "todo" | "inprogress" | "done";
 
-// export: resolveAuditChecks
-export declare function resolveAuditChecks(value: string, customIds?: string[]): Set<string> | string;
-
 // export: resolveColumns
 export declare function resolveColumns(columns: string[], fields?: JiraField[]): string[];
 
@@ -7385,17 +6977,8 @@ export declare function resolveStatusMap(...maps: Array<Record<string, FlowCateg
 // export: resolveUser
 export declare function resolveUser(client: JiraClient, value: string): Promise<UserRef | null>;
 
-// export: restrictAuditRules
-export declare function restrictAuditRules(rules: AuditRules, keep: Set<string>): AuditRules;
-
 // export: roundTime
 export declare function roundTime(seconds: number, intervalMinutes: number, mode?: "nearest" | "up" | "down"): number;
-
-// export: ruleDef
-export declare function ruleDef(id: string): AuditRuleDef | undefined;
-
-// export: ruleTitle
-export declare function ruleTitle(id: string, custom?: AuditCustomRule[]): string;
 
 // export: sanitizeAttachmentFilename
 export declare function sanitizeAttachmentFilename(filename: string, id: string): string;
@@ -7461,13 +7044,6 @@ export declare function secondsToJiraFormat(seconds: number, config?: TimeConfig
 export declare function selectAttachmentsByFilename<T extends {
     filename: string;
 }>(attachments: readonly T[], filename: string): T[];
-
-// export: severityForValue
-export declare function severityForValue(config: AuditRuleConfig, kind: AuditRuleKind, value: number, percentileValue: (p: number) => number | undefined): {
-    severity: AuditSeverity;
-    threshold: AuditThreshold;
-    limit: number;
-} | undefined;
 
 // export: splitNegation
 export declare function splitNegation(value: string): {

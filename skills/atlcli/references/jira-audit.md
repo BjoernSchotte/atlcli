@@ -1,6 +1,6 @@
 ---
 name: jira-audit
-description: atlcli audit jira, report-only hygiene and flow findings over Jira issues, its rules file, baseline, exit codes and JSON report.
+description: atlcli audit jira, hygiene and flow findings over Jira issues, its rules file, rule scripts, --fix plans, baseline, exit codes and JSON report.
 metadata:
   tags: jira, audit, hygiene, rules, baseline
 ---
@@ -9,14 +9,16 @@ metadata:
 
 `atlcli audit jira` reports findings over the open issues of a selection and
 the issues done in it during the last 90 days: stuck or unassigned work,
-stale and overdue issues, and hygiene gaps. It writes nothing to Jira. Two
-flags write a local baseline file (see [Baseline](#baseline)).
+stale and overdue issues, and hygiene gaps. It writes nothing to Jira unless
+`--fix --apply` applies a reviewed plan (see [Rule scripts and fixes](#rule-scripts-and-fixes)).
+Two flags write a local baseline file (see [Baseline](#baseline)).
 
 ## Contents
 
 - [Enabling and help](#enabling-and-help)
 - [Running it](#running-it)
 - [Rules and the rules file](#rules-and-the-rules-file)
+- [Rule scripts and fixes](#rule-scripts-and-fixes)
 - [Baseline](#baseline)
 - [Exit codes and JSON](#exit-codes-and-json)
 - [Anti-patterns](#anti-patterns)
@@ -67,7 +69,8 @@ thresholds.
 
 A rules file is YAML. Its top-level keys are `version` (1), `extends`
 (`minimal`, `default` or `strict`), `minLevel`, `rules`, `custom`,
-`overrides`, `baseline` (`olderThan`) and `flagged` (`field`). An unknown key
+`overrides`, `baseline` (`olderThan`), `flagged` (`field`), `scripts` (rule
+script paths relative to the file) and `confluence` (the wiki audit's rules). An unknown key
 or value fails the run with the path inside the file.
 
 ```yaml
@@ -89,6 +92,31 @@ A custom rule's JQL is used as written, combined only with the selection: add
 `statusCategory != Done` yourself when done issues should not count. A custom
 id has the form `<group>/<name>` in lower case, and its JQL takes no
 `ORDER BY`.
+
+## Rule scripts and fixes
+
+Every rule, built-in or custom, is a TypeScript script with
+`export const meta = { audit: { id, product: "jira", … } }` and a default
+export `(issue, rule) => rule.finding({ detail }) | undefined`. Rules run
+read-only in the script sandbox; a write verb fails the run with
+`permission-denied: audit rules only read`.
+
+- Discovery, later wins on the same id: built-ins, `~/.atlcli/audit/*.ts`,
+  `./.atlcli/audit/*.ts`, `scripts:` in the rules file, `--script <file>`.
+  A script with a built-in's id replaces it (diagnostic "replaces the
+  built-in rule").
+- `--list-rules` lists ids, sources and which rules have `fix`/`report`;
+  `--print-rule <id>` prints a rule's source. `atlcli audit init` writes a
+  skeleton and `atlcli.d.ts` to `./.atlcli/audit/` (writes files: ask first).
+- `--fix` runs each listed finding's `fix(finding, issue)` export and prints
+  the plan; nothing changes. `--fix --plan-out f.json` saves it for
+  `atlcli script apply f.json`; `--fix --apply` applies after a prompt
+  (`--yes` skips it, so only with the user's go).
+- Reports: `--markdown` (default Jinja template, `--print-template`),
+  `--template file.j2`, or a rule's `export function report(model)`
+  (`--report-script <id>`); `--report <file>` writes to a file.
+
+Docs page: Custom Audit Rules (`/audit-scripts/`).
 
 ## Baseline
 
@@ -127,12 +155,14 @@ a listed finding reached `--fail-on` (default `error`; `info`, `warning`,
 cause exit 2. Exit 2 is a result, not a failure; pass `--fail-on never` when
 only the report is wanted.
 
-`--json` prints `schemaVersion: "2"` with `generatedAt`, `rules` (`source`,
-`extends`, `minLevel`), `summary` (`total`, `bySeverity`, `byRule`,
-`suppressed`), `findings` (each with `rule`, `category`, `severity`, `key`,
-`summary`, `status`, `assignee`, `detail`, `ageDays`, `subject`), `quiet`,
+`--json` prints `schemaVersion: "3"` with `product` (`jira`), `generatedAt`,
+`query`, `rules` (`source`, `extends`, `minLevel`), `summary` (`total`,
+`bySeverity`, `byRule`, `suppressed`), `findings` (each with `rule`,
+`category`, `severity`, `target` (`kind`, `key`, `url`), `key`, `summary`,
+`status`, `assignee`, `detail`, `ageDays`, `subject`, `fixable`), `quiet`,
 `legacy`, `legacyDays`, `staleBaselineEntries`, `partial`, `diagnostics` and
-`query`. A non-empty `partial` names the queries cut at `--limit` (the lowest
+`titles` (rule id → title). Version 3 replaced 2; every v2 field kept its
+meaning. A non-empty `partial` names the queries cut at `--limit` (the lowest
 keys are kept), so the counts are lower bounds even at exit 0. An unreadable
 baseline file only adds a line to `diagnostics`. `--markdown` prints a
 Markdown report.
@@ -145,6 +175,8 @@ Markdown report.
   selection or `--checks`: it deletes the other entries.
 - A custom rule without `statusCategory != Done` when only open issues should
   count.
+- Writing in a rule's default export instead of `fix`, or running
+  `--fix --apply --yes` without the user having seen the plan.
 
 Related: [jira-agile.md](jira-agile.md), [digest.md](digest.md),
 [safety.md](safety.md).

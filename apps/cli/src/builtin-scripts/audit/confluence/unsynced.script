@@ -1,0 +1,16 @@
+// Pages in Confluence that are not synced locally (--include-remote).
+export const meta = {
+  audit: {
+    id: "content/unsynced",
+    product: "confluence",
+    title: "Not synced",
+    category: "content",
+    legacy: "include-remote",
+    needs: ["remote"],
+    defaults: "off",
+  },
+};
+
+export default (page, rule) => {
+  if (!page.synced) return rule.finding({ detail: "In Confluence, not synced locally." });
+};

@@ -87,7 +87,7 @@ Options for init:
 Templates for run (atlcli.render):
   --var <name=value>     Template variable, repeatable (a.b=v nests; JSON values allowed)
   --vars-file <file>     YAML file with values (and optional variables: declarations)
-  --now <iso>            Freeze the clock for @today/@now (repeat a plan exactly)
+  --now <iso>            Freeze the clock for today/now (repeat a plan exactly)
   --strict               Fail on any template warning (unresolved {{…}} and others)
 
 Limits for run (defaults in parentheses):
@@ -200,6 +200,21 @@ export async function planAndApply(
     baseUrl: profile.baseUrl,
     profile: profile.name,
   });
+  await outputOrApplyPlan(plan, { profile, port }, flags, opts);
+}
+
+/**
+ * Prints a plan (and writes `--plan-out`), or applies it with `--apply`:
+ * confirmation, journal, concurrency and the apply report. Shared by
+ * `script run` and planned changes from elsewhere (`audit … --fix`).
+ */
+export async function outputOrApplyPlan(
+  plan: ScriptPlanV1,
+  { profile, port }: { profile: Profile; port: ScriptPort },
+  flags: Flags,
+  opts: OutputOptions,
+): Promise<void> {
+  const rt = await runtime();
   const planOut = getFlag(flags, "plan-out");
   if (planOut) {
     await writeFile(planOut, rt.serializeScriptPlan(plan), "utf8");
@@ -350,7 +365,7 @@ for await (const issue of atlcli.jira.search(\`project = \${atlcli.params.projec
 }
 `;
 
-const TSCONFIG = `{
+export const TSCONFIG = `{
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -638,6 +653,12 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
   return lines.join("\n");
 }
 
+/** " with fields resolution, comment" for transitions that set more than the status. */
+function transitionExtras(a: Record<string, any>): string {
+  const parts = [...Object.keys(a.fields ?? {}), ...(a.comment ? ["comment"] : [])];
+  return parts.length ? ` with ${parts.join(", ")}` : "";
+}
+
 export function describeOperation(op: PlannedOperation): string {
   const a = op.args as Record<string, any>;
   const after = op.dependsOn.length ? `  (after #${op.dependsOn.join(", #")})` : "";
@@ -652,9 +673,22 @@ export function describeOperation(op: PlannedOperation): string {
     case "jira.update":
       return `jira update      ${ref(a.key)} ${Object.keys(a).filter((k) => k !== "key").join(", ")}${after}`;
     case "jira.transition":
-      return `jira transition  ${ref(a.key)} → ${a.transition}${after}`;
+      return `jira transition  ${ref(a.key)} → ${a.transition}${transitionExtras(a)}${after}`;
     case "jira.setStatus":
-      return `jira status      ${ref(a.key)} → ${a.status} (if a direct transition exists)${after}`;
+      return `jira status      ${ref(a.key)} → ${a.status} (if a direct transition exists)${transitionExtras(a)}${after}`;
+    case "jira.addWatcher":
+      return `jira watch       ${ref(a.key)} + ${a.query}${after}`;
+    case "jira.removeWatcher":
+      return `jira watch       ${ref(a.key)} - ${a.query}${after}`;
+    case "jira.notify": {
+      const to = a.to as Record<string, unknown>;
+      const who = [
+        ...((to.users as unknown[] | undefined)?.length ? [`${(to.users as unknown[]).length} user(s)`] : []),
+        ...((to.groups as string[] | undefined) ?? []).map((g) => `group ${g}`),
+        ...["reporter", "assignee", "watchers", "voters"].filter((k) => to[k]),
+      ];
+      return `jira notify      ${ref(a.key)} ${text(a.subject)} → ${who.join(", ")}${after}`;
+    }
     case "jira.comment":
       return `jira comment     ${ref(a.key)} ${"raw" in a ? "(raw)" : text(a.markdown)}${after}`;
     case "jira.copyAttachment":
@@ -673,6 +707,8 @@ export function describeOperation(op: PlannedOperation): string {
       return `page move        ${ref(a.id)} under ${ref(a.parentId)}${after}`;
     case "confluence.deletePage":
       return `page DELETE      ${ref(a.id)} ${text(a.title)} (to trash)${after}`;
+    case "confluence.archivePage":
+      return `page ARCHIVE     ${ref(a.id)} ${text(a.title)}${after}`;
     case "confluence.attach":
       return `page attach      ${ref(a.pageId)} ${a.name} (${size(a)})${after}`;
     case "confluence.copyAttachment":

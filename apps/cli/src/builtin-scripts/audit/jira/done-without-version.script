@@ -1,0 +1,18 @@
+// Recently done issues without a fix version, in projects that use versions.
+export const meta = {
+  audit: {
+    id: "hygiene/done-without-version",
+    product: "jira",
+    title: "Done without version",
+    category: "hygiene",
+    items: "done",
+    needs: ["versions"],
+    profiles: { default: "info", strict: "warning" },
+  },
+};
+
+export default (issue, rule) => {
+  const project = issue.fields.project?.key;
+  if (!project || !rule.facts.projectUsesVersions || issue.fields.fixVersions?.length) return;
+  return rule.finding({ detail: `Done without a fix version, although ${project} uses versions.` });
+};

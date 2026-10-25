@@ -2,6 +2,22 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [Unreleased]
+
+### Breaking changes
+
+- **Templates use Jinja instead of Handlebars.** Page, report, Jira and copy templates and `atlcli.render` render with Jinja (Nunjucks, run in the script sandbox). Rewrite templates by hand; there is no converter:
+
+  | Handlebars | Jinja |
+  |---|---|
+  | `{{#if x}}…{{else}}…{{/if}}` | `{% if x %}…{% else %}…{% endif %}` |
+  | `{{#each items}}{{this}}{{/each}}` | `{% for item in items %}{{ item }}{% endfor %}` |
+  | `{{@today}}`, `{{@now}}`, `{{@date}}` | `{{ today }}`, `{{ now }}`, `{{ date }}` |
+  | `{{"{{"}}` (literal braces) | `{% raw %}{{{% endraw %}` |
+
+- **Audit rules are scripts; the audit JSON is `schemaVersion: "3"`.** `audit jira` and `audit wiki` run their checks as TypeScript rule scripts in the sandbox; your own rules load from `.atlcli/audit/`, `~/.atlcli/audit/`, `scripts:` in `audit-rules.yaml` or `--script`. Version 3 adds `product`, `titles` and per finding `target` and `fixable`. `@atlcli/jira` no longer exports the audit API (it moved to the new `@atlcli/audit`).
+- **`audit wiki` changed shape.** It uses the same findings, rules file (`confluence:` section), baseline (`.atlcli/audit-baseline.json` in the synced directory) and `--fail-on` as `audit jira`, so it exits 2 on error-level findings. `--fix` plans changes for review (`--apply`, `--plan-out`) instead of prompting; `--dry-run` is gone. Without check flags the default profile runs.
+
 ## [2026.10.11] - 2026-10-25
 
 ### Bug Fixes

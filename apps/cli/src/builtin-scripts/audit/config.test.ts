@@ -1,21 +1,35 @@
-import { describe, expect, test } from "bun:test";
+/** Rule configuration over the built-in Jira rule scripts (ported from packages/jira/src/audit-rules.test.ts). */
+import { beforeAll, describe, expect, test } from "bun:test";
 import {
+  type AuditRegistry,
   AuditRulesError,
-  JIRA_AUDIT_RULES,
-  applyRulePatch,
-  digestAuditRules,
-  defaultAuditRules,
-  effectiveRule,
-  findFlaggedField,
-  isRuleOff,
-  maxRuleSeverity,
+  applyRulePatch as patchRule,
+  defaultAuditRules as defaults,
+  digestAuditRules as digest,
+  effectiveRule as effective,
+  isRuleOff as off,
+  maxRuleSeverity as maxSeverity,
   parseAuditRules,
-  resolveAuditChecks,
+  resolveAuditChecks as checks,
   severityForValue,
-} from "./audit-rules.js";
-import type { JiraField } from "./types.js";
+} from "@atlcli/audit";
+import type { JiraField } from "@atlcli/jira";
+import { findFlaggedField } from "../../commands/audit-jira.js";
+import { loadBuiltinAuditRules, registryOf } from "../../commands/audit-scripts.js";
 
-const parse = (raw: unknown) => parseAuditRules(raw, "rules.yaml");
+let registry: AuditRegistry;
+beforeAll(async () => {
+  registry = registryOf(await loadBuiltinAuditRules("jira"));
+});
+const JIRA_AUDIT_RULES = { get defs() { return registry.defs; } };
+const defaultAuditRules = (p?: "minimal" | "default" | "strict") => defaults(registry, p);
+const applyRulePatch = (c: Parameters<typeof patchRule>[0], p: unknown, id: string, path: string) => patchRule(c, p, id, path, registry);
+const isRuleOff = (c: Parameters<typeof off>[0], id: string) => off(c, id, registry);
+const effectiveRule = (r: Parameters<typeof effective>[0], id: string, issue: Parameters<typeof effective>[2]) => effective(r, id, issue, registry);
+const maxRuleSeverity = (r: Parameters<typeof maxSeverity>[0], id: string) => maxSeverity(r, id, registry);
+const digestAuditRules = (r: Parameters<typeof digest>[0]) => digest(r, registry);
+const resolveAuditChecks = (v: string, custom?: string[]) => checks(v, registry, custom);
+const parse = (raw: unknown) => parseAuditRules(raw, "rules.yaml", registry);
 const fails = (raw: unknown) => {
   try {
     parse(raw);
@@ -36,9 +50,9 @@ describe("profiles", () => {
     expect(isRuleOff(minimal.rules["hygiene/no-parent"], "hygiene/no-parent")).toBe(true);
     const strict = defaultAuditRules("strict");
     expect(strict).toMatchObject({ minLevel: "info", legacyDays: null });
-    expect(strict.rules["hygiene/stale"].include).toEqual(["todo", "wip"]);
+    expect(strict.rules["hygiene/stale"]!.options?.include).toEqual(["todo", "wip"]);
     // Every profile mentions only known rules, and every rule has a profile setting.
-    for (const def of JIRA_AUDIT_RULES) expect(strict.rules[def.id]).toBeDefined();
+    for (const def of JIRA_AUDIT_RULES.defs) expect(strict.rules[def.id]).toBeDefined();
   });
 });
 

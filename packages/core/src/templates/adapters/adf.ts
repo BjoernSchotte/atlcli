@@ -1,11 +1,12 @@
 /**
  * Jira/Confluence ADF. Only text changes: adjacent text nodes of one inline
- * container form a unit (the editor splits text at marks, so `{{cus` +
+ * container form a unit (the editor splits text at marks, so `{{ cus` +
  * **`tomer}}`** still resolves), every other inline node is a boundary, and
- * code is never rendered. A document without `{{` comes back as the same
+ * code is never rendered. A document without template syntax comes back as the same
  * object.
  */
 import { finish, RenderBudget, renderSegments, renderText, type RenderOptions, type RenderWarning, type TemplateScope } from "../render.js";
+import { hasJinjaSyntax } from "@atlcli/jinja";
 import { renderAdfBlocks } from "./adf-blocks.js";
 import { distribute, withoutPosition } from "./runs.js";
 
@@ -31,7 +32,7 @@ export interface AdfContext {
 
 const URL_OK = /^(https?:|mailto:|\/|#)/;
 const isRunText = (n: AdfNode) => n.type === "text" && !(n.marks ?? []).some((m) => m.type === "code");
-const hasPlaceholder = (v: unknown) => JSON.stringify(v).includes("{{");
+const hasPlaceholder = (v: unknown) => hasJinjaSyntax(JSON.stringify(v));
 
 export function renderAdf<T>(doc: T, scope: TemplateScope, opts: RenderOptions & { unit: string }): { value: T; warnings: RenderWarning[] } {
   if (doc === null || typeof doc !== "object" || !hasPlaceholder(doc)) return { value: doc, warnings: [] };
@@ -57,7 +58,7 @@ function renderInline(children: AdfNode[], ctx: AdfContext): AdfNode[] {
     const joined = pieces.join("");
     const open = joined.match(/\{\{/g)?.length ?? 0;
     const close = joined.match(/\}\}/g)?.length ?? 0;
-    if (!joined.includes("{{")) {
+    if (!hasJinjaSyntax(joined)) {
       out.push(...run.map((n) => renderLinkMarks(n, ctx)));
     } else if (next !== undefined && open > close) {
       ctx.warnings.push({
@@ -90,7 +91,7 @@ function renderInline(children: AdfNode[], ctx: AdfContext): AdfNode[] {
 }
 
 function renderLinkMarks(node: AdfNode, ctx: AdfContext): AdfNode {
-  const templated = (m: AdfMark) => m.type === "link" && typeof m.attrs?.href === "string" && m.attrs.href.includes("{{");
+  const templated = (m: AdfMark) => m.type === "link" && typeof m.attrs?.href === "string" && hasJinjaSyntax(m.attrs.href);
   if (!node.marks?.some(templated)) return node;
   const marks = node.marks.map((m) => {
     if (!templated(m)) return m;

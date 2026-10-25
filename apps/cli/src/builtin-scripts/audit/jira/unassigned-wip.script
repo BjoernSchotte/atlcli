@@ -1,0 +1,15 @@
+// Work in progress nobody owns.
+export const meta = {
+  audit: {
+    id: "flow/unassigned-wip",
+    product: "jira",
+    title: "In progress without assignee",
+    category: "flow",
+    legacy: "unassigned-wip",
+    profiles: { minimal: "warning", default: "warning", strict: "error" },
+  },
+};
+
+export default (issue, rule) => {
+  if (rule.facts.category === "wip" && !issue.fields.assignee) return rule.finding({ detail: "In progress without an assignee." });
+};

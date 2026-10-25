@@ -246,7 +246,7 @@ describe("duration-aware test lanes", () => {
     expect(realMetadata.baselineSha).toBe("5f5008bed6258041b3c2b27f6d23d3de631b6723");
     expect(
       realMetadata.files.filter(({ durationSeconds }) => durationSeconds !== undefined),
-    ).toHaveLength(757);
+    ).toHaveLength(756);
     expect(
       result.groups
         .filter(({ lane }) => lane === "general")

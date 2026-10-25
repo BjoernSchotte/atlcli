@@ -55,6 +55,19 @@ export interface RunScriptOptions {
    * `default(item, params)` (e.g. one Jira issue of `script run --each`).
    */
   item?: unknown;
+  /**
+   * Batch mode: the export is called once per item in one runtime; the run's
+   * value is the array of results. Takes precedence over `item`.
+   */
+  items?: unknown[];
+  /** The export to call in item and batch mode (default `default`), e.g. `fix` or `report`. */
+  entry?: string;
+  /**
+   * Trusted guest code evaluated before the script (after `atlcli` exists). It
+   * may set `globalThis.__atlcliArgs = (item, params) => [...]` to shape the
+   * arguments each item call gets (default: `[item, params]`).
+   */
+  prelude?: string;
   limits?: Partial<SandboxLimits>;
   onLog?: (level: SandboxLogLevel, message: string) => void;
   /** Override the WASM build (tests use the sync debug build for leak detection). */
@@ -267,8 +280,19 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
     );
     ctx.newString(JSON.stringify(wrappers)).consume((w) => ctx.setProp(ctx.global, "__atlcliWrappers", w));
     ctx.newString(JSON.stringify(options.params ?? {})).consume((p) => ctx.setProp(ctx.global, "__atlcliParams", p));
-    if (options.item !== undefined) {
+    if (options.items !== undefined) {
+      ctx.newString(JSON.stringify(options.items)).consume((i) => ctx.setProp(ctx.global, "__atlcliItems", i));
+    } else if (options.item !== undefined) {
       ctx.newString(JSON.stringify(options.item)).consume((i) => ctx.setProp(ctx.global, "__atlcliItem", i));
+    }
+    if (options.prelude) {
+      const pre = ctx.evalCode(options.prelude, "atlcli:host-prelude", { type: "global" });
+      if (pre.error) {
+        const error = toScriptError(ctx, pre.error);
+        pre.error.dispose();
+        throw error;
+      }
+      pre.value.dispose();
     }
 
     // The CPU deadline also covers the prelude: under load a tiny deadline can
@@ -281,16 +305,31 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
     }
     prelude.value.dispose();
 
+    const entryName = JSON.stringify(options.entry ?? "default");
     const entry = `(async () => {
-  const done = globalThis.__atlcliDone, { stringify, parse } = JSON, item = globalThis.__atlcliItem;
-  delete globalThis.__atlcliDone; delete globalThis.__atlcliItem;
+  const done = globalThis.__atlcliDone, { stringify, parse } = JSON, item = globalThis.__atlcliItem, items = globalThis.__atlcliItems;
+  const argsFor = globalThis.__atlcliArgs || ((it, params) => [it, params]);
+  delete globalThis.__atlcliDone; delete globalThis.__atlcliItem; delete globalThis.__atlcliItems; delete globalThis.__atlcliArgs;
   try {
     const m = await import(${JSON.stringify(SCRIPT_MODULE)});
-    if (item !== undefined && typeof m.default !== "function") {
-      throw new SyntaxError("In per-issue mode (--each) the script must export a function: export default async (issue) => { … }");
+    const fn = m[${entryName}];
+    const perItem = item !== undefined || items !== undefined;
+    if (perItem && typeof fn !== "function") {
+      throw new SyntaxError(${JSON.stringify(
+        (options.entry ?? "default") === "default"
+          ? "In per-issue mode (--each) the script must export a function: export default async (issue) => { … }"
+          : `The script does not export a function "${options.entry}"`,
+      )});
     }
-    const r = item !== undefined ? await m.default(parse(item), atlcli.params)
-      : typeof m.default === "function" ? await m.default(atlcli.params) : m.default;
+    let r;
+    if (items !== undefined) {
+      r = [];
+      for (const it of parse(items)) r.push(await fn(...argsFor(it, atlcli.params)));
+    } else if (item !== undefined) {
+      r = await fn(...argsFor(parse(item), atlcli.params));
+    } else {
+      r = typeof fn === "function" ? await fn(atlcli.params) : fn;
+    }
     done(true, stringify(r === undefined ? null : r) ?? "null");
   } catch (e) { done(false, e); }
 })();`;

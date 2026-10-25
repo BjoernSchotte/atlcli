@@ -171,7 +171,7 @@ export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
 export declare function checkFieldValue(kind: FieldKind, value: string, unit: string): void;
 
 // export: childScope
-export declare function childScope(scope: TemplateScope, context: unknown, data?: Record<string, unknown>): TemplateScope;
+export declare function childScope(scope: TemplateScope, bindings: Record<string, unknown>): TemplateScope;
 
 // export: collectVariables
 export declare function collectVariables(units: Array<{
@@ -199,9 +199,6 @@ export declare class ConsoleLogSink implements LogSink {
     write(entry: LogEntry): void;
 }
 
-// export: createTemplateHandlebars
-export declare function createTemplateHandlebars(): typeof Handlebars;
-
 // export: createTemplateScope
 export declare function createTemplateScope(input?: {
     vars?: Record<string, unknown>;
@@ -214,9 +211,6 @@ export declare function createTemplateScope(input?: {
     parent?: unknown;
     seed?: string;
 }): TemplateScope;
-
-// export: dateAdd
-export declare function dateAdd(date: unknown, n: unknown, unit: unknown): unknown;
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
@@ -286,11 +280,20 @@ export declare function getConfluenceBaseUrl(profile: ConfluenceProfile): string
 // export: getLogger
 export declare function getLogger(): Logger;
 
+// export: hasJinjaSyntax
+export declare function hasJinjaSyntax(s: string): boolean;
+
+// export: initJinja
+export declare function initJinja(): Promise<void>;
+
 // export: isConfluencePageUrl
 export declare function isConfluencePageUrl(profile: ConfluenceProfile, candidate: string): boolean;
 
 // export: isSensitiveKey
 export declare function isSensitiveKey(key: string): boolean;
+
+// export: jinjaReady
+export declare function jinjaReady(): boolean;
 
 // export: LogEntry
 export type LogEntry = (BaseLogEntry & {
@@ -512,7 +515,7 @@ export interface RenderWarning {
 }
 
 // export: RenderWarningCode
-export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
+export type RenderWarningCode = "unresolved" | "parse-error" | "render-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
 
 // export: renderWikiMarkup
 export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
@@ -575,9 +578,6 @@ export interface SyncEventData {
     details?: unknown;
 }
 
-// export: TEMPLATE_HELPER_NAMES
-export declare const TEMPLATE_HELPER_NAMES: readonly string[];
-
 // export: TemplateIntegrityError
 export declare class TemplateIntegrityError extends Error {
     readonly id: string;
@@ -625,9 +625,7 @@ export declare class TemplateResolutionConflictError extends Error {
 
 // export: TemplateScope
 export interface TemplateScope {
-    context: unknown;
-    data: Record<string, unknown>;
-    item?: boolean;
+    vars: Record<string, unknown>;
 }
 
 // export: TlsOptions
@@ -844,7 +842,7 @@ export declare function checkForUpdates(options?: {
 }): Promise<UpdateInfo>;
 
 // export: childScope
-export declare function childScope(scope: TemplateScope, context: unknown, data?: Record<string, unknown>): TemplateScope;
+export declare function childScope(scope: TemplateScope, bindings: Record<string, unknown>): TemplateScope;
 
 // export: clearProfileAuth
 export declare function clearProfileAuth(config: Config, name: string): boolean;
@@ -897,9 +895,6 @@ export declare class ConsoleLogSink implements LogSink {
     write(entry: LogEntry): void;
 }
 
-// export: createTemplateHandlebars
-export declare function createTemplateHandlebars(): typeof Handlebars;
-
 // export: createTemplateScope
 export declare function createTemplateScope(input?: {
     vars?: Record<string, unknown>;
@@ -912,9 +907,6 @@ export declare function createTemplateScope(input?: {
     parent?: unknown;
     seed?: string;
 }): TemplateScope;
-
-// export: dateAdd
-export declare function dateAdd(date: unknown, n: unknown, unit: unknown): unknown;
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
@@ -1135,6 +1127,9 @@ export declare function hasFlag(flags: Record<string, string | boolean | string[
 // export: hasFrontmatter
 export declare function hasFrontmatter(raw: string): boolean;
 
+// export: hasJinjaSyntax
+export declare function hasJinjaSyntax(s: string): boolean;
+
 // export: hasKeychainToken
 export declare function hasKeychainToken(service: string, account: string): boolean;
 
@@ -1179,6 +1174,9 @@ export interface ImportResult {
     }>;
 }
 
+// export: initJinja
+export declare function initJinja(): Promise<void>;
+
 // export: InstallMethod
 export type InstallMethod = "script" | "homebrew" | "homebrew-dev" | "source" | "unknown";
 
@@ -1193,6 +1191,9 @@ export declare function isInteractive(): boolean;
 
 // export: isSensitiveKey
 export declare function isSensitiveKey(key: string): boolean;
+
+// export: jinjaReady
+export declare function jinjaReady(): boolean;
 
 // export: JiraAuditConfig
 export type JiraAuditConfig = {
@@ -1533,7 +1534,7 @@ export interface RenderWarning {
 }
 
 // export: RenderWarningCode
-export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
+export type RenderWarningCode = "unresolved" | "parse-error" | "render-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
 
 // export: renderWikiMarkup
 export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
@@ -1686,16 +1687,10 @@ export interface Template {
     source: TemplateSource;
 }
 
-// export: TEMPLATE_HELPER_NAMES
-export declare const TEMPLATE_HELPER_NAMES: readonly string[];
-
 // export: TemplateEngine
 export declare class TemplateEngine {
-    private handlebars;
-    constructor();
-    private createVariableHelpers;
     render(template: Template, context: RenderContext): RenderResult;
-    private checkHandlebarsSyntax;
+    private checkSyntax;
     validate(template: Template): ValidationResult;
     validateContent(content: string): ValidationResult;
 }
@@ -1800,9 +1795,7 @@ export declare class TemplateResolver {
 
 // export: TemplateScope
 export interface TemplateScope {
-    context: unknown;
-    data: Record<string, unknown>;
-    item?: boolean;
+    vars: Record<string, unknown>;
 }
 
 // export: TemplateSource
@@ -1916,7 +1909,7 @@ export interface ValidationError {
     line?: number;
     column?: number;
     message: string;
-    type: "syntax" | "variable" | "handlebars";
+    type: "syntax" | "variable";
 }
 
 // export: ValidationResult
@@ -2140,7 +2133,7 @@ export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];
 export declare function checkFieldValue(kind: FieldKind, value: string, unit: string): void;
 
 // export: childScope
-export declare function childScope(scope: TemplateScope, context: unknown, data?: Record<string, unknown>): TemplateScope;
+export declare function childScope(scope: TemplateScope, bindings: Record<string, unknown>): TemplateScope;
 
 // export: collectVariables
 export declare function collectVariables(units: Array<{
@@ -2168,9 +2161,6 @@ export declare class ConsoleLogSink implements LogSink {
     write(entry: LogEntry): void;
 }
 
-// export: createTemplateHandlebars
-export declare function createTemplateHandlebars(): typeof Handlebars;
-
 // export: createTemplateScope
 export declare function createTemplateScope(input?: {
     vars?: Record<string, unknown>;
@@ -2183,9 +2173,6 @@ export declare function createTemplateScope(input?: {
     parent?: unknown;
     seed?: string;
 }): TemplateScope;
-
-// export: dateAdd
-export declare function dateAdd(date: unknown, n: unknown, unit: unknown): unknown;
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
@@ -2255,11 +2242,20 @@ export declare function getConfluenceBaseUrl(profile: ConfluenceProfile): string
 // export: getLogger
 export declare function getLogger(): Logger;
 
+// export: hasJinjaSyntax
+export declare function hasJinjaSyntax(s: string): boolean;
+
+// export: initJinja
+export declare function initJinja(): Promise<void>;
+
 // export: isConfluencePageUrl
 export declare function isConfluencePageUrl(profile: ConfluenceProfile, candidate: string): boolean;
 
 // export: isSensitiveKey
 export declare function isSensitiveKey(key: string): boolean;
+
+// export: jinjaReady
+export declare function jinjaReady(): boolean;
 
 // export: LogEntry
 export type LogEntry = (BaseLogEntry & {
@@ -2481,7 +2477,7 @@ export interface RenderWarning {
 }
 
 // export: RenderWarningCode
-export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
+export type RenderWarningCode = "unresolved" | "parse-error" | "render-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
 
 // export: renderWikiMarkup
 export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
@@ -2544,9 +2540,6 @@ export interface SyncEventData {
     details?: unknown;
 }
 
-// export: TEMPLATE_HELPER_NAMES
-export declare const TEMPLATE_HELPER_NAMES: readonly string[];
-
 // export: TemplateIntegrityError
 export declare class TemplateIntegrityError extends Error {
     readonly id: string;
@@ -2594,9 +2587,7 @@ export declare class TemplateResolutionConflictError extends Error {
 
 // export: TemplateScope
 export interface TemplateScope {
-    context: unknown;
-    data: Record<string, unknown>;
-    item?: boolean;
+    vars: Record<string, unknown>;
 }
 
 // export: TlsOptions
@@ -2885,7 +2876,7 @@ export declare function checkForUpdates(options?: {
 }): Promise<UpdateInfo>;
 
 // export: childScope
-export declare function childScope(scope: TemplateScope, context: unknown, data?: Record<string, unknown>): TemplateScope;
+export declare function childScope(scope: TemplateScope, bindings: Record<string, unknown>): TemplateScope;
 
 // export: clearProfileAuth
 export declare function clearProfileAuth(config: Config, name: string): boolean;
@@ -2938,9 +2929,6 @@ export declare class ConsoleLogSink implements LogSink {
     write(entry: LogEntry): void;
 }
 
-// export: createTemplateHandlebars
-export declare function createTemplateHandlebars(): typeof Handlebars;
-
 // export: createTemplateScope
 export declare function createTemplateScope(input?: {
     vars?: Record<string, unknown>;
@@ -2953,9 +2941,6 @@ export declare function createTemplateScope(input?: {
     parent?: unknown;
     seed?: string;
 }): TemplateScope;
-
-// export: dateAdd
-export declare function dateAdd(date: unknown, n: unknown, unit: unknown): unknown;
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
@@ -3176,6 +3161,9 @@ export declare function hasFlag(flags: Record<string, string | boolean | string[
 // export: hasFrontmatter
 export declare function hasFrontmatter(raw: string): boolean;
 
+// export: hasJinjaSyntax
+export declare function hasJinjaSyntax(s: string): boolean;
+
 // export: hasKeychainToken
 export declare function hasKeychainToken(service: string, account: string): boolean;
 
@@ -3220,6 +3208,9 @@ export interface ImportResult {
     }>;
 }
 
+// export: initJinja
+export declare function initJinja(): Promise<void>;
+
 // export: InstallMethod
 export type InstallMethod = "script" | "homebrew" | "homebrew-dev" | "source" | "unknown";
 
@@ -3234,6 +3225,9 @@ export declare function isInteractive(): boolean;
 
 // export: isSensitiveKey
 export declare function isSensitiveKey(key: string): boolean;
+
+// export: jinjaReady
+export declare function jinjaReady(): boolean;
 
 // export: JiraAuditConfig
 export type JiraAuditConfig = {
@@ -3574,7 +3568,7 @@ export interface RenderWarning {
 }
 
 // export: RenderWarningCode
-export type RenderWarningCode = "unresolved" | "parse-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
+export type RenderWarningCode = "unresolved" | "parse-error" | "render-error" | "unknown-helper" | "unsupported" | "unbalanced-block" | "crosses-inline-node" | "invalid-url" | "unused-variable" | "not-rendered-field" | "dropped-content";
 
 // export: renderWikiMarkup
 export declare function renderWikiMarkup(text: string, scope: TemplateScope, opts: RenderOptions & {
@@ -3727,16 +3721,10 @@ export interface Template {
     source: TemplateSource;
 }
 
-// export: TEMPLATE_HELPER_NAMES
-export declare const TEMPLATE_HELPER_NAMES: readonly string[];
-
 // export: TemplateEngine
 export declare class TemplateEngine {
-    private handlebars;
-    constructor();
-    private createVariableHelpers;
     render(template: Template, context: RenderContext): RenderResult;
-    private checkHandlebarsSyntax;
+    private checkSyntax;
     validate(template: Template): ValidationResult;
     validateContent(content: string): ValidationResult;
 }
@@ -3841,9 +3829,7 @@ export declare class TemplateResolver {
 
 // export: TemplateScope
 export interface TemplateScope {
-    context: unknown;
-    data: Record<string, unknown>;
-    item?: boolean;
+    vars: Record<string, unknown>;
 }
 
 // export: TemplateSource
@@ -3957,7 +3943,7 @@ export interface ValidationError {
     line?: number;
     column?: number;
     message: string;
-    type: "syntax" | "variable" | "handlebars";
+    type: "syntax" | "variable";
 }
 
 // export: ValidationResult

@@ -172,7 +172,7 @@
     {
       "path": "pagefind/pagefind-entry.json",
       "byteLength": 228,
-      "sha256": "c25a42db16df93af95be5ca7f3cc9fe50d36b1d25d75b47b048d2801f10acb5e"
+      "sha256": "1a062fcc67235a8494fd9bc2a1d91ad4f2f159a62a90fd2ed726fa79e3fec832"
     },
     {
       "path": "pagefind/pagefind-highlight.js",
@@ -205,19 +205,14 @@
       "sha256": "4ca50d25bcab9e1c3afbc00ab5f7761114e83c8fc1b83d38655af1558b650c2a"
     },
     {
-      "path": "pagefind/pagefind.ar_3635c1e0a4.pf_meta",
-      "byteLength": 126,
-      "sha256": "4144f540ae76fc78ab61cd50428f023b61d575777bcc6081c6c8e9e294579267"
-    },
-    {
       "path": "pagefind/pagefind.ar_e5b338e201.pf_meta",
       "byteLength": 126,
       "sha256": "c28d1815655a35d1a9b757983e1d8915bdf8e8b870122f7b1b068f40c6ff60ed"
     },
     {
-      "path": "pagefind/pagefind.en_e744234884.pf_meta",
-      "byteLength": 136,
-      "sha256": "f51ddb428809bec6c5b77b354dfbf9d81c11cdbde8c197199980e034849c6b23"
+      "path": "pagefind/pagefind.en_9dc56afc3e.pf_meta",
+      "byteLength": 135,
+      "sha256": "6c415742ca801907fac87384ec3f8c6e5c5de0f19706d3fbcb5e2ac1306897d0"
     },
     {
       "path": "pagefind/pagefind.js",

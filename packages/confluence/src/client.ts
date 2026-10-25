@@ -2576,32 +2576,17 @@ export class ConfluenceClient {
   }
 
   /**
-   * Archive a page (set status to archived).
+   * Archive a page. Confluence archives in the background, so the page may
+   * still read as current for a moment.
    *
-   * PUT /content/{id} with status: "archived"
+   * POST /content/archive
    */
   async archivePage(pageId: string): Promise<ConfluencePage> {
-    // Get current page to preserve title and get version
     const current = await this.getPage(pageId);
-
-    const data = (await this.request(`/content/${pageId}`, {
-      method: "PUT",
-      body: {
-        id: pageId,
-        type: "page",
-        title: current.title,
-        version: { number: (current.version ?? 1) + 1 },
-        status: "archived",
-      },
-    })) as any;
-
-    return {
-      id: data.id,
-      title: data.title,
-      url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
-      version: data.version?.number,
-      spaceKey: data.space?.key,
-    };
+    // A content PUT with status "archived" is accepted and ignored by Cloud;
+    // archiving is its own (asynchronous) operation.
+    await this.request(`/content/archive`, { method: "POST", body: { pages: [{ id: pageId }] } });
+    return { id: current.id, title: current.title, url: current.url, version: current.version, spaceKey: current.spaceKey };
   }
 
   /**

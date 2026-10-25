@@ -1,0 +1,28 @@
+// Issues in their current status far longer than issues usually stay there.
+export const meta = {
+  audit: {
+    id: "flow/status-aging",
+    product: "jira",
+    title: "Aging in status",
+    category: "flow",
+    kind: "age",
+    percentiles: true,
+    expensive: true,
+    needs: ["status-percentiles"],
+    profiles: { strict: { warning: "p85", error: "p95" } },
+  },
+};
+
+const DAY = 86_400_000;
+const fmt = (days) => `${days.toFixed(1)} d`;
+
+export default (issue, rule) => {
+  const f = rule.facts;
+  if (f.category !== "wip" || f.epic || !f.currentFrom) return;
+  const age = (rule.now - Date.parse(f.currentFrom)) / DAY;
+  const hit = rule.severity(age);
+  if (!hit) return;
+  const status = f.statusName ?? "?";
+  const what = "percentile" in hit.threshold ? `the P${hit.threshold.percentile} for "${status}" (${fmt(hit.limit)})` : fmt(hit.limit);
+  return rule.finding({ severity: hit.severity, detail: `In "${status}" for ${Math.floor(age)} d, above ${what}.`, ageDays: age });
+};

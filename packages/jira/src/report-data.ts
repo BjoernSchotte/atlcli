@@ -2,7 +2,7 @@
  * Data model for generated report pages (release notes, sprint review):
  * spec jira-content-workflows A3. Pure: Jira issues in, template-ready data
  * out. Every free-text field has a `…Md` twin that is already escaped for the
- * atlcli markdown dialect, so templates can insert it with `{{{…}}}` without
+ * atlcli markdown dialect, so templates can insert it with `{{ … }}` without
  * an issue summary like `Fix *all* the [things]` turning into formatting.
  */
 import { getStoryPoints, type SprintIssueSnapshot } from "./analysis.js";

@@ -23,6 +23,7 @@ import {
   parseTemplate,
   resolveDefaults,
   type Template,
+  initJinja,
 } from "@atlcli/core";
 import { ConfluenceClient, hashContent, markdownToStorage } from "@atlcli/confluence";
 import {
@@ -37,6 +38,7 @@ import {
 import { assertCliAuthSupported } from "./session-guard.js";
 import { BUNDLED_REPORT_TEMPLATES } from "./jira-report-templates.js";
 import { loadStatusResolver } from "./jira-flow.js";
+import { parseVarAssignments } from "./template-flags.js";
 
 export const REPORT_PROPERTY_KEY = "atlcli.jira-report";
 
@@ -216,6 +218,7 @@ async function publishReport(
   data: ReportData,
   options: { defaultTemplate: string; defaultTitle: string }
 ): Promise<void> {
+  await initJinja();
   const space = getFlag(flags, "space") ?? ctx.defaults.space;
   if (!space) fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or set a default: atlcli config set global.space <value>).");
   const title = getFlag(flags, "title") ?? options.defaultTitle;
@@ -224,12 +227,10 @@ async function publishReport(
   const template = await resolveReportTemplate(templateName, ctx.profileName, space);
   if (!template) fail(opts, 1, ERROR_CODES.USAGE, `Template "${templateName}" not found (user levels or bundled).`);
 
-  const variables: Record<string, unknown> = { ...data };
-  for (const assignment of getFlags(flags, "var")) {
-    const eq = assignment.indexOf("=");
-    if (eq <= 0) fail(opts, 1, ERROR_CODES.USAGE, `Invalid --var "${assignment}". Use name=value.`);
-    variables[assignment.slice(0, eq)] = assignment.slice(eq + 1);
-  }
+  const assignments = getFlags(flags, "var");
+  const invalid = assignments.find((a) => a.indexOf("=") <= 0);
+  if (invalid !== undefined) fail(opts, 1, ERROR_CODES.USAGE, `Invalid --var "${invalid}". Use name=value.`);
+  const variables: Record<string, unknown> = { ...data, ...parseVarAssignments(assignments) };
   const markdown = new TemplateEngine().render(template, {
     variables,
     builtins: { space, title, profile: ctx.profileName, user: ctx.profileName },

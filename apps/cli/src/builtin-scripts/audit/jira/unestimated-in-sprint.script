@@ -1,0 +1,17 @@
+// Issues in an open sprint without story points.
+export const meta = {
+  audit: {
+    id: "hygiene/unestimated-in-sprint",
+    product: "jira",
+    title: "Unestimated in sprint",
+    category: "hygiene",
+    needs: ["points", "sprint"],
+    profiles: { default: "warning", strict: "error" },
+  },
+};
+
+const present = (v) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0);
+
+export default (issue, rule) => {
+  if (rule.facts.inOpenSprint && !present(rule.facts.points)) return rule.finding({ detail: "In an open sprint without story points." });
+};

@@ -3,8 +3,8 @@
 // it, then apply it (`--apply`, or `atlcli script apply plan.json`). Print it
 // with `atlcli wiki page copy --tree --print-script`.
 //
-// Titles and bodies are templates: `{{sprint}}` from --var/--vars-file,
-// `{{source.title}}`, `{{parent.title}}` (the rendered parent copy), `{{@today}}`.
+// Titles and bodies are Jinja templates: `{{ sprint }}` from --var/--vars-file,
+// `{{ source.title }}`, `{{ parent.title }}` (the rendered parent copy), `{{ today }}`.
 // Each copy carries the content property `atlcli.copiedFrom`, so planning
 // again after a partial apply reuses the copies that exist.
 

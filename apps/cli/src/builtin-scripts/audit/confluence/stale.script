@@ -1,0 +1,46 @@
+// Pages nobody edited for a while, synced or (with --include-remote) not.
+// --fix labels the error-level pages (option `label`, default needs-review)
+// and archives pages not edited for two years.
+export const meta = {
+  audit: {
+    id: "content/stale",
+    product: "confluence",
+    title: "Stale pages",
+    category: "content",
+    kind: "age",
+    legacy: "stale",
+    options: { label: [] },
+    profiles: {
+      minimal: { error: "365d" },
+      default: { info: "90d", warning: "180d", error: "365d" },
+      strict: { info: "90d", warning: "180d", error: "365d" },
+    },
+  },
+};
+
+const DAY = 86_400_000;
+const months = (from, now) => {
+  const a = new Date(from);
+  const b = new Date(now);
+  return Math.max(0, (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()));
+};
+
+export default (page, rule) => {
+  if (!page.lastModified) return;
+  const age = (rule.now - Date.parse(page.lastModified)) / DAY;
+  const hit = rule.severity(age);
+  if (!hit) return;
+  return rule.finding({
+    severity: hit.severity,
+    detail: `Not edited for ${months(page.lastModified, rule.now)} months (last ${page.lastModified.slice(0, 10)}).`,
+    ageDays: age,
+  });
+};
+
+export async function fix(finding, page, rule) {
+  if (!page || !page.synced) return;
+  if ((finding.ageDays ?? 0) >= 730) return atlcli.confluence.archivePage(page.id);
+  if (finding.severity !== "error") return;
+  const label = rule.config.options?.label?.[0] ?? "needs-review";
+  if (!page.labels.includes(label)) await atlcli.confluence.addLabels(page.id, [label]);
+}

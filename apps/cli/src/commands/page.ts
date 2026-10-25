@@ -22,10 +22,11 @@ import {
   renderStorage,
   renderTextField,
   type RenderWarning,
+  initJinja,
 } from "@atlcli/core";
 import { assertCliAuthSupported } from "./session-guard.js";
 import copyPagesScript from "../builtin-scripts/copy-pages.script" with { type: "text" };
-import { parseTemplateFlags, TEMPLATE_FLAGS_HELP, templateValuesFrom } from "./template-flags.js";
+import { parseTemplateFlags, parseVarAssignments, TEMPLATE_FLAGS_HELP, templateValuesFrom } from "./template-flags.js";
 import {
   ConfluenceClient,
   markdownToStorage,
@@ -256,6 +257,7 @@ export function pageListCql(cql: string | undefined, space: string | undefined, 
 }
 
 async function handleCreate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  await initJinja();
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
@@ -366,7 +368,7 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
   output({ schemaVersion: "1", page }, opts);
 }
 
-function parseVarFlags(flags: Record<string, string | boolean | string[]>): Record<string, unknown> {
+export function parseVarFlags(flags: Record<string, string | boolean | string[]>): Record<string, unknown> {
   const vars: Record<string, unknown> = {};
 
   // Check for --var.name=value format
@@ -376,17 +378,10 @@ function parseVarFlags(flags: Record<string, string | boolean | string[]>): Reco
     }
   }
 
-  // Handle --var key=value (supports multiple --var flags)
+  // --var key=value, repeatable; JSON values and a.b=v nesting as everywhere else.
   const varFlag = flags["var"];
   const varValues = Array.isArray(varFlag) ? varFlag : typeof varFlag === "string" ? [varFlag] : [];
-  for (const v of varValues) {
-    const eqIdx = v.indexOf("=");
-    if (eqIdx > 0) {
-      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
-    }
-  }
-
-  return vars;
+  return { ...vars, ...parseVarAssignments(varValues.filter((v) => v.indexOf("=") > 0)) };
 }
 
 async function handleUpdate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -2281,7 +2276,7 @@ function pageHelp(): string {
 Commands:
   get --id <id>
   list [--cql <query>] [--limit <n>] [--label <label>] [--space <key>]
-  create --space <key> --title <title> --body <file>
+  create --space <key> --title <title> (--body <file> | --template <name> [--var k=v ...])
   update --id <id> --body <file> [--title <title>]
   move --id <id> --parent <parent-id>  Move page to new parent
   move <file> --before <target>        Move page before sibling

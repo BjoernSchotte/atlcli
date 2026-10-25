@@ -1,0 +1,24 @@
+// Pages without a required label (option `label`; --missing-label <label>).
+export const meta = {
+  audit: {
+    id: "content/missing-label",
+    product: "confluence",
+    title: "Missing label",
+    category: "content",
+    legacy: "missing-label",
+    options: { label: [] },
+    defaults: "off",
+  },
+};
+
+export default (page, rule) => {
+  if (!page.synced) return;
+  const missing = (rule.config.options?.label ?? []).filter((l) => !page.labels.includes(l));
+  if (missing.length) return rule.finding({ detail: `Missing label ${missing.join(", ")}${page.labels.length ? ` (has ${page.labels.join(", ")})` : ""}.` });
+};
+
+export async function fix(finding, page, rule) {
+  if (!page?.synced) return;
+  const missing = (rule.config.options?.label ?? []).filter((l) => !page.labels.includes(l));
+  if (missing.length) await atlcli.confluence.addLabels(page.id, missing);
+}

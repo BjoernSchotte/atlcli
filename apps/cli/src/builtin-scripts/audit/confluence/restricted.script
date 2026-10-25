@@ -1,0 +1,15 @@
+// Pages with view or edit restrictions.
+export const meta = {
+  audit: {
+    id: "content/restricted",
+    product: "confluence",
+    title: "Restricted pages",
+    category: "content",
+    legacy: "restricted",
+    profiles: { default: "info", strict: "info" },
+  },
+};
+
+export default (page, rule) => {
+  if (page.restricted) return rule.finding({ detail: "Has view or edit restrictions." });
+};

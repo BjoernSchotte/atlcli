@@ -3,6 +3,7 @@
  * checked against its field type only after rendering changed it, so an
  * untemplated value never fails here.
  */
+import { hasJinjaSyntax } from "@atlcli/jinja";
 import { RenderError, renderText, type RenderOptions, type RenderWarning, type TemplateScope } from "../render.js";
 
 export type FieldKind = "summary" | "label" | "string" | "number" | "date" | "option" | "name";
@@ -58,7 +59,7 @@ export function renderJiraFieldValue(
     const keys = Object.keys(o);
     if (keys.length === 1 && typeof o.value === "string") return { value: text(o.value, "option") };
     if (keys.length === 1 && typeof o.name === "string") return { name: text(o.name, "name") };
-    if (JSON.stringify(v).includes("{{")) {
+    if (hasJinjaSyntax(JSON.stringify(v))) {
       warnings.push({ code: "not-rendered-field", message: `${opts.unit}: this field type is not rendered; copied as is`, unit: opts.unit });
     }
     return v;

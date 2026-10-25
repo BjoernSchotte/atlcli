@@ -25,6 +25,9 @@ export const WRITE_VERBS = [
   "jira.comment",
   "jira.link",
   "jira.assign",
+  "jira.addWatcher",
+  "jira.removeWatcher",
+  "jira.notify",
   "jira.addLabels",
   "jira.removeLabels",
   "jira.attach",
@@ -39,6 +42,7 @@ export const WRITE_VERBS = [
   "confluence.comment",
   "confluence.movePage",
   "confluence.deletePage",
+  "confluence.archivePage",
   "confluence.attach",
   "confluence.export",
   "confluence.copyAttachment",
@@ -66,7 +70,12 @@ export interface PlannedOperation {
   dependsOn: number[];
 }
 
-export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "onLog" | "variant" | "item"> {
+export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "onLog" | "variant" | "item" | "items" | "entry" | "prelude"> {
+  /**
+   * Reads only (audits): any write verb ends the run with permission-denied
+   * and this explanation.
+   */
+  readOnly?: string;
   /**
    * Shared across runs (per-issue mode): lookups that do not depend on the
    * issue, such as link types and users, are fetched once.
@@ -83,7 +92,7 @@ export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "on
 
 export interface Templating {
   vars: Record<string, unknown>;
-  /** ISO time @today/@now render as. */
+  /** ISO time today/now render as. */
   now: string;
   strict: boolean;
 }
@@ -191,6 +200,30 @@ function capRest(value: unknown, path: string): unknown {
   return value ?? null;
 }
 
+/** Transition screen fields and a Markdown comment (`transition`, `setStatus`). */
+const transitionOptions = z.strictObject({
+  fields: z.record(z.string(), z.unknown()).optional(),
+  comment: z.string().min(1).optional(),
+});
+const withTransitionOptions = (o: z.output<typeof transitionOptions> | undefined) => ({
+  ...(o?.fields && Object.keys(o.fields).length ? { fields: o.fields } : {}),
+  ...(o?.comment ? { comment: o.comment } : {}),
+});
+const notifyInput = z.strictObject({
+  subject: str,
+  markdown: str,
+  to: z
+    .strictObject({
+      users: z.array(str).optional(),
+      groups: z.array(str).optional(),
+      reporter: z.boolean().optional(),
+      assignee: z.boolean().optional(),
+      watchers: z.boolean().optional(),
+      voters: z.boolean().optional(),
+    })
+    .refine((t) => Boolean(t.users?.length || t.groups?.length || t.reporter || t.assignee || t.watchers || t.voters), "name at least one recipient"),
+});
+
 /** One plan recording session; every verb closes over it. */
 class Recorder {
   readonly operations: PlannedOperation[] = [];
@@ -216,6 +249,7 @@ class Recorder {
     private readonly maxWrites = maxWritesOf(meta),
     readonly templating: Templating = { vars: {}, now: new Date().toISOString(), strict: false },
     private readonly memo?: Map<string, Promise<unknown>>,
+    private readonly readOnly?: string,
   ) {}
 
   /** Without declared permissions every verb is allowed (writes are still only planned). */
@@ -318,6 +352,7 @@ class Recorder {
     object?: string,
     precondition?: () => Promise<Precondition | undefined>,
   ): Promise<number> {
+    if (this.readOnly) throw new ScriptError("permission-denied", `${verb}: ${this.readOnly}`);
     if (this.operations.length >= this.maxWrites) {
       throw new ScriptError(
         "write-limit",
@@ -380,7 +415,7 @@ const VERBS: Record<string, Verb> = {
     const unit = o.unit ?? `render#${++r.renderCount}`;
     r.rendered = true;
     try {
-      const out = render(input, {
+      const out = await render(input, {
         format: o.format,
         source: o.source,
         parent: o.parent,
@@ -421,7 +456,7 @@ const VERBS: Record<string, Verb> = {
     await r.record("jira.update", { key, ...input }, `jira:${key}`, () => issueUnchanged(r, key, signal));
     return null;
   }),
-  "jira.transition": verb(z.tuple([str, str]), async (r, [key, transition], signal) => {
+  "jira.transition": verb(z.tuple([str, str, transitionOptions.optional()]), async (r, [key, transition, options], signal) => {
     r.require(`jira:write:${r.jiraProject(key)}`);
     if (!PLACEHOLDER.test(key)) {
       const available = await r.port.jiraGetTransitions(key, { signal });
@@ -429,19 +464,58 @@ const VERBS: Record<string, Verb> = {
         throw new Error(`Transition "${transition}" is not available for ${key} (available: ${available.join(", ") || "none"})`);
       }
     }
-    await r.record("jira.transition", { key, transition }, `jira:${key}`, () => issueUnchanged(r, key, signal));
+    await r.record("jira.transition", { key, transition, ...withTransitionOptions(options) }, `jira:${key}`, () => issueUnchanged(r, key, signal));
     return null;
   }),
-  "jira.setStatus": verb(z.tuple([str, str]), async (r, [key, status], signal) => {
+  "jira.setStatus": verb(z.tuple([str, str, transitionOptions.optional()]), async (r, [key, status, options], signal) => {
     r.require(`jira:write:${r.jiraProject(key)}`);
     const issue = await untouchedIssue(r, key, ["status"], signal);
     if (issue && String((issue.fields.status as { name?: string } | undefined)?.name ?? "").toLowerCase() === status.toLowerCase()) {
       r.skipped.push({ verb: "jira.setStatus", target: key, title: status, reason: "unchanged" });
       return null;
     }
-    await r.record("jira.setStatus", { key, status }, `jira:${key}`, async () =>
+    await r.record("jira.setStatus", { key, status, ...withTransitionOptions(options) }, `jira:${key}`, async () =>
       issue ? { kind: "jira-issue-unchanged", key, updated: issue.fields.updated } : undefined,
     );
+    return null;
+  }),
+  "jira.transitions": verb(z.tuple([str]), async (r, [key], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraTransitions?.bind(r.port), "jira.transitions")(r.readable(key), { signal });
+  }),
+  "jira.history": verb(z.tuple([str, z.strictObject({ fields: z.array(str).optional() }).optional()]), async (r, [key, o], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraHistory?.bind(r.port), "jira.history")(r.readable(key), { ...(o?.fields ? { fields: o.fields } : {}), signal });
+  }),
+  "jira.watchers": verb(z.tuple([str]), async (r, [key], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraWatchers?.bind(r.port), "jira.watchers")(r.readable(key), { signal });
+  }),
+  "jira.addWatcher": verb(z.tuple([str, str]), async (r, [key, user], signal) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const ref = await r.findUser(user, signal);
+    if (!PLACEHOLDER.test(key) && (await watching(r, key, ref, signal))) {
+      r.skipped.push({ verb: "jira.addWatcher", target: key, title: user, reason: "unchanged" });
+      return null;
+    }
+    await r.record("jira.addWatcher", { key, user: ref, query: user });
+    return null;
+  }),
+  "jira.removeWatcher": verb(z.tuple([str, str]), async (r, [key, user], signal) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const ref = await r.findUser(user, signal);
+    if (!PLACEHOLDER.test(key) && !(await watching(r, key, ref, signal))) {
+      r.skipped.push({ verb: "jira.removeWatcher", target: key, title: user, reason: "unchanged" });
+      return null;
+    }
+    await r.record("jira.removeWatcher", { key, user: ref, query: user });
+    return null;
+  }),
+  "jira.notify": verb(z.tuple([str, notifyInput]), async (r, [key, input], signal) => {
+    r.require(`jira:write:${r.jiraProject(key)}`);
+    const { users, ...rest } = input.to;
+    const resolved = users ? await Promise.all(users.map((u) => r.findUser(u, signal))) : undefined;
+    await r.record("jira.notify", { key, subject: input.subject, markdown: input.markdown, to: { ...rest, ...(resolved ? { users: resolved } : {}) } });
     return null;
   }),
   "jira.comment": verb(z.tuple([str, commentBody]), async (r, [key, body]) => {
@@ -689,6 +763,13 @@ const VERBS: Record<string, Verb> = {
     r.markDeleted(id);
     return null;
   }),
+  "confluence.archivePage": verb(z.tuple([str]), async (r, [id], signal) => {
+    if (PLACEHOLDER.test(id)) throw new Error(`${id} is created by this plan; leave out the createPage instead`);
+    const page = await r.confluencePage(id, signal);
+    r.require(`confluence:write:${page.spaceKey}`);
+    await r.record("confluence.archivePage", { id, title: page.title }, `confluence:${id}`, async () => pageUnchanged(page.live));
+    return null;
+  }),
   "confluence.attach": verb(z.tuple([str, attachmentInput]), async (r, [pageId, file], signal) => {
     const page = await r.confluencePage(pageId, signal);
     r.require(`confluence:write:${page.spaceKey}`);
@@ -715,6 +796,12 @@ async function issueUnchanged(r: Recorder, key: string, signal: AbortSignal): Pr
 async function untouchedIssue(r: Recorder, key: string, fields: string[], signal: AbortSignal) {
   if (PLACEHOLDER.test(key) || r.lastWrite(`jira:${key}`) !== undefined) return undefined;
   return r.port.jiraGetIssue(key, { fields: ["updated", ...fields], signal });
+}
+
+/** Whether `user` watches the issue now; hosts without watcher reads count as "not known" (false). */
+async function watching(r: Recorder, key: string, user: JiraUserRef, signal: AbortSignal): Promise<boolean> {
+  if (!r.port.jiraWatchers) return false;
+  return (await r.port.jiraWatchers(key, { signal })).some((w) => sameUser(w, user));
 }
 
 function sameUser(current: unknown, next: JiraUserRef | null): boolean {
@@ -883,7 +970,7 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
   } catch (error) {
     throw new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
   }
-  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta), options.templating, options.memo);
+  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta), options.templating, options.memo, options.readOnly);
   const host: Record<string, HostFunction> = {};
   for (const [name, definition] of Object.entries(VERBS)) {
     host[name] = async (rawArgs, signal) => {
@@ -900,6 +987,9 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
     wrappers: WRAPPERS,
     params,
     ...(options.item !== undefined ? { item: options.item } : {}),
+    ...(options.items !== undefined ? { items: options.items } : {}),
+    ...(options.entry !== undefined ? { entry: options.entry } : {}),
+    ...(options.prelude !== undefined ? { prelude: options.prelude } : {}),
     limits: options.limits,
     onLog: options.onLog,
     variant: options.variant,

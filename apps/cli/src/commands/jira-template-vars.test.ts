@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { initJinja } from "@atlcli/core";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,12 +7,14 @@ import { fileURLToPath } from "node:url";
 import { createTemplateScope, RenderBudget } from "@atlcli/core";
 import { inferTemplateVariables, renderTemplateFields } from "./jira.js";
 
+beforeAll(() => initJinja());
+
 const fields = {
   issuetype: { name: "Task" },
   summary: "Release {{version}}",
-  description: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Owner {{owner}} on {{@today}}" }] }] },
+  description: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Owner {{owner}} on {{ today }}" }] }] },
   labels: ["rel-{{version}}"],
-  duedate: '{{dateAdd @today 14 "d"}}',
+  duedate: "{{ today | dateAdd(14, 'd') }}",
   components: [{ name: "Comp {{version}}" }],
 };
 

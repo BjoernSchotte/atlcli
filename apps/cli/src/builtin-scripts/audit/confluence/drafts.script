@@ -1,0 +1,15 @@
+// Unpublished drafts.
+export const meta = {
+  audit: {
+    id: "content/draft",
+    product: "confluence",
+    title: "Drafts",
+    category: "content",
+    legacy: "drafts",
+    profiles: { default: "info", strict: "warning" },
+  },
+};
+
+export default (page, rule) => {
+  if (page.status === "draft") return rule.finding({ detail: "Draft, never published." });
+};

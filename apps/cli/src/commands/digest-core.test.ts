@@ -339,7 +339,7 @@ describe("project overview", () => {
   });
 
   test("audit errors: listed with rule and detail, capped; a partial read is a warning that does not hold the marker", () => {
-    const finding = (key: string) => ({ rule: "hygiene/stale", category: "hygiene" as const, severity: "error" as const, key, summary: `S ${key}`, status: "In Progress", detail: "Not updated for 120 d.", subject: key });
+    const finding = (key: string) => ({ rule: "hygiene/stale", category: "hygiene" as const, severity: "error" as const, key, summary: `S ${key}`, status: "In Progress", detail: "Not updated for 120 d.", subject: key, target: { kind: "issue" as const, key } });
     const d = buildDigest(
       raw({ products: ["jira"], jira: { audit: { findings: [finding("GROW-1"), finding("GROW-2")], partial: ["open issues"] } } }),
       { now: NOW, includeOwn: false, limit: 1 }

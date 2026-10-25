@@ -141,14 +141,14 @@ atlcli wiki page sort ./docs/api.md --alphabetical --dry-run --json
 atlcli wiki page sort ./docs/chapters.md --natural --json
 atlcli wiki page sort ./docs/changelog.md --by created --reverse --json
 atlcli wiki page copy --id 12345 --title 'Copy of Page' --space DEV --parent 67890 --json
-atlcli wiki page copy --id 12345 --title 'Retro {{sprint}}' --var sprint=42 --json
-atlcli wiki page copy --id 12345 --tree --title 'Audit {{year}}' --vars-file audit.yml --plan-out pages.json
+atlcli wiki page copy --id 12345 --title 'Retro {{ sprint }}' --var sprint=42 --json
+atlcli wiki page copy --id 12345 --tree --title 'Audit {{ year }}' --vars-file audit.yml --plan-out pages.json
 ```
 
 `copy` copies the attachments too (`--no-attachments` leaves them out); title
-and body are templates (`{{source.title}}`, `{{@today}}`, `--var`). `--tree`
+and body are Jinja templates (`{{ source.title }}`, `{{ today }}`, `--var`). `--tree`
 copies all descendants as a plan (`--apply [--yes]` or `atlcli script apply`),
-with `{{parent.title}}` for the rendered parent; a rendered title that already
+with `{{ parent.title }}` for the rendered parent; a rendered title that already
 exists fails the plan, and a re-plan after a partial apply reuses the copies
 (content property `atlcli.copiedFrom`). See jira-issues.md for templating
 rules and `atlcli template vars`.

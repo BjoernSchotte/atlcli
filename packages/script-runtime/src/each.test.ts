@@ -62,3 +62,22 @@ it("meta.each declares the selection", () => {
   expect(() => parseScriptMeta({ each: { jql: "" } })).toThrow(/meta.each.jql/);
   expect(() => parseScriptMeta({ each: { query: "x" } })).toThrow(/meta.each/);
 });
+
+it("batch mode calls the chosen export per item in one runtime, with shaped arguments", async () => {
+  const run = await planScript(
+    `export default () => "default"; export const check = (n, ctx) => n * ctx.factor;`,
+    { port: port(), items: [1, 2, 3], entry: "check", prelude: "globalThis.__atlcliArgs = (n) => [n, { factor: 10 }];", variant: DEBUG_VARIANT },
+  );
+  expect(run.value).toEqual([10, 20, 30]);
+});
+
+it("read-only mode refuses every write verb", async () => {
+  const error = await planScript(`export default async (i) => { await atlcli.jira.comment(i.key, "x"); }`, {
+    port: port(),
+    item: issue("A-1"),
+    readOnly: "audits only read; propose a fix instead",
+    variant: DEBUG_VARIANT,
+  }).catch((e) => e);
+  expect((error as ScriptError).kind).toBe("permission-denied");
+  expect((error as ScriptError).message).toBe("jira.comment: audits only read; propose a fix instead");
+});

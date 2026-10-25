@@ -1,0 +1,15 @@
+// Inventory of external URLs (off unless asked for: --external-links).
+export const meta = {
+  audit: {
+    id: "links/external",
+    product: "confluence",
+    title: "External links",
+    category: "links",
+    legacy: "external-links",
+    needs: ["links"],
+    defaults: "off",
+  },
+};
+
+export default (page, rule) =>
+  page.externalLinks.map((l) => rule.finding({ detail: `${l.domain}: ${l.url}`, subject: `${page.id}:${l.url}` }));

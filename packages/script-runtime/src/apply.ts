@@ -149,7 +149,7 @@ export async function applyScriptPlan(
 function remember(op: PlannedOperation, value: Record<string, unknown>, resolved: Map<number, string>, versions: Map<string, number>): void {
   if (op.verb === "jira.create") resolved.set(op.seq, value.key as string);
   if (op.verb === "jira.createSprint" || op.verb === "confluence.createPage") resolved.set(op.seq, String(value.id));
-  if (op.verb === "confluence.deletePage") versions.delete(String(value.id));
+  if (op.verb === "confluence.deletePage" || op.verb === "confluence.archivePage") versions.delete(String(value.id));
   else if (op.verb.startsWith("confluence.") && typeof value.version === "number" && value.id !== undefined) {
     versions.set(String(value.id), value.version);
   }
@@ -260,10 +260,19 @@ async function execute(
       return { key };
     }
     case "jira.transition":
-      await port.jiraTransitionIssue(args.key, args.transition);
+      await port.jiraTransitionIssue(args.key, args.transition, transitionOptions(args));
       return { key: args.key };
     case "jira.setStatus":
-      return { key: args.key, status: args.status, ...(await port.jiraSetStatus(args.key, args.status)) };
+      return { key: args.key, status: args.status, ...(await port.jiraSetStatus(args.key, args.status, transitionOptions(args))) };
+    case "jira.addWatcher":
+      await required(port.jiraAddWatcher, "jira.addWatcher").call(port, args.key, args.user);
+      return { key: args.key };
+    case "jira.removeWatcher":
+      await required(port.jiraRemoveWatcher, "jira.removeWatcher").call(port, args.key, args.user);
+      return { key: args.key };
+    case "jira.notify":
+      await required(port.jiraNotify, "jira.notify").call(port, args.key, { subject: args.subject, markdown: args.markdown, to: args.to });
+      return { key: args.key };
     case "jira.comment":
       return { key: args.key, ...(await port.jiraAddComment(args.key, "raw" in args ? { raw: args.raw } : args.markdown)) };
     case "confluence.createPage": {
@@ -323,6 +332,11 @@ async function execute(
       await port.confluenceDeletePage(args.id);
       versions.delete(args.id);
       return { id: args.id };
+    case "confluence.archivePage":
+      if (!port.confluenceArchivePage) throw new Error("This host cannot archive Confluence pages");
+      await port.confluenceArchivePage(args.id);
+      versions.delete(args.id);
+      return { id: args.id };
     case "confluence.attach":
       return { pageId: args.pageId, ...(await port.confluenceAttach(args.pageId, attachment(args))) };
     case "confluence.copyAttachment": {
@@ -333,6 +347,15 @@ async function execute(
       // A plan file is editable, so the path is checked again right before writing.
       return port.confluenceExport({ pageId: args.pageId, format: args.format, path: checkExportPath(args.path, args.format) });
   }
+}
+
+/** Only the options a plan recorded, so hosts see `undefined` for a plain transition. */
+const transitionOptions = (args: Record<string, any>) =>
+  args.fields || args.comment ? { ...(args.fields ? { fields: args.fields } : {}), ...(args.comment ? { comment: args.comment } : {}) } : undefined;
+
+function required<F>(fn: F | undefined, verb: string): F {
+  if (!fn) throw new Error(`This host cannot apply ${verb}`);
+  return fn;
 }
 
 const attachment = (args: Record<string, any>): AttachmentInput => ({ name: args.name, content: args.content, encoding: args.encoding });

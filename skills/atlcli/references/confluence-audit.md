@@ -7,18 +7,18 @@ metadata:
 
 # Wiki audit
 
-`atlcli audit wiki` reports content health for pages in a local `wiki docs`
-directory: stale pages, orphans, broken internal links, single or inactive
-contributors, restricted, draft and archived pages. The command needs its
-feature flag. `atlcli audit wiki --help` lists every check and option, also
-with the flag off; with the flag on, the bare `atlcli audit` lists the targets
-with examples.
+`atlcli audit wiki` reports content health for the pages of a local
+`wiki docs` directory as findings under rules (`<category>/<name>`). Every rule
+is a TypeScript script run read-only in the script sandbox; the rules file,
+baseline and report are the same as for `audit jira`. `atlcli audit wiki --help`
+lists every rule and option, also with the feature flag off.
 
 ## Contents
 
 - [Prerequisites](#prerequisites)
-- [Read-only checks](#read-only-checks)
-- [Fix mode writes](#fix-mode-writes)
+- [Read-only runs](#read-only-runs)
+- [Rules](#rules)
+- [Fixes write](#fixes-write)
 - [Pitfalls](#pitfalls)
 
 ## Prerequisites
@@ -27,66 +27,88 @@ with examples.
    `Audit feature is not enabled`). Changing a flag edits
    `~/.atlcli/config.json`, so ask first.
 2. A directory initialised and pulled with `wiki docs init` and
-   `wiki docs pull`. Without `.atlcli/` or `sync.db` the command stops and says
-   which of the two is missing. See
+   `wiki docs pull`. Results describe the last pull. See
    [confluence-docs-sync.md](confluence-docs-sync.md).
 
-## Read-only checks
+## Read-only runs
 
 ```bash
-atlcli audit wiki --all --stale-high 12 --json
-atlcli audit wiki ./docs --stale-high 12 --stale-medium 6 --orphans --broken-links --json
-atlcli audit wiki --all --label documentation --exclude-label archived --json
-atlcli audit wiki --all --markdown > audit-report.md
-atlcli audit wiki --export-graph > graph.json
+atlcli audit wiki --json                          # rules file, else profile "default"
+atlcli audit wiki ./docs --all --json             # older "all checks" set, min level info
+atlcli audit wiki --stale-high 12 --orphans --json
+atlcli audit wiki --checks links --fail-on warning
+atlcli audit wiki --all --label documentation --exclude-label archived --markdown
+atlcli audit wiki --list-rules
 ```
 
-The directory is the positional argument or `--dir`, default `.`. At least
-one check is required: `--all`, or individual flags
-(`--stale-high|medium|low <months>`,
-`--orphans`, `--broken-links`, `--single-contributor`,
-`--inactive-contributors`, `--external-links`, `--check-external`,
-`--missing-label <label>`, `--restricted`, `--drafts`, `--archived`,
-`--high-churn <N>`, `--folders`). Without a check flag the command fails
-unless `audit.defaultChecks` is set in `~/.atlcli/config.json`.
-Scope filters: `--label`, `--under-page <pageId>`, `--exclude-label`.
+- Exit codes: 0 ran, 1 error, 2 a listed finding reached `--fail-on`
+  (default `error`). Use `--fail-on never` when only reading.
+- `--json` is `schemaVersion: "3"`, `product: "confluence"`; each finding has
+  `rule`, `severity`, `target: { kind: "page", key, url }`, `key` (page id),
+  `summary` (title), `assignee` (last editor), `detail`, `fixable`.
+- Older check flags (`--stale-high|medium|low <months>`, `--orphans`,
+  `--broken-links`, `--single-contributor`, `--inactive-contributors`,
+  `--external-links`, `--check-external`, `--missing-label <l>`,
+  `--restricted`, `--drafts`, `--archived`, `--high-churn <N>`, `--folders`)
+  run only the named rules and list every finding. Months count 30 days.
+- Scope: `--label`, `--under-page <pageId>`, `--exclude-label`.
+- Network: `--include-remote`, `--refresh-users` and `--fix` call the API
+  (need a profile); `--check-external` requests every external URL. Neither
+  external check is part of `--all`.
+- Baseline: `--update-baseline`, `--prune-baseline`, `--no-baseline`; stored
+  in `.atlcli/audit-baseline.json` of the synced directory. No legacy cutoff.
+- Reports: `--markdown`, `--template <file.j2>`, `--report <file>`.
 
-By default only the pages in the local `sync.db` are audited
-(`--local-only`). Pages that were never pulled do not appear.
+## Rules
 
-What touches the network:
-
-- `--include-remote` and `--refresh-users` call the Confluence API.
-- `--check-external` makes HTTP requests to every external URL found in the
-  pages. `--external-links` only lists them. `--all` does not include either.
-- `--rebuild-graph` rebuilds the link graph from the local Markdown files.
-
-## Fix mode writes
-
-`--fix` is the only part that changes Confluence, and it does not wait for
-confirmation on its "safe" actions:
-
-| Action | When | Confirmation |
+| Rule | Default profile | Older flag |
 | --- | --- | --- |
-| Add label (`--fix-label`, default `needs-review`) | to every high-risk stale page | none, applied automatically |
-| Write a Markdown report (`--report`, default `.atlcli/audit-report.md`) | any issue found | none, local file |
-| Archive page | stale 24 months or more | interactive y/n/all/skip prompt on stdin |
-| Delete page | orphan not modified for 12 months or more | interactive prompt on stdin |
+| `content/stale` | info 90 d, warning 180 d, error 365 d | `--stale-*` |
+| `links/orphan` | warning | `--orphans` |
+| `links/broken` | warning | `--broken-links` |
+| `links/external`, `links/external-broken` | off | `--external-links`, `--check-external` |
+| `people/single-contributor` | info | `--single-contributor` |
+| `people/inactive-contributors` | warning (run `--refresh-users` first) | `--inactive-contributors` |
+| `content/missing-label` | off (option `label`) | `--missing-label` |
+| `content/restricted`, `content/archived` | info | `--restricted`, `--archived` |
+| `content/draft` | info | `--drafts` |
+| `content/high-churn` | off | `--high-churn` |
+| `structure/folders` | warning | `--folders` |
+| `content/unsynced` | off | `--include-remote` |
 
-Preview with `--fix --dry-run`, which prints each action and applies nothing.
-Run `--fix` without `--dry-run` only after the user approved the dry-run list.
-The archive and delete prompts read stdin, so they cannot be answered from a
-non-interactive agent shell. Do not pipe `yes` into them.
+Rules file: `confluence:` section of `.atlcli/audit-rules.yaml` (`extends`,
+`minLevel`, `rules`, `scripts`). Custom rules: `atlcli audit init --product
+confluence` writes a skeleton to `.atlcli/audit/`; a rule gets an `AuditPage`
+per page and returns `rule.finding({ detail })`. Rules must not write.
+
+## Fixes write
+
+`--fix` plans the `fix` exports of the listed findings and changes nothing:
+
+| Rule | Planned change |
+| --- | --- |
+| `content/stale` | archive pages not edited for 730+ days; label other error-level pages (`--fix-label`, default `needs-review`) |
+| `links/orphan` | trash orphans not edited for a year |
+| `content/missing-label` | add the missing labels |
+
+```bash
+atlcli audit wiki --fix                          # show the plan
+atlcli audit wiki --fix --plan-out fixes.json    # save it
+atlcli script apply fixes.json                   # apply after the user approved
+```
+
+`--fix --apply` asks before applying; `--yes` skips the question. Show the
+plan to the user and get approval before `--apply --yes` or `script apply`.
+Archive and trash are visible to everyone in the space. `--dry-run` no
+longer exists: the plan is the preview.
 
 ## Pitfalls
 
-- `--all` turns on every check except the external-link checks
-  (`--external-links`, `--check-external`). Its stale thresholds come only from
-  `audit.staleThresholds` in the config, so without them no stale check runs;
-  with them and `--fix`, the stale label lands on every page that is high risk
-  by that threshold. Set `--stale-high` explicitly and read the dry run.
-- Results describe the last pull, not the live wiki. Pull first if
-  freshness matters.
+- With no check flag the default profile runs, and errors exit 2.
+- `--all` includes stale pages with the profile thresholds; combined with
+  `--fix` that labels or archives many pages. Read the plan.
+- Confluence archives in the background; a page can read as current briefly.
+- A page can appear under both contributor rules.
 
 Related: [confluence-docs-sync.md](confluence-docs-sync.md),
 [safety.md](safety.md).

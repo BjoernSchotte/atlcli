@@ -7,6 +7,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATLCLI_SCRIPT_TYPES, planScript, type JiraIssueView, type ScriptPort } from "@atlcli/script-runtime";
+import { AUDIT_RULE_SKELETONS } from "../commands/audit-scripts.js";
 import { eachSkeleton } from "../commands/script.js";
 import { SCRIPT_EXAMPLES } from "./examples.js";
 
@@ -15,7 +16,19 @@ setDefaultTimeout(60_000);
 const issue = (n: number, fields: Record<string, unknown> = {}): JiraIssueView => ({
   id: String(n),
   key: `ATLCLI-${n}`,
-  fields: { updated: "2026-10-25T00:00:00Z", summary: `Issue ${n}`, labels: ["Front_End", "ui"], status: { name: "Open", statusCategory: { key: "new" } }, customfield_1: "x", ...fields },
+  fields: {
+    updated: "2026-10-25T00:00:00Z",
+    summary: `Issue ${n}`,
+    labels: ["Front_End", "ui"],
+    status: { name: "Open", statusCategory: { key: "new" } },
+    customfield_1: "x",
+    project: { key: "ATLCLI" },
+    parent: { key: "ATLCLI-1" },
+    fixVersions: [],
+    subtasks: [{ key: "ATLCLI-8", fields: { summary: "Done one", status: { statusCategory: { key: "done" } } } }],
+    issuelinks: [{ type: { inward: "is blocked by" }, inwardIssue: { key: "ATLCLI-9", fields: { status: { statusCategory: { key: "done" } } } } }],
+    ...fields,
+  },
 });
 
 /** Reads only; every write verb is planned, never called. */
@@ -26,7 +39,7 @@ const port = {
     return { issues: [issue(7)] };
   },
   async jiraGetIssue(key: string) {
-    return { ...issue(7), key };
+    return key === "ATLCLI-1" ? issue(1, { fixVersions: [{ name: "2026.11" }] }) : { ...issue(7), key };
   },
   async jiraGetTransitions() {
     return ["Done"];
@@ -62,6 +75,7 @@ describe("script examples", () => {
     );
     for (const example of SCRIPT_EXAMPLES) await writeFile(join(dir, `${example.name}.ts`), example.source);
     await writeFile(join(dir, "each.ts"), eachSkeleton("project = ATLCLI"));
+    for (const [product, source] of Object.entries(AUDIT_RULE_SKELETONS)) await writeFile(join(dir, `audit-${product}.ts`), source);
     const tsc = Bun.which("tsc", { cwd: process.cwd(), PATH: `${join(process.cwd(), "node_modules", ".bin")}:${process.env.PATH}` });
     expect(tsc).toBeTruthy();
     const proc = Bun.spawn([tsc!, "--noEmit", "-p", join(dir, "tsconfig.json")], { stdout: "pipe", stderr: "pipe" });
@@ -72,7 +86,12 @@ describe("script examples", () => {
 
   for (const example of SCRIPT_EXAMPLES) {
     it(`${example.name} plans (${example.mode})`, async () => {
-      const params: Record<string, string> = example.name === "copy-field" ? { from: "customfield_1", to: "customfield_2" } : {};
+      const params: Record<string, string> =
+        {
+          "copy-field": { from: "customfield_1", to: "customfield_2" },
+          "unblock-when-blocker-done": { blocked: "Open" },
+          "subtasks-from-checklist": { parent: "ATLCLI-7", items: "Laptop; done one" },
+        }[example.name] ?? {};
       const run = await planScript(transpile(example.source), {
         port,
         params,

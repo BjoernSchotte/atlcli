@@ -2,7 +2,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { ConfluenceClient, type FooterComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
 import type { Profile } from "@atlcli/core";
-import { copyAttachment, findTransition, JiraClient, type JiraIssue, type JiraSprint, resolveUser, toJiraRichText } from "@atlcli/jira";
+import { copyAttachment, findTransition, JiraClient, type JiraIssue, type JiraSprint, type JiraTransition, resolveUser, toJiraRichText } from "@atlcli/jira";
 import type {
   AttachmentInput,
   ConfluenceCommentView,
@@ -41,6 +41,19 @@ export function createCliScriptPort(
 ): ScriptPort {
   const conversion = { baseUrl };
   const richText = (markdown: string) => toJiraRichText(jira(), markdown);
+  /**
+   * Moves an issue with screen fields and a comment. Jira drops a comment sent
+   * with a transition that has no screen (silently), so it is added after.
+   */
+  const transitionWith = async (key: string, transition: JiraTransition, options?: { fields?: Record<string, unknown>; comment?: string }) => {
+    const inline = options?.comment && transition.hasScreen !== false;
+    await jira().transitionIssue(key, {
+      transition: { id: transition.id },
+      ...(options?.fields ? { fields: options.fields } : {}),
+      ...(inline ? { update: { comment: [{ add: { body: richText(options!.comment!) } }] } } : {}),
+    });
+    if (options?.comment && !inline) await jira().addComment(key, richText(options.comment));
+  };
 
   return {
     async jiraSearch(jql, { fields, properties, pageToken, maxResults, signal }) {
@@ -87,22 +100,73 @@ export function createCliScriptPort(
         },
       });
     },
-    async jiraTransitionIssue(key, name) {
+    async jiraTransitionIssue(key, name, options) {
       const transitions = await jira().getTransitions(key);
       const transition = findTransition(transitions, name);
       if (!transition) {
         throw new Error(`Transition "${name}" is not available for ${key} (available: ${transitions.map((t) => t.name).join(", ") || "none"})`);
       }
-      await jira().transitionIssue(key, { transition: { id: transition.id } });
+      await transitionWith(key, transition, options);
     },
-    async jiraSetStatus(key, status) {
+    async jiraSetStatus(key, status, options) {
       const wanted = status.toLowerCase();
       const transitions = await jira().getTransitions(key);
       const transition =
         transitions.find((t) => t.to?.name?.toLowerCase() === wanted) ?? transitions.find((t) => t.name.toLowerCase() === wanted);
       if (!transition) return { moved: false };
-      await jira().transitionIssue(key, { transition: { id: transition.id } });
+      await transitionWith(key, transition, options);
       return { moved: true, transition: transition.name };
+    },
+    async jiraTransitions(key) {
+      return (await jira().getTransitions(key)).map((t) => ({
+        name: t.name,
+        to: { name: t.to?.name ?? "", ...(t.to?.statusCategory?.key ? { category: t.to.statusCategory.key } : {}) },
+      }));
+    },
+    async jiraHistory(key, { fields }) {
+      const wanted = fields?.map((f) => f.toLowerCase());
+      const changes = [];
+      for (let startAt = 0; ; ) {
+        const page = await jira().getChangelog(key, { startAt, maxResults: 100 });
+        for (const entry of page.values) {
+          for (const item of entry.items) {
+            const field = item.fieldId ?? item.field;
+            if (wanted && !wanted.includes(field.toLowerCase()) && !wanted.includes(item.field.toLowerCase())) continue;
+            changes.push({
+              at: entry.created,
+              ...(entry.author?.displayName ? { author: entry.author.displayName } : {}),
+              field,
+              from: item.fromString ?? item.from ?? null,
+              to: item.toString ?? item.to ?? null,
+            });
+          }
+        }
+        startAt += page.values.length;
+        if (page.isLast || page.values.length === 0) break;
+      }
+      return changes.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    },
+    async jiraWatchers(key) {
+      return (await jira().getWatchers(key)).watchers.map((w) => ({
+        ...(w.accountId ? { accountId: w.accountId } : {}),
+        ...((w as { name?: string }).name ? { name: (w as { name?: string }).name } : {}),
+        ...(w.displayName ? { displayName: w.displayName } : {}),
+      }));
+    },
+    async jiraAddWatcher(key, user) {
+      await jira().addWatcher(key, "accountId" in user ? user.accountId : user.name);
+    },
+    async jiraRemoveWatcher(key, user) {
+      await jira().removeWatcher(key, "accountId" in user ? user.accountId : user.name);
+    },
+    async jiraNotify(key, { subject, markdown, to }) {
+      const { users, groups, ...flags } = to;
+      await jira().notifyIssue(key, {
+        subject,
+        textBody: markdown,
+        htmlBody: markdownToStorage(markdown, conversion),
+        to: { ...flags, ...(users ? { users } : {}), ...(groups ? { groups: groups.map((name) => ({ name })) } : {}) },
+      });
     },
     async jiraAddComment(key, body) {
       const comment = await jira().addComment(key, typeof body === "string" ? richText(body) : (body.raw as never));
@@ -267,6 +331,9 @@ export function createCliScriptPort(
     async confluenceMovePage(id, parentId) {
       const page = await confluence().movePage(id, parentId);
       return { id: page.id, version: page.version ?? 1 };
+    },
+    async confluenceArchivePage(id) {
+      await confluence().archivePage(id);
     },
     async confluenceDeletePage(id) {
       await confluence().deletePage(id);

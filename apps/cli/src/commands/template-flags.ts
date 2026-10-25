@@ -21,6 +21,7 @@ import {
   type OutputOptions,
   type TemplateVariable,
   type VarsFile,
+  initJinja,
 } from "@atlcli/core";
 import type { ScriptPort } from "@atlcli/script-runtime";
 
@@ -41,7 +42,7 @@ export interface TemplateRunInput {
 export const TEMPLATE_FLAGS_HELP = `Templates:
   --var <name=value>     Template variable, repeatable (a.b=v nests; JSON values allowed)
   --vars-file <file>     YAML file with values (and optional variables: declarations)
-  --now <iso>            Freeze the clock for @today/@now (repeat a plan exactly)
+  --now <iso>            Freeze the clock for today/now (repeat a plan exactly)
   --strict               Fail on any template warning (unresolved {{…}} and others)`;
 
 /** `key` alone is true, JSON values are parsed, anything else is a string; `a.b=v` nests. */
@@ -75,6 +76,7 @@ export async function parseTemplateFlags(
   opts: OutputOptions,
   extra: { declarations?: TemplateVariable[] } = {},
 ): Promise<TemplateRunInput> {
+  await initJinja();
   const path = getFlag(flags, "vars-file");
   let file: VarsFile | undefined;
   if (path) {
@@ -127,7 +129,8 @@ export async function completeTemplateValues(input: TemplateRunInput, flags: Fla
  */
 export function createTemplateRenderer(profile?: string): NonNullable<ScriptPort["render"]> {
   const budget = new RenderBudget();
-  return (input, o) => {
+  return async (input, o) => {
+    await initJinja();
     const scope = createTemplateScope({ vars: o.vars, now: new Date(o.now), profile, source: o.source, parent: o.parent, seed: o.unit });
     const out = renderBody(input, scope, { unit: o.unit, format: o.format, strict: o.strict, budget });
     // Field checks at plan time, so an invalid label fails the plan, not the apply halfway through.

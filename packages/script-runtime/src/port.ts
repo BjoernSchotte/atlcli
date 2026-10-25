@@ -16,12 +16,12 @@ export interface ScriptPort {
   jiraGetTransitions(key: string, options: { signal?: AbortSignal }): Promise<string[]>;
   jiraCreateIssue(input: JiraCreateInput): Promise<{ id: string; key: string }>;
   jiraUpdateIssue(key: string, input: JiraUpdateInput): Promise<void>;
-  jiraTransitionIssue(key: string, transition: string): Promise<void>;
+  jiraTransitionIssue(key: string, transition: string, options?: TransitionOptions): Promise<void>;
   /**
    * Best effort: takes a transition available right now whose target status
    * (or name) is `status`; with none, changes nothing and says so.
    */
-  jiraSetStatus(key: string, status: string): Promise<{ moved: boolean; transition?: string }>;
+  jiraSetStatus(key: string, status: string, options?: TransitionOptions): Promise<{ moved: boolean; transition?: string }>;
   /** A string is Markdown; `{ raw }` is sent unchanged (ADF on Cloud, wiki markup on Data Center). */
   jiraAddComment(key: string, body: string | { raw: unknown }): Promise<{ id: string }>;
   /** Link types of the site (name plus the outward/inward phrases). */
@@ -82,6 +82,8 @@ export interface ScriptPort {
   confluenceMovePage(id: string, parentId: string): Promise<{ id: string; version: number }>;
   /** Moves the page to the space's trash. */
   confluenceDeletePage(id: string): Promise<void>;
+  /** Archives the page (it leaves the page tree, stays readable). */
+  confluenceArchivePage?(id: string): Promise<void>;
   confluenceAttachments(pageId: string, options: { signal?: AbortSignal }): Promise<ConfluenceAttachmentView[]>;
   /** Uploads, or adds a new version when the page already has an attachment of that name. */
   confluenceAttach(pageId: string, file: AttachmentInput): Promise<{ id: string }>;
@@ -96,6 +98,15 @@ export interface ScriptPort {
    * that would not change a page.
    */
   confluenceNormalizeMarkdown(markdown: string): string;
+  /** Transitions available now, with their target status. Optional; without it `jira.transitions` fails. */
+  jiraTransitions?(key: string, options: { signal?: AbortSignal }): Promise<JiraTransitionView[]>;
+  /** Field changes from the issue's changelog, oldest first. */
+  jiraHistory?(key: string, options: { fields?: string[]; signal?: AbortSignal }): Promise<JiraChangeView[]>;
+  jiraWatchers?(key: string, options: { signal?: AbortSignal }): Promise<JiraWatcherView[]>;
+  jiraAddWatcher?(key: string, user: JiraUserRef): Promise<void>;
+  jiraRemoveWatcher?(key: string, user: JiraUserRef): Promise<void>;
+  /** Jira sends the e-mail (`/issue/{key}/notify`); users are already resolved. */
+  jiraNotify?(key: string, input: JiraNotifyInput): Promise<void>;
   /**
    * Read-only REST escape hatch (`atlcli.jira.rest`): GET a site-relative Jira
    * path such as `/rest/api/3/field`, JSON back. Optional; without it the verb fails.
@@ -104,14 +115,58 @@ export interface ScriptPort {
   /** As jiraRest, relative to the Confluence base: `/rest/api/…` or `/api/v2/…`. */
   confluenceRest?(path: string, options: { query?: RestQuery; signal?: AbortSignal }): Promise<unknown>;
   /**
-   * Pure: renders a template with the host's engine (atlcli.render). Throws
+   * Renders a template with the host's engine (atlcli.render); may be async
+   * (the CLI loads its Jinja sandbox on first use). Throws
    * an Error named "RenderError" for --strict warnings or an output limit.
    * Optional; without it atlcli.render fails.
    */
-  render?(input: unknown, options: RenderInput): { value: unknown; warnings: TemplateWarningView[] };
+  render?(input: unknown, options: RenderInput): RenderOutput | Promise<RenderOutput>;
 }
 
 export type RestQuery = Record<string, string | number | boolean>;
+
+/** Fields set on the transition screen, and a Markdown comment added with it. */
+export interface TransitionOptions {
+  fields?: Record<string, unknown>;
+  comment?: string;
+}
+
+export interface JiraTransitionView {
+  name: string;
+  to: { name: string; category?: string };
+}
+
+export interface JiraChangeView {
+  at: string;
+  author?: string;
+  field: string;
+  from: string | null;
+  to: string | null;
+}
+
+export interface JiraWatcherView {
+  accountId?: string;
+  name?: string;
+  displayName?: string;
+}
+
+export interface JiraNotifyInput {
+  subject: string;
+  markdown: string;
+  to: {
+    users?: JiraUserRef[];
+    groups?: string[];
+    reporter?: boolean;
+    assignee?: boolean;
+    watchers?: boolean;
+    voters?: boolean;
+  };
+}
+
+export interface RenderOutput {
+  value: unknown;
+  warnings: TemplateWarningView[];
+}
 
 export interface RenderInput {
   format?: "text" | "adf" | "storage" | "wikimarkup";
@@ -122,7 +177,7 @@ export interface RenderInput {
   unit: string;
   /** A Jira field kind whose rendered text value is checked (label: no whitespace, …). */
   kind?: "summary" | "label" | "name" | "string" | "number" | "date" | "option";
-  /** Frozen clock (ISO) for @today/@now. */
+  /** Frozen clock (ISO) for today/now. */
   now: string;
   strict: boolean;
 }

@@ -760,6 +760,7 @@ describe("inspectScript", () => {
 it("exposes the verb set", () => {
   expect([...SCRIPT_VERBS].sort()).toEqual([
     "confluence.addLabels",
+    "confluence.archivePage",
     "confluence.attach",
     "confluence.attachments",
     "confluence.children",
@@ -777,6 +778,7 @@ it("exposes the verb set", () => {
     "confluence.updatePage",
     "confluence.upsertPage",
     "jira.addLabels",
+    "jira.addWatcher",
     "jira.assign",
     "jira.attach",
     "jira.boards",
@@ -785,16 +787,21 @@ it("exposes the verb set", () => {
     "jira.create",
     "jira.createSprint",
     "jira.get",
+    "jira.history",
     "jira.link",
     "jira.moveToSprint",
+    "jira.notify",
     "jira.removeLabels",
+    "jira.removeWatcher",
     "jira.rest",
     "jira.search",
     "jira.setStatus",
     "jira.sprints",
     "jira.transition",
+    "jira.transitions",
     "jira.update",
     "jira.updateSprint",
+    "jira.watchers",
     "render",
   ]);
 });

@@ -61,7 +61,7 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `--memory <MB>` | run | positive integer | 64 | Script memory |
 | `--var <name=value>` | run | string, repeatable | none | Template variable for [`atlcli.render`](#atlclirender); `a.b=v` nests, JSON values are parsed |
 | `--vars-file <file>` | run | YAML path | none | Template values and declarations; see [Templating](/templating/#variables) |
-| `--now <iso>` | run | ISO date/time | time of planning | Clock for `@today`/`@now`; recorded in the plan |
+| `--now <iso>` | run | ISO date/time | time of planning | Clock for `today`/`now`; recorded in the plan |
 | `--strict` | run | switch | off | Any template warning ends the run (`template` error kind) |
 | `--json` | all | switch | off | One JSON document on stdout; script output stays on stderr |
 | `--force` | init | switch | off | Overwrites `tsconfig.json` and `example.ts`; `atlcli.d.ts` is always refreshed |
@@ -128,8 +128,14 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 | `jira.rest(path, { query? })` | JSON | `jira:read` | read only (GET). `path` is site-relative and starts with `/rest/`, e.g. `/rest/api/3/field`; no query string in it (use `query`), no `..`. Responses up to 5 MB |
 | `jira.create({ project, type, summary, description?, fields?, properties? })` | `{ id, key }` placeholders | `jira:write:<project>` | create; no precondition. `description` is Markdown; `fields.description` is sent unchanged (ADF from `get`, for lossless copies). Not both. `properties` sets issue properties by key |
 | `jira.update(key, { summary?, description?, fields? })` | `null` | `jira:write:<project of key>` | update; issue unchanged |
-| `jira.transition(key, to)` | `null` | `jira:write:<project of key>` | transition; issue unchanged. `to` is matched by name, ignoring case; checked against the issue's transitions when the issue exists |
-| `jira.setStatus(key, status)` | `null` | `jira:write:<project of key>` | best-effort transition; issue unchanged. On apply, takes a transition available then whose target status (or name) is `status`; with none, nothing changes and the apply output lists it under `Status unchanged`. For issues whose workflow is not known at plan time, such as ones the plan creates. Left out when the issue already has that status |
+| `jira.transition(key, to, { fields?, comment? })` | `null` | `jira:write:<project of key>` | transition; issue unchanged. `to` is matched by name, ignoring case; checked against the issue's transitions when the issue exists. `fields` are set on the transition screen as raw Jira values (e.g. `{ resolution: { name: "Done" } }`); `comment` is Markdown, added with the transition |
+| `jira.setStatus(key, status, { fields?, comment? })` | `null` | `jira:write:<project of key>` | best-effort transition; issue unchanged. On apply, takes a transition available then whose target status (or name) is `status`; with none, nothing changes and the apply output lists it under `Status unchanged`. For issues whose workflow is not known at plan time, such as ones the plan creates. Left out when the issue already has that status |
+| `jira.transitions(key)` | `[{ name, to: { name, category? } }]` | `jira:read` | read; transitions available now. `category` is `new`, `indeterminate` or `done` |
+| `jira.history(key, { fields? })` | `[{ at, author?, field, from, to }]` | `jira:read` | read; the issue's changes, oldest first; `fields` limits them, e.g. `["status"]` |
+| `jira.watchers(key)` | `[{ accountId?, displayName? }]` | `jira:read` | read |
+| `jira.addWatcher(key, user)` | `null` | `jira:write:<project of key>` | watcher; no precondition. `user` resolved like `assign`. Left out when the user already watches |
+| `jira.removeWatcher(key, user)` | `null` | `jira:write:<project of key>` | watcher; no precondition. Left out when the user does not watch |
+| `jira.notify(key, { subject, markdown, to })` | `null` | `jira:write:<project of key>` | e-mail sent by Jira on apply; no precondition. `to`: `users` (resolved like `assign`), `groups`, `reporter`, `assignee`, `watchers`, `voters`; at least one |
 | `jira.comment(key, body)` | `{ id }` placeholder | `jira:write:<project of key>` | comment; no precondition. `body` is Markdown, or `{ raw }`: the site's own format (ADF on Cloud, wiki markup on Data Center), sent unchanged |
 | `jira.link(from, type, to)` | `null` | `jira:write` for both projects | link; no precondition. Reads as a sentence: `link("A-1", "blocks", "A-2")`. `type` is the link type's name or either phrase (`"is blocked by"` swaps the issues); checked at plan time |
 | `jira.assign(key, user)` | `null` | `jira:write:<project of key>` | assignment; issue unchanged. `user` is `"me"`, an email, a display name or an account id, resolved at plan time; `null` unassigns. Left out when already assigned so |
@@ -165,6 +171,7 @@ Once `meta.permissions` is declared, sprint writes on a board that belongs to no
 | `confluence.comment(pageId, markdown)` | `{ id }` placeholder | `confluence:write:<space of page>` | footer comment; no precondition |
 | `confluence.movePage(id, { parentId })` | `{ id }` | `confluence:write:<space of page>` | move; page version unchanged. Within the page's space. Left out when the page already has that parent |
 | `confluence.deletePage(id)` | `null` | `confluence:write:<space of page>` | moves the page to the space's trash; page version unchanged. Later writes to it in the same plan throw |
+| `confluence.archivePage(id)` | `null` | `confluence:write:<space of page>` | archives the page; page version unchanged. Confluence archives in the background, so the page can read as current for a moment |
 | `confluence.attachments(pageId)` | `[{ id, name, mediaType, size, version }]` | `confluence:read` | read |
 | `confluence.attach(pageId, { name, content, encoding? })` | `{ id }` placeholder | `confluence:write:<space of page>` | attachment; no precondition. An attachment of the same name gets a new version |
 | `confluence.copyAttachment(attachmentId, sourcePageId, toPageId)` | `{ id }` | `confluence:write:<space of target>` | copies the bytes host-side when applied; left out when the target already has a file of that name and size |
@@ -211,7 +218,7 @@ The first write to an existing object records the state the plan saw. Later writ
 | Issue unchanged | `jira.update`, `jira.transition`, `jira.setStatus`, `jira.assign`, `jira.addLabels`, `jira.removeLabels` | `fields.updated` is the same |
 | Attachment unchanged | `jira.copyAttachment` (on the source attachment) | the attachment still exists with the same size |
 | Sprint unchanged | `jira.updateSprint` on an existing sprint | `state` is the same |
-| Page unchanged | `confluence.updatePage`, `upsertPage` on an existing page, `movePage`, `deletePage` | `version` is the same |
+| Page unchanged | `confluence.updatePage`, `upsertPage` on an existing page, `movePage`, `deletePage`, `archivePage` | `version` is the same |
 | Title absent | `confluence.createPage`, `upsertPage` on a new page | no page with that title in the space |
 
 All preconditions are checked before the first write. If any fails, nothing is written. Between that check and each write there is a short window. A concurrent page edit in it makes the update fail on the version check. A concurrent issue edit in it is overwritten, because Jira has no conditional update.
@@ -238,6 +245,7 @@ The same applies to the first write of these verbs to an object:
 | Verb | Left out when |
 |---|---|
 | `jira.assign` | the issue already has that assignee (or none, for `null`) |
+| `jira.addWatcher` / `jira.removeWatcher` | the user already watches / does not watch |
 | `jira.addLabels` | every label is already set |
 | `jira.removeLabels` | none of the labels is set |
 | `jira.setStatus` | the issue already has that status |

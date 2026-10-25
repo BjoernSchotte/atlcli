@@ -1,0 +1,22 @@
+// Moves a parent to a done status once all of its subtasks are done, with a
+// comment saying why. Parents already done are left alone.
+//
+//   atlcli script run close-parent-when-subtasks-done.ts --param status=Fertig
+export const meta = {
+  description: "Close parents whose subtasks are all done",
+  each: {
+    jql: 'project = ATLCLI AND statusCategory != Done AND issue in hasSubtasks("project = ATLCLI AND statusCategory != Done")',
+    fields: ["subtasks", "status"],
+  },
+  params: { status: { type: "string", default: "Done" } },
+};
+
+type Subtask = { key: string; fields: { status: { statusCategory?: { key?: string } } } };
+
+export default async (issue: JiraIssue, params: { status: string }) => {
+  const subtasks = issue.fields.subtasks as Subtask[];
+  if (subtasks.length === 0 || subtasks.some((s) => s.fields.status.statusCategory?.key !== "done")) return;
+  await atlcli.jira.setStatus(issue.key, params.status, {
+    comment: `All ${subtasks.length} subtasks are done (${subtasks.map((s) => s.key).join(", ")}).`,
+  });
+};

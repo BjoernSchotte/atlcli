@@ -5,8 +5,8 @@ description: "Variables, built-ins and control paragraphs for copies and templat
 
 # Templating
 
-Copies and templates in atlcli render `{{…}}` expressions: `Audit {{year}}`
-becomes `Audit 2026`. The same rules apply everywhere, whether the template is
+Copies and templates in atlcli render [Jinja](https://jinja.palletsprojects.com/en/stable/templates/)
+expressions: `Audit {{ year }}` becomes `Audit 2026`. The same rules apply everywhere, whether the template is
 a live object people maintain in Jira or Confluence (a template project, a
 template issue, a template page tree) or a local file.
 
@@ -19,9 +19,38 @@ template issue, a template page tree) or a local file.
 | [`atlcli.render()`](/reference/scripts/#atlclirender) in scripts | Whatever the script passes |
 | [`wiki template`](/confluence/templates/) | Page templates (Markdown; see [differences](#wiki-template)) |
 
-The syntax is [Handlebars](https://handlebarsjs.com/guide/). Code is never
-rendered: code blocks, inline code, code and noformat macros, and `{code}`
-regions keep their `{{…}}` as written.
+The syntax is Jinja, as implemented by [Nunjucks](https://mozilla.github.io/nunjucks/templating.html).
+Code is never rendered: code blocks, inline code, code and noformat macros, and
+`{code}` regions keep their `{{ … }}` and `{% … %}` as written.
+
+Templates render inside a QuickJS sandbox without access to files, network or
+the environment, with limits of 5 seconds and 64 MB per render and an output
+budget per field and run.
+
+## Breaking: templates use Jinja
+
+atlcli used Handlebars before. Templates written for it do not render the same
+way any more, and there is no converter: rewrite them with this table.
+
+| Handlebars (old) | Jinja (new) |
+|------------------|-------------|
+| `{{@today}}`, `{{@year}}`, … | `{{ today }}`, `{{ year }}`, … (built-ins are plain names) |
+| `{{#if x}}…{{else}}…{{/if}}` | `{% if x %}…{% else %}…{% endif %}` |
+| `{{#unless x}}…{{/unless}}` | `{% if not x %}…{% endif %}` |
+| `{{#each items}}{{this}} {{@index}}{{/each}}` | `{% for item in items %}{{ item }} {{ loop.index0 }}{% endfor %}` |
+| `{{#with x}}…{{/with}}` | No equivalent: write `x.field`, or `{% set %}` |
+| `{{@root.x}}` | `{{ x }}` (outer names stay visible inside loops) |
+| `{{formatDate d "DD.MM.YYYY"}}` | `{{ d \| date("DD.MM.YYYY") }}` |
+| `{{dateAdd @today 14 "d"}}` | `{{ today \| dateAdd(14, "d") }}` |
+| `{{lowercase x}}`, `{{uppercase x}}` | `{{ x \| lower }}`, `{{ x \| upper }}` |
+| `{{default x "fb"}}` | `{{ x \| default("fb") }}` |
+| `{{replace s "a" "b"}}` | `{{ s \| replace("a", "b") }}` |
+| `(eq a "x")`, `(ne a "x")` | `a == "x"`, `a != "x"` |
+| `(and a b)`, `(or a b)`, `(not a)` | `a and b`, `a or b`, `not a` |
+| `{{{x}}}` | `{{ x }}` (output is never HTML-escaped) |
+| `\{{x}}` | `{% raw %}{{ x }}{% endraw %}` |
+| `{{~x}}` | `{{- x }}`, `{{ x -}}` |
+| `{{! note }}` | `{# note #}` (kept as written in copies, with a warning) |
 
 ## Prerequisites
 
@@ -30,8 +59,8 @@ regions keep their `{{…}}` as written.
 
 ## Steps
 
-1. Write variables into the template: `Release {{version}}` in a summary,
-   `{{#each systems}}` rows in a table.
+1. Write variables into the template: `Release {{ version }}` in a summary,
+   `{% for system in systems %}` rows in a table.
 2. Check what the template needs:
 
    ```bash
@@ -52,44 +81,52 @@ regions keep their `{{…}}` as written.
 
 | Expression | Value |
 |------------|-------|
-| `{{version}}` | A value from `--var version=…` or the vars file |
-| `{{team.lead}}` | A nested value (`--var team.lead=Ann`, or YAML) |
-| `{{source.key}}`, `{{source.summary}}`, `{{source.fields.duedate}}` | The original issue (copy-issues, clone) |
-| `{{source.title}}`, `{{source.id}}` | The original page (page copy) |
-| `{{parent.title}}`, `{{parent.id}}` | The rendered parent copy (page copy `--tree`) |
+| `{{ version }}` | A value from `--var version=…` or the vars file |
+| `{{ team.lead }}` | A nested value (`--var team.lead=Ann`, or YAML) |
+| `{{ source.key }}`, `{{ source.summary }}`, `{{ source.fields.duedate }}` | The original issue (copy-issues, clone) |
+| `{{ source.title }}`, `{{ source.id }}` | The original page (page copy) |
+| `{{ parent.title }}`, `{{ parent.id }}` | The rendered parent copy (page copy `--tree`) |
 
 ### Built-ins
 
-Built-ins start with `@`. Dates use the clock frozen for the run, read in
-**UTC**, so a plan made again on another machine gives the same dates; see
+Built-ins are plain names. A variable of the same name (`--var`, vars file,
+declaration) and the operation's context (`source`, `parent`) win over a
+built-in. Dates use the clock frozen for the run, read in **UTC**, so a plan made again on another machine gives the same dates; see
 [`--now`](#repeating-a-run).
 
 | Built-in | Example | Notes |
 |----------|---------|-------|
-| `@today` | `2026-10-25` | Always ISO; feed it to `dateAdd` |
-| `@date` | `2026-10-25` | Wiki templates may set another format |
-| `@now`, `@datetime` | `2026-10-25T08:30:00.000Z` | |
-| `@year`, `@month`, `@day` | `2026`, `10`, `25` | |
-| `@quarter` | `4` | Write `Q{{@quarter}}` for `Q4` |
-| `@week` | `43` | ISO week |
-| `@weekday`, `@time` | `Sunday`, `09:30` | |
-| `@user`, `@profile`, `@space`, `@project` | | From the profile and target, where known |
-| `@uuid` | `2f1c…` | Different per field and issue or page; the same again for the same `--now`, so a re-plan repeats it |
+| `today` | `2026-10-25` | Always ISO; feed it to `dateAdd` |
+| `date` | `2026-10-25` | Wiki templates may set another format |
+| `now`, `datetime` | `2026-10-25T08:30:00.000Z` | |
+| `year`, `month`, `day` | `2026`, `10`, `25` | |
+| `quarter` | `4` | Write `Q{{ quarter }}` for `Q4` |
+| `week` | `43` | ISO week |
+| `weekday`, `time` | `Sunday`, `09:30` | |
+| `user`, `profile`, `space`, `project` | | From the profile and target, where known |
+| `uuid` | `2f1c…` | Different per field and issue or page; the same again for the same `--now`, so a re-plan repeats it |
 
-### Helpers
+### Filters and operators
 
-| Helper | Example | Result |
-|--------|---------|--------|
-| `dateAdd date n unit` | `{{dateAdd @today 14 "d"}}` | 14 days later; units `d`, `w`, `m`, `y`; months clamp to the month end |
-| `formatDate date format` | `{{formatDate @today "DD.MM.YYYY"}}` | `25.10.2026` |
-| `default value fallback` | `{{default owner "Team"}}` | `Team` when `owner` is empty or missing |
-| `replace text from to` | `{{replace source.summary "2025" "2026"}}` | |
-| `lowercase`, `uppercase` | `{{uppercase team}}` | |
-| `eq`, `ne`, `and`, `or`, `not` | `{{#if (eq region "eu")}}…{{/if}}` | For conditions |
+| Filter or operator | Example | Result |
+|--------------------|---------|--------|
+| `dateAdd(n, unit)` | `{{ today \| dateAdd(14, "d") }}` | 14 days later; units `d`, `w`, `m`, `y`; months clamp to the month end |
+| `date(format)` | `{{ today \| date("DD.MM.YYYY") }}` | `25.10.2026` |
+| `default(fallback)` | `{{ owner \| default("Team") }}` | `Team` when `owner` is missing; `default("Team", true)` also replaces empty and false values |
+| `replace(from, to)` | `{{ source.summary \| replace("2025", "2026") }}` | |
+| `lower`, `upper` | `{{ team \| upper }}` | |
+| `==`, `!=`, `and`, `or`, `not`, `in` | `{% if region == "eu" %}…{% endif %}` | For conditions |
+| `~`, `+ - * /` | `{{ "Q" ~ quarter }}` | String concatenation, arithmetic |
+| `is defined` | `{% if owner is defined %}…{% endif %}` | Test for a missing value |
 
-Blocks work inside one text: `{{#if internal}}(internal){{/if}}`,
-`{{#each systems}}{{this}} {{/each}}`. Handlebars' own `lookup` and `log`,
-partials and custom helpers are not available.
+All other Nunjucks built-in filters work too: `length`, `join`, `sort`,
+`first`, `last`, `truncate`, `title`, `trim`, `dictsort`, `groupby`,
+`selectattr`, `sum`, `round` and more.
+
+Blocks work inside one text: `{% if internal %}(internal){% endif %}`,
+`{% for system in systems %}{{ system }} {% endfor %}`. Loops also take
+`{% else %}` (for an empty list) and dictionaries (`{% for k, v in owners %}`);
+`{% set %}` and macros work as in Jinja.
 
 ### Control paragraphs
 
@@ -99,26 +136,29 @@ nothing but a block tag controls the paragraphs next to it and is removed from
 the result:
 
 ```
-{{#if internal}}
+{% if internal %}
 This paragraph only appears with --var internal=true.
-{{else}}
+{% else %}
 This one otherwise.
-{{/if}}
+{% endif %}
 ```
 
 The same works one level up:
 
-- **List items**: a list item holding only `{{#each systems}}`, an item with
-  `{{this}}`, and an item with `{{/each}}` give one item per system.
-- **Table rows**: a row whose first cell holds only `{{#each systems}}`, a row
-  with `{{this}}` / `{{@root.owners.IAM}}`, and a row with `{{/each}}` give one
-  row per system. The control rows disappear, other cells included: when
+- **List items**: a list item holding only `{% for system in systems %}`, an
+  item with `{{ system }}`, and an item with `{% endfor %}` give one item per
+  system.
+- **Table rows**: a row whose first cell holds only
+  `{% for system in systems %}`, a row with `{{ system }}` /
+  `{{ owners[system] }}`, and a row with `{% endfor %}` give one row per
+  system. The control rows disappear, other cells included: when
   those hold content, the plan warns (`dropped-content`).
 
-Supported: `#if`, `#unless`, `#each`, `#with`, with `{{else}}`. Inside `#each`
-and `#with`, `this` is the item, `@index`, `@first`, `@last` and `@key` are
-set, and variables of the run are reached through `@root`
-(`{{@root.year}}`).
+Supported control tags: `{% if … %}`, `{% elif … %}`, `{% else %}`,
+`{% endif %}`, `{% for x in … %}`, `{% for k, v in … %}` and `{% endfor %}`.
+Inside a repeated block the loop variable and `loop.index` (from 1),
+`loop.index0`, `loop.first`, `loop.last` and `loop.length` are set; variables
+of the run stay visible (`{{ year }}`).
 
 Control tags must pair up within the same parent (the same panel, cell or
 list). If they don't, they stay as written and the plan warns.
@@ -127,10 +167,18 @@ list). If they don't, they stay as written and the plan warns.
 
 Rendering is tolerant: an expression that cannot be filled stays exactly as
 written, and the run lists it as a template warning with its location
-(`SUP-1 summary 1:8  Unresolved {{versoin}}`). The same goes for unknown
-helpers, partials, text that is not Handlebars at all (Jinja's
-`{{ x | default('a') }}`), an expression that runs across a mention, link or
-image, and a link that renders to an invalid URL.
+(`SUP-1 summary 1:8  Unresolved {{ versoin }}`). The same goes for:
+
+- an `{% if %}` or `{% for %}` block whose subject cannot be resolved: the
+  whole block stays as written, so someone else's Jinja, Ansible or Helm
+  snippet in a copied issue survives unchanged;
+- unknown filters and functions (`unknown-helper`);
+- an expression that runs across a mention, link or image, and a link that
+  renders to an invalid URL.
+
+A syntax error (an unclosed `{% if %}`, for example) keeps the whole field or
+page unchanged and warns with `parse-error`. `{{ x | default("…") }}` and
+`{% if x is defined %}` never warn about a missing `x`.
 
 Use `--strict` to fail the run instead, for example in CI, where a silent
 leftover is a bug:
@@ -139,10 +187,9 @@ leftover is a bug:
 atlcli jira project copy-issues --from TPLREL --to REL --var version=4.2 --strict
 ```
 
-To keep a literal `{{…}}`, write `\{{…}}`. As in Handlebars, only a single
-backslash escapes: `C:\\{{dir}}` is a literal backslash followed by the value
-of `dir`. `{{../x}}`, a bare `{{this}}` outside a loop and Handlebars comments
-(`{{! … }}`, with a warning) also stay as written.
+To keep template syntax literally, wrap it in
+`{% raw %}{{ x }}{% endraw %}`. Jinja comments (`{# … #}`) also stay as
+written, with a warning: in copied text they are the author's text.
 
 In Jira wiki markup and plain-text fields, warnings give the line and column
 in the field. In rich text (ADF descriptions, Confluence pages) they name the
@@ -225,7 +272,7 @@ atlcli jira project copy-issues --from TPLREL --to REL --var version=4.2 --now 2
 ### Minimal: one issue from a saved template
 
 ```bash
-atlcli jira template save release --issue TPL-1        # records {{version}} as a variable
+atlcli jira template save release --issue TPL-1        # records {{ version }} as a variable
 atlcli jira template apply release --project REL --var version=4.2
 ```
 
@@ -245,8 +292,8 @@ values:
 # Issues: one per control, with a table row per system in each description
 atlcli jira project copy-issues --from TPLAUDIT --to AUD26 --vars-file audit-2026.yml --strict --plan-out jira.json
 
-# Pages: the audit handbook tree, titled "Audit {{year}}"
-atlcli wiki page copy --id 12345 --tree --title "Audit {{year}}" --vars-file audit-2026.yml --plan-out pages.json
+# Pages: the audit handbook tree, titled "Audit {{ year }}"
+atlcli wiki page copy --id 12345 --tree --title "Audit {{ year }}" --vars-file audit-2026.yml --plan-out pages.json
 
 atlcli script apply jira.json
 atlcli script apply pages.json
@@ -256,22 +303,24 @@ atlcli script apply pages.json
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `{{x}}` stays in the result | No value, a typo, or the expression crosses a mention, link or image | Read the template warnings; run `atlcli template vars`; keep an expression within plain text |
-| `{{year}}` is empty inside `#each` | Inside a loop, plain names refer to the item | Write `{{@root.year}}` |
-| Jinja or Helm snippets in a description | They are not Handlebars | They stay as written, with a warning; put them in a code block to silence it |
-| Data Center: `{{text}}` monospace changed | Monospace text equals a variable name | Escape it as `\{{text}}` |
-| `control row is removed with the content of its other cells` | A table row holding `{{#each}}`, `{{else}}` or `{{/each}}` in its first cell has text in other cells | Leave the other cells of control rows empty |
+| `{{ x }}` stays in the result | No value, a typo, or the expression crosses a mention, link or image | Read the template warnings; run `atlcli template vars`; keep an expression within plain text |
+| An old template renders oddly or not at all | It uses Handlebars syntax (`{{#if}}`, `{{@today}}`) | Rewrite it with the [migration table](#breaking-templates-use-jinja) |
+| `parse-error`: a field or page is copied unchanged | A Jinja syntax error, such as an unclosed `{% if %}` | Fix the tags the warning names |
+| Jinja or Helm snippets in a description | Their variables are not defined in this run | They stay as written, with a warning; put them in a code block to silence it |
+| Data Center: `{{text}}` monospace changed | Monospace text equals a variable name | Wrap it as `{% raw %}{{text}}{% endraw %}` |
+| `control row is removed with the content of its other cells` | A table row holding `{% for %}`, `{% else %}` or `{% endfor %}` in its first cell has text in other cells | Leave the other cells of control rows empty |
 | `Missing required template variables` | A declared required variable has no value and there is no terminal | Pass `--var` or `--vars-file` |
 | `Template output limit exceeded` | A loop produced more than 1 MB in one field, or 16 MB in the run | Check the loop's data |
-| `Template loop limit exceeded` | More than 100,000 `{{#each}}` items in one run (nested loops multiply) | Check the loop's data |
+| `Template loop limit exceeded` | More than 100,000 `{% for %}` items in one run (nested loops multiply) | Check the loop's data |
 | Dates differ between two plans | Each plan renders with its own time | Pass the first plan's time as `--now` |
 
 ## wiki template
 
 Confluence page templates (`atlcli wiki template`) share the built-ins and
-helpers, but keep their own rules: Markdown with frontmatter declarations,
-missing values render empty, and code fences render too. Nothing changed for
-existing templates.
+filters, but keep their own rules: Markdown with frontmatter declarations,
+missing values render empty, and code fences render too. A line that holds
+only a block tag (`{% if %}`, `{% endfor %}`) disappears with its line break.
+Templates written for Handlebars need the [migration](#breaking-templates-use-jinja).
 
 ## Related topics
 
