@@ -1,0 +1,13 @@
+// Moves issues without activity for a year to a closing status. setStatus
+// takes the direct transition into that status and skips issues already there.
+//
+//   atlcli script run close-inactive.ts --param status="Won't Do"
+export const meta = {
+  description: "Close issues inactive for a year",
+  each: { jql: "project = ATLCLI AND statusCategory != Done AND updated < -365d", fields: ["status"] },
+  params: { status: { type: "string", default: "Done" } },
+};
+
+export default async (issue: JiraIssue, params: { status: string }) => {
+  await atlcli.jira.setStatus(issue.key, params.status);
+};

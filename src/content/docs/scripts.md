@@ -16,6 +16,8 @@ for await (const issue of atlcli.jira.search("project = ATLCLI AND updated < -18
 
 That is a complete script: no imports, no exports, no setup.
 
+For thousands of issues, let the script handle one issue at a time and atlcli run it as a resumable job: see [Per-Issue Script Jobs](script-jobs.md).
+
 ## On this page
 
 - [Prerequisites](#prerequisites)
@@ -45,6 +47,8 @@ A script never gets more rights than the profile it runs with.
    ```bash
    atlcli script init scripts
    ```
+
+   `--example <name>` writes one of the bundled examples instead (`atlcli script init --list-examples` lists them), and `--each "<jql>"` a [per-issue](script-jobs.md) skeleton.
 
 2. Run the example. It only reads, so the plan is empty:
 
@@ -117,6 +121,15 @@ for await (const _ of atlcli.jira.search("project = ATLCLI AND statusCategory !=
 export default { open };
 ```
 
+**Reading what no verb covers.** `atlcli.jira.rest(path)` and `atlcli.confluence.rest(path)` read any REST resource of the site, for example custom field definitions or an issue's changelog. They only read; writes always go through the verbs and the plan:
+
+```ts
+const fields = await atlcli.jira.rest("/rest/api/3/field");
+const changelog = await atlcli.jira.rest("/rest/api/3/issue/ATLCLI-1/changelog", { query: { maxResults: 100 } });
+```
+
+**JQL functions.** Queries may use `linkedIssuesOf("…")`, `subtasksOf("…")`, `hasAttachments("…")` and the other [JQL functions](jira/search.md#jql-functions) atlcli resolves.
+
 **One-liners.** `-e` runs code without a file:
 
 ```bash
@@ -156,7 +169,15 @@ The plan lists the page as `(after #1)`. Once applied, the page says `Tracked in
 
 If anything changed, nothing is written and the command exits with code 2. Run the script again to get a fresh plan. A plan file is also bound to its site and protected by a digest: a changed file, or a file made for another site, is refused.
 
-**If a write fails** (permissions, a workflow rule, a validator), atlcli stops there. The operations before it stay applied, and the report lists every operation as applied, failed or skipped. Fix the cause and run the script again; do not apply the old plan again, since its first operations already ran.
+**If a write fails** (permissions, a workflow rule, a validator), atlcli stops there. The operations before it stay applied, and the report lists every operation as applied, failed or skipped. When the plan came from a file (`--plan-out`, or `apply plan.json`), atlcli records every applied operation in `plan.json.journal.jsonl` next to it. Fix the cause and continue with the rest:
+
+```bash
+atlcli script apply plan.json --resume
+```
+
+Operations already applied are skipped, and objects they created are used as before. Applying the same plan again without `--resume` is refused, because it would repeat its comments and creates. Without a plan file there is no journal: run the script again for a fresh plan.
+
+**Large plans.** From 200 operations on, the output lists counts per verb and the first 50 operations; `--plan-out` or `--json` has all of them. `--concurrency <n>` applies up to `n` operations at once. Operations on the same issue, page or sprint, and operations that use an object the plan creates, still run in plan order.
 
 ## Restricting a script
 
@@ -177,7 +198,7 @@ for await (const issue of atlcli.jira.search(`project = ATLCLI AND updated < -${
 ```
 
 - **`permissions`**: once given, everything else is denied. Write grants name one project or space. A denied verb ends the run, even if the script catches the error.
-- **`limits.maxWrites`**: the most operations a plan may contain (default 100).
+- **`limits.maxWrites`**: the most operations a plan may contain (default 10,000).
 - **`params`**: typed parameters with defaults. Unknown or mistyped `--param` values are rejected.
 
 atlcli reads `meta` before any of the script's code runs. It must be written exactly as `export const meta = { … }`, a literal without variables or calls. See [Script API: meta](reference/scripts.md#meta).
@@ -277,13 +298,13 @@ Closing the old sprint is a separate step on purpose: `updateSprint(active.id, {
 
 ## Limits
 
-By default a script gets 64 MB of memory, 5 minutes per run, 10,000 Jira or Confluence calls and 100 planned writes. A script that hits a limit ends with an error that names it. Raise or lower the limits per run:
+By default a script gets 64 MB of memory, 1 hour per run, 100,000 Jira or Confluence calls and 10,000 planned writes. A script that hits a limit ends with an error that names it. Raise or lower the limits per run; `0` removes a limit:
 
 ```bash
-atlcli script run migrate.ts --timeout 30m --max-calls 50000 --max-writes 2000 --memory 256
+atlcli script run migrate.ts --timeout 0 --max-calls 0 --max-writes 50000 --memory 256
 ```
 
-`--max-writes` overrides `meta.limits.maxWrites`. Each Jira or Confluence call may take up to 60 seconds. See [Script API: sandbox limits](reference/scripts.md#sandbox-limits).
+`--max-writes` overrides `meta.limits.maxWrites`. For work on many issues, a [per-issue job](script-jobs.md) has no total limit at all: its limits apply to each issue. Each Jira or Confluence call may take up to 60 seconds. See [Script API: sandbox limits](reference/scripts.md#sandbox-limits).
 
 ## Troubleshooting
 
@@ -297,7 +318,10 @@ Transition names come from the workflow and may be localized. Matching ignores c
 Someone edited an issue or page between the plan and the apply. Run the script again to plan against the current state.
 
 **`Script failed (write-limit)` / `(host-call-limit)` / `(interrupted)`**
-The run hit a limit. If the size is expected (a migration, a large space), raise it with `--max-writes`, `--max-calls` or `--timeout`. Otherwise check the script for a loop that never ends.
+The run hit a limit. If the size is expected (a migration, a large space), raise it with `--max-writes`, `--max-calls` or `--timeout` (`0` for none), or turn the script into a [per-issue job](script-jobs.md). Otherwise check the script for a loop that never ends.
+
+**`3 of 10 operations of this plan were already applied (plan.json.journal.jsonl). Continue with --resume`**
+An earlier apply of this plan stopped partway. `apply plan.json --resume` applies the rest. To start over, plan again instead.
 
 **`Script failed (permission-denied): Script meta.permissions does not grant "jira:write:OPS"`**
 The script's `meta.permissions` does not include that project or space. Add the grant, or remove `permissions` to allow everything.
@@ -325,6 +349,7 @@ Scripts are single files without imports. Copy small helpers into the script.
 
 ## Related topics
 
+- [Per-Issue Script Jobs](script-jobs.md): one script run per issue, for thousands of issues, resumable
 - [Script API reference](reference/scripts.md): every verb, `meta` field, limit and output shape
 - [Scripts in CI](recipes/scripts-in-ci.md): review plans in pull requests, apply after approval, scheduled housekeeping
 - [Jira bulk operations](jira/bulk-operations.md): single commands for common bulk changes

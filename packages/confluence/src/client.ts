@@ -2757,6 +2757,29 @@ export class ConfluenceClient {
   }
 
   /**
+   * Read-only escape hatch: GET any Confluence REST resource, relative to the
+   * Confluence base (`/wiki` on Cloud): `/rest/api/…` (v1) or `/api/v2/…`.
+   * Auth, retries and 429 handling are the client's own. No query string in
+   * the path (pass `query`), no `..`.
+   */
+  async getJson(
+    path: string,
+    options: { query?: Record<string, string | number>; signal?: AbortSignal } = {}
+  ): Promise<unknown> {
+    const bad =
+      !(path.startsWith("/rest/api/") || path.startsWith("/api/v2/")) ||
+      /[?#\\\u0000-\u001f]|%2[ef]/i.test(path) ||
+      path.split("/").some((segment) => segment === ".." || segment === ".");
+    if (bad) {
+      throw new Error(`REST path must start with /rest/api/ or /api/v2/ and contain no query, "..", or control characters: ${JSON.stringify(path)}`);
+    }
+    const request = { query: options.query, signal: options.signal, logBody: "meta-only" as const };
+    return path.startsWith("/api/v2/")
+      ? this.requestV2(path.slice("/api/v2".length), request)
+      : this.request(path.slice("/rest/api".length), request);
+  }
+
+  /**
    * Get a space by key.
    */
   async getSpace(

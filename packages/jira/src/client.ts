@@ -1,4 +1,5 @@
 import { parseRetryAfterMs } from "./retry-after.js";
+import { DEFAULT_JQL_FUNCTION_LIMITS, expandJqlFunctions, hasJqlFunctions, type JqlFunctionLimits } from "./jql-functions.js";
 import {
   assertNotAuthRedirect,
   assertSessionJsonOk,
@@ -84,6 +85,13 @@ export interface JiraClientOptions {
    * response content, and error messages.
    */
   observeTransport?: (event: JiraTransportEvent) => void;
+  /**
+   * Client-side JQL functions (`issue in linkedIssuesOf("…")`, see
+   * jql-functions.ts) in `search`. On by default; `false`, or the environment
+   * variable `ATLCLI_JQL_FUNCTIONS=off`, sends JQL unchanged (e.g. on a site
+   * whose ScriptRunner provides functions of the same names).
+   */
+  jqlFunctions?: false | Partial<JqlFunctionLimits>;
 }
 
 // Internal-only test seam. Keeping this off the constructor avoids widening the
@@ -117,6 +125,16 @@ export function jiraErrorText(data: unknown): string {
     ...(typeof body.message === "string" ? [body.message] : []),
   ];
   return parts.length ? parts.join("; ") : JSON.stringify(data);
+}
+
+/** A REST path for `getJson`: one of `prefixes`, no query, fragment, `..` or control characters. */
+export function checkRestPath(path: string, prefixes: readonly string[]): string {
+  const bad =
+    !prefixes.some((p) => path.startsWith(p)) ||
+    /[?#\\\u0000-\u001f]|%2[ef]/i.test(path) ||
+    path.split("/").some((segment) => segment === ".." || segment === ".");
+  if (bad) throw new Error(`REST path must start with ${prefixes.join(" or ")} and contain no query, "..", or control characters: ${JSON.stringify(path)}`);
+  return path;
 }
 
 /**
@@ -164,6 +182,32 @@ export class JiraClient {
     this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
       siteOrigin: this.baseUrl,
     });
+    const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+    this.jqlFunctions =
+      options.jqlFunctions === false || env?.ATLCLI_JQL_FUNCTIONS === "off"
+        ? undefined
+        : { ...DEFAULT_JQL_FUNCTION_LIMITS, ...options.jqlFunctions };
+  }
+
+  private jqlFunctions: JqlFunctionLimits | undefined;
+  /** Expanded queries, so paging through one search expands it once. */
+  private expandedJql = new Map<string, Promise<string>>();
+
+  /** Rewrites atlcli JQL functions into native JQL (unchanged when off or unused). */
+  async expandJql(jql: string): Promise<string> {
+    if (!this.jqlFunctions || !hasJqlFunctions(jql)) return jql;
+    let expanded = this.expandedJql.get(jql);
+    if (!expanded) {
+      // ponytail: unbounded per-client cache; clients live for one command or script run.
+      expanded = expandJqlFunctions(
+        jql,
+        (inner, o) => this.searchNative(inner, { fields: o.fields, nextPageToken: o.nextPageToken, maxResults: o.maxResults }),
+        this.jqlFunctions,
+      );
+      this.expandedJql.set(jql, expanded);
+      expanded.catch(() => this.expandedJql.delete(jql));
+    }
+    return expanded;
   }
 
   /** Whether this client talks to Jira Cloud (API v3, ADF bodies). */
@@ -494,6 +538,24 @@ export class JiraClient {
    *
    * GET /rest/api/3/myself
    */
+  /**
+   * Read-only escape hatch: GET any Jira REST resource of the site, e.g.
+   * `/rest/api/3/field` or `/rest/agile/1.0/board/1/configuration`. Auth,
+   * retries and 429 handling are the client's own. The path must start with
+   * `/rest/` and carry neither a query string (pass `query`) nor `..`.
+   */
+  async getJson(
+    path: string,
+    options: { query?: Record<string, string | number | boolean>; signal?: AbortSignal } = {}
+  ): Promise<unknown> {
+    return this.request(checkRestPath(path, ["/rest/"]), {
+      apiBase: "",
+      query: options.query,
+      signal: options.signal,
+      logBody: "meta-only",
+    });
+  }
+
   async getCurrentUser(): Promise<JiraUser> {
     return this.request<JiraUser>("/myself");
   }
@@ -1162,6 +1224,20 @@ export class JiraClient {
       signal?: AbortSignal;
     } = {}
   ): Promise<JiraSearchResults> {
+    return this.searchNative(await this.expandJql(jql), options);
+  }
+
+  private async searchNative(
+    jql: string,
+    options: {
+      maxResults?: number;
+      fields?: string[];
+      expand?: string;
+      nextPageToken?: string;
+      properties?: string[];
+      signal?: AbortSignal;
+    } = {}
+  ): Promise<JiraSearchResults> {
     // Use the new /search/jql endpoint as /search is deprecated (410)
     // See: https://developer.atlassian.com/changelog/#CHANGE-2046
     // Note: New endpoint uses nextPageToken for pagination, not startAt
@@ -1214,7 +1290,7 @@ export class JiraClient {
       total?: number;
     }>("/search/jql", {
       query: {
-        jql,
+        jql: await this.expandJql(jql),
         maxResults: options.maxResults ?? 50,
         fields: options.fields ?? "*navigable",
       },

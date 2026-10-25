@@ -1,0 +1,18 @@
+// Asks on every open issue nobody touched for half a year whether it is still
+// needed, once: the "stale-asked" label marks issues already asked.
+//
+//   atlcli script run stale-comment.ts                 plans every issue, changes nothing
+//   atlcli script apply <job-id>                       applies the reviewed plans
+//   atlcli script run stale-comment.ts --apply         plans and applies issue by issue
+export const meta = {
+  description: "Comment once on issues untouched for 180 days",
+  each: { jql: "project = ATLCLI AND statusCategory != Done AND updated < -180d", fields: ["labels"] },
+  params: { text: { type: "string", default: "Is this still needed? Otherwise we close it in two weeks." } },
+};
+
+export default async (issue: JiraIssue, params: { text: string }) => {
+  // Comments are not skipped when repeated, so the label makes the script safe to run twice.
+  if ((issue.fields.labels as string[]).includes("stale-asked")) return;
+  await atlcli.jira.comment(issue.key, params.text);
+  await atlcli.jira.addLabels(issue.key, ["stale-asked"]);
+};

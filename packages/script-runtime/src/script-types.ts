@@ -30,10 +30,16 @@ interface ScriptMeta {
   description?: string;
   /** Once given, everything else is denied. Write grants name one project or space, e.g. "jira:write:ATLCLI". */
   permissions?: ScriptPermission[];
-  /** Planned writes per run (default 100). */
+  /** Planned writes per run (default 10000; per issue with --each: 50). */
   limits?: { maxWrites?: number };
   /** Parameters passed with \`--param name=value\`. */
   params?: Record<string, ScriptParamSpec>;
+  /**
+   * Per-issue mode (\`atlcli script run file.ts --each\`): \`export default async (issue, params) => …\`
+   * runs once per issue of \`jql\` (\`--each "<jql>"\` overrides it). Each issue comes
+   * with \`fields\` (default: summary, status, assignee, priority, issuetype, labels).
+   */
+  each?: { jql?: string; fields?: string[] };
 }
 
 interface JiraIssue {
@@ -148,6 +154,12 @@ const atlcli: {
     search(jql: string, options?: { fields?: string[]; properties?: string[]; limit?: number }): AsyncIterable<JiraIssue>;
     get(key: string, options?: { fields?: string[] }): Promise<JiraIssue>;
     /**
+     * Read-only escape hatch: GET any Jira REST resource of the site, e.g.
+     * rest("/rest/api/3/field") or rest("/rest/api/3/issue/A-1/changelog", { query: { maxResults: 100 } }).
+     * No writes; responses up to 5 MB. Needs jira:read.
+     */
+    rest(path: string, options?: { query?: Record<string, string | number | boolean> }): Promise<Json>;
+    /**
      * \`description\` is Markdown. To copy a description losslessly, pass the
      * raw value from \`get\`/\`search\` as \`fields.description\` instead (not both).
      * \`properties\` are issue properties set on create, by key.
@@ -198,6 +210,11 @@ const atlcli: {
   readonly confluence: {
     /** All pages matching \`cql\`, paged transparently. */
     search(cql: string, options?: { limit?: number }): AsyncIterable<ConfluencePageRef>;
+    /**
+     * Read-only escape hatch below the Confluence base: "/rest/api/…" or "/api/v2/…",
+     * e.g. rest("/api/v2/pages/123/properties"). No writes; up to 5 MB. Needs confluence:read.
+     */
+    rest(path: string, options?: { query?: Record<string, string | number | boolean> }): Promise<Json>;
     getPage(id: string): Promise<ConfluencePage>;
     getPage(id: string, options: { storage: true }): Promise<ConfluencePageStorage>;
     /** Direct child pages, in page-tree order. */

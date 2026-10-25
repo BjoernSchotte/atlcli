@@ -517,3 +517,77 @@ await atlcli.confluence.deletePage("300");`;
     expect(port.exports).toEqual([]);
   });
 });
+
+describe("resuming and concurrent apply", () => {
+  it("resumes after a failure: done operations are skipped, their keys and versions carry over", async () => {
+    const port = new StatefulPort();
+    const plan = await makePlan(port);
+    const journal = new Map<number, Record<string, unknown>>();
+    port.failOn = "confluenceAddLabels"; // op 8, after the issue and both pages exist
+    const first = await applyScriptPlan(plan, {
+      port,
+      baseUrl: BASE_URL,
+      onOperation: (r) => r.status === "applied" && journal.set(r.seq, r.result!),
+    });
+    expect(first.status).toBe("failed");
+    expect([...journal.keys()]).toEqual([1, 2, 3, 4, 5, 6, 7]);
+
+    port.failOn = undefined;
+    port.writes = [];
+    const second = await applyScriptPlan(plan, { port, baseUrl: BASE_URL, done: journal });
+    expect(second.status).toBe("applied");
+    // Only the rest ran; the label went onto the page created in the first run.
+    expect(port.writes).toEqual(["confluenceAddLabels", "confluenceUpdatePage", "confluenceUpdatePage"]);
+    expect(port.pages.get("501")!.labels).toEqual(["release"]);
+    expect(port.pages.get("100")).toMatchObject({ version: 9 });
+    // Preconditions of finished operations are not re-checked (ATLCLI-1 changed by op 4 itself).
+    expect(second.operations.map((o) => o.status)).toEqual(Array(10).fill("applied"));
+  });
+
+  it("runs independent operations in parallel but keeps per-target order", async () => {
+    const port = new StatefulPort();
+    for (let n = 2; n <= 6; n++) {
+      port.issues.set(`ATLCLI-${n}`, { id: String(n), key: `ATLCLI-${n}`, fields: { summary: "x", updated: port.tick() }, status: "To Do", comments: [] });
+    }
+    const source = `for (let n = 2; n <= 6; n++) {
+      await atlcli.jira.addLabels("ATLCLI-" + n, ["a"]);
+      await atlcli.jira.removeLabels("ATLCLI-" + n, ["a"]);
+      await atlcli.jira.comment("ATLCLI-" + n, "first");
+      await atlcli.jira.comment("ATLCLI-" + n, "second");
+    }`;
+    const run = await planScript(source, { port, variant: DEBUG_VARIANT });
+    const plan = await createScriptPlan(run, { source, baseUrl: BASE_URL });
+    let inFlight = 0;
+    let peak = 0;
+    const slow = <A extends unknown[], R>(fn: (...a: A) => Promise<R>) => async (...a: A) => {
+      peak = Math.max(peak, ++inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      try {
+        return await fn(...a);
+      } finally {
+        inFlight--;
+      }
+    };
+    port.jiraEditLabels = slow(port.jiraEditLabels.bind(port));
+    port.jiraAddComment = slow(port.jiraAddComment.bind(port));
+
+    const report = await applyScriptPlan(plan, { port, baseUrl: BASE_URL, concurrency: 4 });
+    expect(report.status).toBe("applied");
+    expect(peak).toBe(4);
+    for (let n = 2; n <= 6; n++) {
+      expect(port.labels.get(`ATLCLI-${n}`)).toEqual([]); // add then remove, never reordered
+      expect(port.issues.get(`ATLCLI-${n}`)!.comments).toEqual(["first", "second"]);
+    }
+  });
+
+  it("stops starting new operations after a failure under concurrency", async () => {
+    const port = new StatefulPort();
+    const source = `for (let i = 0; i < 20; i++) await atlcli.jira.comment("ATLCLI-1", "c" + i);`;
+    const plan = await createScriptPlan(await planScript(source, { port, variant: DEBUG_VARIANT }), { source, baseUrl: BASE_URL });
+    port.failOn = "jiraAddComment";
+    const report = await applyScriptPlan(plan, { port, baseUrl: BASE_URL, concurrency: 8 });
+    expect(report.status).toBe("failed");
+    expect(port.writes).toEqual(["jiraAddComment"]); // same issue: strictly in order, the first fails
+    expect(report.operations.filter((o) => o.status === "skipped")).toHaveLength(19);
+  });
+});

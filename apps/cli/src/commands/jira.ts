@@ -7417,6 +7417,15 @@ Issue lists (search, my, filter run, board/sprint/epic issues) print a table:
   --csv              CSV (RFC 4180)
   --no-headers       Leave out the header row
 
+JQL functions, resolved by atlcli wherever JQL is accepted (--jql, scripts):
+  issue in linkedIssuesOf("<jql>"[, "<link type or phrase>"])
+  issue in subtasksOf("<jql>") · childrenOf("<jql>") · issuesInEpics("<jql>")
+  issue in parentsOf("<jql>") · epicsOf("<jql>")
+  issue in hasSubtasks("<jql>") · hasLinks · hasAttachments · hasComments · hasWorklogs
+  Each takes a quoted inner query and works with "in" and "not in"; up to 1000
+  matching issues. ATLCLI_JQL_FUNCTIONS=off sends JQL unchanged (e.g. when
+  ScriptRunner provides functions of the same names).
+
 Examples:
   atlcli jira project list
   atlcli jira issue create --project PROJ --type Task --summary "My task"
@@ -7428,6 +7437,7 @@ Examples:
   atlcli jira watch PROJ-123
   atlcli jira search --project PROJ --assignee me
   atlcli jira search --watching --updated -7d --columns key,status,"Story Points"
+  atlcli jira search --jql 'issue in linkedIssuesOf("project = PROJ AND status = Blocked", "blocks")'
   atlcli jira webhook serve --port 3000 --projects PROJ
   atlcli jira subtask create PROJ-123 --summary "My subtask"
   atlcli jira field search "story point"

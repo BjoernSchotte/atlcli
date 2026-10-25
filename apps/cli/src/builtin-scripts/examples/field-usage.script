@@ -1,0 +1,20 @@
+// Reads data no script verb covers through the read-only REST access: all
+// custom fields of the site, and how many issues of a project use each one.
+// Writes nothing.
+//
+//   atlcli script run field-usage.ts --param project=ATLCLI
+export const meta = {
+  description: "Report custom field usage in a project (read-only REST)",
+  params: { project: { type: "string", default: "ATLCLI" } },
+};
+
+export default async ({ project }: { project: string }) => {
+  const fields = (await atlcli.jira.rest("/rest/api/3/field")) as Array<{ id: string; name: string; custom: boolean }>;
+  const usage: Record<string, number> = {};
+  for (const field of fields.filter((f) => f.custom).slice(0, 25)) {
+    let n = 0;
+    for await (const _ of atlcli.jira.search(`project = "${project}" AND cf[${field.id.replace("customfield_", "")}] is not EMPTY`, { limit: 1000 })) n++;
+    if (n > 0) usage[field.name] = n;
+  }
+  return usage;
+};

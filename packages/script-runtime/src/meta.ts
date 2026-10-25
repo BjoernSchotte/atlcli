@@ -20,7 +20,7 @@ const paramSpec = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("boolean"), default: z.boolean().optional(), description: z.string().optional() }),
 ]);
 
-export const DEFAULT_MAX_WRITES = 100;
+export const DEFAULT_MAX_WRITES = 10_000;
 
 export const scriptMetaSchema = z.strictObject({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes").optional(),
@@ -31,6 +31,12 @@ export const scriptMetaSchema = z.strictObject({
     .optional(),
   limits: z.strictObject({ maxWrites: z.number().int().positive().optional() }).optional(),
   params: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), paramSpec).optional(),
+  /**
+   * Per-issue mode (`script run --each`): the default export runs once per
+   * issue of `jql`, which `--each <jql>` overrides; `fields` are the fields
+   * each issue comes with.
+   */
+  each: z.strictObject({ jql: z.string().min(1).optional(), fields: z.array(z.string().min(1)).optional() }).optional(),
 });
 
 export type ScriptMeta = z.output<typeof scriptMetaSchema>;

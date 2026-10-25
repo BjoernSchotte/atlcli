@@ -31,11 +31,14 @@ let issues = new Map<string, Issue>();
 let pages = new Map<string, Page>();
 let clock = 0;
 let nextId = 100;
+/** Issues whose comment endpoint answers 400 (no retry), to make an apply fail midway. */
+let rejectComments = new Set<string>();
 
 const tick = () => `2026-10-24T10:00:${String(clock++).padStart(2, "0")}.000+0000`;
 
 function reset(): void {
   writes = [];
+  rejectComments = new Set();
   links = [];
   clock = 0;
   nextId = 100;
@@ -108,6 +111,7 @@ beforeAll(async () => {
         return new Response(null, { status: 201 });
       }
       if ((m = /^\/rest\/api\/3\/issue\/([A-Z]+-\d+)\/comment$/.exec(path))) {
+        if (rejectComments.has(m[1]!)) return Response.json({ errorMessages: ["Comments are locked"] }, { status: 400 });
         const issue = issues.get(m[1]!)!;
         issue.comments.push(JSON.stringify(body.body));
         return Response.json({ id: String(5000 + issue.comments.length), body: body.body }, { status: 201 });
@@ -362,7 +366,12 @@ export default async ({ n }) => { await atlcli.jira.comment("ATLCLI-1", "n=" + (
     const calls = await run(["run", "-e", `await atlcli.jira.get("ATLCLI-1"); await atlcli.jira.get("ATLCLI-2");`, "--max-calls", "1"]);
     expect(calls.stderr).toContain("Script failed (host-call-limit)");
 
-    for (const [flag, value] of [["--timeout", "soon"], ["--max-writes", "0"], ["--memory", "-1"]] as const) {
+    // 0 lifts a limit (no deadline must not mean "expire at once").
+    const unlimited = await run(["run", many, "--max-writes", "0", "--max-calls", "0", "--timeout", "0"]);
+    expect(unlimited.exitCode).toBe(0);
+    expect(unlimited.stdout).toContain("Plan: 2 operations");
+
+    for (const [flag, value] of [["--timeout", "soon"], ["--max-writes", "-3"], ["--memory", "0"]] as const) {
       const bad = await run(["run", "-e", "1", flag, value]);
       expect(bad.exitCode).toBe(1);
       expect(bad.stderr).toContain(flag);
@@ -391,6 +400,58 @@ export default async ({ n }) => { await atlcli.jira.comment("ATLCLI-1", "n=" + (
   });
 });
 
+describe("script apply: journal and resume", () => {
+  test("a failed apply resumes where it stopped and never repeats a write", async () => {
+    const file = await script("two.ts", `await atlcli.jira.comment("ATLCLI-1", "a"); await atlcli.jira.comment("ATLCLI-2", "b");`);
+    const planFile = join(home, "two.plan.json");
+    expect((await run(["run", file, "--plan-out", planFile])).exitCode).toBe(0);
+
+    rejectComments.add("ATLCLI-2");
+    const failed = await run(["apply", planFile, "--yes"]);
+    expect(failed.exitCode).toBe(1);
+    expect(failed.stderr).toContain("--resume");
+    expect(issues.get("ATLCLI-1")!.comments).toHaveLength(1);
+
+    const again = await run(["apply", planFile, "--yes"]);
+    expect(again.exitCode).toBe(1);
+    expect(again.stderr).toContain("1 of 2 operations of this plan were already applied");
+
+    rejectComments.clear();
+    const resumed = await run(["apply", planFile, "--yes", "--resume"]);
+    expect(resumed.exitCode).toBe(0);
+    expect(resumed.stdout).toContain("Resuming: 1 of 2");
+    expect(issues.get("ATLCLI-1")!.comments).toHaveLength(1);
+    expect(issues.get("ATLCLI-2")!.comments).toHaveLength(1);
+
+    const done = await run(["apply", planFile, "--yes", "--resume"]);
+    expect(done.stdout).toContain("already applied");
+    expect(issues.get("ATLCLI-2")!.comments).toHaveLength(1);
+  });
+
+  test("large plans are summarized, with counts per verb", async () => {
+    const file = await script("many.ts", `for (let i = 0; i < 250; i++) await atlcli.jira.comment("ATLCLI-1", "n" + i);`);
+    const out = await run(["run", file]);
+    expect(out.stdout).toContain("Plan: 250 operations (250 jira.comment)");
+    expect(out.stdout).toContain("… and 200 more");
+  });
+
+  test("the apply summary lists at most 20 created keys", async () => {
+    const file = await script("create25.ts", `for (let i = 0; i < 25; i++) await atlcli.jira.create({ project: "ATLCLI", type: "Task", summary: "n" + i });`);
+    const out = await run(["run", file, "--apply", "--yes", "--concurrency", "4"]);
+    expect(out.exitCode).toBe(0);
+    expect(out.stdout).toMatch(/Created: (ATLCLI-\d+, ){19}ATLCLI-\d+ and 5 more\./);
+  });
+
+  test("--concurrency is validated", async () => {
+    const bad = await run(["run", "-e", "1", "--apply", "--yes", "--concurrency", "99"]);
+    expect(bad.exitCode).toBe(0); // nothing to apply, so the flag is never read
+    const file = await script("one.ts", `await atlcli.jira.comment("ATLCLI-1", "x");`);
+    const rejected = await run(["run", file, "--apply", "--yes", "--concurrency", "99"]);
+    expect(rejected.exitCode).toBe(1);
+    expect(rejected.stderr).toContain("--concurrency expects 1 to 32");
+  });
+});
+
 describe("script init and check", () => {
   test("init writes types, tsconfig and an example; check validates them", async () => {
     const dir = join(home, "scripts");
@@ -412,6 +473,28 @@ describe("script init and check", () => {
       expect(bad.exitCode).toBe(1);
       expect(JSON.parse(bad.stdout).typecheck.status).toBe("errors");
     }
+  });
+
+  test("init --each writes a per-issue skeleton; --example and --list-examples", async () => {
+    const dir = join(home, "each-scripts");
+    const each = await run(["init", dir, "--each", "project = ATLCLI AND updated < -30d"]);
+    expect(each.exitCode, each.stderr).toBe(0);
+    expect(each.stdout).toContain("Next: atlcli script run");
+    const skeleton = await readFile(join(dir, "each.ts"), "utf8");
+    expect(skeleton).toContain(`jql: "project = ATLCLI AND updated < -30d"`);
+    expect(skeleton).toContain("export default async (issue: JiraIssue)");
+
+    const list = await run(["init", "--list-examples"]);
+    expect(list.stdout).toContain("stale-comment");
+    expect(list.stdout).toContain("epic-status-page   run");
+
+    const example = await run(["init", dir, "--example", "close-inactive"]);
+    expect(example.exitCode).toBe(0);
+    expect(await readFile(join(dir, "close-inactive.ts"), "utf8")).toContain("setStatus");
+
+    const unknown = await run(["init", dir, "--example", "nope"]);
+    expect(unknown.exitCode).toBe(1);
+    expect(unknown.stderr).toContain("Available: stale-comment");
   });
 
   test("check rejects invalid meta without running the script", async () => {

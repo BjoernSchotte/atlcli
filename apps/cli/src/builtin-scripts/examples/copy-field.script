@@ -1,0 +1,17 @@
+// Copies one field into another on every issue where they differ, e.g. a
+// legacy custom field into its replacement. Field ids, not names
+// (atlcli jira field list shows them).
+//
+//   atlcli script run copy-field.ts --param from=customfield_10010 --param to=customfield_10020
+export const meta = {
+  description: "Copy a field's value into another field",
+  each: { jql: "project = ATLCLI" },
+  params: { from: { type: "string" }, to: { type: "string" } },
+};
+
+export default async (issue: JiraIssue, params: { from: string; to: string }) => {
+  // The issue comes with its default fields; read the two we need.
+  const { fields } = await atlcli.jira.get(issue.key, { fields: [params.from, params.to] });
+  if (fields[params.from] == null || JSON.stringify(fields[params.from]) === JSON.stringify(fields[params.to])) return;
+  await atlcli.jira.update(issue.key, { fields: { [params.to]: fields[params.from] } });
+};

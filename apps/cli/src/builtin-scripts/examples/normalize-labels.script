@@ -1,0 +1,19 @@
+// Rewrites labels to one spelling: lower case, dashes instead of underscores,
+// and merges known synonyms. Issues already clean are left alone.
+//
+//   atlcli script run normalize-labels.ts --each "project = ATLCLI AND labels is not EMPTY"
+export const meta = {
+  description: "Normalize label spelling and merge synonyms",
+  each: { jql: "project = ATLCLI AND labels is not EMPTY", fields: ["labels"] },
+};
+
+const SYNONYMS: Record<string, string> = { "frontend": "ui", "front-end": "ui", "bugfix": "bug" };
+
+export default async (issue: JiraIssue) => {
+  const labels = issue.fields.labels as string[];
+  const wanted = [...new Set(labels.map((l) => l.toLowerCase().replace(/_/g, "-")).map((l) => SYNONYMS[l] ?? l))];
+  const remove = labels.filter((l) => !wanted.includes(l));
+  const add = wanted.filter((l) => !labels.includes(l));
+  if (remove.length) await atlcli.jira.removeLabels(issue.key, remove);
+  if (add.length) await atlcli.jira.addLabels(issue.key, add);
+};

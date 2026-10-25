@@ -12,6 +12,7 @@ metadata:
 - [Search](#search)
 - [Convenience filters](#convenience-filters)
 - [My issues](#my-issues)
+- [JQL functions](#jql-functions)
 - [Saved filters](#saved-filters)
 - [Export and import](#export-and-import)
 - [Anti-patterns](#anti-patterns)
@@ -108,6 +109,27 @@ atlcli jira me --json                    # current user: accountId, displayName,
 
 `jira me` returns `{ "user": { … } }`. Its `accountId` identifies the user
 unambiguously wherever a flag takes a user.
+
+## JQL functions
+
+atlcli resolves these functions itself (Jira Cloud has none of them), with
+ScriptRunner's names, wherever it takes JQL: `--jql` of every command and
+`atlcli.jira.search` in scripts.
+
+| Function | Matches |
+| --- | --- |
+| `issue in linkedIssuesOf("<jql>"[, "<link>"])` | issues linked to the matches; `<link>` is a type name (both directions) or a phrase like `"blocks"` (that direction) |
+| `issue in subtasksOf("<jql>")`, `childrenOf`, `issuesInEpics` | children of the matches (native `parent in (…)`) |
+| `issue in parentsOf("<jql>")`, `epicsOf` | parents, or epics above (also via a story) |
+| `issue in hasSubtasks("<jql>")`, `hasLinks`, `hasAttachments`, `hasComments`, `hasWorklogs` | matches that have them |
+
+- The argument is a quoted inner query; `not in` works too. Quote the whole
+  JQL in single quotes in the shell: `--jql 'issue in hasLinks("project = PROJ")'`.
+- Limits: the inner query up to 2,000 issues, the result up to 1,000 keys
+  (children functions: no result cap). Over a limit the search fails with a
+  message; narrow the inner query or use a per-issue script job.
+- No nesting. `ATLCLI_JQL_FUNCTIONS=off` sends JQL unchanged (sites whose
+  ScriptRunner provides these names).
 
 ## Saved filters
 

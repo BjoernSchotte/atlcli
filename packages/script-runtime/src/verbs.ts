@@ -66,7 +66,12 @@ export interface PlannedOperation {
   dependsOn: number[];
 }
 
-export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "onLog" | "variant"> {
+export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "onLog" | "variant" | "item"> {
+  /**
+   * Shared across runs (per-issue mode): lookups that do not depend on the
+   * issue, such as link types and users, are fetched once.
+   */
+  memo?: Map<string, Promise<unknown>>;
   port: ScriptPort;
   /** Raw parameter input, resolved against `meta.params`. */
   params?: Readonly<Record<string, unknown>>;
@@ -171,6 +176,21 @@ const sprintFields = {
 };
 const exportOptions = z.strictObject({ format: z.enum(["pdf", "docx"]), path: str.optional() });
 
+/** Site-relative REST path; hosts check the product prefix (`/rest/`, `/api/v2/`). */
+const restPath = str.refine(
+  (p) => p.startsWith("/") && !/[?#\\\u0000-\u001f]|%2[ef]/i.test(p) && !p.split("/").some((s) => s === ".." || s === "."),
+  "a site-relative path like /rest/api/3/field, without query string or ..",
+);
+const restOptions = z.strictObject({ query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional() });
+/** Largest REST response a script may receive (serialized JSON). */
+export const MAX_REST_BYTES = 5 * 1024 * 1024;
+
+function capRest(value: unknown, path: string): unknown {
+  const size = JSON.stringify(value ?? null).length;
+  if (size > MAX_REST_BYTES) throw new Error(`Response of ${path} is ${size} bytes; the limit is ${MAX_REST_BYTES}. Page through it with query parameters.`);
+  return value ?? null;
+}
+
 /** One plan recording session; every verb closes over it. */
 class Recorder {
   readonly operations: PlannedOperation[] = [];
@@ -195,6 +215,7 @@ class Recorder {
     private readonly meta: ScriptMeta,
     private readonly maxWrites = maxWritesOf(meta),
     readonly templating: Templating = { vars: {}, now: new Date().toISOString(), strict: false },
+    private readonly memo?: Map<string, Promise<unknown>>,
   ) {}
 
   /** Without declared permissions every verb is allowed (writes are still only planned). */
@@ -244,7 +265,23 @@ class Recorder {
   }
 
   linkTypes(signal: AbortSignal): Promise<JiraLinkType[]> {
-    return (this.linkTypeList ??= this.port.jiraLinkTypes({ signal }));
+    return (this.linkTypeList ??= this.memoized("linkTypes", () => this.port.jiraLinkTypes({ signal })));
+  }
+
+  findUser(query: string, signal: AbortSignal): Promise<JiraUserRef> {
+    return this.memoized(`user:${query}`, () => this.port.jiraFindUser(query, { signal }));
+  }
+
+  /** Through the shared memo when there is one; failed lookups are not kept. */
+  private memoized<T>(key: string, load: () => Promise<T>): Promise<T> {
+    if (!this.memo) return load();
+    let hit = this.memo.get(key) as Promise<T> | undefined;
+    if (!hit) {
+      hit = load();
+      this.memo.set(key, hit);
+      hit.catch(() => this.memo?.delete(key));
+    }
+    return hit;
   }
 
   /** Space of a page, from the plan for placeholders or read live. */
@@ -429,7 +466,7 @@ const VERBS: Record<string, Verb> = {
   }),
   "jira.assign": verb(z.tuple([str, str.optional()]), async (r, [key, user], signal) => {
     r.require(`jira:write:${r.jiraProject(key)}`);
-    const assignee = user === undefined ? null : await r.port.jiraFindUser(user, { signal });
+    const assignee = user === undefined ? null : await r.findUser(user, signal);
     const issue = await untouchedIssue(r, key, ["assignee"], signal);
     if (issue && sameUser(issue.fields.assignee, assignee)) {
       r.skipped.push({ verb: "jira.assign", target: key, reason: "unchanged" });
@@ -535,6 +572,14 @@ const VERBS: Record<string, Verb> = {
     return null;
   }),
 
+  "jira.rest": verb(z.tuple([restPath, restOptions.optional()]), async (r, [path, o], signal) => {
+    r.require("jira:read");
+    return capRest(await hostOp(r.port.jiraRest?.bind(r.port), "jira.rest")(path, { query: o?.query, signal }), path);
+  }),
+  "confluence.rest": verb(z.tuple([restPath, restOptions.optional()]), async (r, [path, o], signal) => {
+    r.require("confluence:read");
+    return capRest(await hostOp(r.port.confluenceRest?.bind(r.port), "confluence.rest")(path, { query: o?.query, signal }), path);
+  }),
   "confluence.search": verb(
     z.tuple([str, z.strictObject({ cursor: str.optional() }).optional()]),
     async (r, [cql, options], signal) => {
@@ -838,7 +883,7 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
   } catch (error) {
     throw new ScriptError("invalid-script", error instanceof Error ? error.message : String(error));
   }
-  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta), options.templating);
+  const recorder = new Recorder(options.port, meta, options.maxWrites ?? maxWritesOf(meta), options.templating, options.memo);
   const host: Record<string, HostFunction> = {};
   for (const [name, definition] of Object.entries(VERBS)) {
     host[name] = async (rawArgs, signal) => {
@@ -854,6 +899,7 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
     host,
     wrappers: WRAPPERS,
     params,
+    ...(options.item !== undefined ? { item: options.item } : {}),
     limits: options.limits,
     onLog: options.onLog,
     variant: options.variant,
