@@ -131,7 +131,7 @@ describe("audit jira", () => {
     expect(stderr).toBe("");
     expect(exitCode).toBe(2);
     const report = JSON.parse(stdout);
-    expect(report.schemaVersion).toBe("2");
+    expect(report.schemaVersion).toBe("3");
     expect(report.query).toBe('project = "ATLCLI"');
     expect(report.rules).toEqual({ source: "built-in profile default", extends: "default", minLevel: "warning" });
     const rules = report.findings.map((f: { rule: string; key: string; severity: string }) => `${f.rule}:${f.key}:${f.severity}`);

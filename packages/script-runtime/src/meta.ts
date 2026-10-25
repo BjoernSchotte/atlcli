@@ -37,6 +37,8 @@ export const scriptMetaSchema = z.strictObject({
    * each issue comes with.
    */
   each: z.strictObject({ jql: z.string().min(1).optional(), fields: z.array(z.string().min(1)).optional() }).optional(),
+  /** An audit rule (`atlcli audit …`); validated by the audit engine. */
+  audit: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type ScriptMeta = z.output<typeof scriptMetaSchema>;

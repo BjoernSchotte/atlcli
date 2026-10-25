@@ -18,15 +18,11 @@ import {
   resolveDefaults,
 } from "@atlcli/core";
 import { ConfluenceClient, type ConfluenceSearchResult } from "@atlcli/confluence";
+import { type AuditBaseline, digestAuditRules, isRuleActive, parseAuditBaseline } from "@atlcli/audit";
 import {
-  type AuditRules,
   JiraClient,
-  type JiraAuditBaseline,
-  digestAuditRules,
-  isRuleActive,
   type StatusCategoryResolver,
   createStatusCategoryResolver,
-  parseAuditBaseline,
   parseStatusMap,
   resolveStatusMap,
   statusScopeJql,
@@ -34,7 +30,7 @@ import {
 import { assertCliAuthSupported } from "./session-guard.js";
 import { profileFilePath, writeJsonAtomic } from "./profile-paths.js";
 import { searchAll } from "./jira-flow.js";
-import { auditBaselinePath, collectJiraAudit, loadAuditRules } from "./audit-jira.js";
+import { type AuditSetup, auditBaselinePath, collectJiraAudit, loadAuditSetup } from "./audit-jira.js";
 import {
   DIGEST_COMMENT_PAGES,
   type DigestProduct,
@@ -111,7 +107,7 @@ async function fetchJira(
     projects: string[];
     statusMap: Record<string, "todo" | "wip" | "done">;
     /** Rules for the "Audit" section, already cut to the digest (`digestAuditRules`). */
-    audit?: { rules: AuditRules; baseline?: JiraAuditBaseline };
+    audit?: { setup: AuditSetup; baseline?: AuditBaseline; profile: Profile };
     /** Days without an update that make an open issue stale, for the team section. */
     staleDays: number;
   },
@@ -178,9 +174,18 @@ async function fetchJira(
           return { issues: result.issues, changelogs };
         })
       : Promise.resolve(undefined),
-    audit && scope && q.projects && Object.keys(audit.rules.rules).some((id) => isRuleActive(audit.rules, id))
+    audit && scope && q.projects && Object.keys(audit.setup.rules.rules).some((id) => isRuleActive(audit.setup.rules, id, audit.setup.registry))
       ? run("audit", async () => {
-          const { report } = await collectJiraAudit(client, { base: projectsJql(opts.projects), rules: audit.rules, scope, limit: DIGEST_AUDIT_LIMIT, baseline: audit.baseline, useBaseline: true });
+          const { createLazyCliScriptPort } = await import("./script-port.js");
+          const { report } = await collectJiraAudit(client, {
+            base: projectsJql(opts.projects),
+            setup: audit.setup,
+            scope,
+            limit: DIGEST_AUDIT_LIMIT,
+            ...(audit.baseline ? { baseline: audit.baseline } : {}),
+            useBaseline: true,
+            port: createLazyCliScriptPort(audit.profile),
+          });
           return report;
         })
       : Promise.resolve(undefined),
@@ -315,19 +320,20 @@ export async function handleDigest(args: string[], flags: Flags, opts: OutputOpt
   const statusMap = resolveStatusMap(config.flow?.statusMap, profile.flow?.statusMap, flagMap);
 
   // The "Audit" section: errors from the audit rules for the digest's projects, when audit is enabled.
-  let audit: { rules: AuditRules; baseline?: JiraAuditBaseline } | undefined;
+  let audit: { setup: AuditSetup; baseline?: AuditBaseline; profile: Profile } | undefined;
   const auditErrors: DigestRawInput["errors"] = [];
   if (projects.length && products.includes("jira") && (await getFlagValue<boolean>("audit", false))) {
     try {
       // Not the working directory's rules file: a digest runs from anywhere, and that file's JQL is trusted.
-      const rules = digestAuditRules(await loadAuditRules(profile, config.audit?.jira?.staleDays, undefined, null));
-      let baseline: JiraAuditBaseline | undefined;
+      const loaded = await loadAuditSetup(profile, config.audit?.jira?.staleDays, undefined, null);
+      const setup = { ...loaded, rules: digestAuditRules(loaded.rules, loaded.registry) };
+      let baseline: AuditBaseline | undefined;
       try {
         baseline = parseAuditBaseline(JSON.parse(await readFile(auditBaselinePath(profile.name), "utf8")));
       } catch {
         // No baseline (or an unreadable one): nothing accepted.
       }
-      audit = { rules, baseline };
+      audit = { setup, baseline, profile };
     } catch (err) {
       auditErrors.push({ section: "jira.audit", message: message(err) });
     }

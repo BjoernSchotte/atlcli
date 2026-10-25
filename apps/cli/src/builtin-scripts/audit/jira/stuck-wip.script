@@ -1,0 +1,28 @@
+// Issues in progress far longer than issues usually take from start to done.
+export const meta = {
+  audit: {
+    id: "flow/stuck-wip",
+    product: "jira",
+    title: "Stuck in progress",
+    category: "flow",
+    kind: "age",
+    legacy: "stuck-wip",
+    percentiles: true,
+    expensive: true,
+    needs: ["cycle-percentiles"],
+    profiles: { default: { warning: "p85", error: "p95" }, strict: { warning: "p85", error: "p95" } },
+  },
+};
+
+const DAY = 86_400_000;
+const fmt = (days) => `${days.toFixed(1)} d`;
+
+export default (issue, rule) => {
+  const f = rule.facts;
+  if (f.category !== "wip" || f.epic) return;
+  const age = (rule.now - Date.parse(f.startedAt ?? f.created)) / DAY;
+  const hit = rule.severity(age);
+  if (!hit) return;
+  const what = "percentile" in hit.threshold ? `the cycle-time P${hit.threshold.percentile} (${fmt(hit.limit)})` : fmt(hit.limit);
+  return rule.finding({ severity: hit.severity, detail: `In progress for ${Math.floor(age)} d, above ${what}.`, ageDays: age });
+};

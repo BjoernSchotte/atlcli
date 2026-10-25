@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Profile } from "@atlcli/core";
-import { loadAuditRules } from "./commands/audit-jira.js";
+import { loadAuditSetup } from "./commands/audit-jira.js";
 import { findSkillFile, SKILL_FILES } from "./skill-files.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -99,7 +99,7 @@ describe("jira-audit.md", () => {
     try {
       const file = join(dir, "audit-rules.yaml");
       writeFileSync(file, block!);
-      const rules = await loadAuditRules({ name: "skill-test" } as Profile, undefined, file);
+      const { rules } = await loadAuditSetup({ name: "skill-test" } as Profile, undefined, file, null);
       expect(rules.rules["hygiene/stale"]?.thresholds?.warning).toEqual({ days: 45 });
       expect(rules.custom.map((rule) => rule.id)).toEqual(["team/bug-without-component"]);
       expect(rules.overrides[0]?.match.issueType).toEqual(["Epic"]);

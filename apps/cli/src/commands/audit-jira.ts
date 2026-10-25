@@ -1,43 +1,42 @@
 /**
- * `audit jira` (spec digest-flow-metrics B3, spec jira-audit-rules):
- * report-only findings over live Jira data, under a rules file. Selection and
- * status mapping are shared with `jira analyze flow`, so both see the same
- * issue set; `collectJiraAudit` is shared with the digest.
+ * `audit jira` (spec digest-flow-metrics B3, spec jira-audit-rules, spec
+ * scriptable-audit): findings over live Jira data, under a rules file, from
+ * rule scripts (the built-ins and a team's own). Selection and status mapping
+ * are shared with `jira analyze flow`, so both see the same issue set;
+ * `collectJiraAudit` is shared with the digest.
  */
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve as resolvePath } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { ERROR_CODES, type OutputOptions, type Profile, fail, getFlag, hasFlag, output } from "@atlcli/core";
 import {
   AUDIT_SEVERITY_RANK,
+  type AuditBaseline,
+  type AuditFinding,
+  type AuditRegistry,
+  type AuditReportV3,
   type AuditRules,
-  type AuditSeverity,
   AuditRulesError,
-  DEFAULT_JIRA_STALE_DAYS,
-  type JiraAuditBaseline,
-  type JiraAuditFinding,
-  type JiraAuditReportV2,
-  type JiraClient,
-  type JiraIssue,
-  type StatusCategoryResolver,
+  type AuditRuleScript,
+  AuditScriptError,
+  type AuditSeverity,
   applyRulePatch,
-  attachChangelogs,
-  auditJiraIssues,
+  auditJira,
   createAuditBaseline,
   defaultAuditRules,
-  findFlaggedField,
   isRuleActive,
   parseAuditBaseline,
   parseAuditRules,
   pruneAuditBaseline,
-  renderJiraAuditMarkdown,
-  renderJiraAuditText,
+  renderAuditText,
   resolveAuditChecks,
   restrictAuditRules,
-  ruleTitle,
-} from "@atlcli/jira";
+} from "@atlcli/audit";
+import { type JiraClient, type JiraField, type JiraIssue, type StatusCategoryResolver, attachChangelogs } from "@atlcli/jira";
+import type { ScriptPort } from "@atlcli/script-runtime";
+import { customAuditReport, emitAuditReport, handleRuleListing, loadAuditScripts, registryOf, runAuditFixes, scriptFlags } from "./audit-scripts.js";
 import { loadJiraContext, loadStatusResolver, searchAll, selectionJql } from "./jira-flow.js";
 import { profileFilePath, writeJsonAtomic } from "./profile-paths.js";
 
@@ -65,54 +64,80 @@ export function auditBaselinePath(profile: string): string {
   return profileFilePath(profile, "audit-baseline.json");
 }
 
+/** Everything an audit run needs before it fetches: the rule scripts, their registry and the rules. */
+export interface AuditSetup {
+  scripts: AuditRuleScript[];
+  registry: AuditRegistry;
+  rules: AuditRules;
+  diagnostics: string[];
+}
+
 /**
  * The rules in effect: `--rules`, else the first rules file found, else the
- * built-in default profile. Without a file, `audit.jira.staleDays` (profile,
- * then global) still sets the stale thresholds.
+ * built-in default profile; and the rule scripts (built-ins, the audit
+ * directories, the file's `scripts:`, `--script`). Without a file,
+ * `audit.jira.staleDays` (profile, then global) still sets the stale thresholds.
  */
-export async function loadAuditRules(
+export async function loadAuditSetup(
   profile: Profile,
   globalStaleDays: [number, number, number] | undefined,
   rulesFlag?: string,
-  cwd: string | null = process.cwd()
-): Promise<AuditRules> {
+  cwd: string | null = process.cwd(),
+  extraScripts: string[] = [],
+): Promise<AuditSetup> {
   const path = rulesFlag ? resolvePath(rulesFlag) : auditRulesCandidates(profile.name, cwd).find((p) => existsSync(p));
-  if (!path) {
-    const rules = defaultAuditRules();
-    const stale = profile.audit?.jira?.staleDays ?? globalStaleDays;
-    return stale ? withStaleDays(rules, stale) : rules;
-  }
-  let text: string;
-  try {
-    text = await readFile(path, "utf8");
-  } catch {
-    throw new AuditRulesError(`Cannot read the rules file ${path}.`);
-  }
   let parsed: unknown;
-  try {
-    parsed = parseYaml(text);
-  } catch (err) {
-    throw new AuditRulesError(`${path}: invalid YAML: ${(err as Error).message}`);
+  if (path) {
+    let text: string;
+    try {
+      text = await readFile(path, "utf8");
+    } catch {
+      throw new AuditRulesError(`Cannot read the rules file ${path}.`);
+    }
+    try {
+      parsed = parseYaml(text);
+    } catch (err) {
+      throw new AuditRulesError(`${path}: invalid YAML: ${(err as Error).message}`);
+    }
+  }
+  const fileScripts = (parsed as { scripts?: unknown } | undefined)?.scripts;
+  const { scripts, diagnostics } = await loadAuditScripts("jira", {
+    cwd,
+    ...(path && fileScripts !== undefined ? { fileScripts: { base: dirname(path), paths: Array.isArray(fileScripts) ? fileScripts.map(String) : [String(fileScripts)] } } : {}),
+    extra: extraScripts,
+  });
+  const registry = registryOf(scripts);
+  if (!path) {
+    const rules = defaultAuditRules(registry);
+    const stale = profile.audit?.jira?.staleDays ?? globalStaleDays;
+    return { scripts, registry, rules: stale ? withStaleDays(rules, stale, registry) : rules, diagnostics };
   }
   try {
-    return parseAuditRules(parsed, path);
+    return { scripts, registry, rules: parseAuditRules(parsed, path, registry), diagnostics };
   } catch (err) {
     if (err instanceof AuditRulesError && !err.message.startsWith(path)) throw new AuditRulesError(`${path}: ${err.message}`);
     throw err;
   }
 }
 
-function withStaleDays(rules: AuditRules, [info, warning, error]: [number, number, number]): AuditRules {
+function withStaleDays(rules: AuditRules, [info, warning, error]: [number, number, number], registry: AuditRegistry): AuditRules {
+  if (!registry.has("hygiene/stale")) return rules;
   return {
     ...rules,
     rules: {
       ...rules.rules,
-      "hygiene/stale": applyRulePatch(rules.rules["hygiene/stale"] ?? {}, { info, warning, error }, "hygiene/stale", "--stale"),
+      "hygiene/stale": applyRulePatch(rules.rules["hygiene/stale"] ?? {}, { info, warning, error }, "hygiene/stale", "--stale", registry),
     },
   };
 }
 
-async function readBaseline(path: string): Promise<{ baseline?: JiraAuditBaseline; warning?: string }> {
+/** The Flagged field: its JQL clause name `Flagged` is the same on every site and in every language. */
+export function findFlaggedField(fields: JiraField[]): string | undefined {
+  const candidates = fields.filter((f) => f.clauseNames?.some((c) => c.toLowerCase() === "flagged"));
+  return (candidates.find((f) => f.schema?.custom?.endsWith(":multicheckboxes")) ?? candidates[0])?.id;
+}
+
+async function readBaseline(path: string): Promise<{ baseline?: AuditBaseline; warning?: string }> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
@@ -129,34 +154,41 @@ async function readBaseline(path: string): Promise<{ baseline?: JiraAuditBaselin
 export interface CollectJiraAuditOptions {
   /** Base JQL, without ORDER BY. */
   base: string;
-  rules: AuditRules;
+  setup: AuditSetup;
   scope: { resolve: StatusCategoryResolver; open: string; done: string };
   limit: number;
-  baseline?: JiraAuditBaseline;
+  baseline?: AuditBaseline;
   useBaseline: boolean;
   pointsField?: string;
   now?: Date;
+  /** What rule scripts read through `atlcli.*`. */
+  port: ScriptPort;
 }
 
 /** Fetch what the active rules need, then apply them. */
 export async function collectJiraAudit(
   client: JiraClient,
   opts: CollectJiraAuditOptions
-): Promise<{ report: JiraAuditReportV2; candidates: JiraAuditFinding[] }> {
-  const { base, rules, scope, limit } = opts;
-  const active = (id: string) => isRuleActive(rules, id);
-  const needDone = active("flow/stuck-wip") || active("flow/status-aging") || active("hygiene/done-without-version");
-  const needHistory = active("flow/stuck-wip") || active("flow/status-aging");
+): Promise<{ report: AuditReportV3; candidates: AuditFinding[]; issues: Map<string, JiraIssue> }> {
+  const { base, scope, limit } = opts;
+  const { rules, registry, scripts } = opts.setup;
+  const active = (id: string) => isRuleActive(rules, id, registry);
+  const using = scripts.filter((s) => active(s.meta.id));
+  const needs = (need: string) => using.some((s) => s.meta.needs.includes(need));
+  const percentiles = needs("cycle-percentiles") || needs("status-percentiles");
+  const needDone = percentiles || using.some((s) => s.meta.items === "done");
+  const needHistory = percentiles || needs("changelog");
 
-  const pointsField = active("hygiene/unestimated-in-sprint")
-    ? opts.pointsField ?? (await client.detectStoryPointsField()) ?? undefined
-    : undefined;
-  const flaggedField = active("hygiene/flagged") ? rules.flaggedField ?? findFlaggedField(await client.getFields()) : undefined;
+  const pointsField = needs("points") ? opts.pointsField ?? (await client.detectStoryPointsField()) ?? undefined : undefined;
+  const flaggedField = needs("flagged") ? rules.flaggedField ?? findFlaggedField(await client.getFields()) : undefined;
 
   const fields = [
-    "summary", "status", "issuetype", "assignee", "updated", "created", "parent", "fixVersions", "project", "duedate",
-    ...(pointsField ? [pointsField] : []),
-    ...(flaggedField ? [flaggedField] : []),
+    ...new Set([
+      "summary", "status", "issuetype", "assignee", "updated", "created", "parent", "fixVersions", "project", "duedate",
+      ...using.flatMap((s) => s.meta.fields),
+      ...(pointsField ? [pointsField] : []),
+      ...(flaggedField ? [flaggedField] : []),
+    ]),
   ];
   const partial: string[] = [];
 
@@ -179,7 +211,7 @@ export async function collectJiraAudit(
 
   const [inOpenSprint, projectsUsingVersions, resolvedNotDone, custom, jqlMatches] = await Promise.all([
     (async () => {
-      if (!pointsField) return undefined;
+      if (!needs("sprint") || (needs("points") && !pointsField)) return undefined;
       try {
         const inSprint = await searchAll(client, `(${base}) AND ${scope.open} AND sprint in openSprints()`, ["summary"], limit);
         return new Set(inSprint.issues.map((i) => i.key));
@@ -190,7 +222,7 @@ export async function collectJiraAudit(
     })(),
     (async () => {
       const used = new Set<string>();
-      if (!active("hygiene/done-without-version")) return used;
+      if (!needs("versions")) return used;
       const projects = [...new Set(doneResult.issues.map((i) => i.fields.project?.key).filter((k): k is string => Boolean(k)))];
       await Promise.all(
         projects.map(async (key) => {
@@ -200,7 +232,7 @@ export async function collectJiraAudit(
       return used;
     })(),
     (async () => {
-      if (!active("workflow/resolved-not-done")) return undefined;
+      if (!using.some((s) => s.meta.items === "resolved-not-done")) return undefined;
       // Raw category on purpose: this finds the statuses a status map may be missing.
       const sample = await searchAll(client, `(${base}) AND statusCategory != Done AND resolution IS NOT EMPTY ORDER BY updated DESC`, ["summary", "status", "issuetype", "project", "updated"], WORKFLOW_SAMPLE);
       // Statuses mapped to done are not reported; their issues need no history.
@@ -226,23 +258,36 @@ export async function collectJiraAudit(
     ),
   ]);
 
-  return auditJiraIssues({
-    rules,
-    open: attachChangelogs(openResult.issues, logs),
-    done: attachChangelogs(doneResult.issues, logs),
-    resolve: scope.resolve,
-    now: opts.now ?? new Date(),
-    pointsField,
-    inOpenSprint,
-    projectsUsingVersions,
-    resolvedNotDone,
-    flaggedField,
-    custom,
-    jqlMatches,
-    baseline: opts.baseline,
-    useBaseline: opts.useBaseline,
-    partial,
-  });
+  const open = attachChangelogs(openResult.issues, logs);
+  const done = attachChangelogs(doneResult.issues, logs);
+  const now = opts.now ?? new Date();
+  const result = await auditJira(
+    {
+      rules,
+      registry,
+      scripts,
+      open,
+      done,
+      resolve: scope.resolve,
+      now,
+      ...(pointsField ? { pointsField } : {}),
+      ...(inOpenSprint ? { inOpenSprint } : {}),
+      projectsUsingVersions,
+      ...(resolvedNotDone ? { resolvedNotDone } : {}),
+      ...(flaggedField ? { flaggedField } : {}),
+      custom,
+      jqlMatches,
+      ...(opts.baseline ? { baseline: opts.baseline } : {}),
+      useBaseline: opts.useBaseline,
+      partial,
+      query: base,
+      baseUrl: client.siteUrl,
+    },
+    { port: opts.port, now, onLog: (level, message) => process.stderr.write(`${level === "info" ? "" : `${level}: `}${message}\n`) },
+  );
+  result.report.diagnostics.unshift(...opts.setup.diagnostics);
+  const issues = new Map([...open, ...done, ...(resolvedNotDone?.issues ?? [])].map((i) => [i.key, i]));
+  return { ...result, issues };
 }
 
 export async function handleAuditJira(args: string[], flags: Flags, opts: OutputOptions): Promise<void> {
@@ -261,24 +306,28 @@ export async function handleAuditJira(args: string[], flags: Flags, opts: Output
   }
 
   const ctx = await loadJiraContext(flags, opts);
-  let rules: AuditRules;
+  let setup: AuditSetup;
   try {
-    rules = await loadAuditRules(ctx.profile, ctx.config.audit?.jira?.staleDays, getFlag(flags, "rules"));
+    setup = await loadAuditSetup(ctx.profile, ctx.config.audit?.jira?.staleDays, getFlag(flags, "rules"), process.cwd(), scriptFlags(flags));
   } catch (err) {
-    fail(opts, 1, ERROR_CODES.USAGE, (err as Error).message);
+    if (err instanceof AuditRulesError || err instanceof AuditScriptError) fail(opts, 1, ERROR_CODES.USAGE, err.message);
+    throw err;
   }
+  if (handleRuleListing(setup.scripts, flags, opts)) return;
+  const { registry } = setup;
+  let rules = setup.rules;
   const staleFlag = getFlag(flags, "stale");
   if (staleFlag !== undefined) {
     const parsed = parseStaleDays(staleFlag);
     if (typeof parsed === "string") fail(opts, 1, ERROR_CODES.USAGE, parsed);
-    rules = withStaleDays(rules, parsed);
+    rules = withStaleDays(rules, parsed, registry);
   }
-  if (hasFlag(flags, "all")) {
-    rules.rules["hygiene/stale"] = applyRulePatch(rules.rules["hygiene/stale"] ?? {}, { include: ["todo", "wip"] }, "hygiene/stale", "--all");
+  if (hasFlag(flags, "all") && registry.has("hygiene/stale")) {
+    rules.rules["hygiene/stale"] = applyRulePatch(rules.rules["hygiene/stale"] ?? {}, { include: ["todo", "wip"] }, "hygiene/stale", "--all", registry);
   }
   const checksFlag = getFlag(flags, "checks");
   if (checksFlag !== undefined) {
-    const checks = resolveAuditChecks(checksFlag, rules.custom.map((c) => c.id));
+    const checks = resolveAuditChecks(checksFlag, registry, rules.custom.map((c) => c.id));
     if (typeof checks === "string") fail(opts, 1, ERROR_CODES.USAGE, checks);
     rules = restrictAuditRules(rules, checks);
   }
@@ -292,15 +341,25 @@ export async function handleAuditJira(args: string[], flags: Flags, opts: Output
 
   const base = await selectionJql(ctx, flags, opts);
   const scope = await loadStatusResolver(ctx, flags, opts);
-  const { report, candidates } = await collectJiraAudit(ctx.client, {
-    base,
-    rules,
-    scope,
-    limit,
-    baseline,
-    useBaseline,
-    pointsField: getFlag(flags, "points-field"),
-  });
+  const { createLazyCliScriptPort } = await import("./script-port.js");
+  const port = createLazyCliScriptPort(ctx.profile);
+  let result;
+  try {
+    result = await collectJiraAudit(ctx.client, {
+      base,
+      setup: { ...setup, rules },
+      scope,
+      limit,
+      ...(baseline ? { baseline } : {}),
+      useBaseline,
+      ...(getFlag(flags, "points-field") ? { pointsField: getFlag(flags, "points-field")! } : {}),
+      port,
+    });
+  } catch (err) {
+    if (err instanceof AuditScriptError) fail(opts, 1, ERROR_CODES.VALIDATION, err.message);
+    throw err;
+  }
+  const { report, candidates, issues } = result;
   if (baselineWarning) report.diagnostics.push(baselineWarning);
 
   if (hasFlag(flags, "update-baseline")) {
@@ -314,13 +373,16 @@ export async function handleAuditJira(args: string[], flags: Flags, opts: Output
     report.staleBaselineEntries = 0;
   }
 
-  const titles = (rule: string) => ruleTitle(rule, rules.custom);
-  if (opts.json) {
-    output({ ...report, query: base }, opts);
-  } else if (hasFlag(flags, "markdown")) {
-    output(renderJiraAuditMarkdown(report, base, ctx.client.siteUrl, titles), opts);
-  } else {
-    output(renderJiraAuditText(report, base, titles), opts);
+  if (hasFlag(flags, "fix")) {
+    await runAuditFixes(report, setup.scripts, (f) => issues.get(f.key), { profile: ctx.profile, port }, flags, opts);
+    return;
+  }
+
+  const custom = await customAuditReport(report, setup.scripts, port, flags, opts);
+  if (custom !== undefined) await emitAuditReport(custom, flags, opts);
+  if (custom === undefined || getFlag(flags, "report") !== undefined) {
+    if (opts.json) output(report, opts);
+    else if (custom === undefined) output(renderAuditText(report), opts);
   }
 
   if (failOn !== "never" && report.findings.some((f) => AUDIT_SEVERITY_RANK[f.severity] >= AUDIT_SEVERITY_RANK[failOn])) {

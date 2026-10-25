@@ -200,6 +200,21 @@ export async function planAndApply(
     baseUrl: profile.baseUrl,
     profile: profile.name,
   });
+  await outputOrApplyPlan(plan, { profile, port }, flags, opts);
+}
+
+/**
+ * Prints a plan (and writes `--plan-out`), or applies it with `--apply`:
+ * confirmation, journal, concurrency and the apply report. Shared by
+ * `script run` and planned changes from elsewhere (`audit … --fix`).
+ */
+export async function outputOrApplyPlan(
+  plan: ScriptPlanV1,
+  { profile, port }: { profile: Profile; port: ScriptPort },
+  flags: Flags,
+  opts: OutputOptions,
+): Promise<void> {
+  const rt = await runtime();
   const planOut = getFlag(flags, "plan-out");
   if (planOut) {
     await writeFile(planOut, rt.serializeScriptPlan(plan), "utf8");

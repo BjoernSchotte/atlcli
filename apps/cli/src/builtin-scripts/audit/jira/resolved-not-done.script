@@ -1,0 +1,58 @@
+// A status holding resolved issues outside the Done category: either the
+// status means done (a workflow mistake that skews every category-based
+// number) or the issues kept their resolution when moved there. The changelog
+// tells which: a workflow that sets the resolution in the same step that
+// enters the status treats the status as done.
+export const meta = {
+  audit: {
+    id: "workflow/resolved-not-done",
+    product: "jira",
+    title: "Resolved outside Done",
+    category: "workflow",
+    legacy: "workflow",
+    scope: "run",
+    items: "resolved-not-done",
+    profiles: { minimal: "warning", default: "warning", strict: "error" },
+  },
+};
+
+const RANK = { info: 0, warning: 1, error: 2 };
+const present = (v) => v !== null && v !== undefined && v !== "";
+
+/** Where an issue's resolution came from: set when entering `statusId`, set elsewhere and kept, or unknown. */
+function resolutionOrigin(issue, statusId) {
+  const histories = [...(issue.changelog?.histories ?? [])].sort((a, b) => Date.parse(b.created) - Date.parse(a.created));
+  const id = (item) => item.fieldId ?? item.field.toLowerCase();
+  const setting = histories.find((h) => h.items.some((item) => id(item) === "resolution" && present(item.to ?? (Object.hasOwn(item, "toString") ? item.toString : null))));
+  if (!setting) return undefined;
+  return setting.items.some((item) => id(item) === "status" && item.to === statusId) ? "on-entry" : "kept";
+}
+
+export default ({ entries, truncated }) => {
+  const byStatus = new Map();
+  for (const { issue, config } of entries) {
+    const status = issue.fields.status;
+    const id = status.id ?? status.name;
+    const entry = byStatus.get(id) ?? { status, keys: [], severity: config.level, onEntry: 0, kept: 0 };
+    entry.keys.push(issue.key);
+    const how = resolutionOrigin(issue, status.id);
+    if (how === "on-entry") entry.onEntry++;
+    if (how === "kept") entry.kept++;
+    if (RANK[config.level] > RANK[entry.severity]) entry.severity = config.level;
+    byStatus.set(id, entry);
+  }
+  return [...byStatus].map(([id, { status, keys, severity, onEntry, kept }]) => {
+    const statusCategory = status.statusCategory?.name ?? status.statusCategory?.key ?? "?";
+    const count = `${keys.length}${truncated ? "+" : ""} resolved issue(s)`;
+    const examples = `${keys.slice(0, 5).join(", ")}${keys.length > 5 ? ", …" : ""}`;
+    const asDone = `move it to Done in the workflow, or map it: --status-map "${status.name}=done"`;
+    const clear = "clear the resolution on these issues";
+    const detail =
+      onEntry > kept
+        ? `${count}; for ${onEntry} the transition into this status set the resolution (${examples}). If the status means done, ${asDone}; if not, stop that transition from setting a resolution.`
+        : kept > onEntry
+          ? `${count}; for ${kept} the resolution was set elsewhere and kept when they moved here (${examples}). Fix: ${clear}.`
+          : `${count} (${examples}); the history does not show where the resolution was set. Either the status means done (${asDone}) or ${clear}.`;
+    return { severity, key: keys[0], summary: `Status "${status.name}" (${statusCategory} category)`, status: status.name, detail, subject: `status:${id}` };
+  });
+};

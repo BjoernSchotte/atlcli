@@ -1,0 +1,25 @@
+// Flagged issues (impediments), by how long they have been flagged.
+export const meta = {
+  audit: {
+    id: "hygiene/flagged",
+    product: "jira",
+    title: "Flagged",
+    category: "hygiene",
+    kind: "age",
+    needs: ["flagged"],
+    profiles: { minimal: { warning: "10d" }, default: { warning: "3d", error: "10d" }, strict: { warning: "1d", error: "5d" } },
+  },
+};
+
+const DAY = 86_400_000;
+
+export default (issue, rule) => {
+  const f = rule.facts;
+  if (!f.flagged) return;
+  const from = f.flaggedSince ?? issue.fields.updated ?? issue.fields.created;
+  const age = from ? (rule.now - Date.parse(from)) / DAY : 0;
+  const hit = rule.severity(age);
+  if (!hit) return;
+  const detail = f.flaggedSince ? `Flagged for ${Math.floor(age)} d.` : `Flagged for at least ${Math.floor(age)} d (since the last update).`;
+  return rule.finding({ severity: hit.severity, detail, ageDays: age });
+};

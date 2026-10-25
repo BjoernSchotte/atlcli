@@ -1,0 +1,28 @@
+// Open issues nobody touched for a while (in progress by default; `include: [todo, wip]` adds to-do).
+export const meta = {
+  audit: {
+    id: "hygiene/stale",
+    product: "jira",
+    title: "Stale",
+    category: "hygiene",
+    kind: "age",
+    legacy: "stale",
+    options: { include: ["todo", "wip"] },
+    profiles: {
+      minimal: { error: "90d" },
+      default: { info: "30d", warning: "60d", error: "90d" },
+      strict: { info: "30d", warning: "60d", error: "90d", include: ["todo", "wip"] },
+    },
+  },
+};
+
+const DAY = 86_400_000;
+
+export default (issue, rule) => {
+  const updated = issue.fields.updated ?? issue.fields.created;
+  const include = rule.config.options?.include ?? ["wip"];
+  if (!updated || !include.includes(rule.facts.category === "wip" ? "wip" : "todo")) return;
+  const age = (rule.now - Date.parse(updated)) / DAY;
+  const hit = rule.severity(age);
+  if (hit) return rule.finding({ severity: hit.severity, detail: `Not updated for ${Math.floor(age)} d.`, ageDays: age });
+};

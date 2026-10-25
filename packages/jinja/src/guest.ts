@@ -31,6 +31,8 @@ export const GUEST_PRELUDE = `
         .replace("ss", pad(d.getUTCSeconds()));
     });
     // date plus n units (d, w, m, y); months clamp to the month end; invalid input comes back unchanged.
+    // A Markdown table cell: pipes escaped, line breaks as spaces.
+    env.addFilter("mdcell", (value) => String(value === undefined || value === null ? "" : value).replace(/\\|/g, "\\\\|").replace(/\\r?\\n/g, " "));
     env.addFilter("dateAdd", (date, n, unit) => {
       if (typeof date !== "string") return date;
       const d = new Date(DATE_ONLY.test(date) ? date + "T00:00:00.000Z" : date);

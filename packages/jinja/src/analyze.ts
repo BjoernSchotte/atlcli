@@ -144,7 +144,7 @@ export const JINJA_FILTERS = new Set([
   "groupby", "indent", "int", "join", "last", "length", "list", "lower", "nl2br", "random", "reject", "rejectattr", "replace",
   "reverse", "round", "safe", "select", "selectattr", "slice", "sort", "string", "striptags", "sum", "title", "trim", "truncate",
   "upper", "urlencode", "urlize", "wordcount",
-  "date", "dateAdd",
+  "date", "dateAdd", "mdcell",
 ]);
 
 interface ExprToken {

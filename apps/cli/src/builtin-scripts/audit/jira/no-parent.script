@@ -1,0 +1,14 @@
+// Issues outside any epic (epics and subtasks are exempt).
+export const meta = {
+  audit: {
+    id: "hygiene/no-parent",
+    product: "jira",
+    title: "No parent",
+    category: "hygiene",
+    profiles: { default: "info", strict: "warning" },
+  },
+};
+
+export default (issue, rule) => {
+  if (!issue.fields.parent && !rule.facts.epic && !rule.facts.subtask) return rule.finding({ detail: "No parent (epic)." });
+};

@@ -182,6 +182,17 @@
       "name": "@atlcli/action-registry",
       "version": "0.1.0",
     },
+    "packages/audit": {
+      "name": "@atlcli/audit",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/jira": "workspace:*",
+        "@atlcli/script-runtime": "workspace:*",
+      },
+      "devDependencies": {
+        "@jitl/quickjs-ng-wasmfile-debug-sync": "0.32.0",
+      },
+    },
     "packages/change-set": {
       "name": "@atlcli/change-set",
       "version": "0.1.0",
@@ -671,6 +682,8 @@
     "@atlcli/action-palette-react": ["@atlcli/action-palette-react@workspace:packages/action-palette-react"],
 
     "@atlcli/action-registry": ["@atlcli/action-registry@workspace:packages/action-registry"],
+
+    "@atlcli/audit": ["@atlcli/audit@workspace:packages/audit"],
 
     "@atlcli/browser-export-harness": ["@atlcli/browser-export-harness@workspace:apps/browser-export-harness"],
 

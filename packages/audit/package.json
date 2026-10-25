@@ -1,0 +1,29 @@
+{
+  "name": "@atlcli/audit",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@atlcli/jira": "workspace:*",
+    "@atlcli/script-runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@jitl/quickjs-ng-wasmfile-debug-sync": "0.32.0"
+  }
+}

@@ -1,0 +1,27 @@
+// Open issues past their due date. Overdue from UTC midnight after the due date.
+export const meta = {
+  audit: {
+    id: "hygiene/overdue",
+    product: "jira",
+    title: "Overdue",
+    category: "hygiene",
+    kind: "age",
+    fields: ["duedate"],
+    profiles: { minimal: { warning: "7d", error: "30d" }, default: { warning: "0d", error: "14d" }, strict: { error: "0d" } },
+  },
+};
+
+const DAY = 86_400_000;
+const dueEnd = (due) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(due);
+  return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1) : undefined;
+};
+
+export default (issue, rule) => {
+  const due = issue.fields.duedate;
+  const end = due ? dueEnd(due) : undefined;
+  if (end === undefined || rule.now < end) return;
+  const over = (rule.now - end) / DAY;
+  const hit = rule.severity(over);
+  if (hit) return rule.finding({ severity: hit.severity, detail: `Due ${due.slice(0, 10)}, ${Math.floor(over)} d overdue.`, ageDays: over });
+};
