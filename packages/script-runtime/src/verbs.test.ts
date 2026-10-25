@@ -760,6 +760,7 @@ describe("inspectScript", () => {
 it("exposes the verb set", () => {
   expect([...SCRIPT_VERBS].sort()).toEqual([
     "confluence.addLabels",
+    "confluence.archivePage",
     "confluence.attach",
     "confluence.attachments",
     "confluence.children",

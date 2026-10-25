@@ -119,3 +119,23 @@ it("needs write permission on the project for watcher and notify writes", async 
   const js = `export const meta = { permissions: ["jira:read"] }; await atlcli.jira.addWatcher("ATLCLI-1", "bob");`;
   await expect(planScript(js, { port: port(), variant: DEBUG_VARIANT })).rejects.toThrow(/jira:write:ATLCLI/);
 });
+
+it("archivePage plans against the page version and calls the host on apply", async () => {
+  const writes: unknown[] = [];
+  const p = {
+    async confluenceGetPage(id: string) {
+      return { id, title: "Old", spaceKey: "DOCSY", version: 3, markdown: "" };
+    },
+    async confluenceArchivePage(id: string) {
+      writes.push(["archive", id]);
+    },
+  } as unknown as ScriptPort;
+  const js = `await atlcli.confluence.archivePage("42");`;
+  const run = await planScript(js, { port: p, variant: DEBUG_VARIANT });
+  expect(run.operations).toEqual([expect.objectContaining({ verb: "confluence.archivePage", args: { id: "42", title: "Old" }, precondition: { kind: "confluence-page-unchanged", id: "42", version: 3 } })]);
+  const plan = await createScriptPlan(run, { source: js, baseUrl: BASE });
+  expect((await applyScriptPlan(plan, { port: p, baseUrl: BASE })).status).toBe("applied");
+  expect(writes).toEqual([["archive", "42"]]);
+  const withoutHost = await applyScriptPlan(plan, { port: { ...p, confluenceArchivePage: undefined } as unknown as ScriptPort, baseUrl: BASE });
+  expect(withoutHost.status).toBe("failed");
+});

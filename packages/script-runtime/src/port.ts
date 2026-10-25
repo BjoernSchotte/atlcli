@@ -82,6 +82,8 @@ export interface ScriptPort {
   confluenceMovePage(id: string, parentId: string): Promise<{ id: string; version: number }>;
   /** Moves the page to the space's trash. */
   confluenceDeletePage(id: string): Promise<void>;
+  /** Archives the page (it leaves the page tree, stays readable). */
+  confluenceArchivePage?(id: string): Promise<void>;
   confluenceAttachments(pageId: string, options: { signal?: AbortSignal }): Promise<ConfluenceAttachmentView[]>;
   /** Uploads, or adds a new version when the page already has an attachment of that name. */
   confluenceAttach(pageId: string, file: AttachmentInput): Promise<{ id: string }>;

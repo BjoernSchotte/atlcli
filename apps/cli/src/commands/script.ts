@@ -707,6 +707,8 @@ export function describeOperation(op: PlannedOperation): string {
       return `page move        ${ref(a.id)} under ${ref(a.parentId)}${after}`;
     case "confluence.deletePage":
       return `page DELETE      ${ref(a.id)} ${text(a.title)} (to trash)${after}`;
+    case "confluence.archivePage":
+      return `page ARCHIVE     ${ref(a.id)} ${text(a.title)}${after}`;
     case "confluence.attach":
       return `page attach      ${ref(a.pageId)} ${a.name} (${size(a)})${after}`;
     case "confluence.copyAttachment":

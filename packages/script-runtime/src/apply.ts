@@ -149,7 +149,7 @@ export async function applyScriptPlan(
 function remember(op: PlannedOperation, value: Record<string, unknown>, resolved: Map<number, string>, versions: Map<string, number>): void {
   if (op.verb === "jira.create") resolved.set(op.seq, value.key as string);
   if (op.verb === "jira.createSprint" || op.verb === "confluence.createPage") resolved.set(op.seq, String(value.id));
-  if (op.verb === "confluence.deletePage") versions.delete(String(value.id));
+  if (op.verb === "confluence.deletePage" || op.verb === "confluence.archivePage") versions.delete(String(value.id));
   else if (op.verb.startsWith("confluence.") && typeof value.version === "number" && value.id !== undefined) {
     versions.set(String(value.id), value.version);
   }
@@ -330,6 +330,11 @@ async function execute(
     }
     case "confluence.deletePage":
       await port.confluenceDeletePage(args.id);
+      versions.delete(args.id);
+      return { id: args.id };
+    case "confluence.archivePage":
+      if (!port.confluenceArchivePage) throw new Error("This host cannot archive Confluence pages");
+      await port.confluenceArchivePage(args.id);
       versions.delete(args.id);
       return { id: args.id };
     case "confluence.attach":

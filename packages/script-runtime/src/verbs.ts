@@ -42,6 +42,7 @@ export const WRITE_VERBS = [
   "confluence.comment",
   "confluence.movePage",
   "confluence.deletePage",
+  "confluence.archivePage",
   "confluence.attach",
   "confluence.export",
   "confluence.copyAttachment",
@@ -760,6 +761,13 @@ const VERBS: Record<string, Verb> = {
     r.require(`confluence:write:${page.spaceKey}`);
     await r.record("confluence.deletePage", { id, title: page.title }, `confluence:${id}`, async () => pageUnchanged(page.live));
     r.markDeleted(id);
+    return null;
+  }),
+  "confluence.archivePage": verb(z.tuple([str]), async (r, [id], signal) => {
+    if (PLACEHOLDER.test(id)) throw new Error(`${id} is created by this plan; leave out the createPage instead`);
+    const page = await r.confluencePage(id, signal);
+    r.require(`confluence:write:${page.spaceKey}`);
+    await r.record("confluence.archivePage", { id, title: page.title }, `confluence:${id}`, async () => pageUnchanged(page.live));
     return null;
   }),
   "confluence.attach": verb(z.tuple([str, attachmentInput]), async (r, [pageId, file], signal) => {
