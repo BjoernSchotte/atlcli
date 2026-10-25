@@ -181,7 +181,7 @@ More text.`;
     expect(issues).toHaveLength(0);
   });
 
-  test("flags nested macros, which push renders as literal text", () => {
+  test("accepts nested macros, which push converts innermost first", () => {
     const content = `:::info
 Outer macro
 :::note
@@ -189,11 +189,20 @@ Inner macro
 :::
 :::`;
 
-    const issues = validateMacros(content, "test.md");
+    expect(validateMacros(content, "test.md")).toEqual([]);
+  });
 
-    // The info block closes at the first `:::`; `:::note` sits in its body and
-    // the trailing `:::` is stray.
-    expect(issues.map((i) => i.line)).toEqual([3, 6]);
+  test("reports problems inside a nested macro at their own line", () => {
+    const content = `:::expand Outer
+:::info
+:::unknown
+x
+:::
+:::
+:::`;
+
+    const issues = validateMacros(content, "test.md");
+    expect(issues.map((i) => [i.line, i.code])).toEqual([[3, "MACRO_UNCLOSED"], [5, "MACRO_UNCLOSED"]]);
   });
 
   // Regression #288: check must accept exactly what push converts.
@@ -248,7 +257,7 @@ Left
     expect(validateMacros(content, "test.md")).toEqual([]);
   });
 
-  test("flags macros nested in a column body", () => {
+  test("accepts macros nested in a column body", () => {
     const content = `:::section
 :::column
 :::info
@@ -256,8 +265,7 @@ Hi
 :::
 :::column-end
 :::section-end`;
-    const issues = validateMacros(content, "test.md");
-    expect(issues.map((i) => i.line)).toEqual([3, 5]);
+    expect(validateMacros(content, "test.md")).toEqual([]);
   });
 
   // Regression #289: dropped parameters are reported, not silently lost.
@@ -292,6 +300,9 @@ x
       ":::content-by-label labels=\"a\"\n:::",
       ":::info\nx\n:::",
       ":::info\nOuter\n:::note\nInner\n:::\n:::",
+      ":::expand T\n:::info\n:::note\nx\n:::\n:::\ntail\n:::",
+      ":::section\n:::column\n:::info\nHi\n:::\n:::column-end\n:::section-end",
+      ":::expand T\n:::unknown\nx\n:::\n:::",
       ":::expand \"Details\"\nHidden.\n:::",
       ":::toc\n:::",
       ":::children\n:::",

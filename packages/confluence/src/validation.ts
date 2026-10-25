@@ -14,6 +14,7 @@ import {
   SECTION_COLUMN_REGEX,
   TOC_PARAMETERS,
   parseMacroParams,
+  replaceNestedBlocks,
   splitMacroTitle,
 } from "./macro-syntax.js";
 
@@ -296,7 +297,17 @@ export function validateMacros(
     for (let l = first; l < first + count; l++) rendered.add(l);
   };
 
-  let working = content;
+  // Nested blocks convert on their own (see replaceNestedBlocks): check each
+  // one on its own and blank it out, keeping line numbers intact.
+  const delegated = new Set<number>();
+  let working = replaceNestedBlocks(content, (block, line) => {
+    for (const issue of validateMacros(block, filePath)) {
+      issues.push({ ...issue, line: issue.line! + line });
+    }
+    const count = block.split("\n").length;
+    for (let l = line; l < line + count; l++) delegated.add(l);
+    return block.replace(/[^\n]/g, " ");
+  });
   for (const rule of BLOCK_MACRO_RULES) {
     working = working.replace(rule.regex, (match: string, ...args: unknown[]) => {
       const offset = args.find((a) => typeof a === "number") as number;
@@ -332,7 +343,7 @@ export function validateMacros(
       else if (fenceMatch[1][0] === fence) fence = null;
       continue;
     }
-    if (fence) continue;
+    if (fence || delegated.has(i)) continue;
 
     const macroLine = line.match(/^ {0,3}:::(\S*)/);
     if (!macroLine || (consumed.has(i) && !rendered.has(i))) continue;

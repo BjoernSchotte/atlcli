@@ -787,6 +787,25 @@ All supported macros round-trip cleanly:
 2. Edit markdown
 3. Push back → Identical macro rendering
 
+### Nesting Macros
+
+Block macros can be nested: write the inner `:::` block inside the outer
+body. atlcli converts the innermost macro first, in both directions.
+
+```markdown
+:::expand Details
+:::warning
+Check {status:red}BLOCKED{status} items first.
+:::
+
+More text in the expand.
+:::
+```
+
+An unrecognized macro is kept as one raw XML block (`:::confluence name` with
+a `<!--raw ... -->` comment), together with every macro nested in it, so a
+push restores it byte for byte. Edit its content in Confluence.
+
 ### Unsupported Macros
 
 Some complex macros render to placeholder text with a note:
@@ -813,7 +832,7 @@ Some complex macros render to placeholder text with a note:
 
 **Cause**: Unclosed macro block or incorrect syntax.
 
-**Fix**: Ensure every `:::macro` has a matching `:::` closing tag (`:::section` and `:::column` close with `:::section-end` and `:::column-end`). Macros cannot be nested inside another macro body. Validate with:
+**Fix**: Ensure every `:::macro` has a matching `:::` closing tag (`:::section` and `:::column` close with `:::section-end` and `:::column-end`). Nested macros need their own closing `:::` line, see [Nesting Macros](#nesting-macros). Validate with:
 ```bash
 atlcli wiki docs check ./docs/page.md
 ```
