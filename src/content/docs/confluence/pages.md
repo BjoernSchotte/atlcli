@@ -175,11 +175,11 @@ Duplicate a page with its attachments:
 atlcli wiki page copy --id 12345 --title "Copy of Page"
 ```
 
-The title and the body are [templates](/templating/): `{{sprint}}` takes a value
-from `--var`, `{{source.title}}` is the original's title, `{{@today}}` today's
-date. Code blocks and code macros are copied as written. Macro parameters
-render too, so a Jira macro with `project = {{project}}` points at the right
-project.
+The title and the body are [templates](/templating/) in Jinja syntax: `{{ sprint }}`
+takes a value from `--var`, `{{ source.title }}` is the original's title,
+`{{ today }}` today's date. Code blocks and code macros are copied as written.
+Macro parameters render too, so a Jira macro with `project = {{ project }}`
+points at the right project.
 
 Options:
 
@@ -197,12 +197,12 @@ Options:
 ### Copy a page tree
 
 `--tree` copies the page and every descendant, parents first, siblings in
-their order. Each title and body renders on its own; `{{parent.title}}` is the
+their order. Each title and body renders on its own; `{{ parent.title }}` is the
 rendered title of the parent copy. Like [copy-issues](/jira/copy-issues/), the
 result is a plan you review first:
 
 ```bash
-atlcli wiki page copy --id 12345 --tree --title "Retro {{sprint}}" --var sprint=42 --plan-out retro.json
+atlcli wiki page copy --id 12345 --tree --title "Retro {{ sprint }}" --var sprint=42 --plan-out retro.json
 atlcli script apply retro.json
 ```
 
@@ -222,10 +222,10 @@ atlcli wiki page copy --id 12345 --title "Page Copy"
 atlcli wiki page copy --id 12345 --title "Page Copy" --space DOCS
 
 # A meeting page from a template page, dated today
-atlcli wiki page copy --id 12345 --title "Weekly {{@today}}" --parent 67890
+atlcli wiki page copy --id 12345 --title "Weekly {{ today }}" --parent 67890
 
 # A handbook tree for this year's audit, failing on any unfilled variable
-atlcli wiki page copy --id 12345 --tree --title "Audit {{year}}" --vars-file audit-2026.yml --strict --apply
+atlcli wiki page copy --id 12345 --tree --title "Audit {{ year }}" --vars-file audit-2026.yml --strict --apply
 ```
 
 ## List Children

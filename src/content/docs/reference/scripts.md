@@ -61,7 +61,7 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `--memory <MB>` | run | positive integer | 64 | Script memory |
 | `--var <name=value>` | run | string, repeatable | none | Template variable for [`atlcli.render`](#atlclirender); `a.b=v` nests, JSON values are parsed |
 | `--vars-file <file>` | run | YAML path | none | Template values and declarations; see [Templating](/templating/#variables) |
-| `--now <iso>` | run | ISO date/time | time of planning | Clock for `@today`/`@now`; recorded in the plan |
+| `--now <iso>` | run | ISO date/time | time of planning | Clock for `today`/`now`; recorded in the plan |
 | `--strict` | run | switch | off | Any template warning ends the run (`template` error kind) |
 | `--json` | all | switch | off | One JSON document on stdout; script output stays on stderr |
 | `--force` | init | switch | off | Overwrites `tsconfig.json` and `example.ts`; `atlcli.d.ts` is always refreshed |

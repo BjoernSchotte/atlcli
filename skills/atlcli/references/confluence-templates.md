@@ -70,13 +70,20 @@ it fails without `--force`.
 `import` skips existing names unless `--replace` is given. `update` re-pulls
 tracked sources and replaces what they provide (`--source <url>` limits it).
 
-Built-in variables available inside a template: `@date`, `@datetime`, `@time`,
-`@year`, `@month`, `@day`, `@weekday`, `@user`, `@space`, `@profile`, `@title`,
-`@parent`, `@uuid`, plus `@today` (always ISO), `@now`, `@quarter`, `@week`.
-Helpers: `formatDate`, `lowercase`, `uppercase`, `dateAdd`, `default`,
-`replace`, `eq`, `ne`, `and`, `or`, `not`. The same engine renders copies of
-live issues and pages (`copy-issues`, `wiki page copy`), but there unknown
-`{{…}}` stays literal with a warning; in page templates it renders empty.
+Templates are Jinja (Nunjucks), not Handlebars: `{{ x }}`,
+`{% if x %}…{% else %}…{% endif %}`, `{% for item in items %}…{% endfor %}`.
+Old Handlebars templates (`{{@date}}`, `{{#if}}`) fail with `Template render
+failed` / `Jinja syntax error`; rewrite them (no converter, see the migration
+table in the templating docs). Built-ins are plain names: `date`, `datetime`,
+`time`, `year`, `month`, `day`, `weekday`, `user`, `space`, `profile`, `title`,
+`parent.id`/`parent.title`, `uuid`, plus `today` (always ISO), `now`,
+`quarter`, `week`; a declared or passed variable of the same name wins.
+Filters: `date("DD.MM.YYYY")`, `dateAdd(14, "d")`, `default("x")`,
+`replace("a", "b")`, `lower`, `upper` and the Nunjucks built-ins; operators
+`==`, `!=`, `and`, `or`, `not`. A line holding only a block tag disappears with
+its line break. The same engine renders copies of live issues and pages
+(`copy-issues`, `wiki page copy`), but there an unknown `{{ … }}` stays literal
+with a warning; in page templates it renders empty.
 
 ## Rendering and creating from a template
 
@@ -87,10 +94,10 @@ atlcli wiki template render meeting-notes --var title='Sprint Planning' --json
 atlcli wiki template render meeting-notes --var title='Planning' > ./out.md
 ```
 
-`--var key=value` is repeatable. `@title` comes from `render --title`, not
-from `--var title=`. A required variable without a valid value stops the
+`--var key=value` is repeatable. The built-in `title` comes from
+`render --title`; a `--var title=` overrides it. A required variable without a valid value stops the
 render with exit 1 and names it (`Missing or invalid template variables:
-owner`); a `{{name}}` the template uses without declaring it renders empty,
+owner`); a `{{ name }}` the template uses without declaring it renders empty,
 with a warning on stderr. Create the page from the same template:
 
 ```bash
@@ -109,7 +116,7 @@ without creating the page. Run it first and show the user.
 ## Anti-patterns
 
 - Publishing a template-created page without a `--dry-run` review. An
-  optional or undeclared `{{variable}}` without a value renders as an empty
+  optional or undeclared `{{ variable }}` without a value renders as an empty
   string.
 - Running `--interactive` or `wiki template edit` unattended. Both wait for a
   human.

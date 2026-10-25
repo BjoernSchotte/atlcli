@@ -338,14 +338,21 @@ again. Read the plan's warnings before applying. `clone` takes the same
 `--var`/`--vars-file`/`--strict`; its warnings are in `templateWarnings`.
 
 Templating (copy-issues, clone, `jira template apply`, `wiki page copy`,
-`atlcli.render`): `{{name}}` from `--var name=value` / `--vars-file vars.yml`,
-`{{source.key}}`/`{{source.title}}` for the original, `{{@today}}` and other
-`@` built-ins, helpers such as `dateAdd @today 14 "d"`. A `{{…}}` nothing fills
-stays as written and is a **template warning** in the plan or output; read
-them, or pass `--strict` so they fail. Code blocks and code macros are never
-rendered. Only a single backslash escapes (`\{{x}}` stays `{{x}}`; `\\{{x}}`
-is a backslash plus the value); `{{! … }}` comments stay as written. Leave the
-other cells of a `{{#each}}` control row empty: the row is removed whole. Run `atlcli template vars --jql …|--issue …|--page … [--tree]|--jira-template …`
+`atlcli.render`) is Jinja (Nunjucks), not Handlebars: `{{ name }}` from
+`--var name=value` / `--vars-file vars.yml`, `{{ source.key }}`/`{{ source.title }}`
+for the original, `{{ today }}` and other built-ins as plain names (a variable
+of the same name wins), filters such as `{{ today | dateAdd(14, "d") }}`,
+`{{ d | date("DD.MM.YYYY") }}`, `{{ x | default("fb") }}`, and
+`{% if %}`/`{% for x in xs %}` blocks (`loop.index`, `loop.first`). A
+`{{ … }}` nothing fills, an `{% if %}`/`{% for %}` block whose subject cannot
+resolve, and an unknown filter stay as written and are **template warnings**
+in the plan or output; a syntax error keeps the whole field unchanged
+(`parse-error`). Read them, or pass `--strict` so they fail. Code blocks and
+code macros are never rendered. Write `{% raw %}{{ x }}{% endraw %}` for
+literal template syntax; `{# … #}` comments stay as written. In rich text a
+paragraph, list item or first table cell holding only a block tag
+(`{% for system in systems %}` … `{% endfor %}`) controls its siblings; leave
+the other cells of a control row empty: the row is removed whole. Run `atlcli template vars --jql …|--issue …|--page … [--tree]|--jira-template …`
 first to see which variables a source needs (`--json` gives a `values:`
 skeleton). Re-plan with the plan's `--now` to keep dates identical.
 

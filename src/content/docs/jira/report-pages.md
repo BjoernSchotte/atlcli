@@ -84,7 +84,7 @@ atlcli stores an identity (`kind`, Jira site, version or sprint id, content hash
 
 ## Templates
 
-Templates are ordinary [atlcli templates](../confluence/templates.md): YAML front matter plus markdown with Handlebars. The whole report data model is passed in, so a template can loop over issues, groups and contributors however you like.
+Templates are ordinary [atlcli templates](../confluence/templates.md): YAML front matter plus markdown with [Jinja](../templating.md). The whole report data model is passed in, so a template can loop over issues, groups and contributors however you like.
 
 atlcli ships three:
 
@@ -108,18 +108,18 @@ Minimal custom template:
 ---
 name: changelog
 ---
-{{#each doneIssues}}
-- {{{link}}} {{{summaryMd}}}
-{{/each}}
+{% for issue in doneIssues %}
+- {{ issue.link }} {{ issue.summaryMd }}
+{% endfor %}
 ```
 
 With the description excerpt on its own line (a trailing `\` is a line break):
 
 ```markdown
-{{#each doneIssues}}
-- {{{link}}} **{{{summaryMd}}}**{{#if excerptMd}}\
-  {{{excerptMd}}}{{/if}}
-{{/each}}
+{% for issue in doneIssues %}
+- {{ issue.link }} **{{ issue.summaryMd }}**{% if issue.excerptMd %}\
+  {{ issue.excerptMd }}{% endif %}
+{% endfor %}
 ```
 
 Grouped by epic, with each issue's assignee:
@@ -129,16 +129,16 @@ Grouped by epic, with each issue's assignee:
 name: epic-digest
 labels: [release-notes]
 ---
-{{#each byEpic}}
-## {{{nameMd}}}
-{{#each issues}}
-- {{{link}}} {{{summaryMd}}}{{#if assignee}} ({{assignee}}){{/if}}
-{{/each}}
-{{/each}}
+{% for epic in byEpic %}
+## {{ epic.nameMd }}
+{% for issue in epic.issues %}
+- {{ issue.link }} {{ issue.summaryMd }}{% if issue.assignee %} ({{ issue.assignee }}){% endif %}
+{% endfor %}
+{% endfor %}
 ```
 
-:::tip[Use triple braces for `…Md` fields]
-Fields ending in `Md` and `link` are already escaped markdown. Insert them with `{{{…}}}` so Handlebars does not escape them again. Plain fields such as `summary` are raw text.
+:::tip[Use `…Md` fields for page text]
+Fields ending in `Md` and `link` are already escaped markdown; insert them with `{{ … }}` as they are. Plain fields such as `summary` are raw text, so markdown characters in them take effect. Output is never HTML-escaped, and a line holding only a block tag (`{% for %}`, `{% endif %}`) disappears with its line break.
 :::
 
 ### Template variables
@@ -169,7 +169,7 @@ Each issue has `key`, `url`, `link` (`[KEY](url)`), `summary`, `summaryMd`, `exc
 |---------|-------|-----|
 | `Several versions are named …` | Version names repeat across projects or archives | Pass the version id |
 | `A page "…" already exists … not created by atlcli` | Title clash with a hand-written page | `--title "…"` or `--force` |
-| Text like `&#x27;` on the page | A custom template used `{{field}}` for an `…Md` field | Use `{{{field}}}` |
+| `Template render failed: …` | A custom template still uses Handlebars (`{{#each}}`, `{{{link}}}`) or has an unclosed `{% for %}` | Rewrite it with the [migration table](../templating.md#breaking-templates-use-jinja), or start again from `--print-template` |
 | Finished issues listed under "Not done" | The done status sits in Jira's In Progress category | `--status-map "Fertig=done"` or `flow.statusMap`; see [Completed work](analytics.md#completed-work) |
 | An issue that is done today is listed under "Not done" on a sprint review | It was finished after the sprint ended | Expected: the review shows the sprint as of its end |
 | `--json` with `--export` prints two JSON documents | The page result, then the export report | Parse them one by one, for example with `jq -s` |

@@ -78,7 +78,7 @@ Options:
 | `--assignee` | Assignee (see [Users](issues.md#users)) |
 | `--var <name=value>` | Template variable, repeatable |
 | `--vars-file <file>` | Values and declarations, see [Templating](/templating/#variables) |
-| `--now <iso>` | Freezes `@today`/`@now` |
+| `--now <iso>` | Freezes `today`/`now` |
 | `--strict` | Fails on any template warning, before the issue is created |
 
 Summary, description, labels, the due date and other fields render as
@@ -88,7 +88,7 @@ fails and names them:
 
 ```bash
 atlcli jira template apply release --project REL --var version=4.2
-# Due in two weeks, from a template with  "duedate": "{{dateAdd @today 14 \"d\"}}"
+# Due in two weeks, from a template with  "duedate": "{{ today | dateAdd(14, \"d\") }}"
 ```
 
 :::note[Data Center]

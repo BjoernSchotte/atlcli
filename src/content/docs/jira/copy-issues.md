@@ -66,10 +66,11 @@ Each copy gets the hidden issue property `atlcli.copiedFrom` with its
 original's key. It is what makes a re-run safe (see below).
 
 Summaries, descriptions, labels, comments, component and version names and
-`--fields` values are [templates](/templating/): `{{year}}` takes a value from
-`--var` or `--vars-file`, `{{source.key}}` names the original, `{{@today}}` the
-date of the plan. A `{{…}}` that nothing fills is copied as written and listed
-under **Template warnings** in the plan.
+`--fields` values are [templates](/templating/) in Jinja syntax: `{{ year }}` takes a value from
+`--var` or `--vars-file`, `{{ source.key }}` names the original, `{{ today }}`
+the date of the plan. A `{{ … }}`, or an `{% if %}`/`{% for %}` block, that
+nothing fills is copied as written and listed under **Template warnings** in
+the plan, so foreign Jinja, Ansible or Helm snippets survive unchanged.
 
 ## Options
 
@@ -84,7 +85,7 @@ under **Template warnings** in the plan.
 | `--fields <ids>` | comma-separated field ids | none | Extra fields to copy, e.g. `customfield_10010,duedate` |
 | `--var <name=value>` | string, repeatable | none | Template variable; `a.b=v` nests, JSON values (`n=5`, `list=["a"]`) are parsed |
 | `--vars-file <file>` | YAML path | none | Values and optional declarations; see [Templating](/templating/#variables) |
-| `--now <iso>` | ISO date/time | time of planning | Freezes `@today`/`@now`; repeat a plan exactly |
+| `--now <iso>` | ISO date/time | time of planning | Freezes `today`/`now`; repeat a plan exactly |
 | `--strict` | switch | off | Fails the plan on any template warning |
 | `--replace <find:replace>` | string, repeatable | none | Legacy find/replace in summary and description, applied before templates; split at the first colon |
 | `--link-source` | switch | off | Links each copy to its original with **Cloners** ("clones") |
@@ -137,8 +138,8 @@ values:
   systems: [IAM, Backup, Logging]
 ```
 
-a table row whose first cell is `{{#each systems}}`, a row with `{{this}}`, and
-a row with `{{/each}}` become one row per system. See
+a table row whose first cell is `{% for system in systems %}`, a row with
+`{{ system }}`, and a row with `{% endfor %}` become one row per system. See
 [control paragraphs](/templating/#control-paragraphs).
 
 ```bash
@@ -199,7 +200,7 @@ create the issues again. Plan again instead.
 
 The plan header shows the time templates rendered at
 (`Templates: rendered at …`). Pass it as `--now` when you plan again, so
-`{{@today}}` gives the same date as in the copies already made, for example
+`{{ today }}` gives the same date as in the copies already made, for example
 after midnight.
 
 ## Troubleshooting
@@ -212,7 +213,7 @@ after midnight.
 | `Status unchanged (no direct transition)` after apply | The target workflow has no direct transition into that status | Use `--status-map`, or move those issues by hand |
 | Warning: parent is not copied | A selected issue's parent is outside the selection | Widen the selection, or accept the copy without a parent |
 | Warning: no Cloners link type | The site has no Cloners link type | Copies are made without `--link-source` links |
-| A `{{…}}` stays in the copy | No value given, a typo, or the expression runs across a mention or link | Check **Template warnings**; `atlcli template vars --jql "…"` lists what the source needs |
+| A `{{ … }}` stays in the copy | No value given, a typo, or the expression runs across a mention or link | Check **Template warnings**; `atlcli template vars --jql "…"` lists what the source needs |
 | `Script failed (template)` | `--strict` and at least one template warning | Fix the warnings, or run without `--strict` |
 
 After a failed apply, fix the cause and [plan again](#re-running-after-a-partial-apply).
