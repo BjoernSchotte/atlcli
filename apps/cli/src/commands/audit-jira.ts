@@ -443,8 +443,23 @@ Options:
   --points-field <id>   Story points field (auto-detected)
   --flagged-field <id>  Flagged field (auto-detected by its JQL name Flagged)
   --limit <n>           Max issues per query (default: 1000)
-  --markdown            Markdown report
-  --json                JSON report (schemaVersion 2)
+  --markdown            Markdown report (the default Jinja template; --print-template prints it)
+  --template <file>     Render the report with your own Jinja template
+  --report <file>       Write the Markdown report to a file instead of stdout
+  --report-script <id>  Use this rule script's \`report\` export (default: the last one found)
+  --json                JSON report (schemaVersion 3)
+
+Rule scripts (TypeScript, run read-only in the script sandbox):
+  --script <file>       Add a rule script (repeatable); also ./.atlcli/audit/*.ts,
+                        ~/.atlcli/audit/*.ts and scripts: in the rules file.
+                        A script with a built-in rule's id replaces it.
+  --list-rules          List rules with their source
+  --print-rule <id>     Print a rule's script (copy it to adapt a built-in)
+  --fix                 Plan the \`fix\` exports of listed findings (review, then apply)
+    --apply [--yes]     Apply the plan right away
+    --plan-out <file>   Save the plan for 'atlcli script apply'
+    --concurrency <n>   Parallel writes when applying
+  Start one with 'atlcli audit init'.
 
 Exit codes: 0 ran, 1 failed or wrong arguments, 2 findings at --fail-on.
 
@@ -452,5 +467,7 @@ Examples:
   atlcli audit jira --project ATLCLI
   atlcli audit jira --board 123 --checks flow --min-level info
   atlcli audit jira --project GROW --update-baseline
-  atlcli audit jira --jql "project = ATLCLI AND component = API" --markdown > audit.md`;
+  atlcli audit jira --jql "project = ATLCLI AND component = API" --markdown > audit.md
+  atlcli audit jira --project ATLCLI --script team-rules.ts --fix
+  atlcli audit jira --project ATLCLI --template report.md.j2 --report audit.md`;
 }

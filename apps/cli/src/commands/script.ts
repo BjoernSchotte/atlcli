@@ -365,7 +365,7 @@ for await (const issue of atlcli.jira.search(\`project = \${atlcli.params.projec
 }
 `;
 
-const TSCONFIG = `{
+export const TSCONFIG = `{
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

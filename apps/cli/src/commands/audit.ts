@@ -33,6 +33,11 @@ export async function handleAudit(
     case "jira":
       await handleAuditJira(args.slice(1), flags, opts);
       return;
+    case "init": {
+      const { handleAuditInit } = await import("./audit-scripts.js");
+      await handleAuditInit(flags, opts);
+      return;
+    }
     default:
       unknownSubcommand(sub, auditHelp(), opts);
       return;
@@ -45,6 +50,11 @@ export function auditHelp(): string {
 Targets:
   wiki                  Audit Confluence wiki content (reads the sync database)
   jira                  Audit Jira issues: stuck or unassigned work, stale issues, hygiene gaps
+  init                  Write a rule script skeleton and its types to ./.atlcli/audit/
+                        (--product jira|confluence, --force)
+
+Rules are TypeScript scripts run read-only in the script sandbox. Built-ins can be
+printed (--print-rule <id>) and replaced by a script with the same id.
 
 Run 'atlcli audit wiki --help' or 'atlcli audit jira --help' for target options.
 
@@ -62,5 +72,6 @@ Examples:
   atlcli audit wiki --all --json > report.json
   atlcli audit wiki --all --markdown > AUDIT-REPORT.md
   atlcli audit jira --project ATLCLI
-  atlcli audit jira --board 123 --checks stuck-wip --json`;
+  atlcli audit jira --board 123 --checks stuck-wip --json
+  atlcli audit init --product jira`;
 }

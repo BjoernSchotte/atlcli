@@ -87,8 +87,11 @@ export async function loadAuditScripts(
     }
     const at = scripts.findIndex((s) => s.meta.id === rule.meta.id);
     if (at >= 0) {
-      diagnostics.push(`${rule.meta.id} from ${path} replaces the ${scripts[at]!.origin === "built-in" ? "built-in rule" : `rule from ${scripts[at]!.origin}`}.`);
-      scripts[at] = rule;
+      const replaced = scripts[at]!;
+      diagnostics.push(`${rule.meta.id} from ${path} replaces the ${replaced.origin === "built-in" ? "built-in rule" : `rule from ${replaced.origin}`}.`);
+      // The older check name (`--checks stale`) belongs to the id, so it carries over.
+      const legacy = rule.meta.legacy ?? replaced.meta.legacy;
+      scripts[at] = legacy ? { ...rule, meta: { ...rule.meta, legacy }, def: { ...rule.def, legacy } } : rule;
     } else {
       scripts.push(rule);
     }
@@ -283,3 +286,85 @@ export async function emitAuditReport(text: string, flags: Flags, opts: OutputOp
 
 /** `--script <file>` values. */
 export const scriptFlags = (flags: Flags) => getFlags(flags, "script");
+
+export const AUDIT_RULE_SKELETONS: Record<AuditProduct, string> = {
+  jira: `// An audit rule: runs read-only for every open issue of \`atlcli audit jira\`.
+// Print a built-in to start from: atlcli audit jira --print-rule hygiene/stale
+export const meta = {
+  audit: {
+    id: "team/bug-without-component",
+    product: "jira",
+    title: "Bugs need a component",
+    fields: ["components"],
+    defaults: "warning",
+    profiles: { strict: "error" },
+  },
+};
+
+export default (issue: JiraIssue, rule: AuditRule) => {
+  const type = issue.fields.issuetype as { name?: string } | null;
+  const components = issue.fields.components as unknown[] | null;
+  if (type?.name !== "Bug" || components?.length) return;
+  return rule.finding({ detail: "Bug without a component." });
+};
+
+// Optional: \`atlcli audit jira --fix\` plans this for every listed finding.
+// export async function fix(finding: AuditFinding, issue: JiraIssue) {
+//   await atlcli.jira.update(issue.key, { fields: { components: [{ name: "General" }] } });
+// }
+`,
+  confluence: `// An audit rule: runs read-only for every page of \`atlcli audit wiki\`.
+// Print a built-in to start from: atlcli audit wiki --list-rules
+export const meta = {
+  audit: {
+    id: "team/missing-owner-label",
+    product: "confluence",
+    title: "Pages need an owner label",
+    defaults: "info",
+  },
+};
+
+export default (page: AuditPage, rule: AuditRule) => {
+  if (page.labels.some((l) => l.startsWith("owner-"))) return;
+  return rule.finding({ detail: "No owner-* label." });
+};
+
+// Optional: \`atlcli audit wiki --fix\` plans this for every listed finding.
+// export async function fix(finding: AuditFinding, page: AuditPage) {
+//   await atlcli.confluence.addLabels(page.id, ["owner-unknown"]);
+// }
+`,
+};
+
+/** `atlcli audit init [--product jira|confluence] [--force]`: a rule skeleton and types in ./.atlcli/audit/. */
+export async function handleAuditInit(flags: Flags, opts: OutputOptions): Promise<void> {
+  const product = (getFlag(flags, "product") ?? "jira") as AuditProduct;
+  if (product !== "jira" && product !== "confluence") fail(opts, 1, ERROR_CODES.USAGE, "--product must be jira or confluence.");
+  const dir = join(process.cwd(), ".atlcli", "audit");
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(dir, { recursive: true });
+  const { ATLCLI_SCRIPT_TYPES } = await runtime();
+  const { TSCONFIG } = await import("./script.js");
+  const rule = product === "jira" ? "bug-without-component.ts" : "missing-owner-label.ts";
+  const written: string[] = [];
+  const kept: string[] = [];
+  for (const [name, content] of [["atlcli.d.ts", ATLCLI_SCRIPT_TYPES], ["tsconfig.json", TSCONFIG], [rule, AUDIT_RULE_SKELETONS[product]]] as const) {
+    const path = join(dir, name);
+    // atlcli.d.ts tracks the CLI version, so it is always refreshed.
+    if (existsSync(path) && !hasFlag(flags, "force") && name !== "atlcli.d.ts") {
+      kept.push(name);
+      continue;
+    }
+    await writeFile(path, content, "utf8");
+    written.push(name);
+  }
+  if (opts.json) return output({ schemaVersion: "1", dir, written, kept }, opts);
+  output(
+    [
+      `Wrote ${written.join(", ") || "nothing"} in ${dir}`,
+      ...(kept.length ? [`Kept existing ${kept.join(", ")} (use --force to overwrite)`] : []),
+      `Rules in this directory run with every 'atlcli audit ${product === "jira" ? "jira" : "wiki"}' here; check with --list-rules.`,
+    ].join("\n"),
+    opts,
+  );
+}

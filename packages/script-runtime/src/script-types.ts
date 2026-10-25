@@ -40,6 +40,105 @@ interface ScriptMeta {
    * with \`fields\` (default: summary, status, assignee, priority, issuetype, labels).
    */
   each?: { jql?: string; fields?: string[] };
+  /** Makes the script an audit rule (\`atlcli audit jira|wiki\`); see AuditMeta. */
+  audit?: AuditMeta;
+}
+
+type AuditSeverity = "info" | "warning" | "error";
+type AuditThreshold = { days: number } | { percentile: number };
+/** A rule's settings: \`"off"\`, a level, or thresholds; the same grammar as audit-rules.yaml. */
+type AuditPatch = "off" | AuditSeverity | { level?: AuditSeverity; info?: string | number; warning?: string | number; error?: string | number; [option: string]: Json | undefined };
+
+/** \`meta.audit\` of an audit rule script. */
+interface AuditMeta {
+  /** "<group>/<name>" in lower case; a built-in's id replaces that built-in. */
+  id: string;
+  product: "jira" | "confluence";
+  title?: string;
+  /** Defaults to the id's group. */
+  category?: string;
+  /** flag (default): a finding or not; age / until: \`rule.severity(days)\` against thresholds. */
+  kind?: "flag" | "age" | "until";
+  /** item (default): \`default(item, rule)\` per item; run: \`default(data, rule)\` once. */
+  scope?: "item" | "run";
+  /** Jira: which issues the rule gets: open (default) or done (last 90 days). */
+  items?: string;
+  /** Extra Jira fields to load for the items. */
+  fields?: string[];
+  /** Host data: changelog, sprint, versions, points, flagged, cycle-percentiles, status-percentiles. */
+  needs?: string[];
+  /** Settings for every profile, unless the rules file says otherwise (flag rules: "warning"). */
+  defaults?: AuditPatch;
+  profiles?: Partial<Record<"minimal" | "default" | "strict", AuditPatch>>;
+  /** Option names with their allowed values (\`include: [todo, wip]\`). */
+  options?: Record<string, string[]>;
+  description?: string;
+}
+
+/** The second argument of a rule. */
+interface AuditRule {
+  readonly id: string;
+  readonly kind: "flag" | "age" | "until";
+  /** The effective settings for this item (profile, rules file, overrides). */
+  readonly config: { level?: AuditSeverity; thresholds?: Partial<Record<AuditSeverity, AuditThreshold>>; [option: string]: Json | undefined };
+  /** What the host worked out (Jira: category, startedAt, statusName, inOpenSprint, percentiles, …). */
+  readonly facts: Record<string, Json>;
+  /** Milliseconds since the epoch, frozen for the run. */
+  readonly now: number;
+  /** The most severe threshold \`value\` passes, or undefined. */
+  severity(value: number, config?: AuditRule["config"]): { severity: AuditSeverity; threshold: AuditThreshold; limit: number } | undefined;
+  finding(f: AuditFindingInput): AuditFindingInput;
+}
+
+/** What a rule returns (one, a list, or nothing). */
+interface AuditFindingInput {
+  detail: string;
+  /** Defaults to the rule's configured level. */
+  severity?: AuditSeverity;
+  ageDays?: number;
+  /** For run-scope rules: what the finding is about. */
+  key?: string;
+  summary?: string;
+  status?: string;
+  assignee?: string;
+  /** What the baseline records (default: the key). */
+  subject?: string;
+  /** When the item last changed (ISO), for the legacy cutoff. */
+  updated?: string;
+}
+
+/** A finding as \`fix(finding, item)\` and reports see it. */
+interface AuditFinding {
+  rule: string;
+  category: string;
+  severity: AuditSeverity;
+  target: { kind: "issue" | "page" | "status" | "space" | "other"; key: string; url?: string };
+  key: string;
+  summary: string;
+  status: string;
+  assignee?: string;
+  detail: string;
+  ageDays?: number;
+  subject: string;
+  fixable?: boolean;
+}
+
+/** The report model (\`--json\` schemaVersion 3) that \`report(model)\` and \`--template\` get. */
+interface AuditReport {
+  schemaVersion: "3";
+  product: "jira" | "confluence";
+  generatedAt: string;
+  query: string;
+  rules: { source: string; extends: string; minLevel: AuditSeverity };
+  summary: { total: number; bySeverity: Record<AuditSeverity, number>; byRule: Record<string, number>; suppressed: { quiet: number; baseline: number; legacy: number } };
+  findings: AuditFinding[];
+  quiet: Record<string, number>;
+  legacy: Record<string, number>;
+  legacyDays: number | null;
+  staleBaselineEntries: number;
+  partial: string[];
+  diagnostics: string[];
+  titles: Record<string, string>;
 }
 
 interface JiraIssue {

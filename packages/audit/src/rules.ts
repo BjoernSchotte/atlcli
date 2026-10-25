@@ -99,9 +99,13 @@ export function parseAuditMeta(raw: unknown, origin: string): AuditMeta {
   };
 }
 
-/** The registry entry of a rule: its own profiles, or `defaults` for every profile. */
+/**
+ * The registry entry of a rule: its own profiles, or `defaults` for every
+ * profile. A flag rule that names neither is a warning everywhere.
+ */
 export function ruleDefOf(meta: AuditMeta): AuditRuleDef {
-  const profiles: Partial<Record<AuditProfileName, Patch>> = meta.defaults !== undefined ? { minimal: meta.defaults, default: meta.defaults, strict: meta.defaults } : {};
+  const defaults = meta.defaults ?? (meta.profiles === undefined && meta.kind === "flag" ? "warning" : undefined);
+  const profiles: Partial<Record<AuditProfileName, Patch>> = defaults !== undefined ? { minimal: defaults, default: defaults, strict: defaults } : {};
   return {
     id: meta.id,
     category: meta.category,

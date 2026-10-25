@@ -260,3 +260,119 @@ describe("auditRulesCandidates", () => {
     expect(auditRulesCandidates("p", null)).toEqual(withCwd.slice(1));
   });
 });
+
+describe("audit jira rule scripts", () => {
+  const rulesDir = () => join(home, ".atlcli", "audit");
+  const writeRule = (name: string, source: string) => mkdir(rulesDir(), { recursive: true }).then(() => writeFile(join(rulesDir(), name), source));
+  const clearRules = () => rm(rulesDir(), { recursive: true, force: true });
+  const RULE = `export const meta = { audit: { id: "team/unassigned", product: "jira", title: "Needs an owner", defaults: "warning" } };
+export default (issue: JiraIssue, rule: AuditRule) => {
+  if (issue.fields.assignee) return;
+  return rule.finding({ detail: \`No owner in \${rule.facts.category}.\` });
+};
+export async function fix(finding: AuditFinding, issue: JiraIssue) {
+  await atlcli.jira.comment(issue.key, "Who owns this? (" + finding.rule + ")");
+}
+export function report(model: AuditReport) {
+  return ["# Owners", ...model.findings.map((f) => \`- \${f.key} \${f.rule}\`)].join("\\n");
+}
+`;
+
+  test("a rule in .atlcli/audit/ runs with the built-ins; --list-rules names its source", async () => {
+    await writeRule("owner.ts", RULE);
+    try {
+      const report = JSON.parse((await runCli([...BASE, "--checks", "team/unassigned", "--json"])).stdout);
+      expect(report.findings).toEqual([
+        expect.objectContaining({ rule: "team/unassigned", key: "ATLCLI-1", severity: "warning", detail: "No owner in wip.", fixable: true, target: expect.objectContaining({ kind: "issue", key: "ATLCLI-1" }) }),
+      ]);
+      expect(report.titles["team/unassigned"]).toBe("Needs an owner");
+      const list = JSON.parse((await runCli([...BASE, "--list-rules", "--json"])).stdout).rules;
+      expect(list.at(-1)).toEqual(expect.objectContaining({ id: "team/unassigned", fix: true, report: true, origin: expect.stringMatching(/owner\.ts$/) }));
+      expect(list.filter((r: { origin: string }) => r.origin === "built-in")).toHaveLength(11);
+    } finally {
+      await clearRules();
+    }
+  });
+
+  test("a script with a built-in's id replaces it; --print-rule prints the built-in source", async () => {
+    const builtin = (await runCli([...BASE, "--print-rule", "hygiene/stale"])).stdout;
+    expect(builtin).toContain('id: "hygiene/stale"');
+    await writeRule("stale.ts", `export const meta = { audit: { id: "hygiene/stale", product: "jira", defaults: "error" } };
+export default (issue: JiraIssue, rule: AuditRule) => issue.key === "ATLCLI-2" ? rule.finding({ detail: "Replaced." }) : undefined;
+`);
+    try {
+      const report = JSON.parse((await runCli([...BASE, "--checks", "stale", "--json"])).stdout);
+      expect(report.findings.map((f: { key: string; detail: string }) => `${f.key}:${f.detail}`)).toEqual(["ATLCLI-2:Replaced."]);
+      expect(report.diagnostics.join(" ")).toContain("hygiene/stale from");
+      expect(report.diagnostics.join(" ")).toContain("replaces the built-in rule");
+    } finally {
+      await clearRules();
+    }
+  });
+
+  test("--script adds a run-scope rule that reads on its own", async () => {
+    const file = join(home, "free.ts");
+    await writeFile(file, `export const meta = { audit: { id: "team/count", product: "jira", scope: "run", defaults: "info" } };
+export default async (data: { open: JiraIssue[] }) => {
+  let found = 0; for await (const _ of atlcli.jira.search("project = ATLCLI")) found++;
+  return [{ key: "ATLCLI", detail: \`\${found} found, \${data.open.length} open.\`, subject: "project:ATLCLI" }];
+};
+`);
+    const report = JSON.parse((await runCli([...BASE, "--script", file, "--checks", "team/count", "--min-level", "info", "--json"])).stdout);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]).toEqual(expect.objectContaining({ rule: "team/count", key: "ATLCLI", detail: "2 found, 2 open.", subject: "project:ATLCLI", severity: "info" }));
+  });
+
+  test("a rule that writes fails the run: rules only read", async () => {
+    const file = join(home, "writer.ts");
+    await writeFile(file, `export const meta = { audit: { id: "team/writer", product: "jira" } };
+export default async (issue: JiraIssue) => { await atlcli.jira.comment(issue.key, "hi"); };
+`);
+    const { stdout, exitCode } = await runCli([...BASE, "--script", file, "--json"]);
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout).error.message).toContain("audit rules only read");
+  });
+
+  test("--fix plans the fix export for every listed finding; nothing is written", async () => {
+    await writeRule("owner.ts", RULE);
+    try {
+      const { stdout, exitCode } = await runCli([...BASE, "--checks", "team/unassigned", "--fix", "--json"]);
+      expect(exitCode).toBe(0);
+      const { plan } = JSON.parse(stdout);
+      expect(plan.operations).toEqual([expect.objectContaining({ verb: "jira.comment", args: { key: "ATLCLI-1", markdown: "Who owns this? (team/unassigned)" } })]);
+    } finally {
+      await clearRules();
+    }
+  });
+
+  test("reports: a rule's report export, --template, the default template", async () => {
+    await writeRule("owner.ts", RULE);
+    try {
+      const own = await runCli([...BASE, "--checks", "team/unassigned", "--markdown"]);
+      expect(own.stdout.trim()).toBe("# Owners\n- ATLCLI-1 team/unassigned");
+      const template = join(home, "owners.md.j2");
+      await writeFile(template, "{% for f in findings %}{{ f.key }}={{ f.severity | upper }}{% endfor %} of {{ summary.total }}\n");
+      const out = join(home, "owners.md");
+      await runCli([...BASE, "--checks", "team/unassigned", "--template", template, "--report", out]);
+      expect(await readFile(out, "utf8")).toBe("ATLCLI-1=WARNING of 1\n");
+      const printed = (await runCli([...BASE, "--print-template"])).stdout;
+      expect(printed).toContain("{% for group in groups %}");
+    } finally {
+      await clearRules();
+    }
+  });
+
+  test("audit init writes a skeleton the next run picks up", async () => {
+    const { exitCode } = await runCli(["audit", "init", "--json"]);
+    expect(exitCode).toBe(0);
+    const skeleton = await readFile(join(rulesDir(), "bug-without-component.ts"), "utf8");
+    expect(skeleton).toContain('id: "team/bug-without-component"');
+    expect(await readFile(join(rulesDir(), "atlcli.d.ts"), "utf8")).toContain("interface AuditRule {");
+    try {
+      const list = JSON.parse((await runCli([...BASE, "--list-rules", "--json"])).stdout).rules;
+      expect(list.map((r: { id: string }) => r.id)).toContain("team/bug-without-component");
+    } finally {
+      await clearRules();
+    }
+  });
+});

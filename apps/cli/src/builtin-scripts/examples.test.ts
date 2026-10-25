@@ -7,6 +7,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ATLCLI_SCRIPT_TYPES, planScript, type JiraIssueView, type ScriptPort } from "@atlcli/script-runtime";
+import { AUDIT_RULE_SKELETONS } from "../commands/audit-scripts.js";
 import { eachSkeleton } from "../commands/script.js";
 import { SCRIPT_EXAMPLES } from "./examples.js";
 
@@ -74,6 +75,7 @@ describe("script examples", () => {
     );
     for (const example of SCRIPT_EXAMPLES) await writeFile(join(dir, `${example.name}.ts`), example.source);
     await writeFile(join(dir, "each.ts"), eachSkeleton("project = ATLCLI"));
+    for (const [product, source] of Object.entries(AUDIT_RULE_SKELETONS)) await writeFile(join(dir, `audit-${product}.ts`), source);
     const tsc = Bun.which("tsc", { cwd: process.cwd(), PATH: `${join(process.cwd(), "node_modules", ".bin")}:${process.env.PATH}` });
     expect(tsc).toBeTruthy();
     const proc = Bun.spawn([tsc!, "--noEmit", "-p", join(dir, "tsconfig.json")], { stdout: "pipe", stderr: "pipe" });
