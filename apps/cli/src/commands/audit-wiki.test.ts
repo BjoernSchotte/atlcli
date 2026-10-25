@@ -59,7 +59,7 @@ beforeAll(async () => {
   await initAtlcliDir(docs, { space: "TEST", baseUrl: "https://example.atlassian.net" });
   const db = await createSyncDb(join(docs, ".atlcli"), { autoMigrate: true });
   await db.init();
-  await db.setMeta("space_key", "TEST");
+  // No space_key meta: a real pull does not write one; the scope comes from .atlcli/config.json.
   // 1: stale (400 d), orphan, one contributor, a broken link. 2: the parent, linked from 1.
   // 3: child of 2, restricted draft with 60 versions, contributors inactive.
   await db.upsertPage(record("1", { parentId: null, ancestors: [], lastModified: ago(400) }));

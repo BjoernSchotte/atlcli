@@ -537,7 +537,7 @@ export async function handleAuditWiki(args: string[], flags: Flags, opts: Output
     });
     const needs = new Set(using.flatMap((s) => s.meta.needs));
     if (needs.has("remote") && !client) needs.delete("remote");
-    const spaceKey = await adapter.getMeta("space_key");
+    const spaceKey = (await adapter.getMeta("space_key")) ?? dirConfig?.space ?? null;
     const scope = {
       ...(getFlag(flags, "label") ? { filterLabel: getFlag(flags, "label")! } : {}),
       ...(getFlag(flags, "under-page") ? { filterAncestor: getFlag(flags, "under-page")! } : {}),
