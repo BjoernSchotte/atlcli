@@ -46,9 +46,12 @@ No imports, no boilerplate: atlcli.* is always there. Add
 \`export const meta = { … }\` only to restrict permissions or declare typed params.
 
 Commands:
-  run <file>             Run the script and show the plan (dry run)
+  run <file>             Plan the script; show the plan (nothing changes)
   run -e <code>          Run inline code instead of a file
   apply <plan.json>      Apply a plan written with run --plan-out
+  apply <job-id>         Apply the reviewed plans of a per-issue job
+  resume <job-id>        Continue an interrupted per-issue job
+  jobs [job-id]          List per-issue jobs, or show one
   check <file>           Validate meta and type-check (needs tsc on PATH)
   init [dir]             Write atlcli.d.ts, tsconfig.json and an example script
 
@@ -59,6 +62,27 @@ Options for run:
   --yes                  Apply without asking (required without a terminal or with --json)
   --profile <name>       Profile to run against
   --json                 Machine-readable output
+
+Per issue (--each, or meta.each in the script):
+  --each "<jql>"         Run \`export default async (issue) => …\` once per issue; a resumable
+                         job under ~/.atlcli/jobs. Without --apply it only plans
+  --concurrency <n>      Issues in flight at once, 1–32 (4)
+  --max-failures <n|%>   Stop after this many failed issues (10%, at least 10)
+  --max-items <n>        Process at most n issues this run (the rest on resume)
+  Limits (--timeout, --max-calls, --max-writes) apply per issue: 60s, 500, 50.
+
+Options for apply:
+  --resume               Continue a plan whose earlier apply stopped (journal next to it)
+  --concurrency <n>      Operations in flight at once, 1–32 (1); same issue/page stays in order
+  --yes                  Apply without asking
+
+Options for resume:
+  --script <file>        Continue with a fixed script (planning or streaming jobs)
+  --yes, --concurrency, --max-failures as for run
+
+Options for init:
+  --each "<jql>"         Write each.ts, a per-issue script for this query
+  --example <name>       Write one of the examples (list them with --list-examples)
 
 Templates for run (atlcli.render):
   --var <name=value>     Template variable, repeatable (a.b=v nests; JSON values allowed)
@@ -71,6 +95,9 @@ Limits for run (defaults in parentheses):
   --max-writes <n>       Operations per plan; overrides meta.limits.maxWrites; 0 = none (10000)
   --max-calls <n>        Jira/Confluence calls per run; 0 = none (100000)
   --memory <MB>          Script memory (64)
+
+JQL in atlcli.jira.search and --each may use linkedIssuesOf("…"), subtasksOf("…"),
+hasAttachments("…") and more (see \`atlcli jira --help\`).
 
 atlcli.confluence.export writes its files below the directory the plan is applied in.
 
@@ -340,7 +367,41 @@ const TSCONFIG = `{
 }
 `;
 
+/** Skeleton for `init --each "<jql>"`. */
+export function eachSkeleton(jql: string): string {
+  return `// Runs once per issue of meta.each.jql.
+//   atlcli script run each.ts            plans every issue (a job); nothing changes
+//   atlcli script apply <job-id>         applies the reviewed plans
+//   atlcli script run each.ts --apply    plans and applies issue by issue
+//   atlcli script resume <job-id>        continues an interrupted job
+// Make it safe to run twice: check before you write. Status, labels, assignee
+// and page updates that change nothing are skipped; comments and creates are not.
+export const meta = {
+  each: { jql: ${JSON.stringify(jql)}, fields: ["summary", "status", "labels"] },
+};
+
+export default async (issue: JiraIssue) => {
+  const labels = issue.fields.labels as string[];
+  console.log(issue.key, issue.fields.summary);
+  // if (!labels.includes("triaged")) await atlcli.jira.addLabels(issue.key, ["triaged"]);
+};
+`;
+}
+
 async function initCommand(args: string[], flags: Flags, opts: OutputOptions): Promise<void> {
+  const { SCRIPT_EXAMPLES, exampleDescription } = await import("../builtin-scripts/examples.js");
+  if (hasFlag(flags, "list-examples")) {
+    if (opts.json) output({ schemaVersion: "1", examples: SCRIPT_EXAMPLES.map((e) => ({ name: e.name, mode: e.mode, description: exampleDescription(e) })) }, opts);
+    else output(SCRIPT_EXAMPLES.map((e) => `${e.name.padEnd(18)} ${e.mode.padEnd(5)} ${exampleDescription(e)}`).join("\n"), opts);
+    return;
+  }
+  const exampleName = getFlag(flags, "example");
+  const example = exampleName === undefined ? undefined : SCRIPT_EXAMPLES.find((e) => e.name === exampleName);
+  if (exampleName !== undefined && !example) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Unknown example "${exampleName}". Available: ${SCRIPT_EXAMPLES.map((e) => e.name).join(", ")}`);
+  }
+  const each = getFlag(flags, "each");
+  if (hasFlag(flags, "each") && !each) fail(opts, 1, ERROR_CODES.USAGE, 'init --each needs the query: --each "<jql>"');
   const dir = resolve(args[0] ?? ".");
   await mkdir(dir, { recursive: true });
   const { ATLCLI_SCRIPT_TYPES } = await runtime();
@@ -348,7 +409,7 @@ async function initCommand(args: string[], flags: Flags, opts: OutputOptions): P
   const files: Array<[string, string]> = [
     ["atlcli.d.ts", ATLCLI_SCRIPT_TYPES],
     ["tsconfig.json", TSCONFIG],
-    ["example.ts", EXAMPLE],
+    example ? [`${example.name}.ts`, example.source] : each ? ["each.ts", eachSkeleton(each)] : ["example.ts", EXAMPLE],
   ];
   const written: string[] = [];
   const kept: string[] = [];
@@ -368,7 +429,7 @@ async function initCommand(args: string[], flags: Flags, opts: OutputOptions): P
       [
         `Wrote ${written.join(", ") || "nothing"} in ${dir}`,
         ...(kept.length ? [`Kept existing ${kept.join(", ")} (use --force to overwrite)`] : []),
-        `Next: atlcli script run ${displayPath(join(dir, "example.ts"))}`,
+        `Next: atlcli script run ${displayPath(join(dir, files[2]![0]))}`,
       ].join("\n"),
       opts,
     );

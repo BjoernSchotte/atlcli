@@ -1,0 +1,27 @@
+// Keeps one Confluence page with the progress of every open epic of a
+// project, using the client-side JQL function childrenOf("…").
+//
+//   atlcli script run epic-status-page.ts --param project=ATLCLI --param space=DOCSY
+export const meta = {
+  description: "Confluence page with progress per open epic",
+  params: {
+    project: { type: "string", default: "ATLCLI" },
+    space: { type: "string", default: "DOCSY" },
+    title: { type: "string", default: "Epic status" },
+  },
+};
+
+export default async ({ project, space, title }: { project: string; space: string; title: string }) => {
+  const rows: string[] = [];
+  for await (const epic of atlcli.jira.search(`project = "${project}" AND issuetype = Epic AND statusCategory != Done ORDER BY key`, { fields: ["summary"] })) {
+    let total = 0;
+    let done = 0;
+    for await (const child of atlcli.jira.search(`issue in childrenOf("key = ${epic.key}")`, { fields: ["status"] })) {
+      total++;
+      if ((child.fields.status as { statusCategory?: { key?: string } })?.statusCategory?.key === "done") done++;
+    }
+    rows.push(`| ${epic.key} | ${String(epic.fields.summary).replace(/\|/g, "\\|")} | ${done}/${total} |`);
+  }
+  const markdown = ["| Epic | Summary | Done |", "| --- | --- | --- |", ...rows].join("\n");
+  return atlcli.confluence.upsertPage({ space, title, markdown });
+};

@@ -468,6 +468,28 @@ describe("script init and check", () => {
     }
   });
 
+  test("init --each writes a per-issue skeleton; --example and --list-examples", async () => {
+    const dir = join(home, "each-scripts");
+    const each = await run(["init", dir, "--each", "project = ATLCLI AND updated < -30d"]);
+    expect(each.exitCode, each.stderr).toBe(0);
+    expect(each.stdout).toContain("Next: atlcli script run");
+    const skeleton = await readFile(join(dir, "each.ts"), "utf8");
+    expect(skeleton).toContain(`jql: "project = ATLCLI AND updated < -30d"`);
+    expect(skeleton).toContain("export default async (issue: JiraIssue)");
+
+    const list = await run(["init", "--list-examples"]);
+    expect(list.stdout).toContain("stale-comment");
+    expect(list.stdout).toContain("epic-status-page   run");
+
+    const example = await run(["init", dir, "--example", "close-inactive"]);
+    expect(example.exitCode).toBe(0);
+    expect(await readFile(join(dir, "close-inactive.ts"), "utf8")).toContain("setStatus");
+
+    const unknown = await run(["init", dir, "--example", "nope"]);
+    expect(unknown.exitCode).toBe(1);
+    expect(unknown.stderr).toContain("Available: stale-comment");
+  });
+
   test("check rejects invalid meta without running the script", async () => {
     const file = await script("meta.ts", `export const meta = { permissions: ["jira:everything"] }; await atlcli.jira.comment("ATLCLI-1", "x");`);
     const { exitCode, stderr } = await run(["check", file]);
