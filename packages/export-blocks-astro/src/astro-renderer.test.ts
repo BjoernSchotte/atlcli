@@ -18,7 +18,7 @@ async function run(command: string[], cwd: string): Promise<string> {
 }
 
 test("plain Astro consumer renders every normalized discriminator without raw HTML execution", async () => {
-  await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro"], resolve(packageRoot, "../.."));
+  await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/export-blocks-astro"], resolve(packageRoot, "../.."));
   const output = await run(["bun", "run", "build"], fixture);
   expect(output).toContain("2 page(s) built");
   const html = await readFile(resolve(fixture, "dist/index.html"), "utf8");

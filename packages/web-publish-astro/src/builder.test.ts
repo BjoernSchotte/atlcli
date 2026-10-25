@@ -14,7 +14,7 @@ beforeAll(async () => {
   // which resolves the package's production export. Build that package here so
   // this unit lane remains self-contained when CI starts from a clean checkout
   // instead of relying on another job's ignored dist/ output.
-  const child = Bun.spawn(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], {
+  const child = Bun.spawn(["bunx", "turbo", "run", "build", "--filter=@atlcli/web-publish-astro"], {
     cwd: workspaceRoot,
     stdout: "pipe",
     stderr: "pipe",

@@ -1,6 +1,38 @@
 import { expect, test } from "bun:test";
 import { homedir } from "node:os";
-import { CREDENTIAL_VARIABLES, isolatedTestEnv } from "./run-tests.js";
+import { join } from "node:path";
+import { CREDENTIAL_VARIABLES, isolatedTestEnv, PARALLEL_TIMEOUT_MS, testRuns } from "./run-tests.js";
+
+const BASE = ["--conditions=development", "test", "--path-ignore-patterns=spikes/**"];
+
+// Regression: tests built their package with the root `bun run build --filter=…`,
+// whose root `prebuild` cleans every browser artifact. Under `--parallel` that
+// deleted the extension's `.output` while the extension tests were building it.
+test("no test builds through the root build script (its prebuild wipes browser artifacts)", async () => {
+  const offenders: string[] = [];
+  for await (const file of new Bun.Glob("{apps,packages,scripts}/**/*.test.{ts,tsx}").scan({ cwd: join(import.meta.dir, "../..") })) {
+    if (file.includes("node_modules") || file.endsWith("test-helpers/run-tests.test.ts")) continue;
+    const text = await Bun.file(join(import.meta.dir, "../..", file)).text();
+    if (/\["bun", "run", "build", "--filter=/.test(text)) offenders.push(file);
+  }
+  expect(offenders).toEqual([]);
+});
+
+test("a serial run passes the arguments through unchanged", () => {
+  expect(testRuns(["packages/core", "--test-name-pattern", "x"])).toEqual([[...BASE, "packages/core", "--test-name-pattern", "x"]]);
+});
+
+test("--parallel runs benchmarks separately and serially, after the rest", () => {
+  expect(testRuns(["--parallel"])).toEqual([
+    [...BASE, `--timeout=${PARALLEL_TIMEOUT_MS}`, "--path-ignore-patterns=**/*.benchmark.test.*", "--parallel"],
+    [...BASE, ".benchmark.test."],
+  ]);
+});
+
+test("--parallel keeps an explicit timeout and file filters as given", () => {
+  expect(testRuns(["--parallel=4", "--timeout=9000"])[0]).not.toContain(`--timeout=${PARALLEL_TIMEOUT_MS}`);
+  expect(testRuns(["--parallel", "packages/jira"])).toEqual([[...BASE, `--timeout=${PARALLEL_TIMEOUT_MS}`, "--parallel", "packages/jira"]]);
+});
 
 const real = { ATLCLI_API_TOKEN: "real-token", ATLCLI_EMAIL: "me@example.invalid", PATH: "/bin", HOME: "/home/me" };
 

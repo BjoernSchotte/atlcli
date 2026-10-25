@@ -8,7 +8,7 @@ async function run(command: readonly string[], cwd: string): Promise<void> {
   if (await process.exited !== 0) throw new Error(`Failed: ${command.join(" ")}`);
 }
 
-await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro"], workspaceRoot);
-await run(["bun", "run", "build", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
+await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/export-blocks-astro"], workspaceRoot);
+await run(["bunx", "turbo", "run", "build", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
 await run(["bun", "run", "build"], resolve(packageRoot, "fixtures/starlight"));
 await run(["bun", "run", "build"], resolve(packageRoot, "fixtures/plain-experience"));

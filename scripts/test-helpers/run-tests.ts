@@ -41,14 +41,39 @@ export function isolatedTestEnv(env: NodeJS.ProcessEnv, realHome: string, sandbo
   return out;
 }
 
+const BENCHMARKS = "**/*.benchmark.test.*";
+/** Per-test default under `--parallel`: workers × spawned CLIs oversubscribe the CPU. */
+export const PARALLEL_TIMEOUT_MS = 30_000;
+
+/**
+ * The `bun test` argument lists one `bun run test` runs. Serially that is one
+ * run as given. With `--parallel` and no file filters, benchmarks (wall-clock
+ * budgets, meaningless while every core is busy) are left out of the parallel
+ * run and get a serial run of their own afterwards; the parallel run gets a
+ * longer default timeout unless `--timeout` is given.
+ */
+export function testRuns(args: string[]): string[][] {
+  const base = ["--conditions=development", "test", "--path-ignore-patterns=spikes/**"];
+  const parallel = args.some((a) => a === "--parallel" || a.startsWith("--parallel="));
+  if (!parallel) return [[...base, ...args]];
+  const timeout = args.some((a) => a === "--timeout" || a.startsWith("--timeout=")) ? [] : [`--timeout=${PARALLEL_TIMEOUT_MS}`];
+  const filtered = args.some((a) => !a.startsWith("-"));
+  if (filtered) return [[...base, ...timeout, ...args]];
+  const serialArgs = args.filter((a) => a !== "--parallel" && !a.startsWith("--parallel="));
+  return [
+    [...base, ...timeout, `--path-ignore-patterns=${BENCHMARKS}`, ...args],
+    [...base, ...serialArgs, ".benchmark.test."],
+  ];
+}
+
 if (import.meta.main) {
   let sandbox: string | undefined;
   const env = isolatedTestEnv(process.env, homedir(), () => (sandbox = mkdtempSync(join(tmpdir(), "atlcli-test-home-"))));
-  const child = Bun.spawn(
-    [process.execPath, "--conditions=development", "test", "--path-ignore-patterns=spikes/**", ...process.argv.slice(2)],
-    { env, stdio: ["inherit", "inherit", "inherit"] }
-  );
-  const code = await child.exited;
+  let code = 0;
+  for (const run of testRuns(process.argv.slice(2))) {
+    const child = Bun.spawn([process.execPath, ...run], { env, stdio: ["inherit", "inherit", "inherit"] });
+    code = (await child.exited) || code;
+  }
   if (sandbox) rmSync(sandbox, { recursive: true, force: true });
   process.exit(code);
 }

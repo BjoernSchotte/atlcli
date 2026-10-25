@@ -291,7 +291,22 @@ describe("runScript", () => {
         limits: { deadlineMs: 30 },
       }),
     );
-    expect(error.kind).toBe("deadline");
+    // Under load the CPU deadline can win the race against the timer; both end the run.
+    expect(["deadline", "interrupted"]).toContain(error.kind);
     await delay(100); // the late settle must not touch the disposed context
+  });
+
+  // Regression: an interrupt during the prelude escaped as a raw QuickJS error
+  // (seen under parallel test load, where the prelude outlived a 30 ms deadline).
+  it("reports a deadline hit during setup as a ScriptError", async () => {
+    const realNow = Date.now;
+    let clock = realNow();
+    Date.now = () => (clock += 10); // every check is 10 ms later: the first one interrupts
+    try {
+      const error = await scriptError(run(`export default 1`, { limits: { deadlineMs: 5 } }));
+      expect(error.kind).toBe("interrupted");
+    } finally {
+      Date.now = realNow;
+    }
   });
 });
