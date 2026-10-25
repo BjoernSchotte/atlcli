@@ -480,12 +480,19 @@ function report(job: ScriptJob, tally: Tally, verbs: Map<string, number>, firstO
 }
 
 function nextStep(job: ScriptJob, counts: Counts): string {
-  const open = job.total - counts.done;
   if (job.phase === "planned") return `Nothing was changed. Review the plans, then apply: atlcli script apply ${job.id}`;
-  if (open > 0) {
-    return `${open} issue${open === 1 ? "" : "s"} not done (failed ones are retried). Continue: atlcli script resume ${job.id}${job.mode === "plan" && job.phase === "planning" ? "" : " --yes"}`;
+  const plural = (n: number) => `${n} issue${n === 1 ? "" : "s"}`;
+  // Reviewed plans cannot be re-planned: drifted issues need a new run.
+  const drift = job.mode === "plan" && job.phase === "applying" ? (counts.byStatus.drift ?? 0) : 0;
+  const retry = job.total - counts.done - drift;
+  const lines: string[] = [];
+  if (retry > 0) {
+    lines.push(`${plural(retry)} not done; resuming retries them: atlcli script resume ${job.id}${job.mode === "plan" && job.phase === "planning" ? "" : " --yes"}`);
   }
-  return "Done.";
+  if (drift > 0) {
+    lines.push(`${plural(drift)} changed after planning and ${drift === 1 ? "was" : "were"} left alone (atlcli script jobs ${job.id} lists ${drift === 1 ? "it" : "them"}). Plan ${drift === 1 ? "it" : "them"} again with a new run.`);
+  }
+  return lines.join("\n") || "Done.";
 }
 
 interface Counts {

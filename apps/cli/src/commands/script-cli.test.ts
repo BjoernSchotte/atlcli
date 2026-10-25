@@ -435,6 +435,13 @@ describe("script apply: journal and resume", () => {
     expect(out.stdout).toContain("… and 200 more");
   });
 
+  test("the apply summary lists at most 20 created keys", async () => {
+    const file = await script("create25.ts", `for (let i = 0; i < 25; i++) await atlcli.jira.create({ project: "ATLCLI", type: "Task", summary: "n" + i });`);
+    const out = await run(["run", file, "--apply", "--yes", "--concurrency", "4"]);
+    expect(out.exitCode).toBe(0);
+    expect(out.stdout).toMatch(/Created: (ATLCLI-\d+, ){19}ATLCLI-\d+ and 5 more\./);
+  });
+
   test("--concurrency is validated", async () => {
     const bad = await run(["run", "-e", "1", "--apply", "--yes", "--concurrency", "99"]);
     expect(bad.exitCode).toBe(0); // nothing to apply, so the flag is never read

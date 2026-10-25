@@ -144,6 +144,18 @@ describe("script run --each", () => {
     expect(comments()).toBe(200);
   });
 
+  test("issues edited after planning are left alone and reported as drift, not as resumable", async () => {
+    const file = await script("label.ts", `export default async (issue) => atlcli.jira.addLabels(issue.key, ["x"]);`);
+    await run(["run", file, "--each", "project = ATLCLI", "--max-items", "250"]);
+    const [id] = await jobIds();
+    issues.get("7")!.fields.updated = tick(); // someone edits ATLCLI-7 before the apply
+    const out = await run(["apply", id!, "--yes"]);
+    expect(out.stdout).toContain("249 applied, 1 drift");
+    expect(out.stdout).toContain("1 issue changed after planning and was left alone");
+    expect(out.stdout).not.toContain("resuming retries");
+    expect(issues.get("7")!.fields.labels).toEqual([]);
+  });
+
   test("refuses to apply a job whose plans were edited", async () => {
     const file = await script("stale.ts", STALE);
     await run(["run", file, "--each", "project = ATLCLI"]);

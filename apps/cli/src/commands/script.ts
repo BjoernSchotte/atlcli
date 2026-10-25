@@ -589,8 +589,9 @@ function createdSummary(report: ApplyReport): string {
   const unmoved = report.operations
     .filter((o) => o.status === "applied" && o.verb === "jira.setStatus" && o.result?.moved === false)
     .map((o) => `${String(o.result?.key)} → ${String(o.result?.status)}`);
+  const list = (items: string[]) => (items.length > 20 ? `${items.slice(0, 20).join(", ")} and ${items.length - 20} more` : items.join(", "));
   return (
-    `${created.length ? ` Created: ${created.join(", ")}.` : ""}${exported.length ? ` Exported: ${exported.join(", ")}.` : ""}` +
+    `${created.length ? ` Created: ${list(created)}.` : ""}${exported.length ? ` Exported: ${list(exported)}.` : ""}` +
     (unmoved.length ? `\nStatus unchanged (no direct transition): ${unmoved.join(", ")}.` : "")
   );
 }

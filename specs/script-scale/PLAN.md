@@ -142,3 +142,36 @@ export default async (issue) => {
 - Schreibender REST-Zugang.
 - Adaptive Drosselung bei 429: Jede Anfrage beachtet Retry-After; eine globale Drosselung kommt erst, wenn der Lastlauf zeigt, dass sie nötig ist (`ponytail:`-Kommentar).
 - Data-Center-Live-Test für `--each` (Folgeaufgabe; der Pfad über `port.jiraSearch` bleibt derselbe).
+
+---
+
+## Umsetzungsnotizen (2026-10-25)
+
+Abweichungen vom Plan:
+- `--no-jql-functions` wurde zur Umgebungsvariable `ATLCLI_JQL_FUNCTIONS=off` (plus `JiraClientOptions.jqlFunctions: false`). Sie wirkt in jedem Kommando, ohne dass jeder Handler ein Flag weiterreichen muss.
+- `--job-dir` gibt es nicht; Jobs liegen immer unter `~/.atlcli/jobs/<id>/` (YAGNI).
+- `pool()` startet Operationen in Seq-Reihenfolge, eine Semaphore begrenzt die Ausführung. Bei `--concurrency 1` wartet jede Operation auf die vorige; das alte Verhalten bleibt damit exakt erhalten.
+- Plan-Jobs mit Drift: `resume` würde nur wieder driften, deshalb verweist der Hinweis auf einen neuen Lauf.
+- Ein `invalid-script` stoppt den Job sofort, statt für jedes Issue einzeln zu scheitern.
+
+Bekannte Grenze: Pro Issue gibt es eine frische QuickJS-Runtime. Unter Bun steigt das native RSS auf ein Plateau von ~1,2 GB, gemessen gleich bei 2k und 20k Issues; WASM- und JS-Heap bleiben flach. Das tritt bei allen quickjs-emscripten-Varianten auf und ist kein Leck. Abhilfe bei Bedarf: eine Runtime pro Worker wiederverwenden (`ponytail:`-Kommentar in `script-jobs.ts`).
+
+## E2E-Belege
+
+Offline-Benchmark (Fake-Jira, 20.000 Issues, Stream-Modus, `--concurrency 8`):
+- SIGINT bei 40 %, danach `resume`: insgesamt 27 s.
+- 20.000 Kommentare, jedes Issue genau einmal.
+
+Live auf **mayflower/ATLCLI** (Testissues danach mit `bulk delete` entfernt, 0 übrig):
+- Setup: 44 Operationen als ein Plan mit `--concurrency 4`. Subtasks warteten auf ihren Parent (Platzhalter).
+- JQL-Funktionen: alle 11 Varianten liefern die richtigen Treffer, darunter `epicsOf` über Subtask → Task → Epic, die leere Menge und `not in` mit `parent IS EMPTY`.
+- `atlcli.jira.rest` (createmeta) und `atlcli.confluence.rest` (v1 und v2) gegen DOCSY.
+- `--each` im Plan-Modus: 40 Issues geplant, `script apply <job>` wendet 80 Operationen an, ein erneuter Lauf ergibt 40 unchanged.
+- Stream-Modus: SIGINT nach 11 Issues, `resume` erledigt die restlichen 29; 40 Ergebniszeilen, jedes Issue einmal.
+- Drift: ein nach dem Planen bearbeitetes Issue wird mit `drift` ausgelassen, 39 werden angewendet.
+- Apply-Journal: Op 2 schlägt fehl (Issue gelöscht). Ein zweiter Apply ohne `--resume` wird abgelehnt, `--resume` überspringt Op 1; ATLCLI-197 hat genau einen Journal-Kommentar.
+
+Live auf **kiteweave** (Temp-Projekt SCALE, danach gelöscht):
+- 1.000 `jira.create` als ein Plan mit `--concurrency 8`: 133 s, Journal mit 1.001 Zeilen.
+- `--each` im Stream-Modus über 1.000 Issues (Kommentar und Label, 2.000 Writes) mit `--concurrency 8`: 172 s, 0 Fehler, kein 429 im Log.
+- Erneuter Lauf: 1.000 unchanged in 9 s.
