@@ -25,7 +25,7 @@ class StatefulPort implements ScriptPort {
   tick(): string {
     return `2026-10-24T00:00:${String(this.clock++).padStart(2, "0")}Z`;
   }
-  private guard(name: string): void {
+  protected guard(name: string): void {
     this.writes.push(name);
     if (this.failOn === name) throw new Error(`${name} rejected by server`);
   }
@@ -198,7 +198,7 @@ class StatefulPort implements ScriptPort {
     this.guard("confluenceDeletePage");
     this.pages.delete(id);
   }
-  async confluenceAttachments() {
+  async confluenceAttachments(_pageId?: string): Promise<Array<{ id: string; name: string; mediaType: string; size: number; version: number }>> {
     return [];
   }
   async confluenceAttach(pageId: string, file: { name: string; content: string; encoding: string }) {
