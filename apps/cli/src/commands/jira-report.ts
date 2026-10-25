@@ -23,6 +23,7 @@ import {
   parseTemplate,
   resolveDefaults,
   type Template,
+  initJinja,
 } from "@atlcli/core";
 import { ConfluenceClient, hashContent, markdownToStorage } from "@atlcli/confluence";
 import {
@@ -216,6 +217,7 @@ async function publishReport(
   data: ReportData,
   options: { defaultTemplate: string; defaultTitle: string }
 ): Promise<void> {
+  await initJinja();
   const space = getFlag(flags, "space") ?? ctx.defaults.space;
   if (!space) fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or set a default: atlcli config set global.space <value>).");
   const title = getFlag(flags, "title") ?? options.defaultTitle;

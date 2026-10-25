@@ -28,6 +28,12 @@ export interface RenderJinjaOptions {
   templates?: Record<string, string>;
   /** Print unresolved expressions as written (default). False renders them as Nunjucks does: empty. */
   tolerant?: boolean;
+  /**
+   * Document templates: a line holding only a block tag (`{% if %}`, `{% endfor %}`)
+   * disappears with its line break (Jinja's trim_blocks + lstrip_blocks). Off for
+   * copied content, which must keep every character.
+   */
+  lines?: boolean;
   limits?: Partial<JinjaLimits>;
 }
 
@@ -58,7 +64,7 @@ export function renderJinja(source: string, vars: Record<string, unknown>, optio
       return { text: source, warnings: [syntaxWarning(error)] };
     }
   }
-  const answer = callGuest<GuestAnswer>({ mode: "render", source: template, vars, templates: options.templates ?? {} }, limitsOf(options));
+  const answer = callGuest<GuestAnswer>({ mode: "render", source: template, vars, templates: options.templates ?? {}, lines: options.lines === true }, limitsOf(options));
   if (!answer.ok) return { text: source, warnings: [...warnings, renderWarning(answer.error)] };
   return { text: answer.text ?? "", warnings };
 }
@@ -82,18 +88,34 @@ export function renderJinjaSegments(
     return whole(source, [syntaxWarning(error)]);
   }
   const literal = options.tolerant === false ? [] : a.literal;
-  // Whitespace control strips across piece boundaries; render such templates as one piece.
-  if (a.tokens.some((t) => t.trimLeft || t.trimRight)) {
-    const r = renderJinja(source, vars, options);
-    return whole(r.text, r.warnings);
-  }
   const marker = (i: number) => `\u0001\u0002${i}\u0002\u0001`;
-  let template = "";
-  a.segments.forEach((s, i) => {
-    const inside = literal.filter(([ls, le]) => ls >= s.start && le <= s.end);
-    template += marker(i) + applyLiteral(source.slice(s.start, s.end), inside, s.start);
-  });
-  const answer = callGuest<GuestAnswer>({ mode: "render", source: template, vars, templates: options.templates ?? {} }, limitsOf(options));
+  const texts = a.segments.map((s) =>
+    applyLiteral(source.slice(s.start, s.end), literal.filter(([ls, le]) => ls >= s.start && le <= s.end), s.start),
+  );
+  // Whitespace control (`{{-`, `-}}`) strips whitespace next to a tag. The
+  // marker between two pieces would stop it, so that whitespace moves to the
+  // tag's side of the marker: it is trimmed there, and the text piece keeps
+  // its other characters where they were.
+  const before = texts.map(() => "");
+  const after = texts.map(() => "");
+  const startTok = new Map(a.tokens.map((t) => [t.start, t]));
+  const endTok = new Map(a.tokens.map((t) => [t.end, t]));
+  for (let i = 0; i + 1 < a.segments.length; i++) {
+    const cur = a.segments[i]!;
+    const next = a.segments[i + 1]!;
+    if (cur.kind === "content" && startTok.get(next.start)?.trimLeft) {
+      const ws = /\s*$/.exec(texts[i]!)![0];
+      texts[i] = texts[i]!.slice(0, texts[i]!.length - ws.length);
+      before[i + 1] = ws;
+    }
+    if (next.kind === "content" && endTok.get(cur.end)?.trimRight) {
+      const ws = /^\s*/.exec(texts[i + 1]!)![0];
+      texts[i + 1] = texts[i + 1]!.slice(ws.length);
+      after[i] = ws;
+    }
+  }
+  const template = texts.map((t, i) => marker(i) + before[i] + t + after[i]).join("");
+  const answer = callGuest<GuestAnswer>({ mode: "render", source: template, vars, templates: options.templates ?? {}, lines: options.lines === true }, limitsOf(options));
   const warnings: JinjaWarning[] = [...a.warnings];
   if (!answer.ok) return whole(source, [...warnings, renderWarning(answer.error)]);
   const text = answer.text ?? "";

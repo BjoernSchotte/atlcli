@@ -52,7 +52,7 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
-    "handlebars": "^4.7.8",
+    "@atlcli/jinja": "workspace:*",
     "yaml": "^2.7.0"
   }
 }

@@ -407,7 +407,7 @@ const VERBS: Record<string, Verb> = {
     const unit = o.unit ?? `render#${++r.renderCount}`;
     r.rendered = true;
     try {
-      const out = render(input, {
+      const out = await render(input, {
         format: o.format,
         source: o.source,
         parent: o.parent,

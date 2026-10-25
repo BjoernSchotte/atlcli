@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeAll } from "bun:test";
+import { initJinja } from "@atlcli/core";
 import { TemplateEngine, parseTemplate } from "@atlcli/core";
 import { extractPageTasks, markdownToStorage } from "@atlcli/confluence";
 import { buildReportData, type JiraIssue } from "@atlcli/jira";
 import { BUNDLED_REPORT_TEMPLATES } from "./jira-report-templates.js";
 import { REPORT_EXPORT_TEMPLATE, REPORT_TOC_MIN_HEADINGS, decideReportTarget, reportExportFlags, reportNeedsToc } from "./jira-report.js";
+
+beforeAll(() => initJinja());
 
 const BASE = "https://x.atlassian.net";
 const issue = (key: string, type: string, category: string, summary = `Summary ${key}`, description?: unknown): JiraIssue =>

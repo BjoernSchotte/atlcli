@@ -24,6 +24,7 @@ import {
   SpaceTemplateStorage,
   TemplateResolver,
   TemplateEngine,
+  initJinja,
 } from "@atlcli/core";
 import {
   ConfluenceClient,
@@ -2109,6 +2110,7 @@ atlcli:
  * Creates the page in Confluence and adds frontmatter to the local file.
  */
 async function handleAdd(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  await initJinja();
   const filePath = args[0];
   const templateName = getFlag(flags, "template");
 

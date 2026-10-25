@@ -1,5 +1,5 @@
-import Handlebars from "handlebars";
-import { TEMPLATE_HELPER_NAMES } from "../helpers.js";
+import { analyze, hasJinjaSyntax } from "@atlcli/jinja";
+import { BUILTIN_VARIABLE_NAMES } from "../builtins.js";
 import { finish, renderText, type RenderOptions, type RenderWarning, type TemplateScope } from "../render.js";
 import { adfTextUnits, renderAdf } from "./adf.js";
 import { controlOf } from "./adf-blocks.js";
@@ -30,55 +30,24 @@ export function renderBody(
   return finish(r.text, r.warnings, opts);
 }
 
-const HELPERS = new Set(TEMPLATE_HELPER_NAMES);
-/** Operation context, not user variables. */
-const CONTEXT = new Set(["source", "parent"]);
+/** Operation context and built-ins, not user variables. */
+const NOT_VARIABLES = new Set<string>(["source", "parent", ...BUILTIN_VARIABLE_NAMES]);
 
 /**
- * Root variables a template uses, per unit: plain paths outside each/with
- * bodies, helper arguments and block subjects. Built-ins (`@…`), helpers and
- * operation context are not variables. Units that don't parse are skipped.
+ * Root variables a template uses, per unit: free names in expressions and
+ * block subjects. Loop variables (also from control paragraphs that span
+ * units), built-ins and operation context are not variables. Units that don't
+ * parse are skipped.
  */
 export function collectVariables(units: Array<{ unit: string; value: unknown; format?: BodyFormat }>): VariableUse[] {
   const uses: VariableUse[] = [];
   const seen = new Set<string>();
-  /** Inside a loop (`scoped`) only `@root.x` names a run variable; plain paths are item fields. */
-  const add = (expr: hbs.AST.Expression | undefined, unit: string, line: number, scoped = false) => {
-    if (!expr) return;
-    if (expr.type === "SubExpression") {
-      for (const p of (expr as hbs.AST.SubExpression).params) add(p, unit, line, scoped);
-      return;
-    }
-    if (expr.type !== "PathExpression") return;
-    const path = expr as hbs.AST.PathExpression;
-    const name = path.parts[0];
-    // `@root.x` names a run variable from inside a loop.
-    if (path.data && name === "root" && path.parts[1]) return addName(path.parts[1], unit, line);
-    if (scoped || path.data || path.depth > 0 || !name || CONTEXT.has(name)) return;
-    addName(name, unit, line);
-  };
-  const addName = (name: string, unit: string, line: number) => {
-    if (CONTEXT.has(name)) return;
+  const add = (name: string, unit: string, line: number) => {
+    if (NOT_VARIABLES.has(name)) return;
     const key = `${unit}\0${name}`;
     if (seen.has(key)) return;
     seen.add(key);
     uses.push({ name, unit, line });
-  };
-  const walk = (body: hbs.AST.Statement[], unit: string, scoped: boolean) => {
-    for (const s of body) {
-      const line = s.loc.start.line;
-      if (s.type === "MustacheStatement") {
-        const m = s as hbs.AST.MustacheStatement;
-        if (m.params.length > 0) m.params.forEach((p) => add(p, unit, line, scoped));
-        else if (m.path.type === "SubExpression") add(m.path, unit, line, scoped);
-        else if (!HELPERS.has((m.path as hbs.AST.PathExpression).original)) add(m.path, unit, line, scoped);
-      } else if (s.type === "BlockStatement") {
-        const b = s as hbs.AST.BlockStatement;
-        b.params.forEach((p) => add(p, unit, line, scoped));
-        walk(b.program.body, unit, scoped || ["each", "with"].includes((b.path as hbs.AST.PathExpression).original));
-        if (b.inverse) walk(b.inverse.body, unit, scoped);
-      }
-    }
   };
   for (const u of units) {
     const format = u.format ?? (typeof u.value === "string" ? "text" : "adf");
@@ -90,27 +59,27 @@ export function collectVariables(units: Array<{ unit: string; value: unknown; fo
           : format === "storage"
             ? storageTextUnits(String(u.value))
             : [String(u.value)];
-    // Control paragraphs open and close blocks across units, in document order.
-    const blocks: string[] = [];
+    // Control paragraphs open and close loops across units, in document order.
+    const loops: string[][] = [];
     for (const raw of texts) {
-      if (!raw.includes("{{")) continue;
-      const inLoop = blocks.some((b) => b === "each" || b === "with");
+      if (!hasJinjaSyntax(raw)) continue;
       const control = controlOf(raw);
       if (control?.kind === "close") {
-        if (blocks.at(-1) === control.name) blocks.pop();
+        if (control.name === "for") loops.pop();
         continue;
       }
       if (control?.kind === "else") continue;
-      // A control paragraph alone ("{{#each systems}}") doesn't parse; read its subject.
-      const text = control?.kind === "open" ? `{{__subject ${control.expr}}}` : raw;
-      if (control?.kind === "open") blocks.push(control.name);
-      let program: hbs.AST.Program;
+      const local = new Set(loops.flat());
+      // A control paragraph alone doesn't parse; read its subject.
+      const text = control?.kind === "open" || control?.kind === "elif" ? `{{ ${control.expr} }}` : raw;
+      if (control?.kind === "open" && control.name === "for") loops.push([...control.names, "loop"]);
+      let roots;
       try {
-        program = Handlebars.parse(text);
+        roots = analyze(text, {}).roots;
       } catch {
         continue;
       }
-      walk(program.body, u.unit, inLoop);
+      for (const r of roots) if (!local.has(r.name)) add(r.name, u.unit, r.line);
     }
   }
   return uses;

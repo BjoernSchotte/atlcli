@@ -374,7 +374,7 @@ describe("wiki template level selection fails loudly instead of guessing", () =>
 });
 
 describe("wiki template validate is usable as a CI gate", () => {
-  const INVALID = "---\nname: broken\n---\n{{#if x}}\nunclosed block\n";
+  const INVALID = "---\nname: broken\n---\n{% if x %}\nunclosed block\n";
   const VALID = "---\nname: fine\n---\nnothing to see here\n";
 
   test("--file with an unclosed block exits 1", async () => {
@@ -384,7 +384,7 @@ describe("wiki template validate is usable as a CI gate", () => {
     const res = await runCli("wiki", "template", "validate", "--file", file);
 
     expect(res.exitCode).toBe(1);
-    expect(res.stdout).toContain("Unclosed block helper");
+    expect(res.stdout).toContain("Jinja syntax error");
   }, 30_000);
 
   test("--file on a valid template exits 0", async () => {
@@ -397,17 +397,17 @@ describe("wiki template validate is usable as a CI gate", () => {
   }, 30_000);
 
   test("validate <name> on an invalid template exits 1", async () => {
-    await writeTemplate("global", "broken", "{{#if x}}\nunclosed block");
+    await writeTemplate("global", "broken", "{% if x %}\nunclosed block");
 
     const res = await runCli("wiki", "template", "validate", "broken", "--level", "global");
 
     expect(res.exitCode).toBe(1);
-    expect(res.stdout).toContain("Unclosed block helper");
+    expect(res.stdout).toContain("Jinja syntax error");
   }, 30_000);
 
   test("validate --all exits 1 when any template is invalid", async () => {
     await writeTemplate("global", "fine", "all good");
-    await writeTemplate("global", "broken", "{{#if x}}\nunclosed block");
+    await writeTemplate("global", "broken", "{% if x %}\nunclosed block");
 
     const res = await runCli("wiki", "template", "validate", "--all");
 
@@ -435,7 +435,7 @@ describe("wiki template validate is usable as a CI gate", () => {
   }, 30_000);
 
   test("--json emits exactly one JSON document and still exits 1", async () => {
-    await writeTemplate("global", "broken", "{{#if x}}\nunclosed block");
+    await writeTemplate("global", "broken", "{% if x %}\nunclosed block");
 
     const res = await runCli(
       "wiki",

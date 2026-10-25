@@ -113,7 +113,7 @@ export interface ValidationError {
   line?: number;
   column?: number;
   message: string;
-  type: "syntax" | "variable" | "handlebars";
+  type: "syntax" | "variable";
 }
 
 /** Validation warning */

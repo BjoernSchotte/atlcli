@@ -155,14 +155,6 @@ function loadModule(variant?: QuickJSVariant): Promise<QuickJSWASMModule> {
   return module;
 }
 
-/**
- * The shared QuickJS WASM module (the build the CLI ships), for other sandboxes
- * such as the Jinja renderer. Loaded once; its synchronous API is safe to use.
- */
-export function loadQuickJSModule(variant?: QuickJSVariant): Promise<QuickJSWASMModule> {
-  return loadModule(variant);
-}
-
 function forgetModule(variant?: QuickJSVariant): void {
   if (variant) variantModules.delete(variant);
   else defaultModule = undefined;

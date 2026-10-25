@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeAll } from "bun:test";
+import { initJinja } from "@atlcli/jinja";
 import { createTemplateScope } from "../render.js";
 import { renderStorage, storageTextUnits } from "./storage.js";
+
+beforeAll(() => initJinja());
 
 const scope = createTemplateScope({
   vars: { customer: "ACME", project: "AUD", html: `<b a="1">&]]></b>`, systems: ["IAM", "Backup"], on: true },
@@ -39,14 +42,15 @@ describe("renderStorage", () => {
     expect(render(s).value).toBe(s);
   });
   test("control paragraphs, list items and table rows", () => {
-    expect(render(`<p>{{#if on}}</p><p>A</p><p>{{/if}}</p>`).value).toBe(`<p>A</p>`);
-    expect(render(`<ul><li>{{#each systems}}</li><li>{{this}}</li><li>{{/each}}</li></ul>`).value).toBe(`<ul><li>IAM</li><li>Backup</li></ul>`);
+    expect(render(`<p>{% if on %}</p><p>A</p><p>{% endif %}</p>`).value).toBe(`<p>A</p>`);
+    expect(render(`<ul><li>{% for s in systems %}</li><li>{{ s }}</li><li>{% endfor %}</li></ul>`).value).toBe(`<ul><li>IAM</li><li>Backup</li></ul>`);
     expect(
-      render(`<table><tbody><tr><td>{{#each systems}}</td></tr><tr><td>{{this}}</td></tr><tr><td>{{/each}}</td></tr></tbody></table>`).value,
+      render(`<table><tbody><tr><td>{% for s in systems %}</td></tr><tr><td>{{ s }}</td></tr><tr><td>{% endfor %}</td></tr></tbody></table>`).value,
     ).toBe(`<table><tbody><tr><td>IAM</td></tr><tr><td>Backup</td></tr></tbody></table>`);
   });
-  test("an entity-encoded quote inside a helper call still renders", () => {
-    expect(render(`<p>{{default missing &quot;x&quot;}}</p>`).value).toBe(`<p>x</p>`);
+  test("entity-encoded quotes and operators inside an expression still render", () => {
+    expect(render(`<p>{{ missing | default(&quot;x&quot;) }}</p>`).value).toBe(`<p>x</p>`);
+    expect(render(`<p>{% if systems | length &gt; 1 %}many{% endif %}</p>`).value).toBe(`<p>many</p>`);
   });
   test("nested macros keep their bytes", () => {
     const s = `<ac:structured-macro ac:name="expand"><ac:rich-text-body><ac:structured-macro ac:name="info"><ac:rich-text-body><p>Hi {{customer}}</p></ac:rich-text-body></ac:structured-macro></ac:rich-text-body></ac:structured-macro>`;

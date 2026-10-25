@@ -64,6 +64,12 @@ describe("renderJinja", () => {
     expect(renderJinja("{{ 1 + 1 }}", {}).text).toBe("2");
   });
 
+  it("lines: a line holding only a block tag disappears; exact mode keeps every character", () => {
+    const src = "a\n{% if x %}\n  b\n{% endif %}\nc";
+    expect(renderJinja(src, { x: true }, { lines: true }).text).toBe("a\n  b\nc");
+    expect(renderJinja(src, { x: true }).text).toBe("a\n\n  b\n\nc");
+  });
+
   it("renders untemplated text without touching it", () => {
     expect(renderJinja("plain { text } }}", {})).toEqual({ text: "plain { text } }}", warnings: [] });
   });

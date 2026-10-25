@@ -20,6 +20,7 @@ import {
   type Profile,
   type TemplateVariable,
   type VariableUse,
+  initJinja,
 } from "@atlcli/core";
 import { JiraClient } from "@atlcli/jira";
 import { stringify } from "yaml";
@@ -65,6 +66,7 @@ export function valuesSkeleton(rows: VariableRow[]): string {
 }
 
 export async function handleTemplateCommand(args: string[], flags: Flags, opts: OutputOptions): Promise<void> {
+  await initJinja();
   const [sub] = args;
   if (!sub || hasFlag(flags, "help")) {
     output(templateCommandHelp(), opts);

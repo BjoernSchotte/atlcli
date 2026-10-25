@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeAll } from "bun:test";
+import { initJinja } from "@atlcli/jinja";
 import { createTemplateScope } from "../render.js";
 import { renderAdf } from "./adf.js";
 import { distribute } from "./runs.js";
+
+beforeAll(() => initJinja());
 
 const doc = (...content: unknown[]) => ({ type: "doc", version: 1, content });
 const p = (...content: unknown[]) => ({ type: "paragraph", content });
@@ -79,7 +82,7 @@ describe("renderAdf", () => {
     expect(bad.warnings[0]!.code).toBe("invalid-url");
   });
   test("round-trips a Jinja description unchanged apart from warnings", () => {
-    const d = doc(p(t("Run with {{ item.name }} and {{ x | default('a') }}")));
+    const d = doc(p(t("Run with {{ item.name }} and {% for h in groups['web'] %}{{ h }}{% endfor %}")));
     const out = render(d);
     expect(out.value).toEqual(d);
     expect(out.warnings.length).toBeGreaterThan(0);

@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeAll } from "bun:test";
+import { initJinja } from "@atlcli/jinja";
 import { createTemplateScope, RenderError } from "../render.js";
 import { checkFieldValue, renderJiraFieldValue, renderTextField } from "./text.js";
+
+beforeAll(() => initJinja());
 
 const scope = createTemplateScope({ vars: { year: 2026, empty: "", team: "ops team" } });
 const opts = { unit: "TPL-1 summary" };

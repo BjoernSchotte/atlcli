@@ -60,6 +60,7 @@ import {
   type TemplateScope,
   type TemplateVariable,
   type BodyFormat,
+  initJinja,
 } from "@atlcli/core";
 import {
   JiraClient,
@@ -6942,6 +6943,7 @@ async function handleTemplateSave(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  await initJinja();
   const name = args[0] || getFlag(flags, "name");
   const issueKey = getFlag(flags, "issue");
   const description = getFlag(flags, "description");

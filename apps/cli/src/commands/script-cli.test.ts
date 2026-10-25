@@ -399,7 +399,7 @@ export default async ({ n }) => { await atlcli.jira.comment("ATLCLI-1", "n=" + (
   });
 
   test("--var, --now and --strict reach atlcli.render; warnings show in the plan", async () => {
-    const code = `export default async () => atlcli.render("{{a}} {{@today}} {{nope}}")`;
+    const code = `export default async () => atlcli.render("{{a}} {{ today }} {{nope}}")`;
     const out = await run(["run", "-e", code, "--var", "a=1", "--now", "2026-10-25T08:00:00Z"]);
     expect(out.exitCode).toBe(0);
     expect(out.stdout).toContain('Result: "1 2026-10-25 {{nope}}"');

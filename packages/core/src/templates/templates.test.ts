@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeAll } from "bun:test";
+import { initJinja } from "@atlcli/jinja";
 import {
   parseTemplate,
   serializeTemplate,
@@ -12,6 +13,8 @@ import {
 } from "./validation.js";
 import { TemplateEngine } from "./engine.js";
 import type { Template, TemplateVariable } from "./types.js";
+
+beforeAll(() => initJinja());
 
 describe("parser", () => {
   test("parseTemplate with frontmatter", () => {
@@ -149,16 +152,17 @@ describe("validation", () => {
 
   test("extractUsedVariables", () => {
     const content = `
-# {{title}}
-Date: {{@date}}
-{{#if showDetails}}
-Details: {{details}}
-{{/if}}
-{{#each items}}...{{/each}}
+# {{ title }}
+Date: {{ date }}
+{% if showDetails %}
+Details: {{ details }}
+{% endif %}
+{% for item in items %}{{ item.name }}{% endfor %}
 `;
     const vars = extractUsedVariables(content);
     expect(vars.has("title")).toBe(true);
-    expect(vars.has("date")).toBe(true); // @date extracts as "date"
+    expect(vars.has("date")).toBe(true); // a built-in; callers filter those
+    expect(vars.has("item")).toBe(false); // loop variable
     expect(vars.has("showDetails")).toBe(true);
     expect(vars.has("details")).toBe(true);
     expect(vars.has("items")).toBe(true);
@@ -173,7 +177,7 @@ Details: {{details}}
           { name: "unused", type: "string" },
         ],
       },
-      content: "{{declared}} {{undeclared}}",
+      content: "{{ declared }} {{ undeclared }}",
       source: { level: "global", path: "" },
     };
 
@@ -188,7 +192,7 @@ Details: {{details}}
         name: "test",
         variables: [{ name: "badSelect", type: "select" }],
       },
-      content: "{{badSelect}}",
+      content: "{{ badSelect }}",
       source: { level: "global", path: "" },
     };
 
@@ -206,7 +210,7 @@ describe("engine", () => {
         name: "test",
         variables: [{ name: "title", type: "string" }],
       },
-      content: "# {{title}}",
+      content: "# {{ title }}",
       source: { level: "global", path: "" },
     };
 
@@ -223,7 +227,7 @@ describe("engine", () => {
     const engine = new TemplateEngine();
     const template: Template = {
       metadata: { name: "t", variables: [{ name: "owner", type: "string", required: true }, { name: "title", type: "string" }] },
-      content: "# {{title}}\nOwner: {{owner}}\nTypo: {{ownr}}\n{{@date}}",
+      content: "# {{ title }}\nOwner: {{ owner }}\nTypo: {{ ownr }}\n{{ date }}",
       source: { level: "global", path: "" },
     };
     const result = engine.render(template, { variables: { title: "Sprint" }, builtins: {} });
@@ -238,7 +242,7 @@ describe("engine", () => {
         name: "test",
         variables: [{ name: "name", type: "string" }],
       },
-      content: "Hello {{name \"Guest\"}}!",
+      content: 'Hello {{ name | default("Guest", true) }}!',
       source: { level: "global", path: "" },
     };
 
@@ -261,7 +265,7 @@ describe("engine", () => {
     const engine = new TemplateEngine();
     const template: Template = {
       metadata: { name: "test" },
-      content: "User: {{@user}}, Space: {{@space}}",
+      content: "User: {{ user }}, Space: {{ space }}",
       source: { level: "global", path: "" },
     };
 
@@ -273,14 +277,14 @@ describe("engine", () => {
     expect(result.content).toBe("User: Alice, Space: TEAM");
   });
 
-  test("render with helpers", () => {
+  test("render with filters", () => {
     const engine = new TemplateEngine();
     const template: Template = {
       metadata: {
         name: "test",
         variables: [{ name: "text", type: "string" }],
       },
-      content: "{{lowercase text}} / {{uppercase text}}",
+      content: "{{ text | lower }} / {{ text | upper }}",
       source: { level: "global", path: "" },
     };
 
@@ -302,7 +306,7 @@ describe("engine", () => {
           { name: "extra", type: "string" },
         ],
       },
-      content: "Base{{#if showExtra}} - {{extra}}{{/if}}",
+      content: "Base{% if showExtra %} - {{ extra }}{% endif %}",
       source: { level: "global", path: "" },
     };
 
@@ -323,22 +327,22 @@ describe("engine", () => {
     const engine = new TemplateEngine();
     const template: Template = {
       metadata: { name: "test" },
-      content: "{{#if broken}",
+      content: "{% if broken %}",
       source: { level: "global", path: "" },
     };
 
     const result = engine.validate(template);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.type === "handlebars")).toBe(true);
+    expect(result.errors.some((e) => e.type === "syntax")).toBe(true);
   });
 
   test("validateContent", () => {
     const engine = new TemplateEngine();
 
-    const validResult = engine.validateContent("Hello {{name}}");
+    const validResult = engine.validateContent("Hello {{ name }}");
     expect(validResult.valid).toBe(true);
 
-    const invalidResult = engine.validateContent("{{#if broken}");
+    const invalidResult = engine.validateContent("{% if broken %}");
     expect(invalidResult.valid).toBe(false);
   });
 });

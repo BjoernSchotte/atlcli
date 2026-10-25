@@ -434,7 +434,7 @@ describe.skipIf(!RUN).serial("jira content workflows live (Bundle A)", () => {
           await mkdir(join(templates, "global"));
           await writeFile(
             join(templates, "global", "e2e-notes.md"),
-            "---\nname: e2e-notes\ndescription: E2E\n---\nOwner: {{owner}}\n\n{{#each issues}}\n- {{key}} {{#if done}}done{{else}}open{{/if}}\n{{/each}}\n"
+            "---\nname: e2e-notes\ndescription: E2E\n---\nOwner: {{owner}}\n\n{% for issue in issues %}\n- {{ issue.key }} {% if issue.done %}done{% else %}open{% endif %}\n{% endfor %}\n"
           );
           const custom = await cliJson(
             ["jira", "version", "notes", version.id, "--space", E2E_SPACE_KEY, "--title", makeE2eTitle("jira-notes-custom"), "--template", "e2e-notes", "--var", "owner=E2E Team", "--dry-run"],

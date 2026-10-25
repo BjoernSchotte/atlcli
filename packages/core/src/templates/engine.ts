@@ -1,4 +1,4 @@
-import type Handlebars from "handlebars";
+import { renderJinja } from "@atlcli/jinja";
 import type {
   Template,
   RenderContext,
@@ -7,7 +7,6 @@ import type {
   ValidationError,
 } from "./types.js";
 import { getBuiltinVariables, BUILTIN_VARIABLE_NAMES } from "./builtins.js";
-import { createTemplateHandlebars } from "./helpers.js";
 import {
   validateTemplate,
   validateVariableValue,
@@ -15,44 +14,12 @@ import {
 } from "./validation.js";
 
 /**
- * Template engine that wraps Handlebars with custom helpers and built-in variables.
+ * Page templates (`wiki template`): Jinja over declared variables (with
+ * defaults) and built-ins. Missing values render empty here, as authors expect
+ * from a page template; `{{ name | default("…") }}` gives an inline default.
+ * Needs `await initJinja()` once before rendering.
  */
 export class TemplateEngine {
-  private handlebars: typeof Handlebars;
-
-  constructor() {
-    this.handlebars = createTemplateHandlebars();
-  }
-
-  /**
-   * Create a helper that provides inline defaults.
-   * Usage: {{varName "default value"}}
-   *
-   * This works by registering a helper for each user-defined variable.
-   */
-  private createVariableHelpers(
-    variables: Record<string, unknown>
-  ): Record<string, Handlebars.HelperDelegate> {
-    const helpers: Record<string, Handlebars.HelperDelegate> = {};
-
-    for (const [name, value] of Object.entries(variables)) {
-      helpers[name] = function (defaultValue?: string) {
-        // If value is defined and not empty, use it
-        if (value !== undefined && value !== null && value !== "") {
-          return value;
-        }
-        // Otherwise use the default if provided
-        if (typeof defaultValue === "string") {
-          return defaultValue;
-        }
-        // Return empty string
-        return "";
-      };
-    }
-
-    return helpers;
-  }
-
   /**
    * Render a template with the given context.
    */
@@ -100,81 +67,27 @@ export class TemplateEngine {
       dateFormat: context.dateFormat,
     });
 
-    // A fresh instance per render: per-variable helpers must not leak between renders
-    const hbs = createTemplateHandlebars();
+    const { text: content, warnings } = renderJinja(template.content, { ...builtins, ...finalValues }, { tolerant: false, lines: true });
+    const failure = warnings.find((w) => w.code === "parse-error" || w.code === "render-error");
+    if (failure) throw new Error(`Template render failed: ${failure.message}`);
 
-    // Register variable helpers for inline defaults
-    const varHelpers = this.createVariableHelpers(finalValues);
-    for (const [name, helper] of Object.entries(varHelpers)) {
-      hbs.registerHelper(name, helper);
-    }
+    const undeclaredVariables = [...extractUsedVariables(template.content)].filter(
+      (name) => !(name in finalValues) && !BUILTIN_VARIABLE_NAMES.includes(name as never)
+    );
 
-    // Compile and render
-    try {
-      const compiled = hbs.compile(template.content, { strict: false });
-      const content = compiled(finalValues, {
-        data: {
-          root: finalValues,
-          // Built-in @variables
-          ...builtins,
-        },
-      });
-
-      const undeclaredVariables = [...extractUsedVariables(template.content)].filter(
-        (name) => !(name in finalValues) && !BUILTIN_VARIABLE_NAMES.includes(name as never)
-      );
-
-      return {
-        content,
-        usedVariables,
-        missingVariables,
-        undeclaredVariables,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Template render failed: ${message}`);
-    }
+    return {
+      content,
+      usedVariables,
+      missingVariables,
+      undeclaredVariables,
+    };
   }
 
-  /**
-   * Check Handlebars syntax manually by looking for unmatched blocks.
-   * Returns error message if invalid, null if valid.
-   */
-  private checkHandlebarsSyntax(content: string): string | null {
-    // Track block helpers
-    const blockStack: string[] = [];
-
-    // Match opening blocks: {{#name ...}}
-    const openingBlocks = content.matchAll(/\{\{#(\w+)/g);
-    for (const match of openingBlocks) {
-      blockStack.push(match[1]);
-    }
-
-    // Match closing blocks: {{/name}}
-    const closingBlocks = content.matchAll(/\{\{\/(\w+)\}\}/g);
-    const closingList: string[] = [];
-    for (const match of closingBlocks) {
-      closingList.push(match[1]);
-    }
-
-    // Check if all opening blocks have closing blocks
-    if (blockStack.length !== closingList.length) {
-      const unclosed = blockStack.filter((b, i) => closingList[i] !== b);
-      if (unclosed.length > 0) {
-        return `Unclosed block helper: {{#${unclosed[0]}}}`;
-      }
-      return "Mismatched block helpers";
-    }
-
-    // Try to compile - may catch other errors
-    try {
-      this.handlebars.compile(content);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return `Handlebars syntax error: ${message}`;
-    }
-
-    return null;
+  /** Jinja syntax check: the error message, or null when the template parses. */
+  private checkSyntax(content: string): string | null {
+    const { warnings } = renderJinja(content, {}, { tolerant: false });
+    const error = warnings.find((w) => w.code === "parse-error");
+    return error ? `Jinja syntax error: ${error.message}${error.line !== undefined ? ` (line ${error.line})` : ""}` : null;
   }
 
   /**
@@ -183,12 +96,11 @@ export class TemplateEngine {
   validate(template: Template): ValidationResult {
     const result = validateTemplate(template);
 
-    // Also check Handlebars syntax
-    const syntaxError = this.checkHandlebarsSyntax(template.content);
+    const syntaxError = this.checkSyntax(template.content);
     if (syntaxError) {
       result.errors.push({
         message: syntaxError,
-        type: "handlebars",
+        type: "syntax",
       });
       result.valid = false;
     }
@@ -197,16 +109,16 @@ export class TemplateEngine {
   }
 
   /**
-   * Validate Handlebars syntax only (for validating content before creating a template).
+   * Validate Jinja syntax only (for validating content before creating a template).
    */
   validateContent(content: string): ValidationResult {
     const errors: ValidationError[] = [];
 
-    const syntaxError = this.checkHandlebarsSyntax(content);
+    const syntaxError = this.checkSyntax(content);
     if (syntaxError) {
       errors.push({
         message: syntaxError,
-        type: "handlebars",
+        type: "syntax",
       });
     }
 

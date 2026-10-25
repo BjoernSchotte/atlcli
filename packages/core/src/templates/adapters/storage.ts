@@ -8,6 +8,7 @@
  * formatting (strong, em, span, …) is part of a text run; any other element
  * (links, images, macros) is a run boundary.
  */
+import { hasJinjaSyntax } from "@atlcli/jinja";
 import { finish, RenderBudget, renderSegments, type RenderOptions, type RenderWarning, type TemplateScope } from "../render.js";
 import type { AdfContext } from "./adf.js";
 import { controlOf, droppedContent, expandBlock, structure, type Control, type Item } from "./adf-blocks.js";
@@ -157,7 +158,7 @@ function controlFor(n: Node): Control | undefined {
 }
 
 export function renderStorage(storage: string, scope: TemplateScope, opts: RenderOptions & { unit: string }): { value: string; warnings: RenderWarning[] } {
-  if (!storage.includes("{{")) return { value: storage, warnings: [] };
+  if (!hasJinjaSyntax(storage)) return { value: storage, warnings: [] };
   const root = parseTree(storage);
   if (!root) {
     return finish(storage, [{ code: "parse-error", message: `${opts.unit}: storage could not be tokenized; left as is`, unit: opts.unit }], opts);
@@ -166,7 +167,7 @@ export function renderStorage(storage: string, scope: TemplateScope, opts: Rende
   const raw = (n: Node) => storage.slice(n.start, n.end);
 
   const printEl = (el: El, c: Ctx): string => {
-    if (skipped(el) || el.openEnd === el.end || !storage.slice(el.start, el.end).includes("{{")) return raw(el);
+    if (skipped(el) || el.openEnd === el.end || !hasJinjaSyntax(storage.slice(el.start, el.end))) return raw(el);
     return storage.slice(el.start, el.openEnd) + printChildren(el.children, c) + storage.slice(el.closeStart, el.end);
   };
 
@@ -175,7 +176,7 @@ export function renderStorage(storage: string, scope: TemplateScope, opts: Rende
     if (!nodes.some(controlFor)) return printList(nodes, c);
     const items = structure(nodes, controlFor);
     if (!items) {
-      c.warnings.push({ code: "unbalanced-block", message: `${c.opts.unit}: {{#…}} control paragraphs don't pair up; left as is`, unit: c.opts.unit });
+      c.warnings.push({ code: "unbalanced-block", message: `${c.opts.unit}: {% … %} control paragraphs don't pair up; left as is`, unit: c.opts.unit });
       return nodes.map((n) => (controlFor(n) ? raw(n) : printList([n], c))).join("");
     }
     for (const n of nodes) {
@@ -209,7 +210,7 @@ export function renderStorage(storage: string, scope: TemplateScope, opts: Rende
     for (const run of runsOf(nodes)) {
       const pieces = run.texts.map((t) => t.decoded);
       const joined = pieces.join("");
-      if (!joined.includes("{{")) continue;
+      if (!hasJinjaSyntax(joined)) continue;
       if (run.boundaryAfter && (joined.match(/\{\{/g)?.length ?? 0) > (joined.match(/\}\}/g)?.length ?? 0)) {
         c.warnings.push({ code: "crosses-inline-node", message: `${c.opts.unit}: an expression runs into a link, image or macro; left as is`, unit: c.opts.unit });
         continue;

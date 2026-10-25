@@ -359,14 +359,15 @@ export function analyze(source: string, vars: unknown): Analysis {
       if (refs.filters.includes("default") || refs.filters.includes("d") || /\bis\s+(not\s+)?(defined|undefined|none)\b/.test(expr)) continue;
       if (!resolvesIn(vars, path)) {
         if (kind === "output") warn("unresolved", token, `Unresolved ${text(token)}`);
-        else warn("unresolved", token, `Unresolved ${path.join(".")} in ${text(token)}; treated as empty`);
+        else warn("unresolved", token, `Unresolved ${path.join(".")} in ${text(token)}; block kept as written`);
         ok = false;
       }
     }
     return ok;
   };
 
-  const stack: Array<{ name: string; start: number }> = [];
+  /** Open blocks; `literal` when the block's subject cannot resolve (the whole block is then kept as written). */
+  const stack: Array<{ name: string; start: number; literal: boolean }> = [];
   for (const token of tokens) {
     const top = stack.length === 0;
     if (token.kind === "text") {
@@ -387,20 +388,23 @@ export function analyze(source: string, vars: unknown): Analysis {
     }
     const name = tagName(token);
     const expr = tagExpression(token);
-    if (expr !== undefined) check(expr, token, "subject");
+    const resolved = expr === undefined || check(expr, token, "subject");
+    // An unresolvable `if`/`elif`/`for` is most likely someone else's template in copied text: keep the block.
+    if (!resolved && (name === "elif" || name === "else") && stack.at(-1)) stack.at(-1)!.literal = true;
     const { here, inner } = bindings(token);
     for (const n of here) scopes.at(-1)!.add(n);
     const closes = Object.entries(BLOCKS).find(([, end]) => end === name)?.[0];
     if (name === "set" && !token.inner.includes("=")) {
       // {% set x %} … {% endset %}
-      stack.push({ name: "set", start: token.start });
+      stack.push({ name: "set", start: token.start, literal: false });
       scopes.push(new Set());
     } else if (name in BLOCKS) {
-      stack.push({ name, start: token.start });
+      stack.push({ name, start: token.start, literal: !resolved && (name === "if" || name === "for") });
       scopes.push(new Set(inner));
     } else if (closes || name === "endset") {
       const open = stack.pop();
       scopes.pop();
+      if (open?.literal) out.literal.push([open.start, token.end]);
       if (open && stack.length === 0) out.segments.push({ start: open.start, end: token.end, kind: "expr" });
     } else if (top) {
       out.segments.push({ start: token.start, end: token.end, kind: "expr" });
@@ -415,7 +419,7 @@ export function analyze(source: string, vars: unknown): Analysis {
 export function applyLiteral(source: string, ranges: Array<[number, number]>, shift = 0): string {
   let out = "";
   let last = 0;
-  for (const [s, e] of [...ranges].sort((a, b) => a[0] - b[0])) {
+  for (const [s, e] of [...ranges].sort((a, b) => a[0] - b[0] || b[1] - a[1])) {
     const start = s - shift;
     const end = e - shift;
     if (start < last || start < 0 || end > source.length) continue;

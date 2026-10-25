@@ -113,11 +113,12 @@ export interface ScriptPort {
   /** As jiraRest, relative to the Confluence base: `/rest/api/…` or `/api/v2/…`. */
   confluenceRest?(path: string, options: { query?: RestQuery; signal?: AbortSignal }): Promise<unknown>;
   /**
-   * Pure: renders a template with the host's engine (atlcli.render). Throws
+   * Renders a template with the host's engine (atlcli.render); may be async
+   * (the CLI loads its Jinja sandbox on first use). Throws
    * an Error named "RenderError" for --strict warnings or an output limit.
    * Optional; without it atlcli.render fails.
    */
-  render?(input: unknown, options: RenderInput): { value: unknown; warnings: TemplateWarningView[] };
+  render?(input: unknown, options: RenderInput): RenderOutput | Promise<RenderOutput>;
 }
 
 export type RestQuery = Record<string, string | number | boolean>;
@@ -158,6 +159,11 @@ export interface JiraNotifyInput {
     watchers?: boolean;
     voters?: boolean;
   };
+}
+
+export interface RenderOutput {
+  value: unknown;
+  warnings: TemplateWarningView[];
 }
 
 export interface RenderInput {

@@ -1,3 +1,4 @@
+import { analyze } from "@atlcli/jinja";
 import type {
   Template,
   TemplateVariable,
@@ -114,34 +115,16 @@ export function validateVariableValue(
 }
 
 /**
- * Extract variable names used in a Handlebars template.
- * Matches {{varName}}, {{varName "default"}}, {{#if varName}}, etc.
+ * Root variable names a Jinja template reads: `{{ name }}`, `{{ name | default("x") }}`,
+ * `{% if name %}`, `{% for x in name %}` (loop variables excluded). Built-ins
+ * (`date`, `title`, …) are included; callers filter them.
  */
 export function extractUsedVariables(content: string): Set<string> {
-  const used = new Set<string>();
-
-  // Match simple variables: {{varName}}
-  // Match variables with defaults: {{varName "default"}}
-  // Match block helpers: {{#if varName}}, {{#unless varName}}, {{#each varName}}, {{#with varName}}
-  // Match @builtins: {{@date}}
-
-  const patterns = [
-    // Simple variable or variable with default: {{name}} or {{name "default"}}
-    /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:"[^"]*")?\s*\}\}/g,
-    // Block helpers: {{#if name}}, {{#unless name}}, {{#each name}}, {{#with name}}
-    /\{\{#(?:if|unless|each|with)\s+([a-zA-Z_][a-zA-Z0-9_]*)/g,
-    // Builtin @variables: {{@name}}
-    /\{\{\s*@([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g,
-  ];
-
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(content)) !== null) {
-      used.add(match[1]);
-    }
+  try {
+    return new Set(analyze(content, {}).roots.map((r) => r.name));
+  } catch {
+    return new Set();
   }
-
-  return used;
 }
 
 /**

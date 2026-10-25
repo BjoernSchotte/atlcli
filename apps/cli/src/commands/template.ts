@@ -44,6 +44,7 @@ import {
   type TemplateVariable,
   type TemplateMetadata,
   type ImportOptions,
+  initJinja,
 } from "@atlcli/core";
 import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence/internal";
 import { unknownSubcommand } from "./unknown-subcommand.js";
@@ -57,6 +58,7 @@ export async function handleTemplate(
   flags: Flags,
   opts: OutputOptions
 ): Promise<void> {
+  await initJinja();
   // Show help if --help or -h flag is set
   if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
     output(templateHelp(), opts);
@@ -621,7 +623,7 @@ name: ${name}
 description: ""
 variables: []
 ---
-# {{title}}
+# {{ title }}
 
 Your template content here.
 `;
@@ -708,16 +710,16 @@ async function runCreateWizard(
     tags: tags.length > 0 ? tags : undefined,
   };
 
-  const starterContent = `# {{title}}
+  const starterContent = `# {{ title }}
 
 Your template content here.
 
-{{#if items}}
+{% if items %}
 ## Items
-{{#each items}}
-- {{this}}
-{{/each}}
-{{/if}}
+{% for item in items %}
+- {{ item }}
+{% endfor %}
+{% endif %}
 `;
 
   // Open editor

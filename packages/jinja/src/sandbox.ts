@@ -1,5 +1,4 @@
-import { loadQuickJSModule } from "@atlcli/script-runtime";
-import type { QuickJSContext, QuickJSRuntime, QuickJSWASMModule } from "quickjs-emscripten-core";
+import { newQuickJSAsyncWASMModuleFromVariant, type QuickJSContext, type QuickJSRuntime, type QuickJSWASMModule } from "quickjs-emscripten-core";
 import { GUEST_PRELUDE } from "./guest.js";
 import { NUNJUCKS_SOURCE } from "./vendor/nunjucks-source.js";
 
@@ -33,9 +32,13 @@ let live: { runtime: QuickJSRuntime; ctx: QuickJSContext } | undefined;
 
 /** Loads the QuickJS module once. Rendering is synchronous after this resolved. */
 export function initJinja(): Promise<void> {
-  return (loading ??= loadQuickJSModule().then((m) => {
-    module = m;
-  }));
+  // The QuickJS build the CLI already ships (one emscripten-module.wasm beside the bundle).
+  return (loading ??= import("@jitl/quickjs-ng-wasmfile-release-asyncify")
+    .then((v) => newQuickJSAsyncWASMModuleFromVariant(v.default))
+    .then((m) => {
+      // Only the synchronous API is used, which the asyncify build shares.
+      module = m as unknown as QuickJSWASMModule;
+    }));
 }
 
 /** Whether `initJinja()` has finished. */

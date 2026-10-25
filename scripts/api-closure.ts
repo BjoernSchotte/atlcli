@@ -226,6 +226,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "keychain, tls.node, update, templates). Types reachable from frozen surfaces " +
       "(Profile, auth/TLS config) are frozen-by-closure only.",
   },
+  "@atlcli/jinja": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced with the switch from Handlebars to Jinja. The render, " +
+      "segment and analysis entry points follow what core's template adapters need; " +
+      "freeze them once a second host (extension, Forge) renders through it unchanged.",
+  },
   "@atlcli/diagram": {
     version: "0.x",
     frozen: false,

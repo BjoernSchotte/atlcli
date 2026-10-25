@@ -8,8 +8,8 @@
 // after a partial apply finds those copies and only plans what is missing.
 //
 // Summary, description, labels, comments, component/version names and extra
-// fields are templates: `{{year}}` from --var/--vars-file, `{{source.key}}`,
-// `{{@today}}`. Unresolved `{{…}}` stays as it is and shows in the plan.
+// fields are Jinja templates: `{{ year }}` from --var/--vars-file, `{{ source.key }}`,
+// `{{ today }}`. Unresolved `{{ … }}` stays as it is and shows in the plan.
 
 export const meta = {
   name: "copy-issues",

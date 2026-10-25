@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeAll } from "bun:test";
+import { initJinja } from "@atlcli/core";
 import { createTemplateScope, RenderError } from "@atlcli/core";
 import { buildCloneFields } from "./jira.js";
+
+beforeAll(() => initJinja());
 
 const doc = (text: string) => ({ type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text }] }] });
 

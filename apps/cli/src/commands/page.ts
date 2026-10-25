@@ -22,6 +22,7 @@ import {
   renderStorage,
   renderTextField,
   type RenderWarning,
+  initJinja,
 } from "@atlcli/core";
 import { assertCliAuthSupported } from "./session-guard.js";
 import copyPagesScript from "../builtin-scripts/copy-pages.script" with { type: "text" };
@@ -256,6 +257,7 @@ export function pageListCql(cql: string | undefined, space: string | undefined, 
 }
 
 async function handleCreate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  await initJinja();
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);

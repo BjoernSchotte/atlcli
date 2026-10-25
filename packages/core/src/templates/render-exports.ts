@@ -1,10 +1,12 @@
 // Browser-safe template engine: exported from both index.ts and index.browser.ts.
-export { createTemplateHandlebars, dateAdd, TEMPLATE_HELPER_NAMES } from "./helpers.js";
 export {
   childScope,
   createTemplateScope,
   evaluateExpression,
   finish,
+  hasJinjaSyntax,
+  initJinja,
+  jinjaReady,
   RenderBudget,
   RenderError,
   renderSegments,

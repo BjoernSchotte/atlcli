@@ -204,10 +204,10 @@ describe("copy-issues", () => {
 
     it("same --now gives the same plan", async () => {
       const jira = new FakeJira();
-      jira.source[1]!.fields.summary = "Run {{@uuid}} on {{@today}}";
+      jira.source[1]!.fields.summary = "Run {{ uuid }} on {{ today }}";
       const a = await plan({}, jira, templating({ version: "1" }));
       const b = await plan({}, new FakeJira(), templating({ version: "1" }));
-      jira.source[1]!.fields.summary = "Run {{@uuid}} on {{@today}}";
+      jira.source[1]!.fields.summary = "Run {{ uuid }} on {{ today }}";
       const c = await plan({}, jira, templating({ version: "1" }));
       expect(c.ops).toEqual(a.ops);
       expect(b.ops).not.toEqual(a.ops);
