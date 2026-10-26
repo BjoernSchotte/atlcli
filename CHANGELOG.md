@@ -2,6 +2,48 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.13] - 2026-10-26
+
+### Bug Fixes
+
+- **deps:** Update dependency @copilotkit/react-core to v1.80.0 ([3a28f83](https://github.com/bjoernschotte/atlcli/commit/3a28f830ba2eb634136e8f6a6704d93550d9099e))
+- **script:** JSON values in the plan listing as written; reasons for skipped restrictions and version updates ([415ca1b](https://github.com/bjoernschotte/atlcli/commit/415ca1b1e3078fde58320a6fc5be5eea8748e87a))
+- **script:** HTTP checks the address it connects to (no DNS rebinding) ([7141964](https://github.com/bjoernschotte/atlcli/commit/714196423cf809fe0f66dc9424fb597a35478e5d))
+- **script:** Output sizes under 1 MB in KB ([fa0b9ea](https://github.com/bjoernschotte/atlcli/commit/fa0b9eaf732394df6914986017dd215bab343c3e))
+- **script:** Refuse IPv4-mapped IPv6 addresses written in hex for HTTP ([dc07bc3](https://github.com/bjoernschotte/atlcli/commit/dc07bc31ea4b719464c571cde78ab67f9a116730))
+
+### Documentation
+
+- **spec:** Script bundle – REST writes, new verbs, imports, http/secrets/state/files, script test ([95d4183](https://github.com/bjoernschotte/atlcli/commit/95d418368b7ac87d606ebf1fd0f459db70d96ade))
+- Script REST writes, new verbs, HTTP and secrets, files, state, imports and script test ([f1ab765](https://github.com/bjoernschotte/atlcli/commit/f1ab765fa0026258300b88457af7435c0e021fa3))
+- **spec:** Streamed output files for scripts and audit, Jinja streaming ([f0b7baf](https://github.com/bjoernschotte/atlcli/commit/f0b7bafb48375b972a2563066bccd71d38000ab6))
+- Atlcli.output, files.lines, audit --output/--format, streamed Jinja rendering, HTTP lookup check ([b359de8](https://github.com/bjoernschotte/atlcli/commit/b359de887790879aa4475d8315e5176cc83b89ab))
+
+### Features
+
+- **jira,confluence:** REST writes, cloneIssue, page properties, blog posts, paged spaces ([61cdc25](https://github.com/bjoernschotte/atlcli/commit/61cdc252d8b616bac933207c23c94912988e52c4))
+- **script:** REST writes, more Jira/Confluence verbs, imports, http, secrets, files and state ([11f8606](https://github.com/bjoernschotte/atlcli/commit/11f8606e416614cd15e0dc66a4c5f4fe0fa2a416))
+- **script:** Atlcli script test – record a case live, replay it offline, compare plans ([d7250a0](https://github.com/bjoernschotte/atlcli/commit/d7250a0579622ed4d60ba9029e622a14b3b9abd4))
+- **script:** Release-version and worklog-report examples ([23c7d3c](https://github.com/bjoernschotte/atlcli/commit/23c7d3ceb6dfb8db9fcfe4d317a098b4eaa58e5a))
+- **jinja:** StreamJinja writes template output in chunks while it renders ([ccf23ea](https://github.com/bjoernschotte/atlcli/commit/ccf23eaa6ce4bcb430c64b80291e386cc7aace6a))
+- **script:** Atlcli.output writes reports and exports while the script runs ([451764e](https://github.com/bjoernschotte/atlcli/commit/451764ea8cc517f75ac39638d09646587eb3715f))
+- **audit:** --output and --format stream the report as Markdown, JSON, JSON Lines or CSV ([e3572fc](https://github.com/bjoernschotte/atlcli/commit/e3572fc7f88cf9041f19f2b4cd8f966b42d99088))
+- **script:** Files.lines reads large CSV, JSON Lines and text files record by record ([cb3d10a](https://github.com/bjoernschotte/atlcli/commit/cb3d10aaea3294d3bb15be17c2c883c3aa4f49c3))
+- **script:** Worklog-report example writes its CSV with atlcli.output; jinja API report ([61f5cc3](https://github.com/bjoernschotte/atlcli/commit/61f5cc3abb65eca7efc6cc38c2ed89a61a09c0cf))
+
+### Miscellaneous
+
+- **deps:** Update @opentui/core and @opentui/react to 0.7.0 together ([ef65ab0](https://github.com/bjoernschotte/atlcli/commit/ef65ab0db753b307f3724337e1172d50440e3229))
+- API reports for the Jira and Confluence client additions ([fc39997](https://github.com/bjoernschotte/atlcli/commit/fc39997ba835867ce9a9e61506a04b0598f1fae8))
+
+### Styling
+
+- No blank line at end of verbs-confluence.ts ([4f34081](https://github.com/bjoernschotte/atlcli/commit/4f34081971f058fcc78c5df4a94c0c5cb0f1d9eb))
+
+### Testing
+
+- **nfs:** Wait for the helper to free a connection slot before the pipeline ([b234eb5](https://github.com/bjoernschotte/atlcli/commit/b234eb5a93692dbbd43cd6d6c234525a2163c4bb))
+- Smaller large-model stream tests with room for slow CI runners ([3730507](https://github.com/bjoernschotte/atlcli/commit/3730507f8f0979843bc6000df16561ca349f8315))
 ## [2026.10.12] - 2026-10-25
 
 ### Breaking changes
