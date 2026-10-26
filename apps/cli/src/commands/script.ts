@@ -42,8 +42,9 @@ Writes are planned first; nothing changes until the plan is applied.
     await atlcli.jira.transition(issue.key, "Won't Do");
   }
 
-No imports, no boilerplate: atlcli.* is always there. Add
-\`export const meta = { … }\` only to restrict permissions or declare typed params.
+No boilerplate: atlcli.* is always there; share helpers with relative imports
+(./util.ts). Add \`export const meta = { … }\` only to restrict permissions,
+declare secrets or typed params.
 
 Commands:
   run <file>             Plan the script; show the plan (nothing changes)
@@ -53,6 +54,7 @@ Commands:
   resume <job-id>        Continue an interrupted per-issue job
   jobs [job-id]          List per-issue jobs, or show one
   check <file>           Validate meta and type-check (needs tsc on PATH)
+  test <file|dir>        Replay recorded cases (<name>.test.json) offline and compare the plans
   init [dir]             Write atlcli.d.ts, tsconfig.json and an example script
 
 Options for run:
@@ -80,6 +82,12 @@ Options for resume:
   --script <file>        Continue with a fixed script (planning or streaming jobs)
   --yes, --concurrency, --max-failures as for run
 
+Options for test:
+  --record <name>        Plan once against the site (nothing changes) and store what the
+                         script read and planned as a case; with --param, --each <KEY>, --now
+  --case <name>          Run one case
+  --update               Rewrite the cases' expected plans from what the script plans now
+
 Options for init:
   --each "<jql>"         Write each.ts, a per-issue script for this query
   --example <name>       Write one of the examples (list them with --list-examples)
@@ -99,7 +107,10 @@ Limits for run (defaults in parentheses):
 JQL in atlcli.jira.search and --each may use linkedIssuesOf("…"), subtasksOf("…"),
 hasAttachments("…") and more (see \`atlcli jira --help\`).
 
-atlcli.confluence.export writes its files below the directory the plan is applied in.
+atlcli.confluence.export and atlcli.files write below the directory the plan is applied in.
+atlcli.state keeps a JSON store per script in ~/.atlcli/state. atlcli.http needs
+"http:<host>" in meta.permissions; atlcli.secret("NAME") reads ATLCLI_SECRET_NAME
+into HTTP requests only.
 
 Exit codes: 0 ok · 1 error · 2 drift (target changed since the plan; nothing written)
 `;
@@ -130,6 +141,8 @@ export async function handleScript(args: string[], flags: Flags, opts: OutputOpt
       return (await import("./script-jobs.js")).jobsCommand(rest, opts);
     case "check":
       return checkCommand(rest, opts);
+    case "test":
+      return (await import("./script-test.js")).testCommand(rest, flags, opts);
     case "init":
       return initCommand(rest, flags, opts);
     default:

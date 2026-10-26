@@ -642,3 +642,52 @@ export default { last, auth: feed.json.auth };`,
     expect(issues.get("ATLCLI-1")!.comments.join()).toContain("Released 10500");
   });
 });
+
+describe("script test", () => {
+  test("records a case against the site, replays it offline, shows a diff, updates and runs test(plan)", async () => {
+    const file = await script(
+      "triage.ts",
+      `for await (const issue of atlcli.jira.search("project = ATLCLI")) await atlcli.jira.addLabels(issue.key, ["triaged"]);
+export default "done";
+export function test(plan) {
+  if (plan.operations.some((op) => op.verb !== "jira.addLabels")) throw new Error("only labels expected");
+}
+`,
+    );
+    const recorded = await run(["test", file, "--record", "two issues"]);
+    expect(recorded.exitCode).toBe(0);
+    expect(recorded.stdout).toContain('Recorded case "two issues"');
+    expect(writes).toEqual([]);
+    const testFile = JSON.parse(await readFile(join(home, "triage.test.json"), "utf8"));
+    expect(testFile.cases[0].expect.operations.map((o: { args: { key: string } }) => o.args.key)).toEqual(["ATLCLI-1", "ATLCLI-2"]);
+
+    // Offline: the site's data changes, the replay does not.
+    issues.clear();
+    const passed = await run(["test", file]);
+    expect(passed.exitCode).toBe(0);
+    expect(passed.stdout).toContain("✓ two issues");
+
+    await writeFile(file, (await readFile(file, "utf8")).replace(`["triaged"]`, `["triaged", "v2"]`), "utf8");
+    const failed = await run(["test", file]);
+    expect(failed.exitCode).toBe(1);
+    expect(failed.stdout).toContain("✗ two issues");
+    expect(failed.stdout).toContain("- #1 jira labels      ATLCLI-1 + triaged");
+    expect(failed.stdout).toContain("+ #1 jira labels      ATLCLI-1 + triaged, v2");
+
+    expect((await run(["test", file, "--update"])).exitCode).toBe(0);
+    expect((await run(["test", home, "--json"])).exitCode).toBe(0);
+
+    await writeFile(file, (await readFile(file, "utf8")).replace(`addLabels(issue.key, ["triaged", "v2"])`, `comment(issue.key, "hi")`), "utf8");
+    const custom = await run(["test", file, "--update", "--json"]);
+    expect(custom.exitCode).toBe(1);
+    const result = JSON.parse(custom.stdout).results[0];
+    expect(result.problems).toEqual(["test(plan) failed: Error: only labels expected"]);
+  });
+
+  test("a script without a test file says how to record one", async () => {
+    const file = await script("untested.ts", `export default 1;`);
+    const result = await run(["test", file]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--record <name>");
+  });
+});
