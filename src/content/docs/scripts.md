@@ -25,6 +25,7 @@ For thousands of issues, let the script handle one issue at a time and atlcli ru
 - [Writing scripts](#writing-scripts)
 - [Plan and apply](#plan-and-apply)
 - [Other services, files and state](#other-services-files-and-state)
+- [Write reports and exports](#write-reports-and-exports)
 - [Splitting a script into files](#splitting-a-script-into-files)
 - [Restricting a script](#restricting-a-script)
 - [Testing a script](#testing-a-script)
@@ -208,12 +209,21 @@ export ATLCLI_SECRET_SLACK_WEBHOOK=T000/B000/XXXX
 atlcli script run notify.ts --apply
 ```
 
-**Files.** `atlcli.files.read` and `files.list` read below the working directory; `files.write` is planned, so a report file appears only when you apply. Read a CSV, write Markdown or CSV:
+**Files.** `atlcli.files.read` and `files.list` read below the working directory; `files.write` is planned, so the file appears only when you apply. For reports and exports that you want on every run, also without `--apply`, see [Write reports and exports](#write-reports-and-exports). Read a CSV, write Markdown:
 
 ```ts
 const keys = (await atlcli.files.read("keys.csv")).trim().split("\n").slice(1);
 for (const key of keys) await atlcli.jira.addLabels(key, ["migrated"]);
 await atlcli.files.write("reports/migrated.md", `# Migrated\n\n${keys.map((k) => `- ${k}`).join("\n")}\n`);
+```
+
+`files.read` reads up to 10 MB at once. `files.lines` reads a file of any size record by record: CSV rows as arrays of fields (quoted fields may span lines), JSON Lines as values, other files as text lines. The format follows the extension (`.csv`, `.jsonl`/`.ndjson`) unless you pass `format`:
+
+```ts
+for await (const record of atlcli.files.lines("exports/issues.jsonl", { limit: 1000 })) {
+  const { key } = record as { key: string };
+  await atlcli.jira.addLabels(key, ["imported"]);
+}
 ```
 
 **State.** `atlcli.state` keeps values between runs, one store per script (`~/.atlcli/state/<name>.json`). `state.set` is planned like any write, so a run without `--apply` leaves the state as it was:
@@ -225,6 +235,91 @@ await atlcli.state.set("since", new Date().toISOString().slice(0, 16).replace("T
 ```
 
 See [Script API: HTTP and secrets](reference/scripts.md#http-and-secrets), [Files](reference/scripts.md#files) and [State](reference/scripts.md#state).
+
+## Write reports and exports
+
+`atlcli.output(path)` opens a file and returns a writer. Output files are results, like stdout: they are written while the script runs, also in a dry run without `--apply`, and they are not part of the plan. A file appears only once the script calls `close()`, so a failed run leaves no half-written file and keeps an existing one unchanged.
+
+| Method | Writes |
+|---|---|
+| `out.write(text)`, `out.line(text?)` | text, or text and a line break |
+| `out.row(cells)` | one CSV row (RFC 4180 quoting, CRLF) |
+| `out.json(value)` | one JSON Lines record |
+| `out.render(template, vars?)` | a [Jinja template](templating.md#streamed-rendering), rendered straight into the file |
+| `await out.close()` | keeps the file; returns `{ path, bytes, sha256 }` |
+
+Await the write methods in loops: text is handed over in 64 KB chunks, and more than 16 MB waiting to be written is an error.
+
+**Minimal: a CSV of open bugs.**
+
+```ts
+const out = await atlcli.output("reports/open-bugs.csv");
+await out.row(["key", "summary", "status"]);
+for await (const issue of atlcli.jira.search("project = ATLCLI AND type = Bug AND statusCategory != Done", { fields: ["summary", "status"] })) {
+  await out.row([issue.key, issue.fields.summary, (issue.fields.status as { name: string }).name]);
+}
+await out.close();
+```
+
+```bash
+atlcli script run open-bugs.ts
+# Wrote reports/open-bugs.csv (14 KB)
+```
+
+**Realistic: a Markdown report from a Jinja template.** The template can live in its own file next to the script. `render` sees the `--var` values, `today` and `now`, and the `vars` you pass:
+
+```ts
+export const meta = {
+  name: "sprint-report",
+  permissions: ["jira:read", "file:read", "file:output"],
+  params: { board: { type: "number" } },
+};
+
+let sprint: JiraSprint | undefined;
+for await (const s of atlcli.jira.sprints(atlcli.params.board, { state: "active" })) sprint ??= s;
+if (!sprint) throw new Error("No active sprint");
+
+const issues = [];
+for await (const issue of atlcli.jira.search(`sprint = ${sprint.id} ORDER BY status`, { fields: ["summary", "status", "assignee"] })) {
+  issues.push({
+    key: issue.key,
+    summary: issue.fields.summary,
+    status: (issue.fields.status as { name: string }).name,
+    assignee: (issue.fields.assignee as { displayName?: string } | null)?.displayName ?? "Unassigned",
+  });
+}
+
+const out = await atlcli.output(`reports/${sprint.name}.md`);
+await out.render(await atlcli.files.read("templates/sprint.md.j2"), { sprint, issues }, {
+  templates: { "row.md.j2": await atlcli.files.read("templates/row.md.j2") },
+});
+const { path, bytes } = await out.close();
+export default { path, bytes };
+```
+
+```jinja
+# {{ sprint.name }} ({{ today }})
+
+{{ issues | length }} issues in the sprint.
+
+| Key | Summary | Status | Assignee |
+|---|---|---|---|
+{% for issue in issues %}
+{% include "row.md.j2" %}
+{% endfor %}
+```
+
+```bash
+atlcli script run sprint-report.ts --param board=42 --out-dir build
+```
+
+- **Where files go.** Paths are relative and stay below `--out-dir` (default: the working directory; created if missing).
+- **How much.** One run writes at most 50 files and 256 MB in total; raise the size with `--max-output 1g`. In a [per-issue job](script-jobs.md) the limits cover all issues together, and each path can be written once per run.
+- **Close every file.** An output left open fails the run with `was not closed (await out.close())`; in a per-issue job it fails only that issue.
+- **Permission.** Scripts that declare `meta.permissions` need `file:output`.
+- **`--json`** adds `outputs: [{ path, bytes, sha256 }]` to the result.
+
+`files.write` is the other way to write a file: it is part of the plan, written only on apply and limited to 10 MB. Use it when the file is a change you want reviewed; use `atlcli.output` for reports. See [Script API: output files](reference/scripts.md#output-files).
 
 ## Splitting a script into files
 
@@ -263,7 +358,7 @@ for await (const issue of atlcli.jira.search(`project = ATLCLI AND updated < -${
 }
 ```
 
-- **`permissions`**: once given, everything else is denied. Write grants name one project or space, or `*` for all (`jira:write:*`). `file:read` and `file:write` cover local files, `http:<host>` one host for HTTP. A denied verb ends the run, even if the script catches the error.
+- **`permissions`**: once given, everything else is denied. Write grants name one project or space, or `*` for all (`jira:write:*`). `file:read` and `file:write` cover local files, `file:output` [output files](#write-reports-and-exports), `http:<host>` one host for HTTP. A denied verb ends the run, even if the script catches the error.
 - **`secrets`**: the names of the secrets the script uses; a missing one stops the run before it starts.
 - **`limits.maxWrites`**: the most operations a plan may contain (default 10,000).
 - **`params`**: typed parameters with defaults. Unknown or mistyped `--param` values are rejected.
@@ -293,6 +388,8 @@ export function test(plan: { operations: Array<{ verb: string }> }) {
   if (plan.operations.some((op) => op.verb === "jira.deleteIssue")) throw new Error("triage must never delete");
 }
 ```
+
+Output files are kept in memory during tests and never written. A recorded case stores their content (up to 64 KB, else a SHA-256), and a replay reports `Output <path> differs`, `was not written` or `was written but is not expected`.
 
 `<script>.test.json` holds what the script read from the site. Review it before you commit it; secret values are never recorded. See [Script API: script tests](reference/scripts.md#script-tests).
 
@@ -400,6 +497,12 @@ atlcli script run migrate.ts --timeout 0 --max-calls 0 --max-writes 50000 --memo
 `--max-writes` overrides `meta.limits.maxWrites`. For work on many issues, a [per-issue job](script-jobs.md) has no total limit at all: its limits apply to each issue. Each Jira, Confluence or HTTP call may take up to 60 seconds; HTTP responses and files are limited to 10 MB. See [Script API: sandbox limits](reference/scripts.md#sandbox-limits).
 
 ## Troubleshooting
+
+**`Script failed: output reports/x.csv was not closed (await out.close()); nothing written`**
+The script opened an output file and ended without closing it. Call `await out.close()` after the last write, also on early returns.
+
+**`Output files exceed 256 MB (at export.jsonl); raise the limit with --max-output`**
+The run's output files together are larger than the limit. Pass `--max-output 1g`, or write less.
 
 **`Script failed (guest): …`**
 The script threw an error. The message is the script's own error, or the error Jira or Confluence returned (for example `Jira API error (404)` for a missing issue). Catch it in the script if a missing object is expected.

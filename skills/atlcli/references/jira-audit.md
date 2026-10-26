@@ -20,6 +20,7 @@ Two flags write a local baseline file (see [Baseline](#baseline)).
 - [Rules and the rules file](#rules-and-the-rules-file)
 - [Rule scripts and fixes](#rule-scripts-and-fixes)
 - [Baseline](#baseline)
+- [Report files and formats](#report-files-and-formats)
 - [Exit codes and JSON](#exit-codes-and-json)
 - [Anti-patterns](#anti-patterns)
 
@@ -113,10 +114,37 @@ read-only in the script sandbox; a write verb fails the run with
   `atlcli script apply f.json`; `--fix --apply` applies after a prompt
   (`--yes` skips it, so only with the user's go).
 - Reports: `--markdown` (default Jinja template, `--print-template`),
-  `--template file.j2`, or a rule's `export function report(model)`
-  (`--report-script <id>`); `--report <file>` writes to a file.
+  `--template file.j2`, or a rule's `export async function report(model, out)`
+  (`--report-script <id>`, else the last rule with one). The export writes
+  through `out` (`write`, `line`, `row`, `json`, `render`; no `close`, atlcli
+  closes it) or returns the whole text. Neither is an error (`must write to out
+  or return the report text`). With `meta.permissions` it needs `file:output`.
+  Rule checks and `fix` cannot open output files (`audit rules write no files`).
 
 Docs page: Custom Audit Rules (`/audit-scripts/`).
+
+## Report files and formats
+
+```bash
+atlcli audit jira --project PROJ --output audit.csv          # format from the extension
+atlcli audit jira --project PROJ --format jsonl > findings.jsonl
+atlcli audit jira --project PROJ --template team.md.j2 --output report.md
+```
+
+- `--output <file>`: the report goes to the file, replaced only once complete
+  (a failed run keeps the old file); parent directories are created. stderr:
+  `Report written to <file> (<size>)`. With `--json`, stdout still gets the
+  JSON report. Writing a file: say where before running it.
+- `--format md|json|jsonl|csv`: default from the `--output` extension (`.json`,
+  `.jsonl`/`.ndjson`, `.csv`, else Markdown); without `--output` it goes to
+  stdout. `json` = the `--json` report; `jsonl` = one finding per line; `csv`
+  columns `severity,rule,key,summary,status,assignee,detail,ageDays,url` (RFC
+  4180, CRLF).
+- `--report <file>` = `--format md --output <file>`.
+- `--template`, `--markdown`, `--report-script` make Markdown only; with
+  `--format json|jsonl|csv` they are a usage error.
+- Reports stream (templates in chunks, JSON one finding at a time). A template
+  error fails the audit instead of printing the template source.
 
 ## Baseline
 

@@ -123,7 +123,9 @@ The issue history shows which of two cases applies, and the finding says so:
 | `--limit` | integer ≥ 1 | `1000` | Most issues per query; hitting it marks the report partial |
 | `--markdown` | flag | off | Markdown report with one table per rule (a Jinja template; `--print-template` prints it) |
 | `--template` | file path | — | Render the report with your own [Jinja](../templating.md) template; other templates in its directory can be included |
-| `--report` | file path | stdout | Write the Markdown report to this file |
+| `--output` | file path | stdout | Write the report to this file, replaced only once complete; parent directories are created. See [Report files and formats](#report-files-and-formats) |
+| `--format` | `md`, `json`, `jsonl`, `csv` | from the `--output` extension, else the text report | Report format; without `--output` it goes to stdout |
+| `--report` | file path | — | Same as `--format md --output <file>` |
 | `--report-script` | rule id | last rule with one | Build the report with this rule's `report` export |
 | `--json` | flag | off | JSON report (`schemaVersion: "3"`) |
 | `--script` | file path, repeatable | — | Add a rule script (see [Custom Audit Rules](../audit-scripts.md)) |
@@ -146,6 +148,36 @@ The issue history shows which of two cases applies, and the finding says so:
   ```
 
 - **Status mapping:** comes from `flow.statusMap`, as for flow metrics.
+
+## Report files and formats
+
+`--output <file>` writes the report to a file. The file is replaced only once the report is complete, so a failed run keeps the old file. stderr says `Report written to <file> (<size>)`; with `--json`, stdout still gets the JSON report.
+
+| Format | Content | Chosen by |
+|---|---|---|
+| `md` | Markdown, see below | `--format md`, `--report <file>`, or an `--output` file with any other extension |
+| `json` | Exactly the `--json` report (`schemaVersion: "3"`) | `--format json` or `.json` |
+| `jsonl` | One finding per line (JSON Lines) | `--format jsonl`, `.jsonl` or `.ndjson` |
+| `csv` | One finding per row: `severity,rule,key,summary,status,assignee,detail,ageDays,url`; RFC 4180 quoting, CRLF | `--format csv` or `.csv` |
+
+The Markdown report comes from the first of:
+
+1. `--template <file>`: your [Jinja](../templating.md) template. Other templates in its directory (`.j2`, `.jinja`, `.md`, `.txt`, `.html`) can be included.
+2. A rule's `report` export: `--report-script <id>`, or the last rule that has one (see [Custom Audit Rules](../audit-scripts.md#reports)).
+3. The default template (`--markdown`; `--print-template` prints it).
+
+`--template`, `--markdown` and `--report-script` only make Markdown: combining them with `--format json`, `jsonl` or `csv` is a usage error.
+
+Reports stream: no format is built as one string in memory. Templates render in chunks and JSON is written one finding at a time, so large audits do not need large memory for the report. The findings themselves stay in memory for `--fail-on` and the baseline. A template error fails the audit; see [Templating: streamed rendering](../templating.md#streamed-rendering).
+
+```bash
+# Minimal: a spreadsheet of the findings
+atlcli audit jira --project ATLCLI --output audit.csv
+
+# Realistic: your team's Markdown report as a file, the findings as JSON Lines for a dashboard
+atlcli audit jira --board 42 --template team.md.j2 --output reports/audit.md
+atlcli audit jira --board 42 --format jsonl > findings.jsonl
+```
 
 ## Examples
 
@@ -235,6 +267,9 @@ atlcli script apply fixes.json
 | 2 | A listed finding reached `--fail-on` (default: an error) |
 
 ## Troubleshooting
+
+**`--template, --markdown and --report-script make a Markdown report; drop --format or use --format md`.**
+These options only produce Markdown. Drop `--format`, or write the other format in a second run.
 
 **`Audit feature is not enabled`.**
 Run `atlcli flag set audit true --global`.

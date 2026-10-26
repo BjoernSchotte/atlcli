@@ -17,6 +17,8 @@ template issue, a template page tree) or a local file.
 | [`jira template apply`](/jira/templates/) | Summary, description, labels, due date, other fields |
 | [`wiki page copy`](/confluence/pages/#copy-page), with `--tree` | Titles and bodies, including macro parameters |
 | [`atlcli.render()`](/reference/scripts/#atlclirender) in scripts | Whatever the script passes |
+| [`out.render()`](/reference/scripts/#output-files) in scripts | A report or export file, [streamed](#streamed-rendering) |
+| [`audit jira`/`audit wiki`](/jira/audit/) Markdown reports | The report, [streamed](#streamed-rendering) |
 | [`wiki template`](/confluence/templates/) | Page templates (Markdown; see [differences](#wiki-template)) |
 
 The syntax is Jinja, as implemented by [Nunjucks](https://mozilla.github.io/nunjucks/templating.html).
@@ -195,6 +197,30 @@ In Jira wiki markup and plain-text fields, warnings give the line and column
 in the field. In rich text (ADF descriptions, Confluence pages) they name the
 field or page and the expression, without a position.
 
+## Streamed rendering
+
+Reports and exports render straight into their file instead of into one
+string: [`out.render()`](/reference/scripts/#output-files) in scripts and the
+Markdown reports of `atlcli audit jira` and `atlcli audit wiki` (`--template`,
+or the default template). The output is byte-identical to a normal render.
+
+| | Normal render | Streamed render |
+|---|---|---|
+| Unresolved `{{ … }}` | Stays as written, with a warning | Same (`out.render`). Audit `--template` reports render them empty, as before |
+| Syntax or runtime error | The source is kept as written, with a warning | An error: the audit fails, and `out.render` throws, which fails the script run unless it catches it. Text before the error is already written; an output file of a failed run is discarded and an existing one kept |
+| Time per render | 5 seconds | 5 minutes |
+| Memory | 64 MB | 64 MB, or four times the size of the data passed in, whichever is larger |
+
+`include`, `extends` and `import` load only the templates passed along:
+`templates` in `out.render`, and for an audit `--template` the other templates
+in its directory (`.j2`, `.jinja`, `.md`, `.txt`, `.html`).
+
+```ts
+const out = await atlcli.output("reports/summary.md");
+await out.render("# Open issues ({{ today }})\n{% for i in issues %}\n- {{ i.key }}\n{% endfor %}\n", { issues });
+await out.close();
+```
+
 ## Variables
 
 ### `--var`
@@ -312,6 +338,7 @@ atlcli script apply pages.json
 | `Missing required template variables` | A declared required variable has no value and there is no terminal | Pass `--var` or `--vars-file` |
 | `Template output limit exceeded` | A loop produced more than 1 MB in one field, or 16 MB in the run | Check the loop's data |
 | `Template loop limit exceeded` | More than 100,000 `{% for %}` items in one run (nested loops multiply) | Check the loop's data |
+| A report or `out.render` fails with a template error | Streamed renders stop on errors instead of keeping the source | Fix the template at the line and column the error names |
 | Dates differ between two plans | Each plan renders with its own time | Pass the first plan's time as `--now` |
 
 ## wiki template
