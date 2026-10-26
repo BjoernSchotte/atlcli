@@ -1,7 +1,12 @@
+import type { LookupAddress, LookupOptions } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { lstat, mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { isIP } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
+import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { ConfluenceClient, type FooterComment, type InlineComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
 import type { Profile } from "@atlcli/core";
 import {
@@ -23,6 +28,8 @@ import {
 import type {
   AttachmentInput,
   ConfluenceCommentView,
+  HttpRequestInput,
+  HttpResponseView,
   ConfluenceInlineCommentView,
   JiraBoardView,
   JiraIssueView,
@@ -612,18 +619,7 @@ export function createCliScriptPort(
       return confluence().createBlogPost({ spaceKey, title, storage: markdownToStorage(markdown, conversion) });
     },
 
-    async httpFetch(request, { signal }) {
-      const url = new URL(request.url);
-      await refusePrivateAddress(url);
-      const response = await fetch(url, {
-        method: request.method,
-        headers: request.headers,
-        ...(request.body !== undefined ? { body: request.body } : {}),
-        redirect: "manual",
-        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(HTTP_TIMEOUT_MS)]) : AbortSignal.timeout(HTTP_TIMEOUT_MS),
-      });
-      return { status: response.status, headers: Object.fromEntries(response.headers), text: await cappedText(response) };
-    },
+    httpFetch: (request, { signal }) => sendHttp(request, signal),
     secret(name) {
       return process.env[`ATLCLI_SECRET_${name}`];
     },
@@ -783,17 +779,71 @@ function componentView(c: JiraComponent, project: string | undefined) {
 }
 
 /**
- * Refuses hosts that resolve to private, loopback or link-local addresses,
- * except the explicit local names (http is allowed only for those).
- * ponytail: checked before the request, so a DNS answer that changes between
- * this lookup and the connect (rebinding) is not caught; pin the address if
- * scripts ever run against untrusted DNS.
+ * One HTTP request, redirects not followed. Hosts other than the explicit
+ * local names may not be or resolve to private, loopback or link-local
+ * addresses: the check runs in the connection's own DNS lookup, so the
+ * address checked is the address connected to (no DNS rebinding).
  */
-async function refusePrivateAddress(url: URL): Promise<void> {
-  if (LOCAL_HOSTS.has(url.hostname)) return;
-  const addresses = await lookup(url.hostname.replace(/^\[|\]$/g, ""), { all: true });
-  const blocked = addresses.find((a) => isPrivateAddress(a.address));
-  if (blocked) throw new Error(`${url.hostname} resolves to the private address ${blocked.address}; refused`);
+export function sendHttp(request: HttpRequestInput, signal?: AbortSignal): Promise<HttpResponseView> {
+  const url = new URL(request.url);
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  const local = LOCAL_HOSTS.has(url.hostname);
+  if (!local && isIP(host) && isPrivateAddress(host)) return Promise.reject(new Error(`${url.hostname} is a private address; refused`));
+  const timeout = AbortSignal.timeout(HTTP_TIMEOUT_MS);
+  return new Promise((done, fail) => {
+    const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(
+      url,
+      {
+        method: request.method,
+        headers: request.headers,
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+        ...(local ? {} : { lookup: publicLookup }),
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        res.on("data", (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > MAX_LOCAL_BYTES) req.destroy(new Error(`Response is larger than ${MAX_LOCAL_BYTES} bytes`));
+          else chunks.push(chunk);
+        });
+        res.on("error", fail);
+        res.on("end", () => {
+          try {
+            const body = decoded(Buffer.concat(chunks), res.headers["content-encoding"]);
+            if (body.length > MAX_LOCAL_BYTES) throw new Error(`Response is larger than ${MAX_LOCAL_BYTES} bytes`);
+            const headers = Object.fromEntries(Object.entries(res.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : String(v ?? "")]));
+            done({ status: res.statusCode ?? 0, headers, text: body.toString("utf8") });
+          } catch (error) {
+            fail(error);
+          }
+        });
+      },
+    );
+    req.on("error", fail);
+    req.end(request.body);
+  });
+}
+
+/** DNS lookup for `http.request` that fails on private addresses. */
+function publicLookup(hostname: string, options: LookupOptions, callback: (error: Error | null, address: string | LookupAddress[], family?: number) => void): void {
+  lookup(hostname, { all: true, ...(options.family ? { family: options.family } : {}) }).then(
+    (addresses) => {
+      const blocked = addresses.find((a) => isPrivateAddress(a.address));
+      if (blocked) callback(new Error(`${hostname} resolves to the private address ${blocked.address}; refused`), []);
+      else if (options.all) callback(null, addresses);
+      else callback(null, addresses[0]!.address, addresses[0]!.family);
+    },
+    (error: Error) => callback(error, []),
+  );
+}
+
+/** A body as sent: gzip, deflate and br are undone (the script may ask for them). */
+function decoded(body: Buffer, encoding: string | undefined): Buffer {
+  if (encoding === "gzip") return gunzipSync(body, { maxOutputLength: MAX_LOCAL_BYTES + 1 });
+  if (encoding === "deflate") return inflateSync(body, { maxOutputLength: MAX_LOCAL_BYTES + 1 });
+  if (encoding === "br") return brotliDecompressSync(body, { maxOutputLength: MAX_LOCAL_BYTES + 1 });
+  return body;
 }
 
 export function isPrivateAddress(address: string): boolean {
@@ -804,19 +854,6 @@ export function isPrivateAddress(address: string): boolean {
   }
   const v6 = address.toLowerCase();
   return v6 === "::1" || v6 === "::" || v6.startsWith("fc") || v6.startsWith("fd") || v6.startsWith("fe80");
-}
-
-/** The response body as text, refusing more than MAX_LOCAL_BYTES. */
-async function cappedText(response: Response): Promise<string> {
-  if (!response.body) return "";
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-    size += chunk.length;
-    if (size > MAX_LOCAL_BYTES) throw new Error(`Response is larger than ${MAX_LOCAL_BYTES} bytes`);
-    chunks.push(chunk);
-  }
-  return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
 /** `path` below `root`, after resolving links: a link pointing outside is refused. */
