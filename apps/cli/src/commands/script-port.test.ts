@@ -65,10 +65,10 @@ test("state persists per store as JSON and deletes keys", async () => {
 });
 
 test("private addresses are refused for HTTP, public ones pass", () => {
-  for (const a of ["10.0.0.1", "127.0.0.1", "172.16.5.4", "192.168.1.1", "169.254.169.254", "100.64.0.1", "::1", "fd00::1", "fe80::1", "::ffff:10.1.2.3", "0.0.0.0"]) {
+  for (const a of ["10.0.0.1", "127.0.0.1", "172.16.5.4", "192.168.1.1", "169.254.169.254", "100.64.0.1", "::1", "fd00::1", "fe80::1", "::ffff:10.1.2.3", "0.0.0.0", "::ffff:7f00:1", "::ffff:a9fe:a9fe", "0:0:0:0:0:ffff:7f00:1", "::FFFF:C0A8:0101", "febf::1"]) {
     expect([a, isPrivateAddress(a)]).toEqual([a, true]);
   }
-  for (const a of ["8.8.8.8", "172.32.0.1", "2606:4700::1"]) expect([a, isPrivateAddress(a)]).toEqual([a, false]);
+  for (const a of ["8.8.8.8", "172.32.0.1", "2606:4700::1", "::ffff:808:808", "fec0::1"]) expect([a, isPrivateAddress(a)]).toEqual([a, false]);
 });
 
 test("httpFetch refuses a host that resolves privately and returns redirects unfollowed", async () => {
