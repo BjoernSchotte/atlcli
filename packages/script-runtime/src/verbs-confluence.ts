@@ -128,4 +128,3 @@ export const CONFLUENCE_WRAPPERS: Record<string, string> = {
   "confluence.descendants": pagedIterator("results", "cursor", "nextCursor"),
   "confluence.spaces": pagedIterator("results", "cursor", "nextCursor", false),
 };
-
