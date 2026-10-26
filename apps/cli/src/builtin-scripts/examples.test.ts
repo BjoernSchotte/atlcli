@@ -61,7 +61,11 @@ const port = {
   },
   secret: () => "T000/B000/XXXX",
   confluenceNormalizeMarkdown: (m: string) => m,
+  outputOpen: async (path: string) => (outputs.set(path, ""), path),
+  outputWrite: async (path: string, chunk: string) => void outputs.set(path, outputs.get(path)! + chunk),
+  outputClose: async (path: string) => ({ path, bytes: outputs.get(path)!.length, sha256: "x" }),
 } as unknown as ScriptPort;
+const outputs = new Map<string, string>();
 
 const transpile = (source: string) => new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(source);
 
@@ -111,7 +115,10 @@ describe("script examples", () => {
       });
       expect(Boolean(run.meta.each)).toBe(example.mode === "each");
       if (example.name === "field-usage") expect(run.value).toEqual({ Team: 1 });
-      else if (example.name === "worklog-report") expect(run.operations[0]!.args.content).toBe('issue,summary,person,hours\nATLCLI-7,Issue 7,"Ada, L.",1.50\n');
+      else if (example.name === "worklog-report") {
+        expect(run.operations).toEqual([]);
+        expect(outputs.get("worklogs-ATLCLI.csv")).toBe('issue,summary,person,hours\r\nATLCLI-7,Issue 7,"Ada, L.",1.50\r\n');
+      }
       else expect(run.operations.length + run.skipped.length).toBeGreaterThan(0);
     });
   }
