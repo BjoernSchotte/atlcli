@@ -852,8 +852,14 @@ export function isPrivateAddress(address: string): boolean {
     const [a, b] = [Number(v4[1]), Number(v4[2])];
     return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
   }
-  const v6 = address.toLowerCase();
-  return v6 === "::1" || v6 === "::" || v6.startsWith("fc") || v6.startsWith("fd") || v6.startsWith("fe80");
+  // The URL parser writes every IPv6 form the same way, an IPv4-mapped address as ::ffff:7f00:1.
+  const v6 = new URL(`http://[${address}]`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(v6);
+  if (mapped) {
+    const [hi, lo] = [parseInt(mapped[1]!, 16), parseInt(mapped[2]!, 16)];
+    return isPrivateAddress(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
+  }
+  return v6 === "::1" || v6 === "::" || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6);
 }
 
 /** `path` below `root`, after resolving links: a link pointing outside is refused. */
