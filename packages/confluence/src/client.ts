@@ -592,6 +592,17 @@ export interface ConfluenceClientOptions {
 // without waiting through production-duration timers.
 const retrySchedulerHook = Symbol.for("atlcli.confluence.retry-scheduler.test-hook");
 
+/** A REST path for `getJson`/`requestJson`: `/rest/api/…` or `/api/v2/…`, no query, fragment, `..` or control characters. */
+function checkConfluenceRestPath(path: string): void {
+  const bad =
+    !(path.startsWith("/rest/api/") || path.startsWith("/api/v2/")) ||
+    /[?#\\\u0000-\u001f]|%2[ef]/i.test(path) ||
+    path.split("/").some((segment) => segment === ".." || segment === ".");
+  if (bad) {
+    throw new Error(`REST path must start with /rest/api/ or /api/v2/ and contain no query, "..", or control characters: ${JSON.stringify(path)}`);
+  }
+}
+
 export class ConfluenceClient {
   private requestStats = { requests: 0, rateLimits: 0 };
 
@@ -2176,6 +2187,60 @@ export class ConfluenceClient {
     });
   }
 
+  /** Every content property of a page, by key (v1 on Data Center, v2 on Cloud). */
+  async listPageProperties(pageId: string, options: { signal?: AbortSignal } = {}): Promise<Record<string, unknown>> {
+    if (!/^[0-9]+$/.test(pageId)) throw new Error("Invalid page id");
+    const items =
+      this.deploymentType === "data-center"
+        ? await drainPaginated<{ key: string; value: unknown }>(async (token) => {
+            const data = (await (token === undefined
+              ? this.request(`/content/${pageId}/property`, { query: { limit: 100 }, logBody: "meta-only", signal: options.signal })
+              : this.request(token.replace(/^\/rest\/api/, ""), { logBody: "meta-only", signal: options.signal }))) as any;
+            return { items: (data?.results ?? []).map((r: any) => ({ key: r.key, value: r.value })), next: data?._links?.next };
+          })
+        : await drainPaginated<{ key: string; value: unknown }>(async (cursor) => {
+            const data = (await this.requestV2(`/pages/${pageId}/properties`, {
+              query: { limit: 250, ...(cursor ? { cursor } : {}) },
+              logBody: "meta-only",
+              signal: options.signal,
+            })) as any;
+            const next = typeof data?._links?.next === "string" ? new URL(data._links.next, "https://x").searchParams.get("cursor") ?? undefined : undefined;
+            return { items: (data?.results ?? []).map((r: any) => ({ key: r.key, value: r.value })), next };
+          });
+    return Object.fromEntries(items.map((p) => [p.key, p.value]));
+  }
+
+  /** Deletes a page property by key; a key the page does not have is already deleted. */
+  async deletePageProperty(pageId: string, key: string): Promise<void> {
+    if (!/^[0-9]+$/.test(pageId) || !key || key === "." || key === "..") throw new Error("Invalid page property identity");
+    if (this.deploymentType === "data-center") {
+      try {
+        await this.request(`/content/${pageId}/property/${encodeURIComponent(key)}`, { method: "DELETE", logBody: "meta-only" });
+      } catch (error) {
+        if (!(error instanceof ConfluenceRequestError && error.status === 404)) throw error;
+      }
+      return;
+    }
+    const existing = await this.getPageProperty(pageId, key);
+    if (existing) await this.requestV2(`/pages/${pageId}/properties/${existing.id}`, { method: "DELETE", logBody: "meta-only" });
+  }
+
+  /** Creates a blog post in a space (v1, Cloud and Data Center). */
+  async createBlogPost(params: { spaceKey: string; title: string; storage: string }): Promise<{ id: string; version: number }> {
+    const data = (await this.request("/content", {
+      method: "POST",
+      body: {
+        type: "blogpost",
+        title: params.title,
+        space: { key: params.spaceKey },
+        body: { storage: { value: params.storage, representation: "storage" } },
+      },
+      retryServerErrors: false,
+      logBody: "meta-only",
+    })) as any;
+    return { id: String(data.id), version: data.version?.number ?? 1 };
+  }
+
   /**
    * Create a page with an atlas_doc_format (ADF) body via REST v2.
    *
@@ -2676,9 +2741,10 @@ export class ConfluenceClient {
   /**
    * List all spaces.
    */
-  async listSpaces(limit = 25): Promise<ConfluenceSpace[]> {
+  async listSpaces(limit = 25, options: { start?: number; type?: "global" | "personal"; signal?: AbortSignal } = {}): Promise<ConfluenceSpace[]> {
     const data = (await this.request("/space", {
-      query: { limit },
+      query: { limit, ...(options.start ? { start: options.start } : {}), ...(options.type ? { type: options.type } : {}) },
+      signal: options.signal,
     })) as any;
     const results = Array.isArray(data.results) ? data.results : [];
     return results.map((item: any) => ({
@@ -2751,17 +2817,36 @@ export class ConfluenceClient {
     path: string,
     options: { query?: Record<string, string | number>; signal?: AbortSignal } = {}
   ): Promise<unknown> {
-    const bad =
-      !(path.startsWith("/rest/api/") || path.startsWith("/api/v2/")) ||
-      /[?#\\\u0000-\u001f]|%2[ef]/i.test(path) ||
-      path.split("/").some((segment) => segment === ".." || segment === ".");
-    if (bad) {
-      throw new Error(`REST path must start with /rest/api/ or /api/v2/ and contain no query, "..", or control characters: ${JSON.stringify(path)}`);
-    }
+    checkConfluenceRestPath(path);
     const request = { query: options.query, signal: options.signal, logBody: "meta-only" as const };
     return path.startsWith("/api/v2/")
       ? this.requestV2(path.slice("/api/v2".length), request)
       : this.request(path.slice("/rest/api".length), request);
+  }
+
+  /**
+   * Writing escape hatch, the counterpart of `getJson`: POST, PUT, PATCH or
+   * DELETE under the same path rules. Returns the response JSON, or null for
+   * an empty body. Non-idempotent, so ambiguous server errors are not retried.
+   */
+  async requestJson(
+    method: "POST" | "PUT" | "PATCH" | "DELETE",
+    path: string,
+    options: { body?: unknown; query?: Record<string, string | number>; signal?: AbortSignal } = {}
+  ): Promise<unknown> {
+    if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) throw new Error(`Unsupported method: ${JSON.stringify(method)}`);
+    checkConfluenceRestPath(path);
+    const request = {
+      method,
+      query: options.query,
+      ...(options.body !== undefined ? { body: options.body } : {}),
+      signal: options.signal,
+      logBody: "meta-only" as const,
+    };
+    const result = path.startsWith("/api/v2/")
+      ? await this.requestV2(path.slice("/api/v2".length), request)
+      : await this.request(path.slice("/rest/api".length), { ...request, retryServerErrors: false });
+    return result ?? null;
   }
 
   /**

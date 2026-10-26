@@ -139,6 +139,8 @@ import {
   formatAttachmentSize,
   formatAttachmentsTable,
   toAttachmentJson,
+  cloneIssue,
+  CLONE_SOURCE_FIELDS,
   copyAttachment,
   // Rich text (spec jira-content-workflows A1)
   AdfDocument,
@@ -866,14 +868,14 @@ async function handleIssueCreate(
   const assignee = assigneeFlag ? ((await userFlag(client, assigneeFlag, opts)) ?? undefined) : undefined;
   const issue = await client.createIssue({
     fields: {
-      project: { key: project },
+    project: { key: project },
       issuetype: { name: type },
       summary,
       description: description ? richText(client, description) : undefined,
-      priority: priority ? { name: priority } : undefined,
+    priority: priority ? { name: priority } : undefined,
       assignee,
       labels: labels ? labels.split(",").map((l) => l.trim()) : undefined,
-      parent: parent ? { key: parent } : undefined,
+    parent: parent ? { key: parent } : undefined,
       ...customFields,
     },
   });
@@ -1707,9 +1709,7 @@ async function handleIssueClone(
     fail(opts, 1, ERROR_CODES.USAGE, err instanceof Error ? err.message : String(err));
   }
   const client = await getClient(flags, opts);
-  const source = await client.getIssue(key, {
-    fields: ["project", "summary", "description", "issuetype", "labels", "components", "parent", "attachment"],
-  });
+  const source = await client.getIssue(key, { fields: CLONE_SOURCE_FIELDS });
   const f = source.fields;
   const project = getFlag(flags, "project") ?? f.project.key;
   const sameProject = project === f.project.key;
@@ -1738,36 +1738,18 @@ async function handleIssueClone(
     fail(opts, 1, ERROR_CODES.VALIDATION, err instanceof Error ? err.message : String(err));
   }
 
-  const created = await client.createIssue({
-    fields: {
-      project: { key: project },
-      issuetype: { name: type! },
-      summary: rendered.summary,
-      description: (rendered.description ?? undefined) as NonNullable<typeof f.description> | undefined,
-      priority: priority ? { name: priority } : undefined,
-      labels: rendered.labels,
-      components: sameProject && f.components?.length ? f.components.map((c) => ({ id: c.id })) : undefined,
-      parent: parent ? { key: parent } : undefined,
-      assignee: assignee ? ((await userFlag(client, assignee, opts)) ?? undefined) : undefined,
-    },
+  const created = await cloneIssue(client, source, {
+    project,
+    type,
+    summary: rendered.summary,
+    description: rendered.description ?? undefined,
+    labels: rendered.labels,
+    priority,
+    parent,
+    assignee: assignee ? ((await userFlag(client, assignee, opts)) ?? undefined) : undefined,
+    attachments: hasFlag(flags, "attachments"),
   });
-  const warnings: string[] = [];
-  try {
-    await client.createIssueLink({ type: { name: "Cloners" }, inwardIssue: { key: created.key }, outwardIssue: { key } });
-  } catch (err) {
-    warnings.push(`Cloned, but not linked to ${key}: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  const attachments: Array<{ from: string; id: string; filename: string }> = [];
-  if (hasFlag(flags, "attachments")) {
-    for (const attachment of f.attachment ?? []) {
-      try {
-        const copy = await copyAttachment(client, attachment.id, created.key, { source: attachment });
-        attachments.push({ from: attachment.id, id: String(copy.id), filename: attachment.filename });
-      } catch (err) {
-        warnings.push(`Attachment ${attachment.filename} (${attachment.id}) not copied: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-  }
+  const { attachments, warnings } = created;
   const result = {
     from: key,
     issue: formatIssue(await client.getIssue(created.key)),
