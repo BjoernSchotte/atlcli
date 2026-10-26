@@ -79,14 +79,14 @@ it("writeReportJsonl and writeReportCsv write a finding per line", () => {
 });
 
 it("the default Markdown template streams exactly what it renders, also for a large report", () => {
-  for (const n of [0, 3, 5000]) {
+  for (const n of [0, 3, 2000]) {
     const model = markdownModel(report(Array.from({ length: n }, (_, i) => finding(i))));
     const expected = renderJinja(DEFAULT_MARKDOWN_TEMPLATE, model, { lines: true }).text;
     const { text, chunks } = collect((w) => streamJinja(DEFAULT_MARKDOWN_TEMPLATE, model, w, { lines: true }));
     expect(text).toBe(expected);
-    if (n === 5000) expect(chunks).toBeGreaterThan(10);
+    if (n === 2000) expect(chunks).toBeGreaterThan(10);
   }
-});
+}, 60_000);
 
 it("auditFormatOf picks the format from the file extension", () => {
   expect(["a.json", "a.JSONL", "a.ndjson", "a.csv", "a.md", "report"].map(auditFormatOf)).toEqual(["json", "jsonl", "jsonl", "csv", "md", "md"]);

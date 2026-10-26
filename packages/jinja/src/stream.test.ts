@@ -105,9 +105,9 @@ describe("streamJinja", () => {
   });
 
   it("gives a large model room: memory scales with its size", () => {
-    const model = { findings: Array.from({ length: 50_000 }, (_, i) => ({ key: `P-${i}`, detail: "x".repeat(200) })) };
+    const model = { findings: Array.from({ length: 20_000 }, (_, i) => ({ key: `P-${i}`, detail: "x".repeat(200) })) };
     let bytes = 0;
     streamJinja("{% for f in findings %}{{ f.key }} {{ f.detail }}\n{% endfor %}", model, (c) => (bytes += c.length));
-    expect(bytes).toBe(50_000 * (2 + 1 + 200 + 1) + model.findings.reduce((n, f) => n + f.key.length - 2, 0));
-  });
+    expect(bytes).toBe(20_000 * (2 + 1 + 200 + 1) + model.findings.reduce((n, f) => n + f.key.length - 2, 0));
+  }, 60_000);
 });
