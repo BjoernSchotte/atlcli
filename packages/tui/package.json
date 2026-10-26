@@ -19,7 +19,7 @@
     "@atlcli/core": "workspace:*",
     "@atlcli/jira": "workspace:*",
     "@opentui/core": "0.6.8",
-    "@opentui/react": "0.6.8",
+    "@opentui/react": "0.7.0",
     "diff": "^9.0.0",
     "react": "19.2.7"
   }
