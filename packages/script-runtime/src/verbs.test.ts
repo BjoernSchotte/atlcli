@@ -839,6 +839,7 @@ it("exposes the verb set", () => {
     "jira.versions",
     "jira.watchers",
     "jira.worklogs",
+    "output",
     "render",
     "secret",
     "state.delete",

@@ -173,6 +173,16 @@ export interface ScriptPort {
   fileRead?(path: string, options: { encoding: "utf8" | "base64" }): Promise<string>;
   fileList?(path: string): Promise<LocalFileView[]>;
   fileWrite?(path: string, content: string, options: { encoding: "utf8" | "base64" }): Promise<{ path: string; bytes: number }>;
+  /**
+   * Output files (atlcli.output): written while the script runs, also in a
+   * dry run, and kept only when they are closed. `path` passed
+   * `checkLocalPath`; the handle names the open file.
+   */
+  outputOpen?(path: string): Promise<string>;
+  outputWrite?(handle: string, chunk: string): Promise<void>;
+  /** Streams a Jinja template into the file; returns its warnings (strict mode throws a RenderError). */
+  outputRender?(handle: string, template: string, options: OutputRenderInput): Promise<TemplateWarningView[]>;
+  outputClose?(handle: string): Promise<OutputFileView>;
   /** Script state between runs: one JSON store per script name. */
   stateGet?(store: string, key: string): Promise<unknown>;
   /** `undefined` deletes the key. */
@@ -399,6 +409,22 @@ export interface RenderInput {
   /** Frozen clock (ISO) for today/now. */
   now: string;
   strict: boolean;
+}
+
+export interface OutputRenderInput {
+  vars: Record<string, unknown>;
+  /** Frozen clock (ISO) for today/now. */
+  now: string;
+  strict: boolean;
+  lines: boolean;
+  templates: Record<string, string>;
+}
+
+/** A finished output file. */
+export interface OutputFileView {
+  path: string;
+  bytes: number;
+  sha256: string;
 }
 
 export interface TemplateWarningView {

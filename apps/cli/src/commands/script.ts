@@ -17,12 +17,14 @@ import {
 } from "@atlcli/core";
 import type {
   ApplyReport,
+  OutputFileView,
   PlannedOperation,
   ScriptError,
   ScriptPlanV1,
   ScriptPort,
   Templating,
 } from "@atlcli/script-runtime";
+import { DEFAULT_MAX_OUTPUT_BYTES, formatSize, OutputFiles, parseSize } from "./output-files.js";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { parseTemplateFlags, templateValuesFrom } from "./template-flags.js";
 
@@ -63,6 +65,8 @@ Options for run:
   --apply                Apply the plan right away (asks first)
   --yes                  Apply without asking (required without a terminal or with --json)
   --profile <name>       Profile to run against
+  --out-dir <dir>        Where atlcli.output() files go (the working directory)
+  --max-output <size>    Total size of output files per run, e.g. 512m, 2g (256m)
   --json                 Machine-readable output
 
 Per issue (--each, or meta.each in the script):
@@ -108,6 +112,8 @@ JQL in atlcli.jira.search and --each may use linkedIssuesOf("…"), subtasksOf("
 hasAttachments("…") and more (see \`atlcli jira --help\`).
 
 atlcli.confluence.export and atlcli.files write below the directory the plan is applied in.
+atlcli.output() writes reports and exports while the script runs, also without --apply,
+and keeps a file only once it is closed (at most 50 files per run).
 atlcli.state keeps a JSON store per script in ~/.atlcli/state. atlcli.http needs
 "http:<host>" in meta.permissions; atlcli.secret("NAME") reads ATLCLI_SECRET_NAME
 into HTTP requests only.
@@ -200,11 +206,11 @@ export async function planAndApply(
   templating?: Templating,
 ): Promise<void> {
   const modules = "path" in origin ? await loadImports(origin.path, source, opts) : {};
-  const { profile, port } = await connect(flags, opts);
+  const { profile, port, outputs } = await connect(flags, opts);
   const rt = await runtime();
 
   const run = await guard(opts, () =>
-    rt.planScript(transpile(source, opts), {
+    withOutputs(outputs, port, opts, (port) => rt.planScript(transpile(source, opts), {
       port,
       name: scriptName(origin),
       modules: transpileModules(modules, opts),
@@ -213,15 +219,16 @@ export async function planAndApply(
       ...(maxWrites !== undefined ? { maxWrites } : {}),
       ...(templating ? { templating } : {}),
       onLog: (level, message) => process.stderr.write(`${level === "info" ? "" : `${level}: `}${stripControlChars(message)}\n`),
-    }),
+    })),
   );
+  reportOutputs(outputs.written, opts);
   const plan = await rt.createScriptPlan(run, {
     source: digestSource(source, modules),
     ...origin,
     baseUrl: profile.baseUrl,
     profile: profile.name,
   });
-  await outputOrApplyPlan(plan, { profile, port }, flags, opts);
+  await outputOrApplyPlan(plan, { profile, port }, flags, opts, outputs.written);
 }
 
 /**
@@ -234,9 +241,11 @@ export async function outputOrApplyPlan(
   { profile, port }: { profile: Profile; port: ScriptPort },
   flags: Flags,
   opts: OutputOptions,
+  outputs: readonly OutputFileView[] = [],
 ): Promise<void> {
   const rt = await runtime();
   const planOut = getFlag(flags, "plan-out");
+  const written = outputs.length > 0 ? { outputs } : {};
   if (planOut) {
     await writeFile(planOut, rt.serializeScriptPlan(plan), "utf8");
     // A journal next to it belonged to the plan this one replaces.
@@ -245,7 +254,7 @@ export async function outputOrApplyPlan(
 
   const apply = hasFlag(flags, "apply");
   if (!apply || plan.operations.length === 0) {
-    if (opts.json) output({ schemaVersion: "1", plan }, opts);
+    if (opts.json) output({ schemaVersion: "1", plan, ...written }, opts);
     else output(renderPlan(plan, planOut, apply), opts);
     return;
   }
@@ -258,7 +267,7 @@ export async function outputOrApplyPlan(
     concurrency: parseConcurrency(flags, opts, 1),
     onOperation: track(plan, opts, journal),
   });
-  finish(plan, report, opts, planOut);
+  finish(plan, report, opts, planOut, written);
 }
 
 async function applyCommand(args: string[], flags: Flags, opts: OutputOptions): Promise<void> {
@@ -598,13 +607,49 @@ export function parseParams(raw: string[], opts: OutputOptions): Record<string, 
   return params;
 }
 
-export async function connect(flags: Flags, opts: OutputOptions): Promise<{ profile: Profile; port: ScriptPort }> {
+export async function connect(flags: Flags, opts: OutputOptions): Promise<{ profile: Profile; port: ScriptPort; outputs: OutputFiles }> {
   const config = await loadConfig();
   const profile = getActiveProfile(config, getFlag(flags, "profile"));
   if (!profile) fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.");
   assertCliAuthSupported(profile, opts);
   const { createLazyCliScriptPort } = await import("./script-port.js");
-  return { profile, port: createLazyCliScriptPort(profile) };
+  return { profile, port: createLazyCliScriptPort(profile), outputs: outputFilesFrom(flags, opts, profile.name) };
+}
+
+/** Output files of this run: below --out-dir (default the working directory), at most --max-output. */
+export function outputFilesFrom(flags: Flags, opts: OutputOptions, profile?: string): OutputFiles {
+  const max = getFlag(flags, "max-output");
+  const bytes = max === undefined ? DEFAULT_MAX_OUTPUT_BYTES : parseSize(max);
+  if (bytes === undefined || bytes <= 0) fail(opts, 1, ERROR_CODES.USAGE, `--max-output takes a size like 512m or 2g, not ${JSON.stringify(max)}`);
+  return new OutputFiles(resolve(getFlag(flags, "out-dir") ?? "."), bytes, profile);
+}
+
+/**
+ * Runs `plan` with this run's output files on the port; fails the run when
+ * the script left one open (its text would be cut off). Files of a failed
+ * run are dropped.
+ */
+export async function withOutputs<T>(outputs: OutputFiles, port: ScriptPort, opts: OutputOptions, plan: (port: ScriptPort) => Promise<T>): Promise<T> {
+  const scope = outputs.scope();
+  let result: T;
+  try {
+    result = await plan({ ...port, ...scope.port });
+  } catch (error) {
+    scope.abort();
+    throw error;
+  }
+  const open = scope.unclosed();
+  if (open.length > 0) {
+    scope.abort();
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Script failed: output ${open.join(", ")} was not closed (await out.close()); nothing written`);
+  }
+  return result;
+}
+
+/** "Wrote report.csv (12 KB)" lines on stderr. */
+export function reportOutputs(written: readonly OutputFileView[], opts: OutputOptions): void {
+  if (opts.json) return;
+  for (const f of written) process.stderr.write(`Wrote ${f.path} (${formatSize(f.bytes)})\n`);
 }
 
 /** Script errors (invalid meta, limits, denied permissions, guest exceptions) as CLI failures. */
@@ -661,7 +706,7 @@ function track(plan: ScriptPlanV1, opts: OutputOptions, journal?: Journal) {
   };
 }
 
-function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions, planFile?: string): void {
+function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions, planFile?: string, written: { outputs?: readonly OutputFileView[] } = {}): void {
   if (report.status === "drift") {
     const lines = report.drift.map((d) => `  #${d.seq} ${describePrecondition(d.precondition)}: now ${d.actual}`);
     fail(opts, 2, ERROR_CODES.VALIDATION, ["Targets changed since the plan was made; nothing was written:", ...lines, "Re-run the script to plan again."].join("\n"), {
@@ -678,7 +723,7 @@ function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions, pl
       report,
     });
   }
-  if (opts.json) output({ schemaVersion: "1", plan, report }, opts);
+  if (opts.json) output({ schemaVersion: "1", plan, report, ...written }, opts);
   else output(`Applied ${report.operations.length} operation${report.operations.length === 1 ? "" : "s"}.${createdSummary(report)}`, opts);
 }
 

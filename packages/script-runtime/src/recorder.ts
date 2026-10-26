@@ -89,6 +89,8 @@ export interface PlanScriptOptions extends Pick<RunScriptOptions, "limits" | "on
    * and this explanation.
    */
   readOnly?: string;
+  /** Refuses atlcli.output with this explanation (audit rules write no files). */
+  noOutput?: string;
   /**
    * Shared across runs (per-issue mode): lookups that do not depend on the
    * issue, such as link types and users, are fetched once.
@@ -173,6 +175,8 @@ export class Recorder {
   readonly exportPaths = new Set<string>();
   /** Local files this plan writes; a second write to one is a mistake. */
   readonly filePaths = new Set<string>();
+  /** Why atlcli.output is not allowed in this run (audit rules); undefined allows it. */
+  noOutput?: string;
   /** State keys this plan sets or deletes, with the value they will hold (undefined: deleted). */
   readonly stateWrites = new Map<string, unknown>();
   readonly renderWarnings: TemplateWarningView[] = [];

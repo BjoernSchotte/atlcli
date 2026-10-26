@@ -19,6 +19,7 @@ type ScriptPermission =
   | \`confluence:write:\${string}\`
   | "file:read"
   | "file:write"
+  | "file:output"
   | \`http:\${string}\`;
 
 interface ScriptParamSpec {
@@ -187,7 +188,12 @@ interface AuditFinding {
   fixable?: boolean;
 }
 
-/** The report model (\`--json\` schemaVersion 3) that \`report(model)\` and \`--template\` get. */
+/**
+ * The report model (\`--json\` schemaVersion 3) that \`--template\` and a rule's
+ * \`export async function report(model: AuditReport, out: OutputWriter)\` get. The
+ * report writes through \`out\` (the --output file or stdout; atlcli closes it)
+ * or returns the whole text.
+ */
 interface AuditReport {
   schemaVersion: "3";
   product: "jira" | "confluence";
@@ -408,6 +414,31 @@ interface LocalFile {
   name: string;
   type: "file" | "directory";
   size: number;
+}
+
+/**
+ * An open output file. Text is collected and written in 64 KB chunks; the
+ * write methods return a promise to await in long loops (more than 16 MB
+ * waiting to be written is an error).
+ */
+interface OutputWriter {
+  readonly path: string;
+  write(text: string): Promise<void>;
+  /** The text and a line break. */
+  line(text?: string): Promise<void>;
+  /** One CSV row (RFC 4180 quoting, CRLF); objects become JSON. */
+  row(cells: unknown[]): Promise<void>;
+  /** One JSON Lines record. */
+  json(value: Json): Promise<void>;
+  /**
+   * Renders a Jinja template straight into the file, without the whole text
+   * in memory. Sees --var values, today/now and \`vars\`; \`lines\` (default
+   * true) drops lines holding only a block tag; \`templates\` are what
+   * include/extends/import can load.
+   */
+  render(template: string, vars?: Record<string, Json>, options?: { lines?: boolean; templates?: Record<string, string> }): Promise<void>;
+  /** Writes the rest and keeps the file. An output not closed when the script ends fails the run. */
+  close(): Promise<{ path: string; bytes: number; sha256: string }>;
 }
 
 type RestWriteMethod = "POST" | "PUT" | "PATCH" | "DELETE";
@@ -657,6 +688,13 @@ const atlcli: {
     /** Planned; written on apply. Skipped when the file already has this content. */
     write(path: string, content: string, options?: { encoding?: "utf8" | "base64" }): Promise<{ path: string }>;
   };
+  /**
+   * Opens an output file below the output directory (--out-dir, default the
+   * working directory) for a report or export. Written while the script runs,
+   * also without --apply, and kept only once closed: a failed run leaves no
+   * file and an existing one unchanged. Needs file:output once permissions are declared.
+   */
+  output(path: string): Promise<OutputWriter>;
   /**
    * The script's own key-value store, kept between runs (one per meta.name or file name).
    * Reads go live; set and delete are planned, so a run without --apply changes nothing.
