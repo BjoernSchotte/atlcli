@@ -971,6 +971,18 @@ export declare class ConfluenceClient {
         value: unknown;
     } | undefined>;
     upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
+    listPageProperties(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Record<string, unknown>>;
+    deletePageProperty(pageId: string, key: string): Promise<void>;
+    createBlogPost(params: {
+        spaceKey: string;
+        title: string;
+        storage: string;
+    }): Promise<{
+        id: string;
+        version: number;
+    }>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -1029,7 +1041,11 @@ export declare class ConfluenceClient {
         name: string;
         description?: string;
     }): Promise<ConfluenceSpace>;
-    listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpaces(limit?: number, options?: {
+        start?: number;
+        type?: "global" | "personal";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace[]>;
     listSpacesV2(options?: {
         limit?: number;
         cursor?: string;
@@ -1038,6 +1054,11 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
         query?: Record<string, string | number>;
         signal?: AbortSignal;
     }): Promise<unknown>;
@@ -4416,6 +4437,18 @@ export declare class ConfluenceClient {
         value: unknown;
     } | undefined>;
     upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
+    listPageProperties(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Record<string, unknown>>;
+    deletePageProperty(pageId: string, key: string): Promise<void>;
+    createBlogPost(params: {
+        spaceKey: string;
+        title: string;
+        storage: string;
+    }): Promise<{
+        id: string;
+        version: number;
+    }>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -4474,7 +4507,11 @@ export declare class ConfluenceClient {
         name: string;
         description?: string;
     }): Promise<ConfluenceSpace>;
-    listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpaces(limit?: number, options?: {
+        start?: number;
+        type?: "global" | "personal";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace[]>;
     listSpacesV2(options?: {
         limit?: number;
         cursor?: string;
@@ -4483,6 +4520,11 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
         query?: Record<string, string | number>;
         signal?: AbortSignal;
     }): Promise<unknown>;
@@ -7861,6 +7903,18 @@ export declare class ConfluenceClient {
         value: unknown;
     } | undefined>;
     upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
+    listPageProperties(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Record<string, unknown>>;
+    deletePageProperty(pageId: string, key: string): Promise<void>;
+    createBlogPost(params: {
+        spaceKey: string;
+        title: string;
+        storage: string;
+    }): Promise<{
+        id: string;
+        version: number;
+    }>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -7919,7 +7973,11 @@ export declare class ConfluenceClient {
         name: string;
         description?: string;
     }): Promise<ConfluenceSpace>;
-    listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpaces(limit?: number, options?: {
+        start?: number;
+        type?: "global" | "personal";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace[]>;
     listSpacesV2(options?: {
         limit?: number;
         cursor?: string;
@@ -7928,6 +7986,11 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
         query?: Record<string, string | number>;
         signal?: AbortSignal;
     }): Promise<unknown>;
@@ -11000,6 +11063,18 @@ export declare class ConfluenceClient {
         value: unknown;
     } | undefined>;
     upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
+    listPageProperties(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Record<string, unknown>>;
+    deletePageProperty(pageId: string, key: string): Promise<void>;
+    createBlogPost(params: {
+        spaceKey: string;
+        title: string;
+        storage: string;
+    }): Promise<{
+        id: string;
+        version: number;
+    }>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -11058,7 +11133,11 @@ export declare class ConfluenceClient {
         name: string;
         description?: string;
     }): Promise<ConfluenceSpace>;
-    listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpaces(limit?: number, options?: {
+        start?: number;
+        type?: "global" | "personal";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace[]>;
     listSpacesV2(options?: {
         limit?: number;
         cursor?: string;
@@ -11067,6 +11146,11 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
         query?: Record<string, string | number>;
         signal?: AbortSignal;
     }): Promise<unknown>;
@@ -14817,6 +14901,18 @@ export declare class ConfluenceClient {
         value: unknown;
     } | undefined>;
     upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
+    listPageProperties(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Record<string, unknown>>;
+    deletePageProperty(pageId: string, key: string): Promise<void>;
+    createBlogPost(params: {
+        spaceKey: string;
+        title: string;
+        storage: string;
+    }): Promise<{
+        id: string;
+        version: number;
+    }>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -14875,7 +14971,11 @@ export declare class ConfluenceClient {
         name: string;
         description?: string;
     }): Promise<ConfluenceSpace>;
-    listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpaces(limit?: number, options?: {
+        start?: number;
+        type?: "global" | "personal";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace[]>;
     listSpacesV2(options?: {
         limit?: number;
         cursor?: string;
@@ -14884,6 +14984,11 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
         query?: Record<string, string | number>;
         signal?: AbortSignal;
     }): Promise<unknown>;
@@ -17454,6 +17559,18 @@ export declare class ConfluenceClient {
         value: unknown;
     } | undefined>;
     upsertPageProperty(pageId: string, key: string, value: unknown): Promise<void>;
+    listPageProperties(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Record<string, unknown>>;
+    deletePageProperty(pageId: string, key: string): Promise<void>;
+    createBlogPost(params: {
+        spaceKey: string;
+        title: string;
+        storage: string;
+    }): Promise<{
+        id: string;
+        version: number;
+    }>;
     createPageAdf(params: {
         spaceId: string;
         title: string;
@@ -17512,7 +17629,11 @@ export declare class ConfluenceClient {
         name: string;
         description?: string;
     }): Promise<ConfluenceSpace>;
-    listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpaces(limit?: number, options?: {
+        start?: number;
+        type?: "global" | "personal";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace[]>;
     listSpacesV2(options?: {
         limit?: number;
         cursor?: string;
@@ -17521,6 +17642,11 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getJson(path: string, options?: {
+        query?: Record<string, string | number>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
         query?: Record<string, string | number>;
         signal?: AbortSignal;
     }): Promise<unknown>;
