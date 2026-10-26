@@ -678,7 +678,7 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       await Promise.all(sockets.map((socket) => new Promise<void>((done) => { socket.once("close", done); socket.destroy(); })));
     }
     // Exercise backpressure and the finite replay table with unique pipelined RPCs.
-    const received = await new Promise<number[]>((done, reject) => {
+    const pipeline = () => new Promise<number[]>((done, reject) => {
       const socket = connect(server.port, "127.0.0.1");
       let remaining = Buffer.alloc(0);
       const ids: number[] = [];
@@ -694,6 +694,14 @@ describe.skipIf(!helperPath)("real Rust NFS helper over TCP and Bun pipes", () =
       });
       socket.on("close", () => done(ids));
     });
+    // The helper frees a connection slot only once its task has seen the client's
+    // close, so right after the cap check the pipeline can still be turned away
+    // (closed without a reply). Retry until a slot is free again.
+    let received = await pipeline();
+    for (const deadline = Date.now() + 5000; received.length === 0 && Date.now() < deadline;) {
+      await Bun.sleep(25);
+      received = await pipeline();
+    }
     expect(received).toEqual(Array.from({ length: 4096 }, (_, i) => i));
     expect(await rpc(server, 100003, 0, Buffer.alloc(0))).toEqual(Buffer.alloc(0));
   }, 20000);
