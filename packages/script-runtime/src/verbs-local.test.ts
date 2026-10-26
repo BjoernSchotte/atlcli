@@ -188,3 +188,140 @@ describe("atlcli.state", () => {
     expect(run.operations[0]!.args).toMatchObject({ store: "nightly", stateKey: "k" });
   });
 });
+
+function outputHost() {
+  const open = new Map<string, { path: string; text: string; writes: number }>();
+  const closed = new Map<string, string>();
+  const renders: unknown[] = [];
+  let next = 0;
+  const port = {
+    outputOpen: async (path: string) => {
+      const handle = `h${++next}`;
+      open.set(handle, { path, text: "", writes: 0 });
+      return handle;
+    },
+    outputWrite: async (handle: string, chunk: string) => {
+      const file = open.get(handle)!;
+      file.text += chunk;
+      file.writes++;
+    },
+    outputRender: async (handle: string, template: string, options: unknown) => {
+      renders.push({ template, options });
+      open.get(handle)!.text += `<rendered ${template}>`;
+      return [{ code: "unresolved", message: "Unresolved {{ x }}" }];
+    },
+    outputClose: async (handle: string) => {
+      const file = open.get(handle)!;
+      open.delete(handle);
+      closed.set(file.path, file.text);
+      return { path: file.path, bytes: file.text.length, sha256: "x" };
+    },
+  } as unknown as ScriptPort;
+  return { port, open, closed, renders };
+}
+
+describe("atlcli.output", () => {
+  it("writes lines, CSV rows and JSON Lines while planning, and plans nothing", async () => {
+    const { port, closed } = outputHost();
+    const run = await plan(
+      `const csv = await atlcli.output("out/report.csv");
+       await csv.row(["Key", "Summary"]);
+       await csv.row(["A-1", 'says "hi", twice\\nand more']);
+       await csv.row([null, { a: 1 }, 3]);
+       const log = await atlcli.output("./out/log.jsonl");
+       await log.json({ key: "A-1" });
+       await log.line("plain");
+       export default [await csv.close(), await log.close()];`,
+      port,
+    );
+    expect(run.operations).toEqual([]);
+    expect(closed.get("out/report.csv")).toBe('Key,Summary\r\nA-1,"says ""hi"", twice\nand more"\r\n,"{""a"":1}",3\r\n');
+    expect(closed.get("out/log.jsonl")).toBe('{"key":"A-1"}\nplain\n');
+    expect(run.value).toEqual([
+      { path: "out/report.csv", bytes: closed.get("out/report.csv")!.length, sha256: "x" },
+      { path: "out/log.jsonl", bytes: closed.get("out/log.jsonl")!.length, sha256: "x" },
+    ]);
+  });
+
+  it("hands text over in 64 KB chunks, not per line", async () => {
+    const { port, closed } = outputHost();
+    let writes = 0;
+    const counting = { ...port, outputWrite: async (h: string, c: string) => (writes++, port.outputWrite!(h, c)) } as ScriptPort;
+    await plan(
+      `const out = await atlcli.output("big.txt");
+       const row = "x".repeat(9999);
+       for (let i = 0; i < 20; i++) await out.line(row);
+       await out.close();`,
+      counting,
+    );
+    expect(closed.get("big.txt")).toBe(`${"x".repeat(9999)}\n`.repeat(20));
+    expect(writes).toBe(3);
+  });
+
+  it("renders a template into the file after the text before it, with --var values and the clock", async () => {
+    const { port, closed, renders } = outputHost();
+    const run = await plan(
+      `const out = await atlcli.output("r.md");
+       await out.line("head");
+       await out.render("{{ x }}", { y: 1 }, { templates: { "a.j2": "A" } });
+       await out.close();`,
+      port,
+      { templating: { vars: { team: "core" }, now: "2026-10-26T09:00:00.000Z", strict: false } },
+    );
+    expect(closed.get("r.md")).toBe("head\n<rendered {{ x }}>");
+    expect(renders).toEqual([
+      { template: "{{ x }}", options: { vars: { team: "core", y: 1 }, now: "2026-10-26T09:00:00.000Z", strict: false, lines: true, templates: { "a.j2": "A" } } },
+    ]);
+    expect(run.renderWarnings).toEqual([{ code: "unresolved", message: "Unresolved {{ x }}" }]);
+  });
+
+  it("checks the path and the file:output grant", async () => {
+    const { port } = outputHost();
+    for (const path of ["../x", "/etc/x", "a/../../x", "."]) {
+      await expect(plan(`await atlcli.output(${JSON.stringify(path)});`, port)).rejects.toThrow(/relative|file name/);
+    }
+    const denied = await scriptError(plan(`export const meta = { permissions: ["file:write"] }; await atlcli.output("a.txt");`, port));
+    expect(denied.message).toContain('"file:output"');
+    const ok = await plan(`export const meta = { permissions: ["file:output"] }; const o = await atlcli.output("a.txt"); await o.close();`, port);
+    expect(ok.operations).toEqual([]);
+  });
+
+  it("is refused where the host says so (audit rules)", async () => {
+    const { port } = outputHost();
+    const error = await scriptError(plan(`await atlcli.output("a.txt");`, port, { noOutput: "audit rules write no files" }));
+    expect(error.kind).toBe("permission-denied");
+    expect(error.message).toContain("audit rules write no files");
+  });
+
+  it("refuses writes after close", async () => {
+    const { port } = outputHost();
+    await expect(plan(`const o = await atlcli.output("a.txt"); await o.close(); await o.line("late");`, port)).rejects.toThrow(/closed/);
+  });
+});
+
+describe("atlcli.files.lines", () => {
+  it("iterates pages through the cursor, with the format from the extension and a limit", async () => {
+    const calls: unknown[] = [];
+    const port = {
+      fileLines: async (path: string, o: { format: string; limit: number; cursor?: string }) => {
+        calls.push([path, o]);
+        return o.cursor ? { items: [["c"]] } : { items: [["a"], ["b"]], cursor: "4:2" };
+      },
+    } as unknown as ScriptPort;
+    const run = await plan(
+      `const all = [];
+       for await (const row of atlcli.files.lines("data/in.csv")) all.push(row);
+       const first = [];
+       for await (const line of atlcli.files.lines("./notes.txt", { limit: 1 })) first.push(line);
+       export default { all, first };`,
+      port,
+    );
+    expect(run.value).toEqual({ all: [["a"], ["b"], ["c"]], first: [["a"]] });
+    expect(calls).toEqual([
+      ["data/in.csv", { format: "csv", limit: 1000 }],
+      ["data/in.csv", { format: "csv", limit: 1000, cursor: "4:2" }],
+      ["notes.txt", { format: "text", limit: 1000 }],
+    ]);
+    await expect(plan(`for await (const l of atlcli.files.lines("../x")) {}`, port)).rejects.toThrow(/relative/);
+  });
+});

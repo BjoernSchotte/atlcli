@@ -18,9 +18,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { ERROR_CODES, fail, getFlag, hasFlag, output, type OutputOptions, promptConfirm, stripControlChars } from "@atlcli/core";
 import type { JiraIssueView, PlannedOperation, ScriptMeta, ScriptPort, Templating } from "@atlcli/script-runtime";
+import type { OutputFiles } from "./output-files.js";
 import {
   connect,
   describeOperation,
+  reportOutputs,
   digestSource,
   displayPath,
   type Flags,
@@ -124,7 +126,7 @@ export async function runEach(
   }
   const { limits, maxWrites } = parseLimits(flags, opts);
   const modules = "path" in origin ? await loadImports(origin.path, source, opts) : {};
-  const { profile, port } = await connect(flags, opts);
+  const { profile, port, outputs } = await connect(flags, opts);
   const name = meta.name ?? scriptName(origin);
   const now = new Date();
   const job: ScriptJob = {
@@ -154,7 +156,7 @@ export async function runEach(
   job.total = await snapshot(job, port, opts);
   await saveJob(job);
   if (job.mode === "stream") await confirmStream(job, flags, opts);
-  await processJob(job, source, port, flags, opts);
+  await processJob(job, source, port, flags, opts, outputs);
 }
 
 /** `script resume <id> [--script file]`: continues planning or applying. */
@@ -178,10 +180,10 @@ export async function resumeCommand(args: string[], flags: Flags, opts: OutputOp
   job.concurrency = parseConcurrency(flags, opts, job.concurrency);
   const maxFailures = getFlag(flags, "max-failures");
   if (maxFailures !== undefined) job.maxFailures = parseMaxFailures(maxFailures, opts);
-  const { profile, port } = await connect({ ...flags, profile: job.target.profile }, opts);
+  const { profile, port, outputs } = await connect({ ...flags, profile: job.target.profile }, opts);
   checkTarget(job, profile.baseUrl, opts);
   if (job.mode === "plan" && job.phase === "applying") return applyPlannedJob(job, port, flags, opts, true);
-  await processJob(job, source, port, flags, opts);
+  await processJob(job, source, port, flags, opts, outputs);
 }
 
 /** `script apply <job-id>`: applies a planned job's reviewed plans (continues a partial apply). */
@@ -285,7 +287,7 @@ interface Tally {
 }
 
 /** Plans (and in stream mode applies) every issue not done yet. */
-async function processJob(job: ScriptJob, source: string, port: ScriptPort, flags: Flags, opts: OutputOptions): Promise<void> {
+async function processJob(job: ScriptJob, source: string, port: ScriptPort, flags: Flags, opts: OutputOptions, outputs?: OutputFiles): Promise<void> {
   const rt = await runtime();
   const js = transpile(source, opts);
   const modules = transpileModules(await readJobModules(job), opts);
@@ -313,7 +315,7 @@ async function processJob(job: ScriptJob, source: string, port: ScriptPort, flag
       const issue = issues.get(item.id);
       let outcome: Outcome;
       if (!issue) outcome = { ...item, status: "gone", error: "issue no longer exists or is not visible" };
-      else outcome = await runItem(rt, job, js, modules, port, issue, memo, opts);
+      else outcome = await runItem(rt, job, js, modules, port, issue, memo, opts, outputs);
       if (outcome.operations) {
         for (const op of outcome.operations) {
           verbs.set(op.verb, (verbs.get(op.verb) ?? 0) + 1);
@@ -342,6 +344,7 @@ async function processJob(job: ScriptJob, source: string, port: ScriptPort, flag
     job.plansDigest = sha256(await readFile(file(job, "plans.jsonl"), "utf8").catch(() => ""));
   }
   await saveJob(job);
+  if (outputs) reportOutputs(outputs.written, opts);
   report(job, tally, verbs, firstOps, await countOutcomes(job), opts);
 }
 
@@ -354,13 +357,16 @@ async function runItem(
   issue: JiraIssueView,
   memo: Map<string, Promise<unknown>>,
   opts: OutputOptions,
+  outputs?: OutputFiles,
 ): Promise<Outcome> {
   const base = { id: issue.id, key: issue.key };
   const { maxWrites, ...limits } = job.limits;
+  // Each issue's run owns its output files: one left open fails that issue only.
+  const scope = outputs?.scope();
   let run;
   try {
     run = await rt.planScript(js, {
-      port,
+      port: scope ? { ...port, ...scope.port } : port,
       name: job.script.name,
       modules,
       item: issue,
@@ -374,8 +380,14 @@ async function runItem(
       },
     });
   } catch (error) {
+    scope?.abort();
     const e = error as { kind?: string; message?: string };
     return { ...base, status: "error", error: e.kind ? `${e.kind}: ${e.message}` : String(error) };
+  }
+  const open = scope?.unclosed() ?? [];
+  if (open.length > 0) {
+    scope!.abort();
+    return { ...base, status: "error", error: `output ${open.join(", ")} was not closed (await out.close())` };
   }
   const value = run.value === null ? {} : { value: run.value };
   if (run.operations.length === 0) return { ...base, status: "unchanged", ...value };

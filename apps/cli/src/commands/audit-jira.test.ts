@@ -365,6 +365,78 @@ export default async (issue: JiraIssue) => { await atlcli.jira.comment(issue.key
     }
   });
 
+  test("--output streams the report as JSON, JSON Lines, CSV or Markdown; a failed report keeps the old file", async () => {
+    const stable = (r: { generatedAt?: string; findings: unknown[] }) => ({ ...r, generatedAt: "t" });
+    const json = stable(JSON.parse((await runCli([...BASE, "--json"])).stdout));
+    const file = (name: string) => join(home, "out", name);
+    expect((await runCli([...BASE, "--output", file("a.json")])).exitCode).toBe(2);
+    expect(stable(JSON.parse(await readFile(file("a.json"), "utf8")))).toEqual(json);
+    await runCli([...BASE, "--output", file("a.jsonl")]);
+    const lines = (await readFile(file("a.jsonl"), "utf8")).trimEnd().split("\n").map((l) => JSON.parse(l));
+    expect(lines).toEqual(json.findings);
+    await runCli([...BASE, "--output", file("a.csv")]);
+    const csv = (await readFile(file("a.csv"), "utf8")).split("\r\n");
+    expect(csv[0]).toBe("severity,rule,key,summary,status,assignee,detail,ageDays,url");
+    expect(csv).toHaveLength(json.findings.length + 2);
+    const md = await runCli([...BASE, "--format", "md"]);
+    expect(md.stdout).toContain("# Jira audit");
+    expect(md.stdout).toContain("| Severity | Issue |");
+    const stdoutJson = await runCli([...BASE, "--format", "json"]);
+    expect(stable(JSON.parse(stdoutJson.stdout))).toEqual(json);
+
+    const broken = join(home, "broken.md.j2");
+    await writeFile(broken, "{% for f in findings %}{{ f.key }}\n{% endfor %}{% include 'missing.j2' %}");
+    await writeFile(file("keep.md"), "old report");
+    const failed = await runCli([...BASE, "--template", broken, "--output", file("keep.md")]);
+    expect(failed.exitCode).toBe(1);
+    expect(failed.stderr).toContain("Template not found: missing.j2");
+    expect(await readFile(file("keep.md"), "utf8")).toBe("old report");
+    const bad = await runCli([...BASE, "--format", "csv", "--markdown"]);
+    expect(bad.exitCode).toBe(1);
+    expect(bad.stderr).toContain("make a Markdown report");
+  });
+
+  test("a report export writes through out; rules may not open files", async () => {
+    await writeRule(
+      "owner.ts",
+      RULE.replace(
+        /export function report[\s\S]*$/,
+        `export async function report(model: AuditReport, out: OutputWriter) {
+  await out.line("key,rule");
+  for (const f of model.findings) await out.row([f.key, f.rule]);
+  await out.render("{{ summary.total }} total", model);
+}
+`,
+      ),
+    );
+    try {
+      const out = join(home, "owners.csv.md");
+      const result = await runCli([...BASE, "--checks", "team/unassigned", "--report", out]);
+      expect(result.exitCode).toBe(0);
+      expect(await readFile(out, "utf8")).toBe("key,rule\nATLCLI-1,team/unassigned\r\n1 total");
+    } finally {
+      await clearRules();
+    }
+    await writeRule("silent.ts", `export const meta = { audit: { id: "team/silent", product: "jira" } };
+export default () => undefined;
+export function report() {}
+`);
+    try {
+      const silent = await runCli([...BASE, "--checks", "team/silent", "--markdown"]);
+      expect(silent.exitCode).toBe(1);
+      expect(silent.stderr).toContain("must write to out or return the report text");
+    } finally {
+      await clearRules();
+    }
+    const file = join(home, "opener.ts");
+    await writeFile(file, `export const meta = { audit: { id: "team/opener", product: "jira" } };
+export default async () => { await atlcli.output("x.txt"); };
+`);
+    const { stdout, exitCode } = await runCli([...BASE, "--script", file, "--json"]);
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stdout).error.message).toContain("audit rules write no files");
+  });
+
   test("audit init writes a skeleton the next run picks up", async () => {
     const { exitCode } = await runCli(["audit", "init", "--json"]);
     expect(exitCode).toBe(0);

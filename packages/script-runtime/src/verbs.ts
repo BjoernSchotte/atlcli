@@ -664,6 +664,7 @@ export async function planScript(js: string, options: PlanScriptOptions): Promis
     options.readOnly,
     meta.name ?? options.name ?? "script",
   );
+  if (options.noOutput !== undefined) recorder.noOutput = options.noOutput;
   const host: Record<string, HostFunction> = {};
   for (const [name, definition] of Object.entries(VERBS)) {
     host[name] = async (rawArgs, signal) => {

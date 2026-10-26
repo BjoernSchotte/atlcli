@@ -2,7 +2,7 @@
 name: scripts
 description: atlcli script, TypeScript automation scripts for Jira and Confluence in a sandbox; writes are planned first and applied in a separate, confirmed step.
 metadata:
-  tags: script, automation, typescript, plan, apply, bulk, sandbox, http, secrets, files, state, test
+  tags: script, automation, typescript, plan, apply, bulk, sandbox, http, secrets, files, state, test, output, report, csv
 ---
 
 # Scripts
@@ -19,6 +19,7 @@ links).
 - [Writing a script](#writing-a-script)
 - [Verbs](#verbs)
 - [HTTP, secrets, files, state](#http-secrets-files-state)
+- [Reports and exports: atlcli.output](#reports-and-exports-atlclioutput)
 - [Plan, then apply](#plan-then-apply)
 - [Testing a script](#testing-a-script)
 - [Many issues: per-issue jobs](#many-issues-per-issue-jobs)
@@ -109,13 +110,21 @@ case.
   `atlcli.http.request(method, url, { headers?, body?, json? })` is planned and
   sent on apply (status ≥ 300 fails it). Every host needs `"http:<host>"` in
   `meta.permissions`; https only (http for localhost); private addresses are
-  refused.
+  refused (checked in the connection's own DNS lookup, so no DNS rebinding;
+  private IP literals without a lookup). gzip/deflate/br responses are decoded.
 - `atlcli.secret("NAME")` is a reference, never the value; the host fills in
   `ATLCLI_SECRET_NAME` inside HTTP URLs, headers and bodies only. Declare it in
   `meta.secrets`. Never put tokens into the script, params or plan. Ask the user
   to export the variable; do not read or echo it.
-- `atlcli.files.read(path)` / `files.list(dir?)` read below the working
-  directory; `files.write(path, content)` is planned. Relative paths, no `..`.
+- `atlcli.files.read(path)` (max 10 MB) / `files.list(dir?)` read below the
+  working directory; `files.write(path, content)` is planned (written on
+  apply, max 10 MB). Relative paths, no `..`.
+- `for await (const r of atlcli.files.lines(path, { format?, limit? }))` reads
+  a file of any size record by record: `csv` (array of fields, RFC 4180,
+  quoted line breaks, BOM dropped), `jsonl` (parsed values; a broken line
+  throws `<path>: line N is not valid JSON`) or `text` (lines). Default from
+  the extension (`.csv`, `.jsonl`/`.ndjson`, else text). Blank lines skipped
+  for csv/jsonl; one record max 10 MB. Permission `file:read`.
 - `atlcli.state.get(key)` / `set` / `delete`: a per-script JSON store kept
   between runs (`~/.atlcli/state/<name>.json`); set and delete are planned, so
   a dry run leaves it as it was.
@@ -123,6 +132,45 @@ case.
 Objects the plan creates are referenced as `plan:<n>`, also inside text (a page
 body naming a new issue key gets the real key at apply). Reads of such objects
 fail until the plan is applied, and reads never see the plan's own writes.
+
+## Reports and exports: atlcli.output
+
+`atlcli.output(path)` writes a result file **while the script runs, also in a
+dry run without `--apply`**, like stdout. It is not part of the plan. Use it for
+reports and exports; use `files.write` only for files that are a reviewed
+change.
+
+```ts
+const out = await atlcli.output("reports/bugs.csv");
+await out.row(["key", "summary"]);
+for await (const i of atlcli.jira.search("project = PROJ AND type = Bug", { fields: ["summary"] })) {
+  await out.row([i.key, i.fields.summary]);
+}
+await out.close();   // → { path, bytes, sha256 }
+```
+
+- Writer: `write(text)`, `line(text?)`, `row(cells)` (CSV, RFC 4180, CRLF;
+  objects as JSON), `json(value)` (JSON Lines), `render(template, vars?,
+  { lines?, templates? })` (Jinja streamed into the file; sees `--var`,
+  `today`/`now`, `vars`; `templates` for include/extends/import), `close()`.
+- **Await every write in loops**: text goes to the host in 64 KB chunks; more
+  than 16 MB waiting is an error.
+- **Always `await out.close()`.** The file appears only then (temporary file,
+  renamed). An output left open fails the run (`was not closed (await
+  out.close())`); with `--each` only that issue. A failed run leaves no
+  half-written file and keeps an existing one.
+- Paths are relative, below `--out-dir` (default `.`; created). No `..`, no
+  links outside, no existing symlink as the file.
+- Per CLI run (all `--each` issues together): `--max-output` (default `256m`;
+  `512k`, `2g`, bytes), at most 50 files, each path once.
+- Permission `file:output` once `meta.permissions` is declared.
+- `--json` adds `outputs: [{ path, bytes, sha256 }]`; text mode prints
+  `Wrote <path> (<size>)` on stderr.
+- `script test` keeps outputs in memory; cases store `expect.outputs` (text up
+  to 64 KB, else `sha256:<hex>`) and report `Output <path> differs` / `was not
+  written` / `was written but is not expected`.
+- Audit rule checks and `fix` cannot open outputs; a rule's `report(model, out)`
+  export gets a writer (see [jira-audit.md](jira-audit.md)).
 
 ## Plan, then apply
 
@@ -238,7 +286,8 @@ pass through as strings.
 
 ## Output and exit codes
 
-- `--json` prints `{ schemaVersion, plan }` and, after an apply, `report` too.
+- `--json` prints `{ schemaVersion, plan }`, after an apply `report` too, and
+  `outputs` when the script wrote output files.
 - `report.status` is `applied`, `drift` or `failed`; `report.operations` has
   one entry per operation, with `applied`, `failed` or `skipped`.
 - Script output from `console.*` goes to stderr.
@@ -256,6 +305,8 @@ pass through as strings.
 - One big plan for thousands of issues, when each issue's change stands alone. Use a per-issue job (`--each`).
 - Comments or creates in a per-issue script without a guard against running twice.
 - Reading back a page or issue the same script just planned to write and expecting the new state.
+- Building a large report in one string and `files.write`-ing it: use `atlcli.output` (streamed, written on every run).
+- Not awaiting `out.row`/`out.line` in long loops, or forgetting `await out.close()`.
 - Guessing transition names. Read them with `atlcli jira issue transitions <key>` first.
 - Putting tokens or webhook URLs in scripts, `--param` or plans instead of `atlcli.secret` with `ATLCLI_SECRET_<NAME>`.
 - `jira.request` for something a verb covers: the verb checks permissions per project and skips no-op writes.

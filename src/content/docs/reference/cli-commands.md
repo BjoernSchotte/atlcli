@@ -172,6 +172,10 @@ atlcli audit wiki --dir <path>               # Audit specific directory
 # Output formats
 atlcli audit wiki --all --json               # JSON output
 atlcli audit wiki --all --markdown           # Markdown report
+atlcli audit wiki --output audit.csv         # Report file; format from the extension (.md, .json, .jsonl, .csv)
+atlcli audit wiki --format jsonl > findings.jsonl   # md, json, jsonl or csv on stdout
+atlcli audit wiki --template team.md.j2 --output report.md   # Own Jinja template, to a file
+atlcli audit wiki --report audit.md          # Same as --format md --output audit.md
 
 # Fix mode
 atlcli audit wiki --all --fix --dry-run      # Preview fixes
@@ -899,7 +903,18 @@ atlcli audit jira --project <key> --update-baseline         # Accept today's fin
 atlcli audit jira --jql <query> --rules team-rules.yaml --fail-on warning
 atlcli audit jira --project <key> --markdown > audit.md     # Exits 2 when an error remains
 atlcli audit jira --project <key> --json
+atlcli audit jira --project <key> --output audit.csv        # Report file, replaced only once complete
+atlcli audit jira --project <key> --format jsonl > findings.jsonl
+atlcli audit jira --project <key> --template team.md.j2 --output report.md
 ```
+
+| Option | Type | Default | Notes |
+|---|---|---|---|
+| `--output <file>` | path | stdout | Writes the report to a file, replaced only once complete; parent directories are created |
+| `--format <fmt>` | `md`, `json`, `jsonl`, `csv` | from the `--output` extension (`.json`, `.jsonl`/`.ndjson`, `.csv`, else `md`) | Without `--output`, writes this format to stdout. Not with `--template`, `--markdown` or `--report-script` (Markdown only) |
+| `--report <file>` | path | none | Same as `--format md --output <file>` |
+
+The same options apply to `audit wiki`. See [Jira Audit: report files and formats](../jira/audit.md#report-files-and-formats).
 
 Needs `atlcli flag set audit true --global`. See [Jira Audit](../jira/audit.md) and [Audit Rules](../jira/audit-rules.md).
 
@@ -959,6 +974,7 @@ atlcli script run <file> --apply --yes         # Plan and apply without asking
 atlcli script run -e '<code>'                  # Inline code
 atlcli script run <file> --timeout 0 --max-writes 50000    # Raise limits (0 = none)
 atlcli script run <file> --var year=2026 --vars-file v.yml --now <iso> --strict   # Values for atlcli.render
+atlcli script run <file> --out-dir build --max-output 1g   # Where atlcli.output files go (default .), total size (256m)
 atlcli script apply plan.json --yes            # Apply a reviewed plan (exit 2 on drift)
 atlcli script apply plan.json --resume --yes   # Continue an apply that stopped
 atlcli script apply plan.json --concurrency 8  # Independent operations in parallel
@@ -975,6 +991,8 @@ atlcli script init [dir]                       # atlcli.d.ts, tsconfig.json, exa
 atlcli script init [dir] --each "<jql>"        # Per-issue skeleton (each.ts)
 atlcli script init [dir] --example <name>      # A bundled example; --list-examples
 ```
+
+`--out-dir <dir>` sets the directory for [`atlcli.output`](scripts.md#output-files) files (default: the working directory; created if missing). `--max-output <size>` caps their total size per run (`512k`, `300m`, `2g` or bytes; default `256m`, at most 50 files).
 
 Per-issue jobs: see [Per-Issue Script Jobs](../script-jobs.md).
 

@@ -38,6 +38,8 @@ atlcli audit wiki ./docs --all --json             # older "all checks" set, min 
 atlcli audit wiki --stale-high 12 --orphans --json
 atlcli audit wiki --checks links --fail-on warning
 atlcli audit wiki --all --label documentation --exclude-label archived --markdown
+atlcli audit wiki --output audit.csv               # findings as CSV file
+atlcli audit wiki --format jsonl > findings.jsonl
 atlcli audit wiki --list-rules
 ```
 
@@ -57,7 +59,13 @@ atlcli audit wiki --list-rules
   external check is part of `--all`.
 - Baseline: `--update-baseline`, `--prune-baseline`, `--no-baseline`; stored
   in `.atlcli/audit-baseline.json` of the synced directory. No legacy cutoff.
-- Reports: `--markdown`, `--template <file.j2>`, `--report <file>`.
+- Reports: `--markdown`, `--template <file.j2>`, a rule's
+  `report(model, out)` export. `--output <file>` writes the report (replaced
+  only once complete); `--format md|json|jsonl|csv` (default from the
+  `--output` extension; without `--output` to stdout); `--report <file>` =
+  `--format md --output <file>`. Markdown-only options with `--format
+  json|jsonl|csv` are a usage error. Details as for `audit jira`, see
+  [jira-audit.md](jira-audit.md#report-files-and-formats).
 
 ## Rules
 

@@ -2,11 +2,13 @@ import { canonicalJsonV1, digestCanonicalJsonV1 } from "@atlcli/change-set";
 import { z } from "zod";
 import { SECRET_NAME } from "./meta.js";
 import type { HttpResponseView, ScriptPort } from "./port.js";
-import { hostOp, type Recorder, str, verb, type Verb } from "./recorder.js";
+import { hostOp, pagedIterator, type Recorder, str, verb, type Verb } from "./recorder.js";
 import { ScriptError } from "./sandbox.js";
 
 /** Largest HTTP response, file read and file write a script handles. */
 export const MAX_LOCAL_BYTES = 10 * 1024 * 1024;
+/** Records per files.lines page. */
+const LINES_PAGE = 1000;
 /** Largest single state value (serialized). */
 export const MAX_STATE_BYTES = 1024 * 1024;
 const MAX_REDIRECTS = 5;
@@ -130,6 +132,12 @@ export function checkLocalPath(path: string): string {
   return clean === "" ? "." : clean;
 }
 
+const renderToFile = z.strictObject({
+  /** Document mode (default): a line holding only a block tag disappears. */
+  lines: z.boolean().optional(),
+  /** Templates `{% include %}`/`{% extends %}`/`{% import %}` can load, by name. */
+  templates: z.record(z.string(), z.string()).optional(),
+});
 const encoding = z.strictObject({ encoding: z.enum(["utf8", "base64"]).optional() });
 const headers = z.record(z.string().regex(/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/, "a header name"), z.string());
 const httpUrl = str.max(8192);
@@ -236,6 +244,17 @@ export const LOCAL_VERBS: Record<string, Verb> = {
     // The host refuses files over MAX_LOCAL_BYTES.
     return hostOp(r.port.fileRead?.bind(r.port), "files.read")(checkLocalPath(path), { encoding: o?.encoding ?? "utf8" });
   }),
+  "files.lines": verb(
+    z.tuple([str, z.strictObject({ format: z.enum(["text", "csv", "jsonl"]).optional(), cursor: str.optional() }).optional()]),
+    async (r, [path, o]) => {
+      r.require("file:read");
+      return hostOp(r.port.fileLines?.bind(r.port), "files.lines")(checkLocalPath(path), {
+        format: o?.format ?? (/\.csv$/i.test(path) ? "csv" : /\.(jsonl|ndjson)$/i.test(path) ? "jsonl" : "text"),
+        limit: LINES_PAGE,
+        ...(o?.cursor ? { cursor: o.cursor } : {}),
+      });
+    },
+  ),
   "files.list": verb(z.tuple([str.optional()]), async (r, [dir]) => {
     r.require("file:read");
     return hostOp(r.port.fileList?.bind(r.port), "files.list")(checkLocalPath(dir ?? "."));
@@ -257,6 +276,44 @@ export const LOCAL_VERBS: Record<string, Verb> = {
     await r.record("files.write", { path, content, encoding: enc });
     return { path };
   }),
+  // Not a write: output files are results like stdout, written while the script runs (also in a dry run).
+  output: verb(
+    z.union([
+      z.tuple([z.literal("open"), str]),
+      z.tuple([z.literal("write"), str, z.string()]),
+      z.tuple([z.literal("render"), str, z.string(), z.record(z.string(), z.unknown()).optional(), renderToFile.optional()]),
+      z.tuple([z.literal("close"), str]),
+    ]),
+    async (r, args) => {
+      if (r.noOutput) throw new ScriptError("permission-denied", `atlcli.output: ${r.noOutput}`);
+      r.require("file:output");
+      switch (args[0]) {
+        case "open": {
+          const path = checkLocalPath(args[1]);
+          if (path === ".") throw new Error("atlcli.output needs a file name");
+          return hostOp(r.port.outputOpen?.bind(r.port), "output")(path);
+        }
+        case "write":
+          await hostOp(r.port.outputWrite?.bind(r.port), "output")(args[1], args[2]);
+          return null;
+        case "render": {
+          const [, handle, template, vars, o] = args;
+          r.rendered = true;
+          const warnings = await hostOp(r.port.outputRender?.bind(r.port), "output.render")(handle, template, {
+            vars: { ...r.templating.vars, ...(vars ?? {}) },
+            now: r.templating.now,
+            strict: r.templating.strict,
+            lines: o?.lines ?? true,
+            templates: o?.templates ?? {},
+          });
+          r.renderWarnings.push(...warnings);
+          return null;
+        }
+        case "close":
+          return hostOp(r.port.outputClose?.bind(r.port), "output")(args[1]);
+      }
+    },
+  ),
   "state.get": verb(z.tuple([stateKey]), async (r, [key]) => (await hostOp(r.port.stateGet?.bind(r.port), "state.get")(r.store, key)) ?? null),
   "state.set": verb(z.tuple([stateKey, z.unknown()]), async (r, [key, value]) => stateWrite(r, key, jsonValue(value ?? undefined, `state.set("${key}")`))),
   "state.delete": verb(z.tuple([stateKey]), async (r, [key]) => stateWrite(r, key, undefined)),
@@ -264,6 +321,58 @@ export const LOCAL_VERBS: Record<string, Verb> = {
 
 /** `atlcli.secret` is synchronous in the guest; the host function only exists for the wrapper. */
 export const LOCAL_WRAPPERS: Record<string, string> = {
+  "files.lines": pagedIterator("items", "cursor", "cursor"),
+  // A writer that collects text in the guest and hands it to the host in 64 KB chunks.
+  output: `(raw) => {
+  const CHUNK = 65536, BACKLOG = 16 * 1024 * 1024;
+  const cell = (v) => {
+    const s = v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+    return /[",\\r\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return async (path) => {
+    if (typeof path !== "string") throw new TypeError("atlcli.output(path): path must be a string");
+    const handle = await raw("open", path);
+    let buf = "", backlog = 0, chain = Promise.resolve(), failure, closed = false;
+    const send = () => {
+      if (buf) {
+        const chunk = buf;
+        buf = "";
+        backlog += chunk.length;
+        chain = chain.then(() => raw("write", handle, chunk)).then(() => { backlog -= chunk.length; }, (e) => { failure ??= e; throw e; });
+      }
+      return chain;
+    };
+    const add = (text) => {
+      if (closed) throw new Error("atlcli.output: " + path + " is closed");
+      if (failure) throw failure;
+      buf += text;
+      if (buf.length < CHUNK) return Promise.resolve();
+      if (backlog > BACKLOG) throw new Error("atlcli.output: more than 16 MB of " + path + " waits to be written; await the writes in long loops");
+      return send();
+    };
+    return Object.freeze({
+      path,
+      write: (text) => add(String(text)),
+      line: (text = "") => add(String(text) + "\\n"),
+      row: (cells) => {
+        if (!Array.isArray(cells)) throw new TypeError("atlcli.output: row(cells) takes an array");
+        return add(cells.map(cell).join(",") + "\\r\\n");
+      },
+      json: (value) => add(JSON.stringify(value) + "\\n"),
+      render: async (template, vars, options) => {
+        if (closed) throw new Error("atlcli.output: " + path + " is closed");
+        await send();
+        await raw("render", handle, template, vars ?? null, options ?? null);
+      },
+      close: async () => {
+        if (closed) throw new Error("atlcli.output: " + path + " is closed");
+        await send();
+        closed = true;
+        return raw("close", handle);
+      },
+    });
+  };
+}`,
   secret: `(raw) => (name) => {
   if (typeof name !== "string" || !/^[A-Z][A-Z0-9_]*$/.test(name)) throw new TypeError("atlcli.secret: names are upper case letters, digits and _");
   return "{secret:" + name + "}";

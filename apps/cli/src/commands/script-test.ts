@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -15,6 +16,7 @@ import {
   transpile,
   transpileModules,
 } from "./script.js";
+import { type OutputScope, renderInto } from "./output-files.js";
 import { parseTemplateFlags, templateValuesFrom } from "./template-flags.js";
 
 const runtime = () => import("@atlcli/script-runtime");
@@ -32,7 +34,53 @@ export interface ScriptTestCase {
   vars?: Record<string, unknown>;
   fixture: { calls: FixtureCall[] };
   /** What the plan must be; absent when only `test(plan)` checks it. */
-  expect?: { operations: PlannedOperation[]; skipped: SkippedWrite[]; value: unknown };
+  expect?: Snapshot;
+}
+
+/**
+ * What a case compares. `outputs`: files the script wrote with atlcli.output,
+ * by path, as text (up to 64 KB) or `sha256:<hex>`.
+ */
+interface Snapshot {
+  operations: PlannedOperation[];
+  skipped: SkippedWrite[];
+  value: unknown;
+  outputs?: Record<string, string>;
+}
+
+const OUTPUT_TEXT_LIMIT = 64 * 1024;
+
+/** Output files of a test run, kept in memory. */
+function memoryOutputs(): { port: OutputScope["port"]; files: Map<string, string> } {
+  const files = new Map<string, string>();
+  const open = new Map<string, { path: string; text: string }>();
+  let next = 0;
+  const file = (handle: string) => {
+    const f = open.get(handle);
+    if (!f) throw new Error("This output file is closed");
+    return f;
+  };
+  return {
+    files,
+    port: {
+      outputOpen: async (path) => {
+        if (files.has(path) || [...open.values()].some((f) => f.path === path)) throw new Error(`${path} is already written by this run`);
+        const handle = `mem${++next}`;
+        open.set(handle, { path, text: "" });
+        return handle;
+      },
+      outputWrite: async (handle, chunk) => {
+        file(handle).text += chunk;
+      },
+      outputRender: (handle, template, options) => renderInto((chunk) => (file(handle).text += chunk), file(handle).path, template, options),
+      outputClose: async (handle) => {
+        const f = file(handle);
+        open.delete(handle);
+        files.set(f.path, f.text);
+        return { path: f.path, bytes: Buffer.byteLength(f.text, "utf8"), sha256: createHash("sha256").update(f.text).digest("hex") };
+      },
+    },
+  };
 }
 
 export interface ScriptTestFile {
@@ -123,7 +171,14 @@ async function loadScript(script: string, opts: OutputOptions) {
 }
 
 /** The parts of a run a case compares, as plain JSON. */
-const snapshot = (run: ScriptRunPlan) => JSON.parse(JSON.stringify({ operations: run.operations, skipped: run.skipped, value: run.value }));
+function snapshot(run: ScriptRunPlan, files: Map<string, string>): Snapshot {
+  const plain = JSON.parse(JSON.stringify({ operations: run.operations, skipped: run.skipped, value: run.value })) as Snapshot;
+  if (files.size === 0) return plain;
+  const outputs = Object.fromEntries(
+    [...files].map(([path, text]) => [path, text.length <= OUTPUT_TEXT_LIMIT ? text : `sha256:${createHash("sha256").update(text).digest("hex")}`]),
+  );
+  return { ...plain, outputs };
+}
 
 async function runTests(script: string, only: string | undefined, update: boolean, opts: OutputOptions): Promise<CaseResult[]> {
   const testPath = testFileFor(script);
@@ -135,14 +190,15 @@ async function runTests(script: string, only: string | undefined, update: boolea
   const unused = (): never => {
     throw new Error("a script test reads only from its fixture");
   };
-  const local = createCliScriptPort(unused, unused, file.baseUrl, { profileName: "test" });
+  const base = createCliScriptPort(unused, unused, file.baseUrl, { profileName: "test" });
   const results: CaseResult[] = [];
   let changed = false;
   for (const c of file.cases) {
     if (only !== undefined && c.name !== only) continue;
     const problems: string[] = [];
+    const outputs = memoryOutputs();
     const plan = (entry?: { name: string; item: unknown }) => {
-      const { port } = rt.replayPort(c.fixture.calls, local);
+      const { port } = rt.replayPort(c.fixture.calls, { ...base, ...outputs.port });
       return rt.planScript(loaded.js, {
         port,
         modules: loaded.modules,
@@ -160,9 +216,9 @@ async function runTests(script: string, only: string | undefined, update: boolea
         },
       });
     };
-    let actual: ReturnType<typeof snapshot> | undefined;
+    let actual: Snapshot | undefined;
     try {
-      actual = snapshot(await plan());
+      actual = snapshot(await plan(), outputs.files);
     } catch (error) {
       problems.push(`The script failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -207,6 +263,14 @@ export function compare(expected: NonNullable<ScriptTestCase["expect"]>, actual:
     problems.push(`Unchanged writes differ:\n- ${JSON.stringify(expected.skipped)}\n+ ${JSON.stringify(actual.skipped)}`);
   }
   if (!same(expected.value, actual.value)) problems.push(`Result differs:\n- ${JSON.stringify(expected.value)}\n+ ${JSON.stringify(actual.value)}`);
+  const want = expected.outputs ?? {};
+  const got = actual.outputs ?? {};
+  for (const path of [...new Set([...Object.keys(want), ...Object.keys(got)])].sort()) {
+    if (want[path] === got[path]) continue;
+    if (!(path in got)) problems.push(`Output ${path} was not written`);
+    else if (!(path in want)) problems.push(`Output ${path} was written but is not expected`);
+    else problems.push(`Output ${path} differs:\n- ${JSON.stringify(want[path]).slice(0, 400)}\n+ ${JSON.stringify(got[path]).slice(0, 400)}`);
+  }
   return problems;
 }
 
@@ -241,7 +305,8 @@ async function recordCase(script: string, name: string, flags: Flags, opts: Outp
       fail(opts, 1, ERROR_CODES.API, `Cannot read ${each}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  const { port, calls } = rt.recordingPort(live, secrets);
+  const outputs = memoryOutputs();
+  const { port, calls } = rt.recordingPort({ ...live, ...outputs.port }, secrets);
   let run: ScriptRunPlan;
   try {
     run = await rt.planScript(loaded.js, {
@@ -265,7 +330,7 @@ async function recordCase(script: string, name: string, flags: Flags, opts: Outp
     now: templating.now,
     ...(Object.keys(templating.vars).length ? { vars: templating.vars } : {}),
     fixture: { calls },
-    expect: snapshot(run),
+    expect: snapshot(run, outputs.files),
   };
   const at = file.cases.findIndex((x) => x.name === name);
   if (at >= 0) file.cases[at] = c;

@@ -195,4 +195,15 @@ export default (page: AuditPage, rule: AuditRule) => page.labels.some((l) => l.s
     expect(md).toContain("| Severity | Page | Summary | Owner | Finding |");
     expect(md).toContain("| warning | [1](https://example.atlassian.net/wiki/pages/viewpage.action?pageId=1) | Page 1 | Ann | Broken link to ./gone.md (line 7). |");
   });
+
+  test("--output writes the report file in the format its name says", async () => {
+    const out = join(home, "wiki-out");
+    const expected = (await json(["--checks", "links/broken"])).report;
+    await runCli(["--checks", "links/broken", "--output", join(out, "audit.jsonl")]);
+    const lines = (await readFile(join(out, "audit.jsonl"), "utf8")).trimEnd().split("\n").map((l) => JSON.parse(l));
+    expect(lines).toEqual(expected.findings);
+    const md = await runCli(["--checks", "links/broken", "--output", join(out, "audit.md")]);
+    expect(md.stderr).toContain("Report written to");
+    expect(await readFile(join(out, "audit.md"), "utf8")).toContain("# Wiki audit");
+  });
 });

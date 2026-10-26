@@ -3,9 +3,9 @@ import type { ScriptPort } from "./port.js";
 /**
  * Port calls a script test answers from a fixture: every host operation
  * except the pure ones the test host provides itself (template rendering,
- * Markdown normalisation, secrets).
+ * Markdown normalisation, secrets) and output files, which the test keeps in memory.
  */
-const LOCAL = new Set(["render", "confluenceNormalizeMarkdown", "secret"]);
+const LOCAL = new Set(["render", "confluenceNormalizeMarkdown", "secret", "outputOpen", "outputWrite", "outputRender", "outputClose"]);
 
 /** One recorded host operation: its arguments (without abort signals) and what it returned or threw. */
 export interface FixtureCall {
@@ -87,7 +87,10 @@ export class FixtureMissError extends Error {
  * (the last answer repeats). `local` supplies the pure operations; secrets
  * resolve to stand-in values that the fixture sees as references.
  */
-export function replayPort(calls: readonly FixtureCall[], local: Pick<ScriptPort, "render" | "confluenceNormalizeMarkdown">): {
+export function replayPort(
+  calls: readonly FixtureCall[],
+  local: Pick<ScriptPort, "render" | "confluenceNormalizeMarkdown" | "outputOpen" | "outputWrite" | "outputRender" | "outputClose">,
+): {
   port: ScriptPort;
   misses: FixtureMissError[];
 } {
@@ -103,8 +106,7 @@ export function replayPort(calls: readonly FixtureCall[], local: Pick<ScriptPort
   const port = new Proxy({} as ScriptPort, {
     get(_target, prop) {
       if (prop === "then" || typeof prop !== "string") return undefined;
-      if (prop === "render") return local.render;
-      if (prop === "confluenceNormalizeMarkdown") return local.confluenceNormalizeMarkdown;
+      if (prop !== "secret" && LOCAL.has(prop)) return local[prop as keyof typeof local];
       if (prop === "secret") {
         return (name: string) => {
           secrets.set(stand(name), name);

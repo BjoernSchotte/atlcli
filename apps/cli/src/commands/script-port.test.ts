@@ -83,3 +83,24 @@ test("httpFetch refuses a host that resolves privately and returns redirects unf
     server.stop(true);
   }
 });
+
+test("httpFetch refuses private IP literals without a DNS lookup; sends bodies and undoes gzip", async () => {
+  const port = createCliScriptPort(unused, unused, "https://example.atlassian.net", { profileName: "p", outDir: "/tmp" });
+  for (const url of ["http://127.0.0.2:1/", "https://10.1.2.3/", "https://[fd00::1]/", "https://169.254.169.254/latest/meta-data", "https://0x0a000001/"]) {
+    await expect(port.httpFetch!({ method: "GET", url, headers: {} }, {})).rejects.toThrow(/private address; refused/);
+  }
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const text = `${req.method} ${await req.text()} ${req.headers.get("x-a")}`;
+      return new Response(Bun.gzipSync(text), { headers: { "content-encoding": "gzip", "set-cookie": "a=1" } });
+    },
+  });
+  try {
+    const response = await port.httpFetch!({ method: "POST", url: `http://localhost:${server.port}/x`, headers: { "x-a": "1" }, body: "payload" }, {});
+    expect(response).toEqual(expect.objectContaining({ status: 200, text: "POST payload 1" }));
+    expect(response.headers["content-encoding"]).toBe("gzip");
+  } finally {
+    server.stop(true);
+  }
+});

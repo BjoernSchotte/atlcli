@@ -13,7 +13,7 @@ const KEY = "[A-Z][A-Z0-9_]*";
  * profile's own permissions always still apply.
  */
 export const PERMISSION_PATTERN = new RegExp(
-  `^(?:(?:jira|confluence):(?:read|write:(?:${KEY}|\\*))|file:(?:read|write)|http:(?:\\*\\.)?[a-z0-9-]+(?:\\.[a-z0-9-]+)*(?::\\d{1,5})?)$`,
+  `^(?:(?:jira|confluence):(?:read|write:(?:${KEY}|\\*))|file:(?:read|write|output)|http:(?:\\*\\.)?[a-z0-9-]+(?:\\.[a-z0-9-]+)*(?::\\d{1,5})?)$`,
 );
 
 export type ScriptPermission =
@@ -23,6 +23,7 @@ export type ScriptPermission =
   | `confluence:write:${string}`
   | `file:read`
   | `file:write`
+  | `file:output`
   | `http:${string}`;
 
 /** Secret names: `atlcli.secret("NAME")` reads `ATLCLI_SECRET_NAME` on the host. */
@@ -45,7 +46,7 @@ export const scriptMetaSchema = z.strictObject({
         .string()
         .regex(
           PERMISSION_PATTERN,
-          "expected jira:read, jira:write:<PROJECT|*>, confluence:read, confluence:write:<SPACE|*>, file:read, file:write or http:<host>",
+          "expected jira:read, jira:write:<PROJECT|*>, confluence:read, confluence:write:<SPACE|*>, file:read, file:write, file:output or http:<host>",
         ),
     )
     .transform((list) => [...new Set(list)] as ScriptPermission[])

@@ -46,6 +46,9 @@ export declare function applyLiteral(source: string, ranges: Array<[
 // export: DEFAULT_JINJA_LIMITS
 export declare const DEFAULT_JINJA_LIMITS: JinjaLimits;
 
+// export: DEFAULT_STREAM_TIMEOUT_MS
+export declare const DEFAULT_STREAM_TIMEOUT_MS: number;
+
 // export: evaluateJinja
 export declare function evaluateJinja(expr: string, vars: Record<string, unknown>, options?: RenderJinjaOptions): {
     value: unknown;
@@ -76,8 +79,8 @@ export declare const JINJA_GLOBALS: Set<string>;
 
 // export: JinjaError
 export declare class JinjaError extends Error {
-    readonly kind: "limit" | "internal";
-    constructor(message: string, kind: "limit" | "internal");
+    readonly kind: "limit" | "internal" | "template";
+    constructor(message: string, kind: "limit" | "internal" | "template");
 }
 
 // export: JinjaLimits
@@ -134,6 +137,16 @@ export declare function renderJinjaSegments(source: string, vars: Record<string,
 
 // export: resolvesIn
 export declare function resolvesIn(vars: unknown, path: string[]): boolean;
+
+// export: streamJinja
+export declare function streamJinja(source: string, vars: Record<string, unknown>, write: (chunk: string) => void, options?: StreamJinjaOptions): {
+    warnings: JinjaWarning[];
+};
+
+// export: StreamJinjaOptions
+export interface StreamJinjaOptions extends RenderJinjaOptions {
+    flushBytes?: number;
+}
 
 // export: tagName
 export declare function tagName(token: Token): string;

@@ -15,6 +15,7 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 - [Verbs](#verbs)
 - [HTTP and secrets](#http-and-secrets)
 - [Files](#files)
+- [Output files](#output-files)
 - [State](#state)
 - [Imports](#imports)
 - [Script tests](#script-tests)
@@ -70,6 +71,8 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `--vars-file <file>` | run | YAML path | none | Template values and declarations; see [Templating](/templating/#variables) |
 | `--now <iso>` | run | ISO date/time | time of planning | Clock for `today`/`now`; recorded in the plan |
 | `--strict` | run | switch | off | Any template warning ends the run (`template` error kind) |
+| `--out-dir <dir>` | run, resume | path | working directory | Where [`atlcli.output`](#output-files) files go; created if missing |
+| `--max-output <size>` | run, resume | `512k`, `300m`, `2g` or bytes; > 0 | `256m` | Total size of output files per CLI run (all `--each` issues together) |
 | `--json` | all | switch | off | One JSON document on stdout; script output stays on stderr |
 | `--force` | init | switch | off | Overwrites `tsconfig.json` and `example.ts`; `atlcli.d.ts` is always refreshed |
 | `--record <case>` | test | string | none | Records (or re-records) the case; takes `--param`, `--each <KEY>`, `--var`, `--now`, `--profile` |
@@ -86,6 +89,7 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `atlcli.http` | object of verbs | External HTTP; see [HTTP and secrets](#http-and-secrets) |
 | `atlcli.secret(name)` | function, synchronous | A reference to a secret for HTTP requests, never its value; see [HTTP and secrets](#http-and-secrets) |
 | `atlcli.files` | object of verbs | Local files below the working directory; see [Files](#files) |
+| `atlcli.output(path)` | function | Opens a report or export file, written while the script runs; see [Output files](#output-files) |
 | `atlcli.state` | object of verbs | The script's key-value store between runs; see [State](#state) |
 | `console.log`, `info`, `warn`, `error` | functions | To stderr; objects are printed as JSON |
 | `export default` | value or function | Optional. A function is awaited with `atlcli.params`; its result, or the value, becomes `plan.value`. In a per-issue job it is required and called as `default(issue, params)` |
@@ -100,7 +104,7 @@ Optional. It is read statically before the script runs, so it must be written as
 |---|---|---|---|---|
 | `name` | string | file name, `inline` for `-e` | no | lowercase letters, digits, `-` |
 | `description` | string | none | no | |
-| `permissions` | string[] | none: all Jira, Confluence and file verbs allowed | no | each `jira:read`, `jira:write:<PROJECT>`, `jira:write:*`, `confluence:read`, `confluence:write:<SPACE>`, `confluence:write:*`, `file:read`, `file:write` or `http:<host>`. Once given, everything else is denied. HTTP always needs an `http:` grant |
+| `permissions` | string[] | none: all Jira, Confluence and file verbs allowed | no | each `jira:read`, `jira:write:<PROJECT>`, `jira:write:*`, `confluence:read`, `confluence:write:<SPACE>`, `confluence:write:*`, `file:read`, `file:write`, `file:output` or `http:<host>`. Once given, everything else is denied. HTTP always needs an `http:` grant |
 | `secrets` | string[] | none | for `atlcli.secret` | upper-case letters, digits and `_`; each must be set as `ATLCLI_SECRET_<NAME>` where the script runs and where the plan is applied |
 | `limits.maxWrites` | integer | 10,000 | no | > 0; most operations in one plan |
 | `each.jql` | string | none | no | Per-issue mode: the issues the default export runs for. `--each` overrides it |
@@ -114,7 +118,8 @@ Grants:
 | Grant | Allows |
 |---|---|
 | `jira:write:*`, `confluence:write:*` | writes to every project or space, and the REST writes (`jira.request` on a path that names no project, `confluence.request`) |
-| `file:read`, `file:write` | `files.read`/`files.list`, `files.write` |
+| `file:read`, `file:write` | `files.read`/`files.lines`/`files.list`, `files.write` |
+| `file:output` | `atlcli.output` |
 | `http:hooks.slack.com` | HTTP to that host on its default port |
 | `http:*.example.com` | every subdomain of `example.com`, not `example.com` itself |
 | `http:localhost:8080` | that host and port; plain `http:` works only for `localhost`, `127.0.0.1` and `[::1]` |
@@ -264,7 +269,7 @@ await atlcli.confluence.attach("123456", { name: "sprint-status.csv", content: r
 | `http.request(method, url, { headers?, body?, json? })` | `null` | `http:<host>` | planned; sent on apply. `method` is `POST`, `PUT`, `PATCH` or `DELETE`; `json` sets the body and `content-type`. A status of 300 or more fails the operation |
 | `secret(name)` | string | name in `meta.secrets` | a reference (`{secret:NAME}`), synchronous |
 
-URLs are `https:` only; plain `http:` works for `localhost`, `127.0.0.1` and `[::1]`. Credentials in the URL (`user:pw@`) are refused; send them in a header. Hosts that resolve to private, loopback or link-local addresses are refused, except the local names above. Each call has 60 seconds.
+URLs are `https:` only; plain `http:` works for `localhost`, `127.0.0.1` and `[::1]`. Credentials in the URL (`user:pw@`) are refused; send them in a header. Hosts that resolve to private, loopback or link-local addresses are refused, except the local names above. The check runs in the connection's own DNS lookup, so the address checked is the address connected to (no DNS rebinding); private IP literals are refused without a lookup. `gzip`, `deflate` and `br` responses are decoded. Each call has 60 seconds.
 
 `atlcli.secret("NAME")` never hands the script the value. It returns a reference that the host replaces with the value of the environment variable `ATLCLI_SECRET_NAME`, only in the URL, headers and body of an HTTP request: right away for `http.get`, on apply for `http.request`. Plans, journals, script output and test fixtures hold only the reference, and a value a service echoes back reaches the script as the reference again. A secret cannot be part of a URL's host. A declared secret that is not set fails the run before any code runs.
 
@@ -283,10 +288,74 @@ await atlcli.http.request("POST", `https://hooks.slack.com/services/${atlcli.sec
 | Verb | Returns | Permission | Plan |
 |---|---|---|---|
 | `files.read(path, { encoding? })` | string | `file:read` | read; up to 10 MB; `encoding: "base64"` for binary files |
+| `files.lines(path, { format?, limit? })` | async iterator of records | `file:read` | read; any file size, read a window at a time. `format`: `csv`, `jsonl` or `text`; default from the extension (`.csv` → `csv`, `.jsonl`/`.ndjson` → `jsonl`, else `text`). `limit` stops early. One record up to 10 MB |
 | `files.list(dir?)` | `[{ name, type, size }]` | `file:read` | read; `type` is `file` or `directory`; default `.` |
 | `files.write(path, content, { encoding? })` | `{ path }` | `file:write` | planned; written on apply, folders created, an existing file replaced. Left out when the file already has this content |
 
+`files.lines` formats:
+
+| Format | Each record | Notes |
+|---|---|---|
+| `csv` | `string[]`, the fields | RFC 4180: quoted fields may hold commas, `""` and line breaks. A UTF-8 BOM is dropped; blank lines are skipped |
+| `jsonl` | the parsed value | Blank lines are skipped; a broken line throws `<path>: line N is not valid JSON` |
+| `text` | `string`, the line without its line break | `\r\n` and `\n` both end a line |
+
+```ts
+for await (const [key, label] of atlcli.files.lines("labels.csv")) {
+  if (key !== "key") await atlcli.jira.addLabels(key, [label]);
+}
+```
+
 Paths are relative to the working directory, use `/`, and contain no `..` or empty segments. A symbolic link that leads outside the working directory is refused, and `files.write` never writes through a link. Writing one path twice in a plan is an error. Paths are checked when planning and again on apply, because a plan file can be edited. The content travels in the plan file.
+
+## Output files
+
+`atlcli.output(path)` opens a file for a report or export and returns an `OutputWriter`. It is not a planned write: like stdout, the file is written while the script runs, also without `--apply`. Use [`files.write`](#files) for files that belong to the plan (written on apply, up to 10 MB).
+
+| Method | Writes |
+|---|---|
+| `write(text)` | the text |
+| `line(text?)` | the text and `\n` |
+| `row(cells)` | one CSV row: RFC 4180 quoting, CRLF; objects become JSON, `null`/`undefined` empty |
+| `json(value)` | one JSON Lines record |
+| `render(template, vars?, { lines?, templates? })` | a [Jinja template](/templating/#streamed-rendering), rendered straight into the file without the whole text in memory. It sees the `--var`/`--vars-file` values, `today`/`now` and the other built-in variables, plus `vars`. `lines` (default `true`) drops lines that hold only a block tag; `templates` are what `include`, `extends` and `import` can load |
+| `close()` | the rest; keeps the file and returns `{ path, bytes, sha256 }` |
+
+```ts
+interface OutputWriter {
+  readonly path: string;
+  write(text: string): Promise<void>;
+  line(text?: string): Promise<void>;
+  row(cells: unknown[]): Promise<void>;
+  json(value: Json): Promise<void>;
+  render(template: string, vars?: Record<string, Json>, options?: { lines?: boolean; templates?: Record<string, string> }): Promise<void>;
+  close(): Promise<{ path: string; bytes: number; sha256: string }>;
+}
+```
+
+The writer collects text and hands it to the host in 64 KB chunks. The write methods return promises: await them in long loops, because more than 16 MB waiting to be written is an error.
+
+| Rule | Value |
+|---|---|
+| Location | Below `--out-dir` (default: the working directory; created if missing). Paths are relative, use `/`, no `..`. A link leading outside is refused, and so is an existing symbolic link as the file |
+| Atomic | Written to a temporary file next to the target and renamed on `close()`. An output not closed when the run fails or ends leaves no file and an existing file unchanged. Files closed earlier stay written |
+| Not closed | An output left open fails the run: `output <path> was not closed (await out.close())` |
+| Size | `--max-output`, default `256m`, all files of one CLI run together |
+| Files | At most 50 per CLI run; each path only once |
+| `--each` | Every issue's run owns its files; an output left open fails only that issue |
+| Permission | `file:output`, once `meta.permissions` is declared |
+| Audit rules | Rules and their `fix` cannot open output files; a rule's `report` export gets a writer instead, see [Audit rule scripts](/audit-scripts/) |
+
+Text mode prints `Wrote <path> (<size>)` on stderr for each file; `--json` adds `outputs: [{ path, bytes, sha256 }]`.
+
+```ts
+const out = await atlcli.output("reports/open-bugs.csv");
+await out.row(["key", "summary", "assignee"]);
+for await (const issue of atlcli.jira.search("project = ATLCLI AND type = Bug AND statusCategory != Done", { fields: ["summary", "assignee"] })) {
+  await out.row([issue.key, issue.fields.summary, (issue.fields.assignee as { displayName?: string } | null)?.displayName]);
+}
+await out.close();
+```
 
 ## State
 
@@ -320,6 +389,8 @@ A script can import other files relatively: `import { line } from "./lib/format.
 2. `atlcli script test triage.ts` (or a directory) replays each case: reads come from the fixture, and the plan must equal the expected one: operations, unchanged writes and result. A difference fails with a diff (`-` expected, `+` actual). A read the fixture has no answer for fails and names the call.
 3. After an intended change, `--update` rewrites the expected plans.
 
+Output files are kept in memory during tests and never written. A replay reports `Output <path> differs`, `Output <path> was not written` or `Output <path> was written but is not expected`.
+
 A script that exports `function test(plan)` gets it called after each case with `{ operations, skipped, value }`; a thrown error fails the case. A case may then leave out `expect`.
 
 The test file:
@@ -331,7 +402,7 @@ The test file:
 | `cases[].name` | unique per file |
 | `cases[].params`, `item`, `now`, `vars` | parameters, the issue (per-issue scripts), the frozen clock and template values |
 | `cases[].fixture.calls[]` | `{ method, args, result }` or `{ method, args, error }` per host read, in order; repeated identical calls answer in order, then repeat the last |
-| `cases[].expect` | `{ operations, skipped, value }` |
+| `cases[].expect` | `{ operations, skipped, value, outputs? }`. `outputs` maps each [output file](#output-files) path to its content (up to 64 KB), else `sha256:<hex>` |
 
 The fixture holds what the script read from the site: review it before committing it. Secret values are never recorded; replays use stand-ins. Exit code 1 when a case fails.
 
@@ -370,6 +441,9 @@ All preconditions are checked before the first write. If any fails, nothing is w
 | One Jira, Confluence or HTTP call | 60 seconds | fixed | catchable error `Host call timed out` |
 | HTTP response, file read or write | 10 MB | fixed | catchable error |
 | State value | 1 MB serialized | fixed | catchable error |
+| Output files | 256 MB, 50 files per CLI run | `--max-output` (size) | catchable error |
+| Output text waiting to be written | 16 MB | fixed | catchable error |
+| One `files.lines` record | 10 MB | fixed | catchable error |
 | Calls per run | 100,000 (jobs: 500 per issue) | `--max-calls`; `0` = none | `host-call-limit` |
 | Planned writes | 10,000 (jobs: 50 per issue) | `meta.limits.maxWrites`, `--max-writes` (wins); `0` = none | `write-limit` |
 
@@ -475,7 +549,7 @@ A job stops when `--max-failures` is reached, when the script is invalid, or on 
 
 | Command | stdout |
 |---|---|
-| `run` | `{ "schemaVersion": "1", "plan": { … } }` |
+| `run` | `{ "schemaVersion": "1", "plan": { … }, "outputs"?: [{ "path", "bytes", "sha256" }] }`; `outputs` only when the script wrote output files (also with `--apply`) |
 | `run --apply`, `apply` | `{ "schemaVersion": "1", "plan": { … }, "report": { "status": "applied", "drift": [], "operations": [ … ] } }` |
 | `check` | `{ "schemaVersion": "1", "meta": { … }, "typecheck": { "status": "ok" \| "skipped" \| "errors", … } }` |
 | `init` | `{ "schemaVersion": "1", "dir": "…", "written": [ … ], "kept": [ … ] }` |

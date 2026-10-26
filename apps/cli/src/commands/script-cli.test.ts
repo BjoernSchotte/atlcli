@@ -4,7 +4,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -643,7 +643,94 @@ export default { last, auth: feed.json.auth };`,
   });
 });
 
+describe("output files", () => {
+  test("a dry run writes reports while planning nothing; a template streams into the file", async () => {
+    const file = await script(
+      "report.ts",
+      `export const meta = { permissions: ["jira:read", "file:output"] };
+const csv = await atlcli.output("reports/issues.csv");
+await csv.row(["Key", "Summary"]);
+const keys = [];
+for await (const issue of atlcli.jira.search("project = ATLCLI")) {
+  keys.push(issue.key);
+  await csv.row([issue.key, issue.fields.summary]);
+}
+await csv.close();
+const md = await atlcli.output("reports/issues.md");
+await md.render("# {{ title }} ({{ team }})\\n{% for k in keys %}\\n- {{ k }}\\n{% endfor %}\\n", { title: "Issues", keys });
+export default await md.close();`,
+    );
+    const result = await run(["run", file, "--out-dir", "out", "--var", "team=core", "--json"]);
+    expect(result.exitCode, result.stderr).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.plan.operations).toEqual([]);
+    expect(json.outputs.map((o: { path: string }) => o.path)).toEqual(["reports/issues.csv", "reports/issues.md"]);
+    const csv = await readFile(join(home, "out", "reports", "issues.csv"), "utf8");
+    expect(csv.split("\r\n")[0]).toBe("Key,Summary");
+    expect(csv).toContain("ATLCLI-1,");
+    expect(await readFile(join(home, "out", "reports", "issues.md"), "utf8")).toBe("# Issues (core)\n- ATLCLI-1\n- ATLCLI-2\n");
+    expect(writes).toEqual([]);
+
+    const text = await run(["run", file, "--out-dir", "out"]);
+    expect(text.exitCode, text.stderr).toBe(0);
+    expect(text.stderr).toContain("Wrote reports/issues.csv (");
+  });
+
+  test("an output left open or a failing script leaves no file; the size limit holds", async () => {
+    await writeFile(join(home, "kept.txt"), "old", "utf8");
+    const open = await run(["run", await script("open.ts", `const o = await atlcli.output("kept.txt"); await o.line("new");`)]);
+    expect(open.exitCode).toBe(1);
+    expect(open.stderr).toContain("kept.txt was not closed");
+    const thrown = await run(["run", await script("throws.ts", `const o = await atlcli.output("kept.txt"); await o.line("new"); throw new Error("boom");`)]);
+    expect(thrown.exitCode).toBe(1);
+    const big = await run(["run", await script("big.ts", `const o = await atlcli.output("big.txt"); for (let i = 0; i < 40; i++) await o.write("x".repeat(70000)); await o.close();`), "--max-output", "1m"]);
+    expect(big.exitCode).toBe(1);
+    expect(big.stderr).toContain("exceed 1 MB");
+    expect(await readFile(join(home, "kept.txt"), "utf8")).toBe("old");
+    expect((await readdir(home)).filter((f) => f.includes("atlcli-tmp") || f === "big.txt")).toEqual([]);
+  });
+
+  test("per issue: every issue writes its own file", async () => {
+    const file = await script(
+      "per-issue.ts",
+      `export default async (issue) => {
+  const o = await atlcli.output("issues/" + issue.key + ".md");
+  await o.render("# {{ key }}", { key: issue.key });
+  await o.close();
+};`,
+    );
+    const result = await run(["run", file, "--each", "project = ATLCLI"]);
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect((await readdir(join(home, "issues"))).sort()).toEqual(["ATLCLI-1.md", "ATLCLI-2.md"]);
+    expect(await readFile(join(home, "issues", "ATLCLI-2.md"), "utf8")).toBe("# ATLCLI-2");
+  });
+});
+
 describe("script test", () => {
+  test("output files are kept in memory, recorded as expected and compared", async () => {
+    const file = await script(
+      "export.ts",
+      `const out = await atlcli.output("keys.md");
+for await (const issue of atlcli.jira.search("project = ATLCLI")) await out.line("- " + issue.key);
+await out.render("{{ n }} issues", { n: 2 });
+await out.close();`,
+    );
+    const recorded = await run(["test", file, "--record", "export"]);
+    expect(recorded.exitCode).toBe(0);
+    expect(existsSync(join(home, "keys.md"))).toBe(false);
+    const testFile = JSON.parse(await readFile(join(home, "export.test.json"), "utf8"));
+    expect(testFile.cases[0].expect.outputs).toEqual({ "keys.md": "- ATLCLI-1\n- ATLCLI-2\n2 issues" });
+    expect((await run(["test", file])).exitCode).toBe(0);
+    await writeFile(file, (await readFile(file, "utf8")).replace('"- "', '"* "'), "utf8");
+    const failed = await run(["test", file]);
+    expect(failed.exitCode).toBe(1);
+    expect(failed.stdout).toContain("Output keys.md differs");
+    expect(existsSync(join(home, "keys.md"))).toBe(false);
+    // Later tests run every case in the directory.
+    await rm(file);
+    await rm(join(home, "export.test.json"));
+  });
+
   test("records a case against the site, replays it offline, shows a diff, updates and runs test(plan)", async () => {
     const file = await script(
       "triage.ts",

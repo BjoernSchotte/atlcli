@@ -241,7 +241,18 @@ Three ways to a Markdown report; none needs a template.
    {% endfor %}
    ```
 
-3. **TypeScript:** a rule exports `report(model)` and returns the Markdown, built freely or with a Jinja string through `atlcli.render`:
+3. **TypeScript:** a rule exports `report(model, out)`. It writes the report through `out`, an [output writer](reference/scripts.md#output-files) for the report's destination (the `--output` file or stdout), so a large report is never one string in memory:
+
+   ```ts
+   export async function report(model: AuditReport, out: OutputWriter) {
+     await out.line(`# Audit ${model.generatedAt.slice(0, 10)}`);
+     await out.line();
+     for (const f of model.findings) await out.line(`- ${f.key} (${f.severity}): ${f.detail}`);
+     await out.render("\n{{ summary.total }} findings\n", model);
+   }
+   ```
+
+   Returning the whole text as a string still works; atlcli writes it to the destination:
 
    ```ts
    export async function report(model: AuditReport) {
@@ -254,9 +265,11 @@ Three ways to a Markdown report; none needs a template.
    }
    ```
 
-   It runs with `--markdown` or `--report`; with several rules exporting `report`, `--report-script <id>` picks one (default: the last loaded).
+   It runs with `--markdown`, `--report` or a Markdown `--output`; with several rules exporting `report`, `--report-script <id>` picks one (default: the last loaded).
 
-`--report <file>` writes the report to a file; otherwise it goes to stdout. The model is the [JSON report](jira/audit.md#schema-version-3) plus `groups` (findings per rule with `title`) and `notes`.
+`out` has `write`, `line`, `row`, `json` and `render`, but no `close`: atlcli opens it on first use and closes it after the export returns. A report that neither writes to `out` nor returns text is an error. A rule that declares `meta.permissions` needs `file:output` for `out`. Rule checks (`default`, run rules) and `fix` cannot open output files; `atlcli.output` there fails with `audit rules write no files`.
+
+`--output <file>` (or `--report <file>`) writes the report to a file, replaced only once complete; otherwise it goes to stdout. `--format json`, `jsonl` or `csv` writes the findings instead of Markdown; see [Jira Audit: report files and formats](jira/audit.md#report-files-and-formats). The model is the [JSON report](jira/audit.md#schema-version-3) plus `groups` (findings per rule with `title`) and `notes`.
 
 ## Examples
 
@@ -318,8 +331,11 @@ A return value needs a `detail` string.
 **`permission-denied: audit rules only read`.**
 Move the write into `export async function fix`.
 
-**`export function report must return the report text`.**
-Return the Markdown string; `console.log` goes to stderr and is not the report.
+**`export function report must write to out or return the report text`.**
+Write with `out` (`await out.line(…)`), or return the Markdown string. `console.log` goes to stderr and is not the report.
+
+**`audit rules write no files; write files in export async function report(model, out)`.**
+A rule check or `fix` called `atlcli.output`. Rules only report findings; write files from the `report` export.
 
 ## Related topics
 

@@ -217,6 +217,8 @@ export interface RunRuleOptions {
 }
 
 const READ_ONLY = "audit rules only read; propose a change with export async function fix(finding, item) instead";
+/** Rules find; files are written by the report (`export async function report(model, out)`). */
+export const NO_OUTPUT = "audit rules write no files; write files in export async function report(model, out)";
 
 /** Runs an item rule over entries: one sandbox run per batch. Returns the hits per entry index. */
 export async function runItemRule(rule: AuditRuleScript, entries: RuleEntry[], options: RunRuleOptions): Promise<Array<{ index: number; hits: RuleHit[] }>> {
@@ -226,12 +228,12 @@ export async function runItemRule(rule: AuditRuleScript, entries: RuleEntry[], o
     const batch = entries.slice(start, start + size);
     const run = await guard(rule, () =>
       planScript(rule.js, {
-      ...(rule.modules ? { modules: rule.modules } : {}),
         ...(rule.modules ? { modules: rule.modules } : {}),
         port: options.port,
         items: batch.map((e) => ({ item: e.item, config: e.config, facts: e.facts ?? {}, now: options.now.getTime(), rule: { id: rule.meta.id, kind: rule.meta.kind } })),
         prelude: PRELUDE,
         readOnly: READ_ONLY,
+        noOutput: NO_OUTPUT,
         limits: { deadlineMs: 60_000 + batch.length * 1_000, maxHostCalls: 100 + batch.length * 50 },
         ...(options.variant ? { variant: options.variant } : {}),
         ...(options.onLog ? { onLog: options.onLog } : {}),
@@ -253,6 +255,7 @@ export async function runDataRule(rule: AuditRuleScript, data: unknown, config: 
       items: [{ item: data, config, facts: {}, now: options.now.getTime(), rule: { id: rule.meta.id, kind: rule.meta.kind } }],
       prelude: PRELUDE,
       readOnly: READ_ONLY,
+      noOutput: NO_OUTPUT,
       limits: { deadlineMs: 10 * 60_000 },
       ...(options.variant ? { variant: options.variant } : {}),
       ...(options.onLog ? { onLog: options.onLog } : {}),
