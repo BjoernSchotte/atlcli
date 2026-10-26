@@ -36,7 +36,7 @@ import {
 } from "@atlcli/audit";
 import { type JiraClient, type JiraField, type JiraIssue, type StatusCategoryResolver, attachChangelogs } from "@atlcli/jira";
 import type { ScriptPort } from "@atlcli/script-runtime";
-import { customAuditReport, emitAuditReport, handleRuleListing, loadAuditScripts, registryOf, runAuditFixes, scriptFlags } from "./audit-scripts.js";
+import { emitAuditOutput, handleRuleListing, loadAuditScripts, registryOf, runAuditFixes, scriptFlags } from "./audit-scripts.js";
 import { loadJiraContext, loadStatusResolver, searchAll, selectionJql } from "./jira-flow.js";
 import { profileFilePath, writeJsonAtomic } from "./profile-paths.js";
 
@@ -378,12 +378,7 @@ export async function handleAuditJira(args: string[], flags: Flags, opts: Output
     return;
   }
 
-  const custom = await customAuditReport(report, setup.scripts, port, flags, opts);
-  if (custom !== undefined) await emitAuditReport(custom, flags, opts);
-  if (custom === undefined || getFlag(flags, "report") !== undefined) {
-    if (opts.json) output(report, opts);
-    else if (custom === undefined) output(renderAuditText(report), opts);
-  }
+  await emitAuditOutput(report, setup.scripts, port, flags, opts, () => renderAuditText(report));
 
   if (failOn !== "never" && report.findings.some((f) => AUDIT_SEVERITY_RANK[f.severity] >= AUDIT_SEVERITY_RANK[failOn])) {
     process.exitCode = 2;
@@ -445,7 +440,9 @@ Options:
   --limit <n>           Max issues per query (default: 1000)
   --markdown            Markdown report (the default Jinja template; --print-template prints it)
   --template <file>     Render the report with your own Jinja template
-  --report <file>       Write the Markdown report to a file instead of stdout
+  --output <file>       Write the report to a file (replaced only once complete)
+  --format <f>          md, json, jsonl or csv (default: from --output's extension, else md)
+  --report <file>       Same as --format md --output <file>
   --report-script <id>  Use this rule script's \`report\` export (default: the last one found)
   --json                JSON report (schemaVersion 3)
 

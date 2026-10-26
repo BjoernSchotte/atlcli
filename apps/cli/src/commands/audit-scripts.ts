@@ -5,7 +5,7 @@
  * a rule's `export function report`). Shared by `audit jira` and `audit wiki`.
  */
 import { existsSync } from "node:fs";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import {
@@ -18,10 +18,15 @@ import {
   DEFAULT_MARKDOWN_TEMPLATE,
   loadAuditRule,
   markdownModel,
+  NO_OUTPUT,
+  writeReportCsv,
+  writeReportJson,
+  writeReportJsonl,
 } from "@atlcli/audit";
 import { ERROR_CODES, fail, getFlag, getFlags, hasFlag, initJinja, output, type OutputOptions, type Profile } from "@atlcli/core";
-import { renderJinja } from "@atlcli/jinja";
+import { JinjaError, streamJinja } from "@atlcli/jinja";
 import type { PlannedOperation, RunScriptOptions, ScriptPort, ScriptRunPlan } from "@atlcli/script-runtime";
+import { AtomicFile, formatSize, singleOutputPort } from "./output-files.js";
 import { BUILTIN_CONFLUENCE_AUDIT_RULES, BUILTIN_JIRA_AUDIT_RULES } from "../builtin-scripts/audit/index.js";
 
 type Variant = RunScriptOptions["variant"];
@@ -171,6 +176,7 @@ export async function planAuditFixes(
         ...(script.modules ? { modules: script.modules } : {}),
         items: mine.map((finding) => ({ finding, item: itemFor(finding) ?? null, rule: { id: script.meta.id, config: configFor?.(finding) ?? {}, now } })),
         entry: "fix",
+        noOutput: NO_OUTPUT,
         prelude: "globalThis.__atlcliArgs = (it) => [it.finding, it.item, Object.freeze(it.rule)];",
         limits: { deadlineMs: 60_000 + mine.length * 2_000, maxHostCalls: 1_000 + mine.length * 50 },
         maxWrites: Math.max(100, mine.length * 20),
@@ -240,70 +246,131 @@ export async function runAuditFixes(
   await outputOrApplyPlan(plan, ctx, flags, opts);
 }
 
+export type AuditOutputFormat = "md" | "json" | "jsonl" | "csv";
+const AUDIT_FORMATS: readonly AuditOutputFormat[] = ["md", "json", "jsonl", "csv"];
+
+/** `--format`, else the `--output` file's extension (.json, .jsonl/.ndjson, .csv; anything else is Markdown). */
+export function auditFormatOf(file: string): AuditOutputFormat {
+  const ext = file.toLowerCase().split(".").pop();
+  return ext === "json" ? "json" : ext === "jsonl" || ext === "ndjson" ? "jsonl" : ext === "csv" ? "csv" : "md";
+}
+
+/** The `report` export's `out`: opened on first use, closed by the host after the export returned (a returned string is written too). */
+const REPORT_PRELUDE = `(() => {
+  let writer;
+  const open = () => (writer ??= atlcli.output("report"));
+  const call = (name) => async (...args) => (await open())[name](...args);
+  const out = Object.freeze({ path: "report", write: call("write"), line: call("line"), row: call("row"), json: call("json"), render: call("render") });
+  globalThis.__atlcliArgs = (model) => [model, out];
+  globalThis.__atlcliAfter = async (result) => {
+    if (typeof result === "string") await out.write(result.endsWith("\\n") ? result : result + "\\n");
+    return writer ? (await writer).close() : null;
+  };
+})();`;
+
 /**
- * A custom report, when one is asked for: `--template <file>` (Jinja over the
- * report, other templates in its directory can be included), else a rule's
- * `export function report(model)` (`--report-script <id>`, or the last rule
- * that has one), else the default Markdown template with `--markdown`.
- * Returns undefined when the normal output applies.
+ * Writes the audit's output, streamed so no report is one string in memory:
+ *
+ * - `--output <file>` / `--format md|json|jsonl|csv` (`--report <file>` is
+ *   `--format md --output <file>`): the file is replaced only once complete.
+ * - Markdown is `--template <file>` (Jinja; templates beside it can be
+ *   included), else a rule's `export function report(model, out)`
+ *   (`--report-script <id>`, or the last rule that has one), else the default
+ *   template.
+ * - Without them: the JSON report with `--json`, else `text()`.
  */
-export async function customAuditReport(
+export async function emitAuditOutput(
   report: AuditReportV3,
   scripts: AuditRuleScript[],
   port: ScriptPort,
   flags: Flags,
   opts: OutputOptions,
-): Promise<string | undefined> {
-  const templatePath = getFlag(flags, "template");
-  const reportScript = getFlag(flags, "report-script");
+  text: () => string,
+): Promise<void> {
+  const reportFile = getFlag(flags, "report");
+  const file = getFlag(flags, "output") ?? reportFile;
+  const formatFlag = getFlag(flags, "format");
+  if (formatFlag !== undefined && !AUDIT_FORMATS.includes(formatFlag as AuditOutputFormat)) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--format takes ${AUDIT_FORMATS.join(", ")}, not ${JSON.stringify(formatFlag)}`);
+  }
+  const markdownOnly = getFlag(flags, "template") !== undefined || getFlag(flags, "report-script") !== undefined || hasFlag(flags, "markdown");
+  const format = (formatFlag as AuditOutputFormat | undefined) ?? (reportFile !== undefined || markdownOnly ? "md" : file !== undefined ? auditFormatOf(file) : undefined);
+  if (markdownOnly && format !== "md") fail(opts, 1, ERROR_CODES.USAGE, "--template, --markdown and --report-script make a Markdown report; drop --format or use --format md");
+
+  const json = opts.json || hasFlag(flags, "json");
+  const stdout = (chunk: string) => void process.stdout.write(chunk);
+  if (format === undefined) {
+    if (json) writeReportJson(report, stdout);
+    else output(text(), opts);
+    return;
+  }
+  const target = file === undefined ? undefined : resolve(file);
+  if (target) await mkdir(dirname(target), { recursive: true });
+  const sink = target ? new AtomicFile(target) : undefined;
+  const write = sink ? (chunk: string) => sink.write(chunk) : stdout;
+  try {
+    if (format === "md") await writeMarkdownReport(report, scripts, port, flags, opts, write, file ?? "report");
+    else if (format === "json") writeReportJson(report, write);
+    else if (format === "jsonl") writeReportJsonl(report, write);
+    else writeReportCsv(report, write);
+  } catch (error) {
+    sink?.abort();
+    throw error;
+  }
+  if (!sink) return;
+  const { bytes } = sink.commit();
+  if (!json) process.stderr.write(`Report written to ${file} (${formatSize(bytes)})\n`);
+  // The file holds the report; --json still prints the JSON report.
+  if (json) writeReportJson(report, stdout);
+}
+
+async function writeMarkdownReport(
+  report: AuditReportV3,
+  scripts: AuditRuleScript[],
+  port: ScriptPort,
+  flags: Flags,
+  opts: OutputOptions,
+  write: (chunk: string) => void,
+  name: string,
+): Promise<void> {
   const model = markdownModel(report);
+  await initJinja();
+  const templatePath = getFlag(flags, "template");
   if (templatePath) {
-    await initJinja();
     const path = resolve(templatePath);
     const templates: Record<string, string> = {};
     for (const f of await readdir(dirname(path))) {
       if (/\.(j2|jinja|md|txt|html)$/.test(f)) templates[f] = await readFile(join(dirname(path), f), "utf8");
     }
-    const { text, warnings } = renderJinja(templates[basename(path)] ?? (await readFile(path, "utf8")), model, { templates, lines: true, tolerant: false });
-    const error = warnings.find((w) => w.code === "parse-error" || w.code === "render-error");
-    if (error) fail(opts, 1, ERROR_CODES.VALIDATION, `${templatePath}: ${error.message}`);
-    return text;
+    try {
+      streamJinja(templates[basename(path)] ?? (await readFile(path, "utf8")), model, write, { templates, lines: true, tolerant: false });
+    } catch (error) {
+      if (error instanceof JinjaError) fail(opts, 1, ERROR_CODES.VALIDATION, `${templatePath}: ${error.message}`);
+      throw error;
+    }
+    return;
   }
+  const reportScript = getFlag(flags, "report-script");
   const withReport = scripts.filter((s) => s.hasReport);
   const chosen = reportScript !== undefined ? withReport.find((s) => s.meta.id === reportScript) : withReport.at(-1);
   if (reportScript !== undefined && !chosen) {
     fail(opts, 1, ERROR_CODES.USAGE, `No rule "${reportScript}" with export function report. Rules with one: ${withReport.map((s) => s.meta.id).join(", ") || "none"}`);
   }
-  if (chosen && (reportScript !== undefined || getFlag(flags, "report") !== undefined || hasFlag(flags, "markdown"))) {
-    const rt = await runtime();
-    const run = await rt.planScript(chosen.js, {
-      port,
-      ...(chosen.modules ? { modules: chosen.modules } : {}),
-      item: model,
-      entry: "report",
-      prelude: "globalThis.__atlcliArgs = (model) => [model];",
-      readOnly: "a report only reads",
-      limits: { deadlineMs: 5 * 60_000 },
-    });
-    if (typeof run.value !== "string") fail(opts, 1, ERROR_CODES.VALIDATION, `${chosen.meta.id}: export function report must return the report text (got ${typeof run.value})`);
-    return run.value;
-  }
-  if (hasFlag(flags, "markdown") || getFlag(flags, "report") !== undefined) {
-    await initJinja();
-    return renderJinja(DEFAULT_MARKDOWN_TEMPLATE, model, { lines: true }).text;
-  }
-  return undefined;
-}
-
-/** Writes a custom report to `--report <file>` (saying so on stderr), or prints it. */
-export async function emitAuditReport(text: string, flags: Flags, opts: OutputOptions): Promise<void> {
-  const file = getFlag(flags, "report");
-  if (file) {
-    await writeFile(file, text.endsWith("\n") ? text : `${text}\n`, "utf8");
-    if (!opts.json) process.stderr.write(`Report written to ${file}\n`);
+  if (!chosen) {
+    streamJinja(DEFAULT_MARKDOWN_TEMPLATE, model, write, { lines: true });
     return;
   }
-  output(text, opts);
+  const rt = await runtime();
+  const run = await rt.planScript(chosen.js, {
+    port: { ...port, ...singleOutputPort(write, name) },
+    ...(chosen.modules ? { modules: chosen.modules } : {}),
+    item: model,
+    entry: "report",
+    prelude: REPORT_PRELUDE,
+    readOnly: "a report only reads",
+    limits: { deadlineMs: 5 * 60_000 },
+  });
+  if (run.value === null) fail(opts, 1, ERROR_CODES.VALIDATION, `${chosen.meta.id}: export function report must write to out or return the report text`);
 }
 
 /** `--script <file>` values. */

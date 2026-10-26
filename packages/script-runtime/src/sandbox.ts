@@ -70,7 +70,9 @@ export interface RunScriptOptions {
   /**
    * Trusted guest code evaluated before the script (after `atlcli` exists). It
    * may set `globalThis.__atlcliArgs = (item, params) => [...]` to shape the
-   * arguments each item call gets (default: `[item, params]`).
+   * arguments each item call gets (default: `[item, params]`), and
+   * `globalThis.__atlcliAfter = async (result) => …` to replace the result
+   * once the entry returned (the audit report closes its output there).
    */
   prelude?: string;
   limits?: Partial<SandboxLimits>;
@@ -356,8 +358,8 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
     const entryName = JSON.stringify(options.entry ?? "default");
     const entry = `(async () => {
   const done = globalThis.__atlcliDone, { stringify, parse } = JSON, item = globalThis.__atlcliItem, items = globalThis.__atlcliItems;
-  const argsFor = globalThis.__atlcliArgs || ((it, params) => [it, params]);
-  delete globalThis.__atlcliDone; delete globalThis.__atlcliItem; delete globalThis.__atlcliItems; delete globalThis.__atlcliArgs;
+  const argsFor = globalThis.__atlcliArgs || ((it, params) => [it, params]), after = globalThis.__atlcliAfter;
+  delete globalThis.__atlcliDone; delete globalThis.__atlcliItem; delete globalThis.__atlcliItems; delete globalThis.__atlcliArgs; delete globalThis.__atlcliAfter;
   try {
     const m = await import(${JSON.stringify(SCRIPT_MODULE)});
     const fn = m[${entryName}];
@@ -378,6 +380,7 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
     } else {
       r = typeof fn === "function" ? await fn(atlcli.params) : fn;
     }
+    if (after) r = await after(r);
     done(true, stringify(r === undefined ? null : r) ?? "null");
   } catch (e) { done(false, e); }
 })();`;

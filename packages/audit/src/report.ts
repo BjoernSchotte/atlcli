@@ -255,3 +255,43 @@ export function markdownModel(report: AuditReportV3): Record<string, unknown> {
     notes: [...reportFooter(report), ...report.diagnostics],
   };
 }
+
+/**
+ * Writes the report as `JSON.stringify(report, null, 2)` plus a line break,
+ * one finding at a time, so the whole text is never one string.
+ */
+export function writeReportJson(report: AuditReportV3, write: (chunk: string) => void): void {
+  const indent = (text: string, by: string) => text.replace(/\n/g, `\n${by}`);
+  const entries = Object.entries(report).filter(([, v]) => v !== undefined && typeof v !== "function");
+  write("{");
+  entries.forEach(([key, value], i) => {
+    write(`${i ? "," : ""}\n  ${JSON.stringify(key)}: `);
+    if (key === "findings" && Array.isArray(value) && value.length > 0) {
+      write("[");
+      value.forEach((f, j) => write(`${j ? "," : ""}\n    ${indent(JSON.stringify(f, null, 2), "    ")}`));
+      write("\n  ]");
+    } else {
+      write(indent(JSON.stringify(value, null, 2), "  "));
+    }
+  });
+  write(entries.length ? "\n}\n" : "}\n");
+}
+
+/** One finding per line (JSON Lines). */
+export function writeReportJsonl(report: AuditReportV3, write: (chunk: string) => void): void {
+  for (const f of report.findings) write(`${JSON.stringify(f)}\n`);
+}
+
+export const AUDIT_CSV_COLUMNS = ["severity", "rule", "key", "summary", "status", "assignee", "detail", "ageDays", "url"] as const;
+
+/** One finding per row with a header (RFC 4180 quoting, CRLF). */
+export function writeReportCsv(report: AuditReportV3, write: (chunk: string) => void): void {
+  const cell = (v: unknown) => {
+    const s = v === undefined || v === null ? "" : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  write(`${AUDIT_CSV_COLUMNS.join(",")}\r\n`);
+  for (const f of report.findings) {
+    write(`${[f.severity, f.rule, f.key, f.summary, f.status, f.assignee, f.detail, f.ageDays, f.target.url].map(cell).join(",")}\r\n`);
+  }
+}
