@@ -733,6 +733,9 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
       "jira.unlink": "no such link",
       "confluence.setProperty": "same value",
       "confluence.deleteProperty": "not set",
+      "confluence.setRestrictions": "same restrictions",
+      "jira.updateVersion": "already so",
+      "jira.updateComponent": "already so",
       "files.write": "same content",
       "state.set": "same value",
       "state.delete": "not set",
@@ -774,6 +777,11 @@ export function describeOperation(op: PlannedOperation): string {
     return JSON.stringify(one.length > max ? `${one.slice(0, max - 1)}…` : one);
   };
   const ref = (s: unknown) => (/^plan:\d+$/.test(String(s)) ? `#${String(s).slice(5)}` : String(s));
+  /** A JSON value as written, shortened; control characters stripped. */
+  const json = (v: unknown, max = 40) => {
+    const one = stripControlChars(JSON.stringify(v) ?? "null");
+    return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+  };
   switch (op.verb) {
     case "jira.create":
       return `jira create      ${a.project} ${a.type} ${text(a.summary)}${after}`;
@@ -865,7 +873,7 @@ export function describeOperation(op: PlannedOperation): string {
     case "jira.unlink":
       return `jira unlink      ${ref(a.key)} link ${a.linkId}${after}`;
     case "confluence.setProperty":
-      return `page property    ${ref(a.pageId)} ${a.key} = ${text(JSON.stringify(a.value), 40)}${after}`;
+      return `page property    ${ref(a.pageId)} ${a.key} = ${json(a.value)}${after}`;
     case "confluence.deleteProperty":
       return `page property    ${ref(a.pageId)} DELETE ${a.key}${after}`;
     case "confluence.setRestrictions":
@@ -877,7 +885,7 @@ export function describeOperation(op: PlannedOperation): string {
     case "files.write":
       return `file write       ${a.path} (${size(a)})${after}`;
     case "state.set":
-      return `state set        ${a.store}/${a.stateKey} = ${text(JSON.stringify(a.value), 40)}${after}`;
+      return `state set        ${a.store}/${a.stateKey} = ${json(a.value)}${after}`;
     case "state.delete":
       return `state DELETE     ${a.store}/${a.stateKey}${after}`;
   }
