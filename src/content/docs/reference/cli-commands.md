@@ -967,7 +967,10 @@ atlcli script run <file> --each "<jql>" --apply --yes   # Plan and apply issue b
 atlcli script apply <job-id> --yes             # Apply a reviewed per-issue job
 atlcli script resume <job-id> [--script <file>]   # Continue a job that stopped
 atlcli script jobs [job-id]                    # List jobs, or show one
-atlcli script check <file>                     # Validate meta, type-check with tsc
+atlcli script check <file>                     # Validate meta and imports, type-check with tsc
+atlcli script test <file> --record <case>      # Record reads and plan as a test case (nothing changes)
+atlcli script test <file|dir> [--case <name>]  # Replay recorded cases offline, compare plans
+atlcli script test <file> --update             # Rewrite the expected plans
 atlcli script init [dir]                       # atlcli.d.ts, tsconfig.json, example.ts
 atlcli script init [dir] --each "<jql>"        # Per-issue skeleton (each.ts)
 atlcli script init [dir] --example <name>      # A bundled example; --list-examples
