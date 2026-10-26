@@ -114,6 +114,70 @@ export interface ScriptPort {
   jiraRest?(path: string, options: { query?: RestQuery; signal?: AbortSignal }): Promise<unknown>;
   /** As jiraRest, relative to the Confluence base: `/rest/api/…` or `/api/v2/…`. */
   confluenceRest?(path: string, options: { query?: RestQuery; signal?: AbortSignal }): Promise<unknown>;
+  /** Writing REST escape hatch (`atlcli.jira.request`); same path rules as jiraRest. JSON (or null) back. */
+  jiraRequest?(method: RestWriteMethod, path: string, options: { body?: unknown; query?: RestQuery }): Promise<unknown>;
+  /** As jiraRequest, relative to the Confluence base. */
+  confluenceRequest?(method: RestWriteMethod, path: string, options: { body?: unknown; query?: RestQuery }): Promise<unknown>;
+
+  jiraComments?(key: string, options: { signal?: AbortSignal }): Promise<JiraCommentView[]>;
+  /** A string is Markdown; `{ raw }` is sent unchanged. */
+  jiraUpdateComment?(key: string, id: string, body: string | { raw: unknown }): Promise<void>;
+  jiraDeleteComment?(key: string, id: string): Promise<void>;
+  jiraWorklogs?(key: string, options: { signal?: AbortSignal }): Promise<JiraWorklogView[]>;
+  jiraAddWorklog?(key: string, input: JiraWorklogInput): Promise<{ id: string }>;
+  jiraVersions?(project: string, options: { signal?: AbortSignal }): Promise<JiraVersionView[]>;
+  jiraGetVersion?(id: string, options: { signal?: AbortSignal }): Promise<JiraVersionView>;
+  jiraCreateVersion?(input: JiraVersionInput & { project: string; name: string }): Promise<{ id: string }>;
+  jiraUpdateVersion?(id: string, input: JiraVersionInput): Promise<void>;
+  jiraComponents?(project: string, options: { signal?: AbortSignal }): Promise<JiraComponentView[]>;
+  jiraGetComponent?(id: string, options: { signal?: AbortSignal }): Promise<JiraComponentView>;
+  jiraCreateComponent?(input: JiraComponentInput & { project: string; name: string }): Promise<{ id: string }>;
+  jiraUpdateComponent?(id: string, input: JiraComponentInput): Promise<void>;
+  /** Ranks `keys` (in this order) right before or after another issue. */
+  jiraRank?(keys: string[], position: { before: string } | { after: string }): Promise<void>;
+  jiraDeleteIssue?(key: string, options: { subtasks?: boolean }): Promise<void>;
+  /** Copies an issue (summary, description, type, labels; components and parent within a project). */
+  jiraCloneIssue?(key: string, input: JiraCloneInput): Promise<{ id: string; key: string }>;
+  jiraLinks?(key: string, options: { signal?: AbortSignal }): Promise<JiraIssueLinkView[]>;
+  jiraDeleteLink?(id: string): Promise<void>;
+  jiraFields?(options: { signal?: AbortSignal }): Promise<JiraFieldView[]>;
+  /** Active and inactive users matching `query` (name or email), as Jira finds them. */
+  jiraUsers?(query: string, options: { signal?: AbortSignal }): Promise<JiraUserView[]>;
+  jiraAttachments?(key: string, options: { signal?: AbortSignal }): Promise<JiraAttachmentListView[]>;
+
+  /** Content properties by key. */
+  confluenceProperties?(pageId: string, options: { signal?: AbortSignal }): Promise<Record<string, unknown>>;
+  confluenceSetProperty?(pageId: string, key: string, value: unknown): Promise<void>;
+  confluenceDeleteProperty?(pageId: string, key: string): Promise<void>;
+  confluenceRestrictions?(pageId: string, options: { signal?: AbortSignal }): Promise<ConfluenceRestrictionsView>;
+  /** Replaces the given operations' restrictions; an operation left out stays as it is. */
+  confluenceSetRestrictions?(pageId: string, input: Partial<ConfluenceRestrictionsView>): Promise<void>;
+  /** Newest first. */
+  confluenceVersions?(pageId: string, options: { signal?: AbortSignal }): Promise<ConfluenceVersionView[]>;
+  confluenceSpaces?(options: { type?: "global" | "personal"; cursor?: string; limit: number; signal?: AbortSignal }): Promise<{
+    results: ConfluenceSpaceView[];
+    nextCursor?: string;
+  }>;
+  confluenceInlineComments?(pageId: string, options: { signal?: AbortSignal }): Promise<ConfluenceInlineCommentView[]>;
+  confluenceCreateBlogPost?(input: { spaceKey: string; title: string; markdown: string }): Promise<{ id: string; version: number }>;
+
+  /**
+   * One HTTP request to an external service, redirects not followed (the
+   * runtime re-checks each Location against the grants). `url` and headers
+   * already carry resolved secrets. Hosts refuse private addresses.
+   */
+  httpFetch?(request: HttpRequestInput, options: { signal?: AbortSignal }): Promise<HttpResponseView>;
+  /** Value of a secret (`ATLCLI_SECRET_<NAME>` on the CLI); undefined when unset. */
+  secret?(name: string): string | undefined;
+  /** Local files, relative to the host's working directory; paths passed `checkLocalPath`. */
+  fileRead?(path: string, options: { encoding: "utf8" | "base64" }): Promise<string>;
+  fileList?(path: string): Promise<LocalFileView[]>;
+  fileWrite?(path: string, content: string, options: { encoding: "utf8" | "base64" }): Promise<{ path: string; bytes: number }>;
+  /** Script state between runs: one JSON store per script name. */
+  stateGet?(store: string, key: string): Promise<unknown>;
+  /** `undefined` deletes the key. */
+  stateSet?(store: string, key: string, value: unknown): Promise<void>;
+
   /**
    * Renders a template with the host's engine (atlcli.render); may be async
    * (the CLI loads its Jinja sandbox on first use). Throws
@@ -124,6 +188,161 @@ export interface ScriptPort {
 }
 
 export type RestQuery = Record<string, string | number | boolean>;
+export type RestWriteMethod = "POST" | "PUT" | "PATCH" | "DELETE";
+
+export interface JiraCommentView {
+  id: string;
+  author?: { accountId?: string; displayName?: string };
+  created?: string;
+  updated?: string;
+  markdown: string;
+}
+
+export interface JiraWorklogView {
+  id: string;
+  author?: { accountId?: string; displayName?: string };
+  started: string;
+  timeSpentSeconds: number;
+  markdown?: string;
+}
+
+export interface JiraWorklogInput {
+  /** Seconds, already parsed from "1h 30m". */
+  timeSpentSeconds: number;
+  started?: string;
+  /** Markdown. */
+  comment?: string;
+}
+
+export interface JiraVersionView {
+  id: string;
+  name: string;
+  /** Project key. */
+  project?: string;
+  description?: string;
+  released: boolean;
+  archived: boolean;
+  startDate?: string;
+  releaseDate?: string;
+}
+
+export interface JiraVersionInput {
+  name?: string;
+  description?: string;
+  startDate?: string;
+  releaseDate?: string;
+  released?: boolean;
+  archived?: boolean;
+}
+
+export interface JiraComponentView {
+  id: string;
+  name: string;
+  /** Project key. */
+  project?: string;
+  description?: string;
+  lead?: { accountId?: string; displayName?: string };
+}
+
+export interface JiraComponentInput {
+  name?: string;
+  description?: string;
+  /** Resolved user. */
+  lead?: JiraUserRef;
+}
+
+export interface JiraCloneInput {
+  project?: string;
+  summary?: string;
+  /** Link the clone to its source ("Cloners"); default true. */
+  link?: boolean;
+  attachments?: boolean;
+}
+
+export interface JiraIssueLinkView {
+  id: string;
+  /** Link type name, e.g. "Blocks". */
+  type: string;
+  /** How this issue relates: "blocks" (outward) or "is blocked by" (inward). */
+  direction: "outward" | "inward";
+  phrase: string;
+  issue: { key: string; summary?: string; status?: string };
+}
+
+export interface JiraFieldView {
+  id: string;
+  name: string;
+  custom: boolean;
+  /** Schema type, e.g. "string", "array", "option". */
+  type?: string;
+}
+
+export interface JiraUserView {
+  accountId?: string;
+  name?: string;
+  displayName?: string;
+  email?: string;
+  active: boolean;
+}
+
+export interface JiraAttachmentListView {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  created?: string;
+  author?: string;
+}
+
+export interface ConfluenceRestrictionsView {
+  read: { accountIds: string[]; groupIds: string[] };
+  update: { accountIds: string[]; groupIds: string[] };
+}
+
+export interface ConfluenceVersionView {
+  number: number;
+  when?: string;
+  by?: string;
+  message?: string;
+  minorEdit?: boolean;
+}
+
+export interface ConfluenceSpaceView {
+  id?: string;
+  key: string;
+  name: string;
+  type: string;
+}
+
+export interface ConfluenceInlineCommentView {
+  id: string;
+  authorId?: string;
+  created?: string;
+  status?: string;
+  /** The page text the comment is anchored to. */
+  selection?: string;
+  markdown: string;
+  replies: ConfluenceInlineCommentView[];
+}
+
+export interface HttpRequestInput {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+export interface HttpResponseView {
+  status: number;
+  headers: Record<string, string>;
+  text: string;
+}
+
+export interface LocalFileView {
+  name: string;
+  type: "file" | "directory";
+  size: number;
+}
 
 /** Fields set on the transition screen, and a Markdown comment added with it. */
 export interface TransitionOptions {

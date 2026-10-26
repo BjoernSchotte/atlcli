@@ -15,6 +15,8 @@ Keep Jira and Confluence automation in git and run it from CI. A pull request sh
 - [Review a plan in a pull request](#review-a-plan-in-a-pull-request)
 - [Apply the reviewed plan](#apply-the-reviewed-plan)
 - [Scheduled housekeeping](#scheduled-housekeeping)
+- [Test scripts without credentials](#test-scripts-without-credentials)
+- [Secrets for HTTP](#secrets-for-http)
 - [Best practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
 - [Related topics](#related-topics)
@@ -194,9 +196,30 @@ jobs:
 
 The plan artifact records what each run did.
 
+## Test scripts without credentials
+
+Record test cases locally once (`atlcli script test automation/triage.ts --record "<case>"`) and commit the `*.test.json` files after reviewing what they contain. CI then replays them on every pull request, with no site and no token:
+
+```yaml
+- run: atlcli script test automation/
+```
+
+A changed plan fails the job with a diff. When the change is intended, run `atlcli script test <script> --update` locally and commit the new expectations with the script.
+
+## Secrets for HTTP
+
+Scripts that call other services through `atlcli.http` read their secrets from `ATLCLI_SECRET_<NAME>`. Set them in both the plan job and the apply job, because `http.get` sends while planning and `http.request` on apply:
+
+```yaml
+env:
+  ATLCLI_SECRET_SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_PATH }}
+```
+
+The plan artifact holds only `{secret:SLACK_WEBHOOK}`, never the value.
+
 ## Best practices
 
-- **Check scripts in the pull request.** Add `atlcli script check automation/*.ts` (with `npm i -g typescript` for the type check) next to the plan step.
+- **Check scripts in the pull request.** Add `atlcli script check automation/*.ts` (with `npm i -g typescript` for the type check) and `atlcli script test automation/` next to the plan step.
 - **Declare `permissions` and `maxWrites` for unattended scripts.** A plan you never look at should not be able to grow without bounds.
 - **Use a service account** whose Jira and Confluence permissions match the scripts, not an administrator.
 - **Keep the plan job and the apply job separate** when a human should approve. Use `--apply --yes` only for scheduled, bounded jobs.

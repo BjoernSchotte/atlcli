@@ -6,9 +6,11 @@ import epicStatusPage from "./examples/epic-status-page.script" with { type: "te
 import fieldUsage from "./examples/field-usage.script" with { type: "text" };
 import normalizeLabels from "./examples/normalize-labels.script" with { type: "text" };
 import propagateFixVersion from "./examples/propagate-fix-version.script" with { type: "text" };
+import releaseVersion from "./examples/release-version.script" with { type: "text" };
 import staleComment from "./examples/stale-comment.script" with { type: "text" };
 import subtasksFromChecklist from "./examples/subtasks-from-checklist.script" with { type: "text" };
 import unblock from "./examples/unblock-when-blocker-done.script" with { type: "text" };
+import worklogReport from "./examples/worklog-report.script" with { type: "text" };
 
 export interface ScriptExample {
   name: string;
@@ -28,6 +30,8 @@ export const SCRIPT_EXAMPLES: readonly ScriptExample[] = [
   { name: "subtasks-from-checklist", mode: "run", source: subtasksFromChecklist },
   { name: "field-usage", mode: "run", source: fieldUsage },
   { name: "epic-status-page", mode: "run", source: epicStatusPage },
+  { name: "release-version", mode: "run", source: releaseVersion },
+  { name: "worklog-report", mode: "run", source: worklogReport },
 ];
 
 /** The `description` of an example's meta, for listings. */

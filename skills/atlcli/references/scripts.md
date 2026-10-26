@@ -2,7 +2,7 @@
 name: scripts
 description: atlcli script, TypeScript automation scripts for Jira and Confluence in a sandbox; writes are planned first and applied in a separate, confirmed step.
 metadata:
-  tags: script, automation, typescript, plan, apply, bulk, sandbox
+  tags: script, automation, typescript, plan, apply, bulk, sandbox, http, secrets, files, state, test
 ---
 
 # Scripts
@@ -18,7 +18,9 @@ links).
 
 - [Writing a script](#writing-a-script)
 - [Verbs](#verbs)
+- [HTTP, secrets, files, state](#http-secrets-files-state)
 - [Plan, then apply](#plan-then-apply)
+- [Testing a script](#testing-a-script)
 - [Many issues: per-issue jobs](#many-issues-per-issue-jobs)
 - [Restricting a script](#restricting-a-script)
 - [Output and exit codes](#output-and-exit-codes)
@@ -26,8 +28,10 @@ links).
 
 ## Writing a script
 
-No imports, no exports, no setup: `atlcli.*`, `atlcli.params` and `console`
-are always there, and top-level `await` works.
+No exports, no setup: `atlcli.*`, `atlcli.params` and `console` are always
+there, and top-level `await` works. Helpers may live in other files below the
+script's directory (`import { x } from "./lib/x.ts"`); packages and `node:`
+modules do not load.
 
 ```ts
 for await (const issue of atlcli.jira.search("project = PROJ AND updated < -180d", { limit: 50 })) {
@@ -39,7 +43,8 @@ for await (const issue of atlcli.jira.search("project = PROJ AND updated < -180d
 Inline code needs no file: `atlcli script run -e '<code>'`. `export default`
 sets the result (a value, or a function called with the params).
 
-The sandbox has no `fetch`, no Node APIs and no imports. Transition names are
+The sandbox has no `fetch` and no Node APIs; HTTP, local files and state go
+through `atlcli.http`, `atlcli.files` and `atlcli.state`. Transition names are
 the workflow's own (they may be localized, e.g. "Fertig"); matching ignores
 case.
 
@@ -81,8 +86,39 @@ case.
 | `atlcli.confluence.attachments(pageId)` / `attach(pageId, { name, content, encoding? })` | same name → new version |
 | `atlcli.confluence.export(pageId, { format: "pdf" \| "docx", path? })` | file written below the apply directory when applied |
 | `atlcli.confluence.copyAttachment(attachmentId, sourcePageId, toPageId)` | bytes copied on apply, never in the plan; skipped if the target has the same name and size |
-| `atlcli.jira.rest(path, { query? })` / `atlcli.confluence.rest(path, { query? })` | read-only GET of any REST resource (`/rest/…`; Confluence also `/api/v2/…`), up to 5 MB; for data no verb covers. There is no write counterpart |
+| `atlcli.jira.rest(path, { query? })` / `atlcli.confluence.rest(path, { query? })` | read-only GET of any REST resource (`/rest/…`; Confluence also `/api/v2/…`), up to 5 MB; for data no verb covers |
+| `atlcli.jira.request(method, path, { body?, query? })` / `atlcli.confluence.request(…)` | planned POST/PUT/PATCH/DELETE of any REST path; Jira needs `jira:write:<P>` for a path naming an issue or project, else `jira:write:*`; Confluence `confluence:write:*`. Prefer a verb when one exists |
+| `atlcli.jira.comments(key)` / `updateComment(key, id, body)` / `deleteComment(key, id)` | read all comments; edit and delete are writes |
+| `atlcli.jira.worklogs(key)` / `addWorklog(key, { timeSpent, started?, comment? })` | `timeSpent` "1h 30m", "2d" (1d = 8h) or seconds |
+| `atlcli.jira.versions(project)` / `createVersion(project, {…})` / `updateVersion(id, {…})` | create skipped when the name exists (returns its id); `updateVersion(id, { released: true, releaseDate })` releases |
+| `atlcli.jira.components(project)` / `createComponent` / `updateComponent` | `lead` resolved like `assign` |
+| `atlcli.jira.rank(keys, { before } \| { after })` | ranks keys in that order |
+| `atlcli.jira.deleteIssue(key, { subtasks? })` | permanent, no trash: show it to the user before applying |
+| `atlcli.jira.clone(key, { project?, summary?, link?, attachments? })` | returns `{ key: "plan:<n>" }`; linked as "Cloners" unless `link: false` |
+| `atlcli.jira.links(key)` / `unlink(key, linkId)` | link ids come from `links` |
+| `atlcli.jira.fields()` / `fieldId(name)` / `users(query)` / `attachments(key)` | `fieldId("Story Points")` → `customfield_…`; ambiguous names fail |
+| `atlcli.confluence.properties(pageId)` / `setProperty` / `deleteProperty` | content properties; unchanged values skipped |
+| `atlcli.confluence.restrictions(pageId)` / `setRestrictions(pageId, { read?, update? })` | account and group ids; an operation left out keeps its restrictions |
+| `atlcli.confluence.versions(pageId)` / `descendants(pageId)` / `spaces()` / `inlineComments(pageId)` | `descendants` and `spaces` are async iterators |
+| `atlcli.confluence.createBlogPost({ space, title, markdown })` | |
 | `await atlcli.render(input, { vars?, format?, source?, parent?, unit? })` | renders a template with `--var`/`--vars-file`/`--now`; strings are text, objects ADF, `format: "storage"` for pages; warnings go to the plan, `--strict` makes them fail (`template` error kind) |
+
+## HTTP, secrets, files, state
+
+- `atlcli.http.get(url, { headers?, query? })` reads while planning;
+  `atlcli.http.request(method, url, { headers?, body?, json? })` is planned and
+  sent on apply (status ≥ 300 fails it). Every host needs `"http:<host>"` in
+  `meta.permissions`; https only (http for localhost); private addresses are
+  refused.
+- `atlcli.secret("NAME")` is a reference, never the value; the host fills in
+  `ATLCLI_SECRET_NAME` inside HTTP URLs, headers and bodies only. Declare it in
+  `meta.secrets`. Never put tokens into the script, params or plan. Ask the user
+  to export the variable; do not read or echo it.
+- `atlcli.files.read(path)` / `files.list(dir?)` read below the working
+  directory; `files.write(path, content)` is planned. Relative paths, no `..`.
+- `atlcli.state.get(key)` / `set` / `delete`: a per-script JSON store kept
+  between runs (`~/.atlcli/state/<name>.json`); set and delete are planned, so
+  a dry run leaves it as it was.
 
 Objects the plan creates are referenced as `plan:<n>`, also inside text (a page
 body naming a new issue key gets the real key at apply). Reads of such objects
@@ -117,14 +153,16 @@ atlcli script run cleanup.ts --apply --yes                         # plan + appl
   current assignee, label changes that change nothing and a `movePage` to the
   current parent. They are listed under `Unchanged, not planned` and in
   `plan.skipped`. "No changes planned" after a re-run is the expected result.
-- **`deletePage` is a write like any other** but the plan shows it as
-  `page DELETE`. Point it out to the user before applying.
+- **`deletePage` and `deleteIssue` are writes like any other** but the plan
+  shows them as `page DELETE` / `jira DELETE`. Point them out to the user before
+  applying; an issue delete cannot be undone. HTTP requests (`http`) and file
+  writes (`file write`) are listed too.
 - **Limits:** the defaults are 1 hour, 100,000 calls, 10,000 writes and 64 MB;
   `0` lifts `--timeout`, `--max-calls` or `--max-writes`. Large plans print
   counts per verb and the first 50 operations; `--concurrency <n>` applies
   independent operations in parallel (same issue/page stays in order).
 
-`atlcli script check <file>` validates `meta` and type-checks the file against
+`atlcli script check <file>` validates `meta` and imports and type-checks the file against
 `atlcli.d.ts` when `tsc` is on PATH. `atlcli script init [dir]` writes
 `atlcli.d.ts`, `tsconfig.json` and an example script (`--each "<jql>"`: a
 per-issue skeleton; `--example <name>`, `--list-examples`: bundled examples).
@@ -133,6 +171,20 @@ JQL in `atlcli.jira.search` and `--each` may use the client-side functions
 `linkedIssuesOf`, `subtasksOf`, `childrenOf`, `issuesInEpics`, `parentsOf`,
 `epicsOf`, `hasSubtasks`, `hasLinks`, `hasAttachments`, `hasComments`,
 `hasWorklogs`, see [jira-search.md](jira-search.md#jql-functions).
+
+## Testing a script
+
+```bash
+atlcli script test triage.ts --record "open bugs"   # plans once against the site, stores reads + plan; nothing changes
+atlcli script test triage.ts --json                 # replays offline; exit 1 with a diff when the plan differs
+atlcli script test triage.ts --update               # after an intended change
+```
+
+Use it after changing a script the user relies on: record before the change,
+then compare. `<script>.test.json` contains site data the script read; tell the
+user before committing it. A script may `export function test(plan)` and throw
+to fail a case. `The fixture has no answer for …` means the script reads
+something new: record again.
 
 ## Many issues: per-issue jobs
 
@@ -205,3 +257,5 @@ pass through as strings.
 - Comments or creates in a per-issue script without a guard against running twice.
 - Reading back a page or issue the same script just planned to write and expecting the new state.
 - Guessing transition names. Read them with `atlcli jira issue transitions <key>` first.
+- Putting tokens or webhook URLs in scripts, `--param` or plans instead of `atlcli.secret` with `ATLCLI_SECRET_<NAME>`.
+- `jira.request` for something a verb covers: the verb checks permissions per project and skips no-op writes.

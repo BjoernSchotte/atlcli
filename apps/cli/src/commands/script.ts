@@ -1,6 +1,6 @@
-import { appendFileSync, existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { appendFileSync, existsSync, statSync } from "node:fs";
+import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import {
   ERROR_CODES,
   fail,
@@ -42,8 +42,9 @@ Writes are planned first; nothing changes until the plan is applied.
     await atlcli.jira.transition(issue.key, "Won't Do");
   }
 
-No imports, no boilerplate: atlcli.* is always there. Add
-\`export const meta = { … }\` only to restrict permissions or declare typed params.
+No boilerplate: atlcli.* is always there; share helpers with relative imports
+(./util.ts). Add \`export const meta = { … }\` only to restrict permissions,
+declare secrets or typed params.
 
 Commands:
   run <file>             Plan the script; show the plan (nothing changes)
@@ -53,6 +54,7 @@ Commands:
   resume <job-id>        Continue an interrupted per-issue job
   jobs [job-id]          List per-issue jobs, or show one
   check <file>           Validate meta and type-check (needs tsc on PATH)
+  test <file|dir>        Replay recorded cases (<name>.test.json) offline and compare the plans
   init [dir]             Write atlcli.d.ts, tsconfig.json and an example script
 
 Options for run:
@@ -80,6 +82,12 @@ Options for resume:
   --script <file>        Continue with a fixed script (planning or streaming jobs)
   --yes, --concurrency, --max-failures as for run
 
+Options for test:
+  --record <name>        Plan once against the site (nothing changes) and store what the
+                         script read and planned as a case; with --param, --each <KEY>, --now
+  --case <name>          Run one case
+  --update               Rewrite the cases' expected plans from what the script plans now
+
 Options for init:
   --each "<jql>"         Write each.ts, a per-issue script for this query
   --example <name>       Write one of the examples (list them with --list-examples)
@@ -99,7 +107,10 @@ Limits for run (defaults in parentheses):
 JQL in atlcli.jira.search and --each may use linkedIssuesOf("…"), subtasksOf("…"),
 hasAttachments("…") and more (see \`atlcli jira --help\`).
 
-atlcli.confluence.export writes its files below the directory the plan is applied in.
+atlcli.confluence.export and atlcli.files write below the directory the plan is applied in.
+atlcli.state keeps a JSON store per script in ~/.atlcli/state. atlcli.http needs
+"http:<host>" in meta.permissions; atlcli.secret("NAME") reads ATLCLI_SECRET_NAME
+into HTTP requests only.
 
 Exit codes: 0 ok · 1 error · 2 drift (target changed since the plan; nothing written)
 `;
@@ -130,6 +141,8 @@ export async function handleScript(args: string[], flags: Flags, opts: OutputOpt
       return (await import("./script-jobs.js")).jobsCommand(rest, opts);
     case "check":
       return checkCommand(rest, opts);
+    case "test":
+      return (await import("./script-test.js")).testCommand(rest, flags, opts);
     case "init":
       return initCommand(rest, flags, opts);
     default:
@@ -172,6 +185,11 @@ async function runCommand(args: string[], flags: Flags, opts: OutputOptions): Pr
  * `jira project copy-issues` run through here too, so they share the plan
  * file, confirmation and apply report.
  */
+/** Plan and state-store name when meta has none: the file name without extension. */
+export function scriptName(origin: { path: string } | { name: string }): string {
+  return "path" in origin ? origin.path.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, "") : origin.name;
+}
+
 export async function planAndApply(
   source: string,
   origin: { path: string } | { name: string },
@@ -181,12 +199,15 @@ export async function planAndApply(
   opts: OutputOptions,
   templating?: Templating,
 ): Promise<void> {
+  const modules = "path" in origin ? await loadImports(origin.path, source, opts) : {};
   const { profile, port } = await connect(flags, opts);
   const rt = await runtime();
 
   const run = await guard(opts, () =>
     rt.planScript(transpile(source, opts), {
       port,
+      name: scriptName(origin),
+      modules: transpileModules(modules, opts),
       params,
       limits,
       ...(maxWrites !== undefined ? { maxWrites } : {}),
@@ -195,7 +216,7 @@ export async function planAndApply(
     }),
   );
   const plan = await rt.createScriptPlan(run, {
-    source,
+    source: digestSource(source, modules),
     ...origin,
     baseUrl: profile.baseUrl,
     profile: profile.name,
@@ -344,6 +365,8 @@ async function checkCommand(args: string[], opts: OutputOptions): Promise<void> 
   const source = await readSource(file, opts);
   const rt = await runtime();
   const meta = await guard(opts, () => rt.inspectScript(transpile(source, opts)));
+  const modules = await loadImports(file, source, opts);
+  transpileModules(modules, opts);
   const typecheck = await typeCheck(resolve(file));
   if (opts.json) {
     output({ schemaVersion: "1", meta, typecheck }, opts);
@@ -376,9 +399,10 @@ export const TSCONFIG = `{
     "noEmit": true,
     "moduleDetection": "force",
     "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["*.ts"]
+  "include": ["**/*.ts"]
 }
 `;
 
@@ -462,12 +486,74 @@ export async function readSource(file: string, opts: OutputOptions): Promise<str
 }
 
 /** Type stripping only; scripts are erasable-syntax TypeScript or plain JavaScript. */
-export function transpile(source: string, opts: OutputOptions): string {
+export function transpile(source: string, opts: OutputOptions, path?: string): string {
   try {
     return new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(source);
   } catch (error) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, `Script does not parse: ${messageOf(error)}`);
+    fail(opts, 1, ERROR_CODES.VALIDATION, `${path ?? "Script"} does not parse: ${messageOf(error)}`);
   }
+}
+
+/**
+ * The files a script imports, transitively: path relative to the script's
+ * directory → source as written. Only relative imports of files inside that
+ * directory are allowed (links pointing out are refused); anything else fails
+ * here, before the script runs.
+ */
+export async function readImports(file: string, source: string): Promise<Record<string, string>> {
+  const rt = await runtime();
+  const root = await realpath(dirname(resolve(file)));
+  const modules: Record<string, string> = {};
+  const queue: Array<[string, string]> = [[rt.SCRIPT_MODULE, source]];
+  const scanner = new Bun.Transpiler({ loader: "ts" });
+  while (queue.length > 0) {
+    const [base, text] = queue.shift()!;
+    const where = base === rt.SCRIPT_MODULE ? displayPath(resolve(file)) : base;
+    let imports: Array<{ path: string }>;
+    try {
+      imports = scanner.scanImports(text);
+    } catch (error) {
+      throw new Error(`${where} does not parse: ${messageOf(error)}`);
+    }
+    for (const { path } of imports) {
+      const candidates = rt.moduleCandidates(base, path);
+      if (candidates instanceof Error) throw new Error(`${where}: ${candidates.message}`);
+      const hit = candidates.find((c) => {
+        try {
+          return statSync(join(root, c)).isFile();
+        } catch {
+          return false;
+        }
+      });
+      if (!hit) throw new Error(`${where}: cannot find ${path}`);
+      if (Object.hasOwn(modules, hit)) continue;
+      const real = await realpath(join(root, hit));
+      if (!real.startsWith(root + sep)) throw new Error(`${where}: ${path} leads outside the script's directory`);
+      modules[hit] = await readFile(real, "utf8");
+      queue.push([hit, modules[hit]]);
+    }
+  }
+  return modules;
+}
+
+/** readImports for a command's own script: problems end the command. */
+export async function loadImports(file: string, source: string, opts: OutputOptions): Promise<Record<string, string>> {
+  try {
+    return await readImports(file, source);
+  } catch (error) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, messageOf(error));
+  }
+}
+
+/** Type-stripped modules for the sandbox. */
+export function transpileModules(modules: Record<string, string>, opts: OutputOptions): Record<string, string> {
+  return Object.fromEntries(Object.entries(modules).map(([path, source]) => [path, transpile(source, opts, path)]));
+}
+
+/** What a plan's script digest covers: the script and, in path order, every file it imports. */
+export function digestSource(source: string, modules: Record<string, string>): string {
+  const paths = Object.keys(modules).sort();
+  return paths.length === 0 ? source : [source, ...paths.map((p) => `\n//# atlcli-module ${p}\n${modules[p]}`)].join("");
 }
 
 /** `--timeout`, `--memory`, `--max-calls`, `--max-writes`; unset flags keep the runtime defaults. */
@@ -596,17 +682,30 @@ function finish(plan: ScriptPlanV1, report: ApplyReport, opts: OutputOptions, pl
   else output(`Applied ${report.operations.length} operation${report.operations.length === 1 ? "" : "s"}.${createdSummary(report)}`, opts);
 }
 
+/** Verbs that create something, with the word put before its id in the apply summary. */
+const CREATED_LABEL: Partial<Record<PlannedOperation["verb"], string>> = {
+  "jira.create": "",
+  "jira.clone": "",
+  "jira.createSprint": "sprint ",
+  "jira.createVersion": "version ",
+  "jira.createComponent": "component ",
+  "confluence.createPage": "",
+  "confluence.createBlogPost": "blog post ",
+};
+
 function createdSummary(report: ApplyReport): string {
   const created = report.operations
-    .filter((o) => o.status === "applied" && (o.verb === "jira.create" || o.verb === "jira.createSprint" || o.verb === "confluence.createPage"))
-    .map((o) => `${o.verb === "jira.createSprint" ? "sprint " : ""}${String(o.result?.key ?? o.result?.id)}`);
-  const exported = report.operations.filter((o) => o.status === "applied" && o.verb === "confluence.export").map((o) => String(o.result?.path));
+    .filter((o) => o.status === "applied" && CREATED_LABEL[o.verb] !== undefined)
+    .map((o) => `${CREATED_LABEL[o.verb]}${String(o.result?.key ?? o.result?.id)}`);
+  const exported = report.operations
+    .filter((o) => o.status === "applied" && (o.verb === "confluence.export" || o.verb === "files.write"))
+    .map((o) => String(o.result?.path));
   const unmoved = report.operations
     .filter((o) => o.status === "applied" && o.verb === "jira.setStatus" && o.result?.moved === false)
     .map((o) => `${String(o.result?.key)} → ${String(o.result?.status)}`);
   const list = (items: string[]) => (items.length > 20 ? `${items.slice(0, 20).join(", ")} and ${items.length - 20} more` : items.join(", "));
   return (
-    `${created.length ? ` Created: ${list(created)}.` : ""}${exported.length ? ` Exported: ${list(exported)}.` : ""}` +
+    `${created.length ? ` Created: ${list(created)}.` : ""}${exported.length ? ` Wrote: ${list(exported)}.` : ""}` +
     (unmoved.length ? `\nStatus unchanged (no direct transition): ${unmoved.join(", ")}.` : "")
   );
 }
@@ -629,6 +728,17 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
       "jira.assign": "already assigned",
       "jira.addLabels": "labels already set",
       "jira.removeLabels": "labels not set",
+      "jira.createVersion": "version exists",
+      "jira.createComponent": "component exists",
+      "jira.unlink": "no such link",
+      "confluence.setProperty": "same value",
+      "confluence.deleteProperty": "not set",
+      "confluence.setRestrictions": "same restrictions",
+      "jira.updateVersion": "already so",
+      "jira.updateComponent": "already so",
+      "files.write": "same content",
+      "state.set": "same value",
+      "state.delete": "not set",
     };
     for (const skip of plan.skipped) {
       const what = skip.verb.startsWith("confluence.") ? `page ${skip.target}` : skip.target;
@@ -667,6 +777,11 @@ export function describeOperation(op: PlannedOperation): string {
     return JSON.stringify(one.length > max ? `${one.slice(0, max - 1)}…` : one);
   };
   const ref = (s: unknown) => (/^plan:\d+$/.test(String(s)) ? `#${String(s).slice(5)}` : String(s));
+  /** A JSON value as written, shortened; control characters stripped. */
+  const json = (v: unknown, max = 40) => {
+    const one = stripControlChars(JSON.stringify(v) ?? "null");
+    return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+  };
   switch (op.verb) {
     case "jira.create":
       return `jira create      ${a.project} ${a.type} ${text(a.summary)}${after}`;
@@ -731,7 +846,68 @@ export function describeOperation(op: PlannedOperation): string {
       return `sprint update    ${ref(a.id)} ${a.state ? `→ ${a.state}` : Object.keys(a).filter((k) => k !== "id").join(", ")}${after}`;
     case "jira.moveToSprint":
       return `sprint add       ${ref(a.sprintId)} ← ${(a.keys as string[]).map(ref).join(", ")}${after}`;
+    case "jira.request":
+      return `jira REST        ${a.method} ${a.path}${a.body !== undefined ? ` (${bytes(JSON.stringify(a.body).length)} body)` : ""}${after}`;
+    case "confluence.request":
+      return `page REST        ${a.method} ${a.path}${a.body !== undefined ? ` (${bytes(JSON.stringify(a.body).length)} body)` : ""}${after}`;
+    case "jira.updateComment":
+      return `jira comment     ${ref(a.key)} edit ${a.id} ${"raw" in a ? "(raw)" : text(a.markdown)}${after}`;
+    case "jira.deleteComment":
+      return `jira comment     ${ref(a.key)} DELETE ${a.id}${after}`;
+    case "jira.addWorklog":
+      return `jira worklog     ${ref(a.key)} + ${duration(a.timeSpentSeconds)}${a.started ? ` at ${a.started}` : ""}${a.comment ? ` ${text(a.comment)}` : ""}${after}`;
+    case "jira.createVersion":
+      return `version create   ${a.project} ${text(a.name)}${versionExtras(a)}${after}`;
+    case "jira.updateVersion":
+      return `version update   ${ref(a.id)}${versionExtras(a)}${a.name ? ` name ${text(a.name)}` : ""}${after}`;
+    case "jira.createComponent":
+      return `component create ${a.project} ${text(a.name)}${a.leadQuery ? ` lead ${a.leadQuery}` : ""}${after}`;
+    case "jira.updateComponent":
+      return `component update ${ref(a.id)} ${Object.keys(a).filter((k) => k !== "id" && k !== "lead").map((k) => (k === "leadQuery" ? "lead" : k)).join(", ")}${after}`;
+    case "jira.rank":
+      return `jira rank        ${(a.keys as string[]).map(ref).join(", ")} ${a.before !== undefined ? `before ${ref(a.before)}` : `after ${ref(a.after)}`}${after}`;
+    case "jira.deleteIssue":
+      return `jira DELETE      ${ref(a.key)}${a.subtasks ? " with subtasks" : ""}${after}`;
+    case "jira.clone":
+      return `jira clone       ${ref(a.key)}${a.project ? ` into ${a.project}` : ""}${a.summary ? ` ${text(a.summary)}` : ""}${a.attachments ? " with attachments" : ""}${after}`;
+    case "jira.unlink":
+      return `jira unlink      ${ref(a.key)} link ${a.linkId}${after}`;
+    case "confluence.setProperty":
+      return `page property    ${ref(a.pageId)} ${a.key} = ${json(a.value)}${after}`;
+    case "confluence.deleteProperty":
+      return `page property    ${ref(a.pageId)} DELETE ${a.key}${after}`;
+    case "confluence.setRestrictions":
+      return `page restrict    ${ref(a.pageId)} ${["read", "update"].filter((k) => a[k]).map((k) => `${k}: ${a[k].accountIds.length} user(s), ${a[k].groupIds.length} group(s)`).join("; ")}${after}`;
+    case "confluence.createBlogPost":
+      return `blog create      ${a.spaceKey} ${text(a.title)}${after}`;
+    case "http.request":
+      return `http             ${a.method} ${String(a.url).replace(/\?.*$/, "")}${a.body !== undefined ? ` (${bytes(Buffer.byteLength(a.body))} body)` : ""}${after}`;
+    case "files.write":
+      return `file write       ${a.path} (${size(a)})${after}`;
+    case "state.set":
+      return `state set        ${a.store}/${a.stateKey} = ${json(a.value)}${after}`;
+    case "state.delete":
+      return `state DELETE     ${a.store}/${a.stateKey}${after}`;
   }
+}
+
+/** " released 2026-11-01, archived" for version operations. */
+function versionExtras(a: Record<string, any>): string {
+  const parts = [
+    ...(a.released === true ? [`released${a.releaseDate ? ` ${a.releaseDate}` : ""}`] : a.released === false ? ["unreleased"] : []),
+    ...(a.released === undefined && a.releaseDate ? [`release date ${a.releaseDate}`] : []),
+    ...(a.startDate ? [`start ${a.startDate}`] : []),
+    ...(a.archived === true ? ["archived"] : a.archived === false ? ["unarchived"] : []),
+    ...(a.description !== undefined ? ["description"] : []),
+  ];
+  return parts.length ? ` ${parts.join(", ")}` : "";
+}
+
+/** 5400 → "1h 30m". */
+function duration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return [h ? `${h}h` : "", m ? `${m}m` : ""].filter(Boolean).join(" ") || `${seconds}s`;
 }
 
 /** Decoded attachment size for the plan listing. */
@@ -756,6 +932,8 @@ function describePrecondition(pre: ScriptPlanV1["operations"][number]["precondit
       return `page ${pre.id} at version ${pre.version}`;
     case "confluence-title-absent":
       return `no page "${pre.title}" in ${pre.spaceKey}`;
+    case "state-unchanged":
+      return `state ${pre.store}/${pre.key} ${pre.digest ? "unchanged" : "unset"}`;
   }
 }
 

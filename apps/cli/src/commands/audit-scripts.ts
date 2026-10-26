@@ -31,6 +31,17 @@ export type AuditProduct = "jira" | "confluence";
 const transpile = (source: string) => new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(source);
 const runtime = () => import("@atlcli/script-runtime");
 
+/** A rule's relative imports, type-stripped; problems become an AuditScriptError. */
+async function readRuleImports(path: string, source: string): Promise<Record<string, string>> {
+  const { readImports } = await import("./script.js");
+  try {
+    const modules = await readImports(path, source);
+    return Object.fromEntries(Object.entries(modules).map(([p, src]) => [p, transpile(src)]));
+  } catch (error) {
+    throw new AuditScriptError(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 /** The built-in rules of a product, loaded (meta read, nothing run). */
 export async function loadBuiltinAuditRules(product: AuditProduct, variant?: Variant): Promise<AuditRuleScript[]> {
   const sources = product === "jira" ? BUILTIN_JIRA_AUDIT_RULES : BUILTIN_CONFLUENCE_AUDIT_RULES;
@@ -81,7 +92,8 @@ export async function loadAuditScripts(
     } catch {
       throw new AuditScriptError(`Cannot read the audit rule ${path}`);
     }
-    const rule = await loadAuditRule(text, path, transpile, options.variant);
+    const modules = await readRuleImports(path, text);
+    const rule = await loadAuditRule(text, path, transpile, options.variant, modules);
     if (rule.meta.product !== product) {
       if (explicit) throw new AuditScriptError(`${path} is a ${rule.meta.product} rule; use it with atlcli audit ${rule.meta.product === "jira" ? "jira" : "wiki"}`);
       continue;
@@ -156,6 +168,7 @@ export async function planAuditFixes(
     runs.push(
       await rt.planScript(script.js, {
         port,
+        ...(script.modules ? { modules: script.modules } : {}),
         items: mine.map((finding) => ({ finding, item: itemFor(finding) ?? null, rule: { id: script.meta.id, config: configFor?.(finding) ?? {}, now } })),
         entry: "fix",
         prelude: "globalThis.__atlcliArgs = (it) => [it.finding, it.item, Object.freeze(it.rule)];",
@@ -265,6 +278,7 @@ export async function customAuditReport(
     const rt = await runtime();
     const run = await rt.planScript(chosen.js, {
       port,
+      ...(chosen.modules ? { modules: chosen.modules } : {}),
       item: model,
       entry: "report",
       prelude: "globalThis.__atlcliArgs = (model) => [model];",

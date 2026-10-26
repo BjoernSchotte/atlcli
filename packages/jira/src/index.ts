@@ -13,6 +13,7 @@
 export * from "./index.browser.js";
 export * from "./attachments.js";
 export * from "./attachment-copy.js";
+export * from "./issue-clone.js";
 export * from "./worklog.js";
 export * from "./analysis.js";
 export * from "./flow.js";

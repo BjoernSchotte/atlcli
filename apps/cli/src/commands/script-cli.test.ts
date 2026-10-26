@@ -181,6 +181,15 @@ beforeAll(async () => {
         page.labels.push(...body.map((l: { name: string }) => l.name));
         return Response.json({ results: page.labels.map((name) => ({ prefix: "global", name })) });
       }
+      if (path === "/hook") {
+        bodies.push(["hook", { method: req.method, auth: req.headers.get("authorization"), body }]);
+        return new Response(null, { status: 204 });
+      }
+      if (path === "/feed" && req.method === "GET") return Response.json({ items: ["a", "b"], auth: req.headers.get("authorization") });
+      if (path === "/rest/api/3/version" && req.method === "POST") {
+        bodies.push(["version", body]);
+        return Response.json({ id: "10500", name: body.name }, { status: 201 });
+      }
       return Response.json({ message: `stub: no route for ${req.method} ${path}${url.search}` }, { status: 404 });
     },
   });
@@ -202,10 +211,10 @@ afterAll(async () => {
 
 beforeEach(reset);
 
-async function run(args: string[]) {
+async function run(args: string[], env: Record<string, string> = {}) {
   const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "script", ...args], {
     cwd: home,
-    env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "t", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
+    env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "t", ATLCLI_DISABLE_UPDATE_CHECK: "1", ...env },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -557,5 +566,128 @@ describe("script init and check", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Invalid meta.permissions.0");
     expect(writes).toEqual([]);
+  });
+});
+
+describe("imports, files, state, http and REST writes", () => {
+  test("relative imports load; the plan digest covers them; packages and escapes are refused", async () => {
+    await mkdir(join(home, "lib"), { recursive: true });
+    await writeFile(join(home, "lib", "format.ts"), `export const line = (key: string): string => "Closing " + key;\n`, "utf8");
+    const file = await script("imports.ts", `import { line } from "./lib/format.ts";\nexport default line("ATLCLI-1");\n`);
+    const first = await run(["run", file, "--json"]);
+    expect(first.exitCode).toBe(0);
+    const plan = JSON.parse(first.stdout).plan;
+    expect(plan.value).toBe("Closing ATLCLI-1");
+    await writeFile(join(home, "lib", "format.ts"), `export const line = (key: string): string => "Done " + key;\n`, "utf8");
+    const second = JSON.parse((await run(["run", file, "--json"])).stdout).plan;
+    expect(second.script.sha256).not.toBe(plan.script.sha256);
+
+    for (const [name, source, message] of [
+      ["pkg.ts", `import x from "lodash"; export default x;`, "except relative files"],
+      ["up.ts", `import x from "../x.ts"; export default x;`, "leaves the script's directory"],
+      ["missing.ts", `import x from "./nope.ts"; export default x;`, "cannot find ./nope.ts"],
+    ]) {
+      const result = await run(["run", await script(name!, source!)]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(message!);
+    }
+    const check = await run(["check", await script("pkg2.ts", `import x from "node:fs"; export default x;`)]);
+    expect(check.exitCode).toBe(1);
+    expect(check.stderr).toContain("except relative files");
+  });
+
+  test("files, state and HTTP are planned, applied from the plan file, and secrets never reach it", async () => {
+    await writeFile(join(home, "input.csv"), "key\nATLCLI-1\n", "utf8");
+    const origin = server.url.origin.replace("127.0.0.1", "localhost");
+    const file = await script(
+      "nightly.ts",
+      `export const meta = { name: "nightly", permissions: ["file:read", "file:write", "http:localhost:${server.port}"], secrets: ["HOOK"] };
+const keys = (await atlcli.files.read("input.csv")).trim().split("\\n").slice(1);
+const feed = await atlcli.http.get("${origin}/feed", { headers: { authorization: "Bearer " + atlcli.secret("HOOK") } });
+const last = await atlcli.state.get("last");
+await atlcli.files.write("out/report.md", "# " + keys.join(", ") + " " + feed.json.items.length);
+await atlcli.state.set("last", keys.at(-1));
+await atlcli.http.request("POST", "${origin}/hook", { headers: { authorization: "Bearer " + atlcli.secret("HOOK") }, json: { keys } });
+export default { last, auth: feed.json.auth };`,
+    );
+    const env = { ATLCLI_SECRET_HOOK: "hook-secret-1" };
+    const planned = await run(["run", file, "--plan-out", "plan.json"], env);
+    expect(planned.exitCode).toBe(0);
+    expect(planned.stdout).toContain("file write       out/report.md");
+    expect(planned.stdout).toContain("state set        nightly/last");
+    expect(planned.stdout).toContain(`http             POST ${origin}/hook`);
+    // The GET went out while planning, with the secret; what the script saw is redacted.
+    expect(planned.stdout).toContain('"auth":"Bearer {secret:HOOK}"');
+    const planText = await readFile(join(home, "plan.json"), "utf8");
+    expect(planText).not.toContain("hook-secret-1");
+    expect(bodies.filter((b) => b[0] === "hook")).toEqual([]);
+    expect(existsSync(join(home, "out", "report.md"))).toBe(false);
+
+    const applied = await run(["apply", "plan.json", "--yes"], env);
+    expect(applied.exitCode).toBe(0);
+    expect(await readFile(join(home, "out", "report.md"), "utf8")).toBe("# ATLCLI-1 2");
+    expect(JSON.parse(await readFile(join(home, ".atlcli", "state", "nightly.json"), "utf8"))).toEqual({ last: "ATLCLI-1" });
+    expect(bodies.filter((b) => b[0] === "hook")).toEqual([["hook", { method: "POST", auth: "Bearer hook-secret-1", body: { keys: ["ATLCLI-1"] } }]]);
+
+    const missing = await run(["run", file]);
+    expect(missing.exitCode).toBe(1);
+    expect(missing.stderr).toContain("ATLCLI_SECRET_HOOK");
+  });
+
+  test("jira.request writes through the REST escape hatch on apply", async () => {
+    const file = await script("version.ts", `const v = await atlcli.jira.request("POST", "/rest/api/3/version", { body: { name: "2.0", projectId: 1 } });\nawait atlcli.jira.comment("ATLCLI-1", "Released " + v.id);`);
+    const result = await run(["run", file, "--apply", "--yes"]);
+    expect(result.exitCode).toBe(0);
+    expect(bodies.filter((b) => b[0] === "version")).toEqual([["version", { name: "2.0", projectId: 1 }]]);
+    expect(issues.get("ATLCLI-1")!.comments.join()).toContain("Released 10500");
+  });
+});
+
+describe("script test", () => {
+  test("records a case against the site, replays it offline, shows a diff, updates and runs test(plan)", async () => {
+    const file = await script(
+      "triage.ts",
+      `for await (const issue of atlcli.jira.search("project = ATLCLI")) await atlcli.jira.addLabels(issue.key, ["triaged"]);
+export default "done";
+export function test(plan) {
+  if (plan.operations.some((op) => op.verb !== "jira.addLabels")) throw new Error("only labels expected");
+}
+`,
+    );
+    const recorded = await run(["test", file, "--record", "two issues"]);
+    expect(recorded.exitCode).toBe(0);
+    expect(recorded.stdout).toContain('Recorded case "two issues"');
+    expect(writes).toEqual([]);
+    const testFile = JSON.parse(await readFile(join(home, "triage.test.json"), "utf8"));
+    expect(testFile.cases[0].expect.operations.map((o: { args: { key: string } }) => o.args.key)).toEqual(["ATLCLI-1", "ATLCLI-2"]);
+
+    // Offline: the site's data changes, the replay does not.
+    issues.clear();
+    const passed = await run(["test", file]);
+    expect(passed.exitCode).toBe(0);
+    expect(passed.stdout).toContain("✓ two issues");
+
+    await writeFile(file, (await readFile(file, "utf8")).replace(`["triaged"]`, `["triaged", "v2"]`), "utf8");
+    const failed = await run(["test", file]);
+    expect(failed.exitCode).toBe(1);
+    expect(failed.stdout).toContain("✗ two issues");
+    expect(failed.stdout).toContain("- #1 jira labels      ATLCLI-1 + triaged");
+    expect(failed.stdout).toContain("+ #1 jira labels      ATLCLI-1 + triaged, v2");
+
+    expect((await run(["test", file, "--update"])).exitCode).toBe(0);
+    expect((await run(["test", home, "--json"])).exitCode).toBe(0);
+
+    await writeFile(file, (await readFile(file, "utf8")).replace(`addLabels(issue.key, ["triaged", "v2"])`, `comment(issue.key, "hi")`), "utf8");
+    const custom = await run(["test", file, "--update", "--json"]);
+    expect(custom.exitCode).toBe(1);
+    const result = JSON.parse(custom.stdout).results[0];
+    expect(result.problems).toEqual(["test(plan) failed: Error: only labels expected"]);
+  });
+
+  test("a script without a test file says how to record one", async () => {
+    const file = await script("untested.ts", `export default 1;`);
+    const result = await run(["test", file]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--record <name>");
   });
 });

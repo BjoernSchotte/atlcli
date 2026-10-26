@@ -44,6 +44,8 @@ export interface AuditRuleScript {
   source: string;
   /** Type-stripped JavaScript. */
   js: string;
+  /** Type-stripped files the rule imports, by path relative to it. */
+  modules?: Record<string, string>;
   /** Where it came from: `built-in`, a file path, … */
   origin: string;
   hasFix: boolean;
@@ -123,7 +125,13 @@ const FIX_EXPORT = /\bexport\s+(?:async\s+)?function\s+fix\b|\bexport\s+const\s+
 const REPORT_EXPORT = /\bexport\s+(?:async\s+)?function\s+report\b|\bexport\s+const\s+report\b/;
 
 /** Loads a rule script: meta first (no rule code runs), then which exports it has. */
-export async function loadAuditRule(source: string, origin: string, transpile: (src: string) => string, variant?: Variant): Promise<AuditRuleScript> {
+export async function loadAuditRule(
+  source: string,
+  origin: string,
+  transpile: (src: string) => string,
+  variant?: Variant,
+  modules?: Record<string, string>,
+): Promise<AuditRuleScript> {
   const js = transpile(source);
   let meta;
   try {
@@ -132,7 +140,16 @@ export async function loadAuditRule(source: string, origin: string, transpile: (
     throw new AuditScriptError(`${origin}: ${error instanceof Error ? error.message : String(error)}`);
   }
   const audit = parseAuditMeta((meta as { audit?: unknown }).audit, origin);
-  return { meta: audit, def: ruleDefOf(audit), source, js, origin, hasFix: FIX_EXPORT.test(js), hasReport: REPORT_EXPORT.test(js) };
+  return {
+    meta: audit,
+    def: ruleDefOf(audit),
+    source,
+    js,
+    ...(modules && Object.keys(modules).length ? { modules } : {}),
+    origin,
+    hasFix: FIX_EXPORT.test(js),
+    hasReport: REPORT_EXPORT.test(js),
+  };
 }
 
 /**
@@ -209,6 +226,8 @@ export async function runItemRule(rule: AuditRuleScript, entries: RuleEntry[], o
     const batch = entries.slice(start, start + size);
     const run = await guard(rule, () =>
       planScript(rule.js, {
+      ...(rule.modules ? { modules: rule.modules } : {}),
+        ...(rule.modules ? { modules: rule.modules } : {}),
         port: options.port,
         items: batch.map((e) => ({ item: e.item, config: e.config, facts: e.facts ?? {}, now: options.now.getTime(), rule: { id: rule.meta.id, kind: rule.meta.kind } })),
         prelude: PRELUDE,

@@ -556,6 +556,28 @@ export class JiraClient {
     });
   }
 
+  /**
+   * Writing escape hatch, the counterpart of `getJson`: POST, PUT, PATCH or
+   * DELETE any Jira REST resource of the site under the same path rules.
+   * Returns the response JSON (`{}` for 204 No Content).
+   */
+  async requestJson(
+    method: "POST" | "PUT" | "PATCH" | "DELETE",
+    path: string,
+    options: { body?: unknown; query?: Record<string, string | number | boolean>; signal?: AbortSignal } = {}
+  ): Promise<unknown> {
+    if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) throw new Error(`Unsupported method: ${JSON.stringify(method)}`);
+    const result = await this.request(checkRestPath(path, ["/rest/"]), {
+      method,
+      apiBase: "",
+      query: options.query,
+      ...(options.body !== undefined ? { body: options.body } : {}),
+      signal: options.signal,
+      logBody: "meta-only",
+    });
+    return result ?? null;
+  }
+
   async getCurrentUser(): Promise<JiraUser> {
     return this.request<JiraUser>("/myself");
   }

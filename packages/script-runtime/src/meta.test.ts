@@ -112,3 +112,15 @@ throw new Error("must not run");`;
     await expect(extract(js)).rejects.toThrow(message);
   });
 });
+
+it("accepts wildcard writes, file and http grants and secret names; rejects the rest", () => {
+  const meta = parseScriptMeta({
+    permissions: ["jira:write:*", "confluence:write:*", "file:read", "file:write", "http:hooks.slack.com", "http:*.example.com", "http:localhost:8080"],
+    secrets: ["SLACK_WEBHOOK", "SLACK_WEBHOOK"],
+  });
+  expect(meta.secrets).toEqual(["SLACK_WEBHOOK"]);
+  for (const bad of ["http:*", "http:Example.com", "http:https://x.com", "file:delete", "jira:write:atl"]) {
+    expect(() => parseScriptMeta({ permissions: [bad] })).toThrow(/meta.permissions/);
+  }
+  expect(() => parseScriptMeta({ secrets: ["lower"] })).toThrow(/meta.secrets/);
+});

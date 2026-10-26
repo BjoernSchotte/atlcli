@@ -1,0 +1,27 @@
+// Sums the time logged per person and issue in a project over the last days
+// and writes it as CSV, ready for a spreadsheet.
+//
+//   atlcli script run worklog-report.ts --param project=ATLCLI --param days=14 --apply
+export const meta = {
+  description: "Write the time logged per person and issue as CSV",
+  permissions: ["jira:read", "file:write"],
+  params: { project: { type: "string" }, days: { type: "number", default: 14 } },
+};
+
+const { project, days } = atlcli.params as { project: string; days: number };
+const since = Date.now() - days * 86_400_000;
+const rows: string[][] = [];
+for await (const issue of atlcli.jira.search(`project = ${project} AND worklogDate >= -${days}d`, { fields: ["summary"] })) {
+  const perPerson = new Map<string, number>();
+  for (const log of await atlcli.jira.worklogs(issue.key)) {
+    if (Date.parse(log.started) < since) continue;
+    const who = log.author?.displayName ?? "unknown";
+    perPerson.set(who, (perPerson.get(who) ?? 0) + log.timeSpentSeconds);
+  }
+  for (const [who, seconds] of perPerson) rows.push([issue.key, String(issue.fields.summary), who, (seconds / 3600).toFixed(2)]);
+}
+
+const csv = (cells: string[]) => cells.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",");
+await atlcli.files.write(`worklogs-${project}.csv`, [csv(["issue", "summary", "person", "hours"]), ...rows.map(csv)].join("\n") + "\n");
+
+export default { rows: rows.length };

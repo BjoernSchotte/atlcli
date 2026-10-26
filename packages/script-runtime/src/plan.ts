@@ -56,6 +56,7 @@ const precondition = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("jira-sprint-unchanged"), id: z.number().int().positive(), state: z.enum(["future", "active", "closed"]) }),
   z.strictObject({ kind: z.literal("confluence-page-unchanged"), id: key, version: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("confluence-title-absent"), spaceKey: key, title: key }),
+  z.strictObject({ kind: z.literal("state-unchanged"), store: key, key, digest: sha256.nullable() }),
 ]);
 const operation = z.strictObject({
   seq: z.number().int().positive(),

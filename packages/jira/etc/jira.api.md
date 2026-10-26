@@ -319,6 +319,11 @@ export declare class JiraClient {
         query?: Record<string, string | number | boolean>;
         signal?: AbortSignal;
     }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
+        query?: Record<string, string | number | boolean>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getCurrentUser(): Promise<JiraUser>;
     searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
@@ -1495,6 +1500,42 @@ export declare function checkRestPath(path: string, prefixes: readonly string[])
 // export: clearTimer
 export declare function clearTimer(): void;
 
+// export: CLONE_SOURCE_FIELDS
+export declare const CLONE_SOURCE_FIELDS: string[];
+
+// export: cloneIssue
+export declare function cloneIssue(client: JiraClient, source: string | JiraIssue, options?: CloneIssueOptions): Promise<CloneIssueResult>;
+
+// export: CloneIssueOptions
+export interface CloneIssueOptions {
+    project?: string;
+    type?: string;
+    summary?: string;
+    description?: unknown;
+    labels?: string[];
+    priority?: string;
+    parent?: string;
+    assignee?: {
+        accountId: string;
+    } | {
+        name: string;
+    };
+    link?: boolean;
+    attachments?: boolean;
+}
+
+// export: CloneIssueResult
+export interface CloneIssueResult {
+    id: string;
+    key: string;
+    attachments: Array<{
+        from: string;
+        id: string;
+        filename: string;
+    }>;
+    warnings: string[];
+}
+
 // export: collectExportData
 export declare function collectExportData(client: JiraClient, issues: JiraIssue[], options: ExportOptions, onProgress?: (current: number, total: number, key: string) => void): Promise<ExportedIssue[]>;
 
@@ -1997,6 +2038,11 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getJson(path: string, options?: {
+        query?: Record<string, string | number | boolean>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
         query?: Record<string, string | number | boolean>;
         signal?: AbortSignal;
     }): Promise<unknown>;
@@ -3955,6 +4001,11 @@ export declare class JiraClient {
         query?: Record<string, string | number | boolean>;
         signal?: AbortSignal;
     }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
+        query?: Record<string, string | number | boolean>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
     getCurrentUser(): Promise<JiraUser>;
     searchUsers(query: string, maxResults?: number): Promise<JiraUser[]>;
     listProjects(options?: {
@@ -5131,6 +5182,42 @@ export declare function checkRestPath(path: string, prefixes: readonly string[])
 // export: clearTimer
 export declare function clearTimer(): void;
 
+// export: CLONE_SOURCE_FIELDS
+export declare const CLONE_SOURCE_FIELDS: string[];
+
+// export: cloneIssue
+export declare function cloneIssue(client: JiraClient, source: string | JiraIssue, options?: CloneIssueOptions): Promise<CloneIssueResult>;
+
+// export: CloneIssueOptions
+export interface CloneIssueOptions {
+    project?: string;
+    type?: string;
+    summary?: string;
+    description?: unknown;
+    labels?: string[];
+    priority?: string;
+    parent?: string;
+    assignee?: {
+        accountId: string;
+    } | {
+        name: string;
+    };
+    link?: boolean;
+    attachments?: boolean;
+}
+
+// export: CloneIssueResult
+export interface CloneIssueResult {
+    id: string;
+    key: string;
+    attachments: Array<{
+        from: string;
+        id: string;
+        filename: string;
+    }>;
+    warnings: string[];
+}
+
 // export: collectExportData
 export declare function collectExportData(client: JiraClient, issues: JiraIssue[], options: ExportOptions, onProgress?: (current: number, total: number, key: string) => void): Promise<ExportedIssue[]>;
 
@@ -5633,6 +5720,11 @@ export declare class JiraClient {
     private emitTransport;
     private request;
     getJson(path: string, options?: {
+        query?: Record<string, string | number | boolean>;
+        signal?: AbortSignal;
+    }): Promise<unknown>;
+    requestJson(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, options?: {
+        body?: unknown;
         query?: Record<string, string | number | boolean>;
         signal?: AbortSignal;
     }): Promise<unknown>;

@@ -50,6 +50,16 @@ const port = {
   async confluenceFindPage() {
     return null;
   },
+  async jiraVersions() {
+    return [{ id: "100", name: "2026.11", project: "ATLCLI", released: false, archived: false }];
+  },
+  async jiraGetVersion() {
+    return { id: "100", name: "2026.11", project: "ATLCLI", released: false, archived: false };
+  },
+  async jiraWorklogs() {
+    return [{ id: "1", author: { displayName: "Ada, L." }, started: new Date().toISOString(), timeSpentSeconds: 5400 }];
+  },
+  secret: () => "T000/B000/XXXX",
   confluenceNormalizeMarkdown: (m: string) => m,
 } as unknown as ScriptPort;
 
@@ -91,6 +101,8 @@ describe("script examples", () => {
           "copy-field": { from: "customfield_1", to: "customfield_2" },
           "unblock-when-blocker-done": { blocked: "Open" },
           "subtasks-from-checklist": { parent: "ATLCLI-7", items: "Laptop; done one" },
+          "release-version": { project: "ATLCLI", version: "2026.11" },
+          "worklog-report": { project: "ATLCLI" },
         }[example.name] ?? {};
       const run = await planScript(transpile(example.source), {
         port,
@@ -99,6 +111,7 @@ describe("script examples", () => {
       });
       expect(Boolean(run.meta.each)).toBe(example.mode === "each");
       if (example.name === "field-usage") expect(run.value).toEqual({ Team: 1 });
+      else if (example.name === "worklog-report") expect(run.operations[0]!.args.content).toBe('issue,summary,person,hours\nATLCLI-7,Issue 7,"Ada, L.",1.50\n');
       else expect(run.operations.length + run.skipped.length).toBeGreaterThan(0);
     });
   }

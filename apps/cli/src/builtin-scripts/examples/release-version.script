@@ -1,0 +1,28 @@
+// Releases a version: marks it released today, writes release notes below the
+// working directory and posts them to Slack through an incoming webhook.
+//
+//   export ATLCLI_SECRET_SLACK_WEBHOOK=T000/B000/XXXX   (the part after /services/)
+//   atlcli script run release-version.ts --param project=ATLCLI --param version=2026.11
+export const meta = {
+  description: "Release a version, write release notes and post them to Slack",
+  // jira:write:* because the project comes from a parameter; name it (jira:write:ATLCLI) when it is fixed.
+  permissions: ["jira:read", "jira:write:*", "file:write", "http:hooks.slack.com"],
+  secrets: ["SLACK_WEBHOOK"],
+  params: { project: { type: "string" }, version: { type: "string" } },
+};
+
+const { project, version } = atlcli.params as { project: string; version: string };
+const found = (await atlcli.jira.versions(project)).find((v) => v.name === version);
+if (!found) throw new Error(`${project} has no version ${version}`);
+
+const lines: string[] = [];
+for await (const issue of atlcli.jira.search(`project = ${project} AND fixVersion = "${version}" ORDER BY key`, { fields: ["summary"] })) {
+  lines.push(`- ${issue.key} ${String(issue.fields.summary)}`);
+}
+const notes = `# ${project} ${version}\n\n${lines.join("\n") || "No issues."}\n`;
+
+await atlcli.jira.updateVersion(found.id, { released: true, releaseDate: new Date().toISOString().slice(0, 10) });
+await atlcli.files.write(`release-notes/${project}-${version}.md`, notes);
+await atlcli.http.request("POST", `https://hooks.slack.com/services/${atlcli.secret("SLACK_WEBHOOK")}`, { json: { text: notes } });
+
+export default { issues: lines.length };

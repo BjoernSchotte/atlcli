@@ -218,6 +218,21 @@ describe("runScript", () => {
     }
   });
 
+  it("loads relative imports from the module map, and nothing else", async () => {
+    const modules = { "lib/util.ts": `export const double = (n) => n * 2;`, "lib/x.ts": `import { y } from "../y.js"; export const x = y + 1;`, "y.ts": "export const y = 20;" };
+    const { value } = await run(`import { double } from "./lib/util.ts"; import { x } from "./lib/x"; export default () => double(x);`, { modules });
+    expect(value).toBe(42);
+    for (const [specifier, message] of [
+      ["../outside.ts", "leaves the script's directory"],
+      ["./missing.ts", "Cannot find module ./missing.ts"],
+      ["node:fs", "except relative files"],
+    ]) {
+      const error = await scriptError(run(`import x from ${JSON.stringify(specifier)}; export default () => x`, { modules }));
+      expect(error.kind).toBe("invalid-script");
+      expect(error.message).toContain(message);
+    }
+  });
+
   it("forwards console output to onLog", async () => {
     const logs: string[] = [];
     await run(`export default () => { console.log("n =", 1, { a: 2 }); console.warn("careful"); }`, {

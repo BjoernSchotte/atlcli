@@ -29,3 +29,26 @@ test("getJson rejects paths outside /rest/, queries, dot segments and encoded es
     await expect(client.getJson(path)).rejects.toThrow(/REST path must start with/);
   }
 });
+
+test("requestJson sends the method, body and query to a site-relative path and returns the JSON ({} for no content)", async () => {
+  const seen: Array<{ url: string; method?: string; body?: unknown }> = [];
+  globalThis.fetch = mock(async (url: string, init: RequestInit) => {
+    seen.push({ url: String(url), method: init.method, ...(init.body ? { body: JSON.parse(String(init.body)) } : {}) });
+    return init.method === "DELETE" ? new Response(null, { status: 204 }) : new Response(JSON.stringify({ id: "10001", name: "2.0" }), { status: 201 });
+  }) as unknown as typeof fetch;
+  const client = new JiraClient(profile);
+  expect(await client.requestJson("POST", "/rest/api/3/version", { body: { name: "2.0", projectId: 1 }, query: { expand: "x" } })).toEqual({ id: "10001", name: "2.0" });
+  expect(await client.requestJson("DELETE", "/rest/api/3/version/10001")).toEqual({});
+  expect(seen).toEqual([
+    { url: "https://test.atlassian.net/rest/api/3/version?expand=x", method: "POST", body: { name: "2.0", projectId: 1 } },
+    { url: "https://test.atlassian.net/rest/api/3/version/10001", method: "DELETE" },
+  ]);
+});
+
+test("requestJson refuses GET and the paths getJson refuses", async () => {
+  const client = new JiraClient(profile);
+  await expect(client.requestJson("GET" as never, "/rest/api/3/field")).rejects.toThrow(/Unsupported method/);
+  for (const path of ["/wiki/rest/api/content", "/rest/../secure", "/rest/api/3/field?x=1"]) {
+    await expect(client.requestJson("POST", path)).rejects.toThrow(/REST path must start with/);
+  }
+});

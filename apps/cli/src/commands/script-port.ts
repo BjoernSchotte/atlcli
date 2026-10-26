@@ -1,11 +1,29 @@
-import { mkdir, stat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { ConfluenceClient, type FooterComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
+import { lookup } from "node:dns/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve, sep } from "node:path";
+import { ConfluenceClient, type FooterComment, type InlineComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
 import type { Profile } from "@atlcli/core";
-import { copyAttachment, findTransition, JiraClient, type JiraIssue, type JiraSprint, type JiraTransition, resolveUser, toJiraRichText } from "@atlcli/jira";
+import {
+  adfToMarkdown,
+  cloneIssue,
+  copyAttachment,
+  findTransition,
+  formatWorklogDate,
+  JiraClient,
+  type JiraComponent,
+  type JiraIssue,
+  type JiraSprint,
+  type JiraTransition,
+  type JiraUser,
+  type JiraVersion,
+  resolveUser,
+  toJiraRichText,
+} from "@atlcli/jira";
 import type {
   AttachmentInput,
   ConfluenceCommentView,
+  ConfluenceInlineCommentView,
   JiraBoardView,
   JiraIssueView,
   JiraSprintView,
@@ -24,6 +42,13 @@ export function createLazyCliScriptPort(profile: Profile, outDir = process.cwd()
   });
 }
 
+/** Largest HTTP response and local file the port hands to a script. */
+const MAX_LOCAL_BYTES = 10 * 1024 * 1024;
+const HTTP_TIMEOUT_MS = 60_000;
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+/** State stores: one JSON file per script name. */
+export const stateRoot = () => join(homedir(), ".atlcli", "state");
+
 function once<T>(make: () => T): () => T {
   let value: T | undefined;
   return () => (value ??= make());
@@ -37,7 +62,7 @@ export function createCliScriptPort(
   jira: () => JiraClient,
   confluence: () => ConfluenceClient,
   baseUrl: string,
-  { profileName, outDir = process.cwd() }: { profileName: string; outDir?: string },
+  { profileName, outDir = process.cwd(), stateDir = stateRoot() }: { profileName: string; outDir?: string; stateDir?: string },
 ): ScriptPort {
   const conversion = { baseUrl };
   const richText = (markdown: string) => toJiraRichText(jira(), markdown);
@@ -54,6 +79,20 @@ export function createCliScriptPort(
     });
     if (options?.comment && !inline) await jira().addComment(key, richText(options.comment));
   };
+
+  const projects = new Map<string, Promise<{ id: string; key: string }>>();
+  /** Project id and key by key or id, looked up once per port. */
+  const projectRef = (keyOrId: string) => {
+    let hit = projects.get(keyOrId);
+    if (!hit) {
+      hit = jira()
+        .getProject(keyOrId)
+        .then((p) => ({ id: String(p.id), key: p.key }));
+      projects.set(keyOrId, hit);
+    }
+    return hit;
+  };
+  const projectKey = async (id: string) => (await projectRef(id)).key;
 
   return {
     async jiraSearch(jql, { fields, properties, pageToken, maxResults, signal }) {
@@ -368,6 +407,265 @@ export function createCliScriptPort(
     confluenceNormalizeMarkdown(markdown) {
       return storageToMarkdown(markdownToStorage(markdown, conversion), conversion);
     },
+
+    async jiraRequest(method, path, { body, query }) {
+      return jira().requestJson(method, path, { body, query });
+    },
+    async confluenceRequest(method, path, { body, query }) {
+      return confluence().requestJson(method, path, {
+        body,
+        query: query && Object.fromEntries(Object.entries(query).map(([k, v]) => [k, typeof v === "boolean" ? String(v) : v])),
+      });
+    },
+    async jiraComments(key) {
+      const comments = [];
+      for (let startAt = 0; ; ) {
+        const page = await jira().getComments(key, { startAt, maxResults: 100 });
+        comments.push(...page.comments);
+        startAt += page.comments.length;
+        if (page.comments.length === 0 || startAt >= page.total) break;
+      }
+      return comments.map((c) => ({
+        id: String(c.id),
+        ...userView(c.author),
+        ...(c.created ? { created: c.created } : {}),
+        ...(c.updated ? { updated: c.updated } : {}),
+        markdown: adfToMarkdown(c.body, conversion),
+      }));
+    },
+    async jiraUpdateComment(key, id, body) {
+      await jira().updateComment(key, id, typeof body === "string" ? richText(body) : (body.raw as never));
+    },
+    async jiraDeleteComment(key, id) {
+      await jira().deleteComment(key, id);
+    },
+    async jiraWorklogs(key) {
+      const worklogs = [];
+      for (let startAt = 0; ; ) {
+        const page = await jira().getWorklogs(key, { startAt, maxResults: 1000 });
+        worklogs.push(...page.worklogs);
+        startAt += page.worklogs.length;
+        if (page.worklogs.length === 0 || startAt >= page.total) break;
+      }
+      return worklogs.map((w) => ({
+        id: String(w.id),
+        ...userView(w.author),
+        started: w.started,
+        timeSpentSeconds: w.timeSpentSeconds,
+        ...(w.comment ? { markdown: adfToMarkdown(w.comment, conversion) } : {}),
+      }));
+    },
+    async jiraAddWorklog(key, { timeSpentSeconds, started, comment }) {
+      const worklog = await jira().addWorklog(key, timeSpentSeconds, {
+        ...(started ? { started: formatWorklogDate(new Date(started)) } : {}),
+        ...(comment ? { comment: richText(comment) } : {}),
+      });
+      return { id: String(worklog.id) };
+    },
+    async jiraVersions(project) {
+      return (await jira().getProjectVersions(project)).map((v) => versionView(v, project));
+    },
+    async jiraGetVersion(id) {
+      const version = (await jira().getVersion(id)) as JiraVersion & { projectId?: number | string };
+      return versionView(version, version.projectId === undefined ? undefined : await projectKey(String(version.projectId)));
+    },
+    async jiraCreateVersion({ project, released, archived, ...input }) {
+      const { id } = await projectRef(project);
+      const version = await jira().createVersion({ projectId: id, ...(input as { name: string }) });
+      // Jira's create takes no released/archived flags; they are set right after.
+      if (released !== undefined || archived !== undefined) {
+        await jira().updateVersion(version.id, { ...(released !== undefined ? { released } : {}), ...(archived !== undefined ? { archived } : {}) });
+      }
+      return { id: String(version.id) };
+    },
+    async jiraUpdateVersion(id, input) {
+      await jira().updateVersion(id, input);
+    },
+    async jiraComponents(project) {
+      return (await jira().getProjectComponents(project)).map((c) => componentView(c, project));
+    },
+    async jiraGetComponent(id) {
+      const component = (await jira().getComponent(id)) as JiraComponent & { project?: string };
+      return componentView(component, component.project);
+    },
+    async jiraCreateComponent({ project, name, description, lead }) {
+      const component = await jira().createComponent({
+        project,
+        name,
+        ...(description !== undefined ? { description } : {}),
+        ...(lead && "accountId" in lead ? { leadAccountId: lead.accountId } : {}),
+      });
+      return { id: String(component.id) };
+    },
+    async jiraUpdateComponent(id, { lead, ...input }) {
+      await jira().updateComponent(id, { ...input, ...(lead && "accountId" in lead ? { leadAccountId: lead.accountId } : {}) });
+    },
+    async jiraRank(keys, position) {
+      const failed = await jira().rankIssues({ issues: keys, ...position });
+      if (failed.length) throw new Error(`Rank failed for ${failed.map((f) => `${f.issueKey} (${f.errors.join("; ")})`).join(", ")}`);
+    },
+    async jiraDeleteIssue(key, { subtasks }) {
+      await jira().deleteIssue(key, { deleteSubtasks: subtasks === true });
+    },
+    async jiraCloneIssue(key, { project, summary, link, attachments }) {
+      const clone = await cloneIssue(jira(), key, {
+        ...(project ? { project } : {}),
+        ...(summary ? { summary } : {}),
+        ...(link === false ? { link: false } : {}),
+        ...(attachments ? { attachments: true } : {}),
+      });
+      // The clone exists; a failed link or attachment copy is reported, not undone.
+      for (const warning of clone.warnings) process.stderr.write(`warning: ${warning}\n`);
+      return { id: clone.id, key: clone.key };
+    },
+    async jiraLinks(key) {
+      const issue = await jira().getIssue(key, { fields: ["issuelinks"] });
+      return (issue.fields.issuelinks ?? []).map((l) => {
+        const other = l.outwardIssue ?? l.inwardIssue!;
+        const outward = l.outwardIssue !== undefined;
+        return {
+          id: String(l.id),
+          type: l.type.name,
+          direction: outward ? ("outward" as const) : ("inward" as const),
+          phrase: outward ? l.type.outward : l.type.inward,
+          issue: {
+            key: other.key,
+            ...(other.fields?.summary ? { summary: other.fields.summary } : {}),
+            ...(other.fields?.status?.name ? { status: other.fields.status.name } : {}),
+          },
+        };
+      });
+    },
+    async jiraDeleteLink(id) {
+      await jira().deleteIssueLink(id);
+    },
+    async jiraFields() {
+      return (await jira().getFields()).map((f) => ({ id: f.id, name: f.name, custom: f.custom, ...(f.schema?.type ? { type: f.schema.type } : {}) }));
+    },
+    async jiraUsers(query) {
+      return (await jira().searchUsers(query, 50)).map((u) => ({
+        ...(u.accountId ? { accountId: u.accountId } : {}),
+        ...((u as { name?: string }).name ? { name: (u as { name?: string }).name } : {}),
+        ...(u.displayName ? { displayName: u.displayName } : {}),
+        ...(u.emailAddress ? { email: u.emailAddress } : {}),
+        active: u.active !== false,
+      }));
+    },
+    async jiraAttachments(key) {
+      return (await jira().getIssueAttachments(key)).map((a) => ({
+        id: String(a.id),
+        filename: a.filename,
+        size: a.size,
+        mimeType: a.mimeType,
+        ...(a.created ? { created: a.created } : {}),
+        ...(a.author?.displayName ? { author: a.author.displayName } : {}),
+      }));
+    },
+
+    async confluenceProperties(pageId, { signal }) {
+      return confluence().listPageProperties(pageId, { signal });
+    },
+    async confluenceSetProperty(pageId, key, value) {
+      await confluence().upsertPageProperty(pageId, key, value);
+    },
+    async confluenceDeleteProperty(pageId, key) {
+      await confluence().deletePageProperty(pageId, key);
+    },
+    async confluenceRestrictions(pageId) {
+      return confluence().getContentRestrictions(pageId);
+    },
+    async confluenceSetRestrictions(pageId, input) {
+      // The REST call replaces the operations it names, so an operation left out keeps its restrictions.
+      await confluence().setContentRestrictions(pageId, input);
+    },
+    async confluenceVersions(pageId) {
+      return (await confluence().getPageHistory(pageId, { limit: 200 })).versions.map((v) => ({
+        number: v.number,
+        ...(v.when ? { when: v.when } : {}),
+        ...(v.by?.displayName ? { by: v.by.displayName } : {}),
+        ...(v.message ? { message: v.message } : {}),
+        minorEdit: v.minorEdit,
+      }));
+    },
+    async confluenceSpaces({ type, cursor, limit, signal }) {
+      const start = cursor ? Number(cursor) : 0;
+      const spaces = await confluence().listSpaces(limit, { start, ...(type ? { type } : {}), signal });
+      return {
+        results: spaces.map((sp) => ({ ...(sp.id !== undefined ? { id: String(sp.id) } : {}), key: sp.key, name: sp.name, type: sp.type })),
+        ...(spaces.length === limit ? { nextCursor: String(start + spaces.length) } : {}),
+      };
+    },
+    async confluenceInlineComments(pageId) {
+      const view = (c: InlineComment): ConfluenceInlineCommentView => ({
+        id: c.id,
+        ...(c.author?.accountId ? { authorId: c.author.accountId } : {}),
+        ...(c.created ? { created: c.created } : {}),
+        status: c.status,
+        ...(c.textSelection ? { selection: c.textSelection } : {}),
+        markdown: storageToMarkdown(c.body, conversion),
+        replies: (c.replies ?? []).map(view),
+      });
+      return (await confluence().getInlineComments(pageId)).map(view);
+    },
+    async confluenceCreateBlogPost({ spaceKey, title, markdown }) {
+      return confluence().createBlogPost({ spaceKey, title, storage: markdownToStorage(markdown, conversion) });
+    },
+
+    async httpFetch(request, { signal }) {
+      const url = new URL(request.url);
+      await refusePrivateAddress(url);
+      const response = await fetch(url, {
+        method: request.method,
+        headers: request.headers,
+        ...(request.body !== undefined ? { body: request.body } : {}),
+        redirect: "manual",
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(HTTP_TIMEOUT_MS)]) : AbortSignal.timeout(HTTP_TIMEOUT_MS),
+      });
+      return { status: response.status, headers: Object.fromEntries(response.headers), text: await cappedText(response) };
+    },
+    secret(name) {
+      return process.env[`ATLCLI_SECRET_${name}`];
+    },
+    async fileRead(path, { encoding }) {
+      const target = await inside(outDir, path);
+      if ((await stat(target)).size > MAX_LOCAL_BYTES) throw new Error(`${path} is larger than ${MAX_LOCAL_BYTES} bytes`);
+      const data = await readFile(target);
+      return encoding === "base64" ? data.toString("base64") : data.toString("utf8");
+    },
+    async fileList(path) {
+      const dir = await inside(outDir, path);
+      const entries = await readdir(dir, { withFileTypes: true });
+      const out = [];
+      for (const entry of entries) {
+        if (!entry.isFile() && !entry.isDirectory()) continue;
+        out.push({ name: entry.name, type: entry.isFile() ? ("file" as const) : ("directory" as const), size: entry.isFile() ? (await stat(join(dir, entry.name))).size : 0 });
+      }
+      return out.sort((a, b) => a.name.localeCompare(b.name));
+    },
+    async fileWrite(path, content, { encoding }) {
+      const target = resolve(outDir, path);
+      await mkdir(dirname(target), { recursive: true });
+      // The parent must resolve inside the output directory, and an existing link is never followed.
+      await inside(outDir, dirname(path) || ".");
+      const existing = await lstat(target).catch(() => undefined);
+      if (existing?.isSymbolicLink()) throw new Error(`${path} is a symbolic link; not written`);
+      const data = encoding === "base64" ? Buffer.from(content, "base64") : Buffer.from(content, "utf8");
+      await writeFile(target, data);
+      return { path, bytes: data.length };
+    },
+    async stateGet(store, key) {
+      return (await readState(stateDir, store))[key];
+    },
+    async stateSet(store, key, value) {
+      const state = await readState(stateDir, store);
+      if (value === undefined) delete state[key];
+      else state[key] = value;
+      const file = statePath(stateDir, store);
+      await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+      const tmp = `${file}.${process.pid}.tmp`;
+      await writeFile(tmp, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+      await rename(tmp, file);
+    },
     render: createTemplateRenderer(profileName),
   };
 }
@@ -426,4 +724,92 @@ async function runSelf(args: string[]): Promise<void> {
   // The command's own error is its last line; earlier lines are progress.
   const message = (stderr.trim() || stdout.trim()).split("\n").at(-1)?.replace(/\.$/, "");
   throw new Error(`${args.slice(0, 2).join(" ")} failed (exit ${code}): ${message || "no output"}`);
+}
+
+function userView(user: JiraUser | undefined): { author?: { accountId?: string; displayName?: string } } {
+  if (!user) return {};
+  return { author: { ...(user.accountId ? { accountId: user.accountId } : {}), ...(user.displayName ? { displayName: user.displayName } : {}) } };
+}
+
+function versionView(v: JiraVersion, project: string | undefined) {
+  return {
+    id: String(v.id),
+    name: v.name,
+    ...(project ? { project } : {}),
+    ...(v.description ? { description: v.description } : {}),
+    released: v.released === true,
+    archived: v.archived === true,
+    ...(v.startDate ? { startDate: v.startDate } : {}),
+    ...(v.releaseDate ? { releaseDate: v.releaseDate } : {}),
+  };
+}
+
+function componentView(c: JiraComponent, project: string | undefined) {
+  return {
+    id: String(c.id),
+    name: c.name,
+    ...(project ? { project } : {}),
+    ...(c.description ? { description: c.description } : {}),
+    ...(c.lead ? { lead: { ...(c.lead.accountId ? { accountId: c.lead.accountId } : {}), ...(c.lead.displayName ? { displayName: c.lead.displayName } : {}) } } : {}),
+  };
+}
+
+/**
+ * Refuses hosts that resolve to private, loopback or link-local addresses,
+ * except the explicit local names (http is allowed only for those).
+ * ponytail: checked before the request, so a DNS answer that changes between
+ * this lookup and the connect (rebinding) is not caught; pin the address if
+ * scripts ever run against untrusted DNS.
+ */
+async function refusePrivateAddress(url: URL): Promise<void> {
+  if (LOCAL_HOSTS.has(url.hostname)) return;
+  const addresses = await lookup(url.hostname.replace(/^\[|\]$/g, ""), { all: true });
+  const blocked = addresses.find((a) => isPrivateAddress(a.address));
+  if (blocked) throw new Error(`${url.hostname} resolves to the private address ${blocked.address}; refused`);
+}
+
+export function isPrivateAddress(address: string): boolean {
+  const v4 = /^(?:::ffff:)?(\d+)\.(\d+)\.(\d+)\.(\d+)$/i.exec(address);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+  }
+  const v6 = address.toLowerCase();
+  return v6 === "::1" || v6 === "::" || v6.startsWith("fc") || v6.startsWith("fd") || v6.startsWith("fe80");
+}
+
+/** The response body as text, refusing more than MAX_LOCAL_BYTES. */
+async function cappedText(response: Response): Promise<string> {
+  if (!response.body) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+    size += chunk.length;
+    if (size > MAX_LOCAL_BYTES) throw new Error(`Response is larger than ${MAX_LOCAL_BYTES} bytes`);
+    chunks.push(chunk);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+/** `path` below `root`, after resolving links: a link pointing outside is refused. */
+async function inside(root: string, path: string): Promise<string> {
+  const base = await realpath(root);
+  const target = await realpath(resolve(root, path));
+  if (target !== base && !target.startsWith(base + sep)) throw new Error(`${path} leads outside the working directory`);
+  return target;
+}
+
+const statePath = (dir: string, store: string) => {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(store) || store.includes("..")) throw new Error(`Invalid state store name: ${JSON.stringify(store)}`);
+  return join(dir, `${store}.json`);
+};
+
+async function readState(dir: string, store: string): Promise<Record<string, unknown>> {
+  try {
+    const value = JSON.parse(await readFile(statePath(dir, store), "utf8"));
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw error;
+  }
 }

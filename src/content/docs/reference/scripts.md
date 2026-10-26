@@ -13,6 +13,11 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 - [Globals](#globals)
 - [meta](#meta)
 - [Verbs](#verbs)
+- [HTTP and secrets](#http-and-secrets)
+- [Files](#files)
+- [State](#state)
+- [Imports](#imports)
+- [Script tests](#script-tests)
 - [atlcli.render](#atlclirender)
 - [Attachments](#attachments)
 - [Exports](#exports)
@@ -38,7 +43,9 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `atlcli script apply <job-id>` | Applies the reviewed plans of a per-issue job |
 | `atlcli script resume <job-id>` | Continues a per-issue job that stopped |
 | `atlcli script jobs [job-id]` | Lists per-issue jobs, or shows one with the issues not done |
-| `atlcli script check <file>` | Validates `meta`; type-checks with `tsc --noEmit` when `tsc` is on `PATH` |
+| `atlcli script check <file>` | Validates `meta` and imports; type-checks with `tsc --noEmit` when `tsc` is on `PATH` |
+| `atlcli script test <file\|dir>` | Replays the recorded cases in `<name>.test.json` without a site and compares the plans. See [Script tests](#script-tests) |
+| `atlcli script test <file> --record <case>` | Plans once against the site (nothing changes) and stores what the script read and planned as a case |
 | `atlcli script init [dir]` | Writes `atlcli.d.ts`, `tsconfig.json` and `example.ts` (default dir: `.`); `--each "<jql>"` writes `each.ts`, `--example <name>` a bundled example |
 
 | Flag | Commands | Type | Default | Notes |
@@ -65,6 +72,9 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `--strict` | run | switch | off | Any template warning ends the run (`template` error kind) |
 | `--json` | all | switch | off | One JSON document on stdout; script output stays on stderr |
 | `--force` | init | switch | off | Overwrites `tsconfig.json` and `example.ts`; `atlcli.d.ts` is always refreshed |
+| `--record <case>` | test | string | none | Records (or re-records) the case; takes `--param`, `--each <KEY>`, `--var`, `--now`, `--profile` |
+| `--case <name>` | test | string | all cases | Runs one case |
+| `--update` | test | switch | off | Rewrites each case's expected plan from what the script plans now |
 
 ## Globals
 
@@ -73,10 +83,14 @@ Reference for [Automation Scripts](../scripts.md). The task-oriented guide comes
 | `atlcli.params` | `Readonly<Record<string, string \| number \| boolean>>` | Frozen. Strings unless declared in `meta.params` |
 | `atlcli.jira`, `atlcli.confluence` | objects of verbs | Frozen; see [Verbs](#verbs) |
 | `atlcli.render(input, options?)` | function | Renders a template; see [atlcli.render](#atlclirender) |
+| `atlcli.http` | object of verbs | External HTTP; see [HTTP and secrets](#http-and-secrets) |
+| `atlcli.secret(name)` | function, synchronous | A reference to a secret for HTTP requests, never its value; see [HTTP and secrets](#http-and-secrets) |
+| `atlcli.files` | object of verbs | Local files below the working directory; see [Files](#files) |
+| `atlcli.state` | object of verbs | The script's key-value store between runs; see [State](#state) |
 | `console.log`, `info`, `warn`, `error` | functions | To stderr; objects are printed as JSON |
 | `export default` | value or function | Optional. A function is awaited with `atlcli.params`; its result, or the value, becomes `plan.value`. In a per-issue job it is required and called as `default(issue, params)` |
 
-The sandbox has no `fetch`, timers, `process`, `require`, file system or imports.
+The sandbox has no `fetch`, timers, `process` or `require`. HTTP, files and state go through `atlcli.*`; other files of the script load with relative [imports](#imports).
 
 ## meta
 
@@ -86,13 +100,24 @@ Optional. It is read statically before the script runs, so it must be written as
 |---|---|---|---|---|
 | `name` | string | file name, `inline` for `-e` | no | lowercase letters, digits, `-` |
 | `description` | string | none | no | |
-| `permissions` | string[] | none: all verbs allowed | no | each `jira:read`, `jira:write:<PROJECT>`, `confluence:read` or `confluence:write:<SPACE>`. Once given, everything else is denied |
+| `permissions` | string[] | none: all Jira, Confluence and file verbs allowed | no | each `jira:read`, `jira:write:<PROJECT>`, `jira:write:*`, `confluence:read`, `confluence:write:<SPACE>`, `confluence:write:*`, `file:read`, `file:write` or `http:<host>`. Once given, everything else is denied. HTTP always needs an `http:` grant |
+| `secrets` | string[] | none | for `atlcli.secret` | upper-case letters, digits and `_`; each must be set as `ATLCLI_SECRET_<NAME>` where the script runs and where the plan is applied |
 | `limits.maxWrites` | integer | 10,000 | no | > 0; most operations in one plan |
 | `each.jql` | string | none | no | Per-issue mode: the issues the default export runs for. `--each` overrides it |
 | `each.fields` | string[] | `summary`, `status`, `assignee`, `priority`, `issuetype`, `labels` | no | Fields each issue comes with |
 | `params.<name>.type` | `"string"` \| `"number"` \| `"boolean"` | none | yes, per param | name: letters, digits, `_`, not starting with a digit |
 | `params.<name>.default` | matches `type` | none (then the param is required) | no | |
 | `params.<name>.description` | string | none | no | |
+
+Grants:
+
+| Grant | Allows |
+|---|---|
+| `jira:write:*`, `confluence:write:*` | writes to every project or space, and the REST writes (`jira.request` on a path that names no project, `confluence.request`) |
+| `file:read`, `file:write` | `files.read`/`files.list`, `files.write` |
+| `http:hooks.slack.com` | HTTP to that host on its default port |
+| `http:*.example.com` | every subdomain of `example.com`, not `example.com` itself |
+| `http:localhost:8080` | that host and port; plain `http:` works only for `localhost`, `127.0.0.1` and `[::1]` |
 
 Unknown fields are errors, so a misspelled field fails instead of being ignored. With `params` declared, `--param` values are converted to the declared type (`"true"`/`"false"` for booleans, finite numbers for numbers); unknown names and missing required ones are errors.
 
@@ -148,6 +173,27 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 | `jira.createSprint({ board, name, goal?, startDate?, endDate? })` | `{ id }` placeholder | `jira:write:<project of board>` | create; no precondition. Scrum boards only |
 | `jira.updateSprint(id, { name?, goal?, startDate?, endDate?, state? })` | `null` | `jira:write:<project of board>` | update; sprint state unchanged. `state: "active"` starts a future sprint and needs both dates; `"closed"` completes an active one |
 | `jira.moveToSprint(sprintId, keys)` | `null` | `jira:write` for the board's and every issue's project | move; no precondition. Not into a closed sprint |
+| `jira.request(method, path, { body?, query? })` | `{ id, key }` placeholders | `jira:write:<project>` when the path names an issue or project (`/issue/ABC-1…`, `/project/ABC…`), else `jira:write:*` | REST write; no precondition. `method` is `POST`, `PUT`, `PATCH` or `DELETE`; `path` follows the `jira.rest` rules. Once applied, the placeholder stands for the response's `key` or `id` |
+| `jira.comments(key)` | `[{ id, author?, created?, updated?, markdown }]` | `jira:read` | read; all comments, oldest first |
+| `jira.updateComment(key, commentId, body)` | `null` | `jira:write:<project of key>` | edit; no precondition. `body` as for `comment` |
+| `jira.deleteComment(key, commentId)` | `null` | `jira:write:<project of key>` | delete; no precondition |
+| `jira.worklogs(key)` | `[{ id, author?, started, timeSpentSeconds, markdown? }]` | `jira:read` | read |
+| `jira.addWorklog(key, { timeSpent, started?, comment? })` | `{ id }` placeholder | `jira:write:<project of key>` | worklog; no precondition. `timeSpent` is `"1h 30m"`, `"2d"` (1d = 8h, 1w = 5d) or seconds; `comment` is Markdown |
+| `jira.versions(project)` | `[{ id, name, project?, description?, released, archived, startDate?, releaseDate? }]` | `jira:read` | read |
+| `jira.createVersion(project, { name, description?, startDate?, releaseDate?, released?, archived? })` | `{ id }` placeholder, or the existing version's id | `jira:write:<project>` | create; dates as `2026-11-01`. Left out when the project has a version of that name |
+| `jira.updateVersion(id, { name?, description?, startDate?, releaseDate?, released?, archived? })` | `null` | `jira:write:<project of version>` | update; `released: true` releases it. Left out when nothing changes |
+| `jira.components(project)` | `[{ id, name, project?, description?, lead? }]` | `jira:read` | read |
+| `jira.createComponent(project, { name, description?, lead? })` | `{ id }` placeholder, or the existing component's id | `jira:write:<project>` | create; `lead` resolved like `assign`. Left out when the name exists |
+| `jira.updateComponent(id, { name?, description?, lead? })` | `null` | `jira:write:<project of component>` | update. Left out when nothing changes |
+| `jira.rank(keys, { before } \| { after })` | `null` | `jira:write` for every issue's project | rank; no precondition. Puts `keys`, in this order, right before or after the other issue |
+| `jira.deleteIssue(key, { subtasks? })` | `null` | `jira:write:<project of key>` | delete (no trash); issue unchanged. `subtasks: true` deletes its subtasks too |
+| `jira.clone(key, { project?, summary?, link?, attachments? })` | `{ id, key }` placeholders | `jira:read`, `jira:write:<target project>` | create; no precondition. Copies summary, description, type and labels, and within the project its components and parent; links the clone as "Cloners" unless `link: false` |
+| `jira.links(key)` | `[{ id, type, direction, phrase, issue: { key, summary?, status? } }]` | `jira:read` | read; `direction` is `outward` ("blocks") or `inward` ("is blocked by") |
+| `jira.unlink(key, linkId)` | `null` | `jira:write:<project of key>` | removes the link; left out when the issue has no such link |
+| `jira.fields()` | `[{ id, name, custom, type? }]` | `jira:read` | read; once per run |
+| `jira.fieldId(name)` | string | `jira:read` | the id of a field by id or name, ignoring case: `fieldId("Story Points")` → `"customfield_10016"`. Two fields of that name are an error naming both ids |
+| `jira.users(query)` | `[{ accountId?, name?, displayName?, email?, active }]` | `jira:read` | read; users matching a name or email |
+| `jira.attachments(key)` | `[{ id, filename, size, mimeType, created?, author? }]` | `jira:read` | read |
 
 `description` and comment bodies are Markdown. They become Atlassian Document Format on Cloud and stay text on Data Center. `fields` passes raw Jira field values through (`{ labels: ["x"], priority: { name: "High" } }`). Dates are ISO 8601 with an offset, e.g. `"2026-11-02T09:00:00.000Z"`. Sprint ids may be numbers, numeric strings or placeholders of `createSprint`.
 
@@ -176,6 +222,17 @@ Once `meta.permissions` is declared, sprint writes on a board that belongs to no
 | `confluence.attach(pageId, { name, content, encoding? })` | `{ id }` placeholder | `confluence:write:<space of page>` | attachment; no precondition. An attachment of the same name gets a new version |
 | `confluence.copyAttachment(attachmentId, sourcePageId, toPageId)` | `{ id }` | `confluence:write:<space of target>` | copies the bytes host-side when applied; left out when the target already has a file of that name and size |
 | `confluence.export(pageId, { format, path? })` | `{ path }` | `confluence:read` | writes a local `pdf` or `docx` file when applied. See [Exports](#exports) |
+| `confluence.request(method, path, { body?, query? })` | `{ id }` placeholder | `confluence:write:*` | REST write below the Confluence base (`/rest/api/…`, `/api/v2/…`); no precondition |
+| `confluence.properties(pageId)` | `{ [key]: value }` | `confluence:read` | read; all content properties |
+| `confluence.setProperty(pageId, key, value)` | `null` | `confluence:write:<space of page>` | property; left out when it already has this value |
+| `confluence.deleteProperty(pageId, key)` | `null` | `confluence:write:<space of page>` | property; left out when the page has no such key |
+| `confluence.restrictions(pageId)` | `{ read: { accountIds, groupIds }, update: { accountIds, groupIds } }` | `confluence:read` | read |
+| `confluence.setRestrictions(pageId, { read?, update? })` | `null` | `confluence:write:<space of page>` | replaces the given operations' users and groups; an operation left out keeps its own. Left out when nothing changes |
+| `confluence.versions(pageId)` | `[{ number, when?, by?, message?, minorEdit? }]` | `confluence:read` | read; newest first, up to 200 |
+| `confluence.descendants(pageId, { limit? })` | async iterator of `{ id, title, spaceKey }` | `confluence:read` | read; every page below it, at any depth (CQL `ancestor`) |
+| `confluence.spaces({ type?, limit? })` | async iterator of `{ id?, key, name, type }` | `confluence:read` | read; `type` is `global` or `personal` |
+| `confluence.inlineComments(pageId)` | `[{ id, authorId?, created?, status?, selection?, markdown, replies }]` | `confluence:read` | read; Cloud |
+| `confluence.createBlogPost({ space, title, markdown })` | `{ id }` placeholder | `confluence:write:<space>` | create; read it back with `getPage` |
 
 Creating the same title twice in one plan is an error; use `upsertPage`, which also finds pages the plan itself creates.
 
@@ -183,7 +240,7 @@ Comments, labels and attachments do not change a page's version, so they never t
 
 ### Attachments
 
-Scripts have no file system access, so attachment content comes from the script: text by default, or base64 with `encoding: "base64"`. The limit is 10 MB per attachment after decoding. The content is stored in the plan file, so a plan with attachments grows by their size.
+Attachment content comes from the script, for example read with [`files.read`](#files): text by default, or base64 with `encoding: "base64"`. The limit is 10 MB per attachment after decoding. The content is stored in the plan file, so a plan with attachments grows by their size.
 
 To copy an attachment that already exists in Jira, use `jira.copyAttachment` instead. The plan holds only the reference (id, filename, size); on apply, atlcli downloads the file into a private temporary folder, checks its size, uploads it and removes the folder. Any size works, and the plan stays small. [`jira project copy-issues`](/jira/copy-issues/) is built on it.
 
@@ -198,6 +255,85 @@ await atlcli.confluence.attach("123456", { name: "sprint-status.csv", content: r
 ### Exports
 
 `confluence.export` runs `atlcli wiki export` when the plan is applied, with the same profile and the export's defaults. `path` is relative, uses `/`, must not contain `..` and must end in `.pdf` or `.docx`; it defaults to `<pageId>.<format>`. Files land below the directory `apply` runs in; missing folders are created and an existing file is overwritten. Because a plan file can be edited, the path is checked again right before writing. Two exports to the same path in one plan are an error.
+
+## HTTP and secrets
+
+| Verb | Returns | Permission | Plan |
+|---|---|---|---|
+| `http.get(url, { headers?, query? })` | `{ status, headers, text, json? }` | `http:<host>` | read, while planning. Follows up to five redirects, each checked against the grants; `authorization` and `cookie` do not follow to another origin. Every status comes back; none throws. `json` is set for JSON responses. Up to 10 MB |
+| `http.request(method, url, { headers?, body?, json? })` | `null` | `http:<host>` | planned; sent on apply. `method` is `POST`, `PUT`, `PATCH` or `DELETE`; `json` sets the body and `content-type`. A status of 300 or more fails the operation |
+| `secret(name)` | string | name in `meta.secrets` | a reference (`{secret:NAME}`), synchronous |
+
+URLs are `https:` only; plain `http:` works for `localhost`, `127.0.0.1` and `[::1]`. Credentials in the URL (`user:pw@`) are refused; send them in a header. Hosts that resolve to private, loopback or link-local addresses are refused, except the local names above. Each call has 60 seconds.
+
+`atlcli.secret("NAME")` never hands the script the value. It returns a reference that the host replaces with the value of the environment variable `ATLCLI_SECRET_NAME`, only in the URL, headers and body of an HTTP request: right away for `http.get`, on apply for `http.request`. Plans, journals, script output and test fixtures hold only the reference, and a value a service echoes back reaches the script as the reference again. A secret cannot be part of a URL's host. A declared secret that is not set fails the run before any code runs.
+
+```ts
+export const meta = { permissions: ["jira:read", "http:hooks.slack.com"], secrets: ["SLACK_WEBHOOK"] };
+
+let open = 0;
+for await (const _ of atlcli.jira.search("project = ATLCLI AND priority = Highest AND statusCategory != Done")) open++;
+await atlcli.http.request("POST", `https://hooks.slack.com/services/${atlcli.secret("SLACK_WEBHOOK")}`, {
+  json: { text: `${open} open blockers in ATLCLI` },
+});
+```
+
+## Files
+
+| Verb | Returns | Permission | Plan |
+|---|---|---|---|
+| `files.read(path, { encoding? })` | string | `file:read` | read; up to 10 MB; `encoding: "base64"` for binary files |
+| `files.list(dir?)` | `[{ name, type, size }]` | `file:read` | read; `type` is `file` or `directory`; default `.` |
+| `files.write(path, content, { encoding? })` | `{ path }` | `file:write` | planned; written on apply, folders created, an existing file replaced. Left out when the file already has this content |
+
+Paths are relative to the working directory, use `/`, and contain no `..` or empty segments. A symbolic link that leads outside the working directory is refused, and `files.write` never writes through a link. Writing one path twice in a plan is an error. Paths are checked when planning and again on apply, because a plan file can be edited. The content travels in the plan file.
+
+## State
+
+| Verb | Returns | Plan |
+|---|---|---|
+| `state.get(key)` | the value, or `null` | read |
+| `state.set(key, value)` | `null` | planned; JSON values up to 1 MB. Left out when the key already has this value |
+| `state.delete(key)` | `null` | planned; left out when the key is not set |
+
+Each script has one store, named after `meta.name` or the file name, kept as JSON in `~/.atlcli/state/<name>.json` and written atomically. No permission is needed. Reads go live and do not see the plan's own `set`. The first write to a key records the value it planned against; if another run changed the key before this plan is applied, that is drift and nothing is written.
+
+```ts
+const since = (await atlcli.state.get("since")) ?? "-7d";
+for await (const issue of atlcli.jira.search(`project = ATLCLI AND created >= "${since}"`)) {
+  await atlcli.jira.addLabels(issue.key, ["new"]);
+}
+await atlcli.state.set("since", new Date().toISOString().slice(0, 10));
+```
+
+## Imports
+
+A script can import other files relatively: `import { line } from "./lib/format.ts"`. `.ts`, `.js`, no extension and `index.ts` resolve as usual. Only files below the script's directory load; packages, `node:` modules, URLs and paths leaving the directory are refused before the script runs. Imported files are type-stripped like the script.
+
+`script.sha256` in the plan covers the script and every file it imports, so a changed helper changes the plan. A per-issue job keeps the imported files with its script, so `resume` runs the same code. Audit rule scripts can import helpers the same way. `atlcli script init` writes a `tsconfig.json` that type-checks imported files.
+
+## Script tests
+
+`atlcli script test` checks a script without a site. A case is recorded once against the site and replayed offline:
+
+1. `atlcli script test triage.ts --record "two open bugs"` plans the script against the site (nothing changes). Every Jira, Confluence, HTTP, file and state read goes to `triage.test.json` next to the script, with the planned operations as the expected result. With `--each ATLCLI-12` the case runs for one issue of a per-issue script.
+2. `atlcli script test triage.ts` (or a directory) replays each case: reads come from the fixture, and the plan must equal the expected one: operations, unchanged writes and result. A difference fails with a diff (`-` expected, `+` actual). A read the fixture has no answer for fails and names the call.
+3. After an intended change, `--update` rewrites the expected plans.
+
+A script that exports `function test(plan)` gets it called after each case with `{ operations, skipped, value }`; a thrown error fails the case. A case may then leave out `expect`.
+
+The test file:
+
+| Field | Notes |
+|---|---|
+| `schema` | `"atlcli.script-test/1"` |
+| `baseUrl` | site the cases were recorded against; Markdown conversion uses it |
+| `cases[].name` | unique per file |
+| `cases[].params`, `item`, `now`, `vars` | parameters, the issue (per-issue scripts), the frozen clock and template values |
+| `cases[].fixture.calls[]` | `{ method, args, result }` or `{ method, args, error }` per host read, in order; repeated identical calls answer in order, then repeat the last |
+| `cases[].expect` | `{ operations, skipped, value }` |
+
+The fixture holds what the script read from the site: review it before committing it. Secret values are never recorded; replays use stand-ins. Exit code 1 when a case fails.
 
 ## Placeholders
 
@@ -215,11 +351,12 @@ The first write to an existing object records the state the plan saw. Later writ
 
 | Precondition | Recorded by | Checked on apply |
 |---|---|---|
-| Issue unchanged | `jira.update`, `jira.transition`, `jira.setStatus`, `jira.assign`, `jira.addLabels`, `jira.removeLabels` | `fields.updated` is the same |
+| Issue unchanged | `jira.update`, `jira.transition`, `jira.setStatus`, `jira.assign`, `jira.addLabels`, `jira.removeLabels`, `jira.deleteIssue` | `fields.updated` is the same |
 | Attachment unchanged | `jira.copyAttachment` (on the source attachment) | the attachment still exists with the same size |
 | Sprint unchanged | `jira.updateSprint` on an existing sprint | `state` is the same |
 | Page unchanged | `confluence.updatePage`, `upsertPage` on an existing page, `movePage`, `deletePage`, `archivePage` | `version` is the same |
 | Title absent | `confluence.createPage`, `upsertPage` on a new page | no page with that title in the space |
+| State unchanged | `state.set`, `state.delete` | the key holds the value the plan saw (or is still unset) |
 
 All preconditions are checked before the first write. If any fails, nothing is written. Between that check and each write there is a short window. A concurrent page edit in it makes the update fail on the version check. A concurrent issue edit in it is overwritten, because Jira has no conditional update.
 
@@ -230,7 +367,9 @@ All preconditions are checked before the first write. If any fails, nothing is w
 | Memory | 64 MB | `--memory` | `memory` |
 | Stack | 512 KB | fixed | `guest` (stack overflow) |
 | Run time, CPU and waiting | 1 hour (jobs: 60 seconds per issue) | `--timeout`; `0` = none | `interrupted` (busy loop) or `deadline` (waiting) |
-| One Jira or Confluence call | 60 seconds | fixed | catchable error `Host call timed out` |
+| One Jira, Confluence or HTTP call | 60 seconds | fixed | catchable error `Host call timed out` |
+| HTTP response, file read or write | 10 MB | fixed | catchable error |
+| State value | 1 MB serialized | fixed | catchable error |
 | Calls per run | 100,000 (jobs: 500 per issue) | `--max-calls`; `0` = none | `host-call-limit` |
 | Planned writes | 10,000 (jobs: 50 per issue) | `meta.limits.maxWrites`, `--max-writes` (wins); `0` = none | `write-limit` |
 
@@ -251,6 +390,13 @@ The same applies to the first write of these verbs to an object:
 | `jira.setStatus` | the issue already has that status |
 | `jira.copyAttachment` | the target issue already has an attachment with that filename and size |
 | `confluence.movePage` | the page already has that parent |
+| `jira.createVersion` / `jira.createComponent` | the project has one of that name (its id is returned) |
+| `jira.updateVersion` / `jira.updateComponent` | every given field already has that value |
+| `jira.unlink` | the issue has no such link |
+| `confluence.setProperty` / `deleteProperty` | the property already has that value / is not set |
+| `confluence.setRestrictions` | the restrictions are already those users and groups |
+| `files.write` | the file already has that content |
+| `state.set` / `state.delete` | the key already has that value / is not set |
 
 Other verbs are always planned. Re-running a script that only uses verbs from this section and `updatePage`/`upsertPage` therefore plans nothing once its work is done.
 
@@ -264,7 +410,7 @@ Other verbs are always planned. Re-running a script that only uses verbs from th
 | `createdAt` | ISO 8601 | |
 | `script.name` | string | `meta.name`, else the file name, else `inline` |
 | `script.path` | string | relative to the working directory; absent for `-e` |
-| `script.sha256` | hex | SHA-256 of the script source |
+| `script.sha256` | hex | SHA-256 of the script source and every file it imports |
 | `script.meta` | object | validated `meta` |
 | `params` | object | resolved parameters |
 | `target.baseUrl` | URL | site the plan was made for |

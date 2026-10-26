@@ -5,7 +5,7 @@ description: "atlcli script: TypeScript automation for Jira and Confluence in a 
 
 # Automation Scripts
 
-`atlcli script` runs small TypeScript (or JavaScript) programs against Jira and Confluence. A script reads live data. Its writes are not executed while it runs: they become a **plan** that you review, and nothing changes until you apply it. Scripts run in a sandbox with no network, file or Node access, so a script you did not write yourself can only do what its plan shows.
+`atlcli script` runs small TypeScript (or JavaScript) programs against Jira and Confluence. A script reads live data. Its writes are not executed while it runs: they become a **plan** that you review, and nothing changes until you apply it. Scripts run in a sandbox without Node access. External HTTP, local files and the script's own state go through `atlcli.*` too, and their writes are planned the same way, so a script you did not write yourself can only do what its plan shows.
 
 ```ts
 for await (const issue of atlcli.jira.search("project = ATLCLI AND updated < -180d")) {
@@ -14,7 +14,7 @@ for await (const issue of atlcli.jira.search("project = ATLCLI AND updated < -18
 }
 ```
 
-That is a complete script: no imports, no exports, no setup.
+That is a complete script: no imports, no exports, no setup. Larger scripts can split helpers into files they import.
 
 For thousands of issues, let the script handle one issue at a time and atlcli run it as a resumable job: see [Per-Issue Script Jobs](script-jobs.md).
 
@@ -24,7 +24,10 @@ For thousands of issues, let the script handle one issue at a time and atlcli ru
 - [Steps: your first script](#steps-your-first-script)
 - [Writing scripts](#writing-scripts)
 - [Plan and apply](#plan-and-apply)
+- [Other services, files and state](#other-services-files-and-state)
+- [Splitting a script into files](#splitting-a-script-into-files)
 - [Restricting a script](#restricting-a-script)
+- [Testing a script](#testing-a-script)
 - [Editor support and type checking](#editor-support-and-type-checking)
 - [Examples](#examples)
 - [Limits](#limits)
@@ -121,12 +124,14 @@ for await (const _ of atlcli.jira.search("project = ATLCLI AND statusCategory !=
 export default { open };
 ```
 
-**Reading what no verb covers.** `atlcli.jira.rest(path)` and `atlcli.confluence.rest(path)` read any REST resource of the site, for example custom field definitions or an issue's changelog. They only read; writes always go through the verbs and the plan:
+**What no verb covers.** `atlcli.jira.rest(path)` and `atlcli.confluence.rest(path)` read any REST resource of the site, for example an issue's changelog. `atlcli.jira.request(method, path, { body })` and `atlcli.confluence.request(…)` write one, as a planned operation like every other write:
 
 ```ts
-const fields = await atlcli.jira.rest("/rest/api/3/field");
 const changelog = await atlcli.jira.rest("/rest/api/3/issue/ATLCLI-1/changelog", { query: { maxResults: 100 } });
+await atlcli.jira.request("PUT", "/rest/api/3/issue/ATLCLI-1/properties/review", { body: { state: "done" } });
 ```
+
+Prefer a verb where there is one: comments, worklogs, versions, components, ranking, clones, links, page properties, restrictions and blog posts have verbs, and most of them leave out writes that would change nothing. `atlcli.jira.fieldId("Story Points")` finds a custom field's id by name.
 
 **JQL functions.** Queries may use `linkedIssuesOf("…")`, `subtasksOf("…")`, `hasAttachments("…")` and the other [JQL functions](jira/search.md#jql-functions) atlcli resolves.
 
@@ -179,6 +184,67 @@ Operations already applied are skipped, and objects they created are used as bef
 
 **Large plans.** From 200 operations on, the output lists counts per verb and the first 50 operations; `--plan-out` or `--json` has all of them. `--concurrency <n>` applies up to `n` operations at once. Operations on the same issue, page or sprint, and operations that use an object the plan creates, still run in plan order.
 
+## Other services, files and state
+
+**HTTP.** `atlcli.http.get` reads from another service while the plan is made; `atlcli.http.request` is a planned write, sent when you apply. Every host needs a grant in `meta.permissions`, even when the script declares nothing else:
+
+```ts
+export const meta = { permissions: ["jira:read", "jira:write:ATLCLI", "http:status.example.com"] };
+
+const health = await atlcli.http.get("https://status.example.com/api/v2/summary.json");
+const status = health.json as { status?: { indicator?: string } } | undefined;
+if (status?.status?.indicator !== "none") await atlcli.jira.comment("ATLCLI-1", "Status page reports an incident");
+```
+
+**Secrets.** Tokens and webhook URLs stay out of scripts and plans. Declare the name in `meta.secrets`, set `ATLCLI_SECRET_<NAME>` in the environment, and use `atlcli.secret("NAME")` in a URL, header or body. The script only ever sees a reference; the host fills in the value when the request is sent:
+
+```ts
+export const meta = { permissions: ["http:hooks.slack.com"], secrets: ["SLACK_WEBHOOK"] };
+await atlcli.http.request("POST", `https://hooks.slack.com/services/${atlcli.secret("SLACK_WEBHOOK")}`, { json: { text: "Deployed" } });
+```
+
+```bash
+export ATLCLI_SECRET_SLACK_WEBHOOK=T000/B000/XXXX
+atlcli script run notify.ts --apply
+```
+
+**Files.** `atlcli.files.read` and `files.list` read below the working directory; `files.write` is planned, so a report file appears only when you apply. Read a CSV, write Markdown or CSV:
+
+```ts
+const keys = (await atlcli.files.read("keys.csv")).trim().split("\n").slice(1);
+for (const key of keys) await atlcli.jira.addLabels(key, ["migrated"]);
+await atlcli.files.write("reports/migrated.md", `# Migrated\n\n${keys.map((k) => `- ${k}`).join("\n")}\n`);
+```
+
+**State.** `atlcli.state` keeps values between runs, one store per script (`~/.atlcli/state/<name>.json`). `state.set` is planned like any write, so a run without `--apply` leaves the state as it was:
+
+```ts
+const since = (await atlcli.state.get("since")) ?? "-1d";
+for await (const issue of atlcli.jira.search(`project = ATLCLI AND created >= "${since}"`)) console.log(issue.key);
+await atlcli.state.set("since", new Date().toISOString().slice(0, 16).replace("T", " "));
+```
+
+See [Script API: HTTP and secrets](reference/scripts.md#http-and-secrets), [Files](reference/scripts.md#files) and [State](reference/scripts.md#state).
+
+## Splitting a script into files
+
+Import helpers with relative paths. Only files below the script's directory load; packages and Node modules do not:
+
+```ts
+// lib/format.ts
+export const line = (key: string, summary: string) => `- ${key}: ${summary}`;
+```
+
+```ts
+// release-notes.ts
+import { line } from "./lib/format.ts";
+const lines: string[] = [];
+for await (const issue of atlcli.jira.search('fixVersion = "2026.11"')) lines.push(line(issue.key, String(issue.fields.summary)));
+await atlcli.files.write("release-notes.md", lines.join("\n") + "\n");
+```
+
+The plan's script digest covers every imported file, and per-issue jobs keep them for `resume`.
+
 ## Restricting a script
 
 Without `meta`, a script may use every verb. Writes still only reach Jira or Confluence through a plan you apply. For scripts you share, or ones generated by an AI assistant, declare what the script may do:
@@ -197,11 +263,38 @@ for await (const issue of atlcli.jira.search(`project = ATLCLI AND updated < -${
 }
 ```
 
-- **`permissions`**: once given, everything else is denied. Write grants name one project or space. A denied verb ends the run, even if the script catches the error.
+- **`permissions`**: once given, everything else is denied. Write grants name one project or space, or `*` for all (`jira:write:*`). `file:read` and `file:write` cover local files, `http:<host>` one host for HTTP. A denied verb ends the run, even if the script catches the error.
+- **`secrets`**: the names of the secrets the script uses; a missing one stops the run before it starts.
 - **`limits.maxWrites`**: the most operations a plan may contain (default 10,000).
 - **`params`**: typed parameters with defaults. Unknown or mistyped `--param` values are rejected.
 
 atlcli reads `meta` before any of the script's code runs. It must be written exactly as `export const meta = { … }`, a literal without variables or calls. See [Script API: meta](reference/scripts.md#meta).
+
+## Testing a script
+
+`atlcli script test` runs a script against recorded data instead of the site, so you can change it with confidence and check it in CI without credentials:
+
+```bash
+# Once, against the site: nothing changes, the reads and the plan are stored
+atlcli script test triage.ts --record "two open bugs" --param project=ATLCLI
+
+# Any time, offline: the plan must still be the same
+atlcli script test triage.ts
+atlcli script test scripts/          # every script with a .test.json
+
+# After an intended change
+atlcli script test triage.ts --update
+```
+
+A failing case shows the operations that differ. For checks that a snapshot does not express, export a `test` function; it gets the plan of each case:
+
+```ts
+export function test(plan: { operations: Array<{ verb: string }> }) {
+  if (plan.operations.some((op) => op.verb === "jira.deleteIssue")) throw new Error("triage must never delete");
+}
+```
+
+`<script>.test.json` holds what the script read from the site. Review it before you commit it; secret values are never recorded. See [Script API: script tests](reference/scripts.md#script-tests).
 
 ## Editor support and type checking
 
@@ -217,7 +310,7 @@ Check a script without running it:
 atlcli script check scripts/stale.ts
 ```
 
-`check` validates `meta` and runs `tsc --noEmit` when `tsc` is on your `PATH`; otherwise it says it skipped the type check. Scripts may use TypeScript syntax that can simply be removed (types, interfaces, `satisfies`). They may not use `enum` or `namespace`.
+`check` validates `meta` and the script's imports and runs `tsc --noEmit` when `tsc` is on your `PATH`; otherwise it says it skipped the type check. Scripts may use TypeScript syntax that can simply be removed (types, interfaces, `satisfies`). They may not use `enum` or `namespace`.
 
 Re-run `atlcli script init` after updating atlcli: it refreshes `atlcli.d.ts` and keeps your other files.
 
@@ -304,7 +397,7 @@ By default a script gets 64 MB of memory, 1 hour per run, 100,000 Jira or Conflu
 atlcli script run migrate.ts --timeout 0 --max-calls 0 --max-writes 50000 --memory 256
 ```
 
-`--max-writes` overrides `meta.limits.maxWrites`. For work on many issues, a [per-issue job](script-jobs.md) has no total limit at all: its limits apply to each issue. Each Jira or Confluence call may take up to 60 seconds. See [Script API: sandbox limits](reference/scripts.md#sandbox-limits).
+`--max-writes` overrides `meta.limits.maxWrites`. For work on many issues, a [per-issue job](script-jobs.md) has no total limit at all: its limits apply to each issue. Each Jira, Confluence or HTTP call may take up to 60 seconds; HTTP responses and files are limited to 10 MB. See [Script API: sandbox limits](reference/scripts.md#sandbox-limits).
 
 ## Troubleshooting
 
@@ -344,13 +437,22 @@ A read used a `plan:<n>` placeholder. Reads see Jira and Confluence as they are,
 **`meta must be a self-contained literal` / `Declare meta as export const meta = { … }`**
 `meta` is read before the script runs, so it cannot use variables, calls or `export { meta }`. Write the values out.
 
-**`imports are not allowed in scripts`**
-Scripts are single files without imports. Copy small helpers into the script.
+**`Imports are not allowed in scripts except relative files` / `Import leaves the script's directory`**
+Scripts import only their own files, below the script's directory. Packages and `node:` modules are not available in the sandbox; copy what you need into a helper file.
+
+**`HTTP to api.example.com needs "http:api.example.com" in meta.permissions`**
+HTTP is never allowed implicitly. Add a grant for the host (`http:*.example.com` for its subdomains).
+
+**`Secret SLACK_WEBHOOK is not set: export ATLCLI_SECRET_SLACK_WEBHOOK`**
+Set the variable where the script runs and where the plan is applied. A secret used in `atlcli.secret` but missing from `meta.secrets` is refused as well.
+
+**`The fixture has no answer for jiraGetIssue("ATLCLI-9")`**
+`script test` replays only the reads it recorded. The script now reads something new: record the case again with `--record`.
 
 ## Related topics
 
 - [Per-Issue Script Jobs](script-jobs.md): one script run per issue, for thousands of issues, resumable
-- [Script API reference](reference/scripts.md): every verb, `meta` field, limit and output shape
+- [Script API reference](reference/scripts.md): every verb, `meta` field, limit and output shape; HTTP, secrets, files, state, imports and script tests
 - [Scripts in CI](recipes/scripts-in-ci.md): review plans in pull requests, apply after approval, scheduled housekeeping
 - [Jira bulk operations](jira/bulk-operations.md): single commands for common bulk changes
 - [Jira search](jira/search.md): JQL for `atlcli.jira.search`
