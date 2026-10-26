@@ -19,7 +19,7 @@ export const DEFAULT_JINJA_LIMITS: JinjaLimits = { timeoutMs: 5_000, memoryBytes
 export class JinjaError extends Error {
   constructor(
     message: string,
-    readonly kind: "limit" | "internal",
+    readonly kind: "limit" | "internal" | "template",
   ) {
     super(message);
     this.name = "JinjaError";
@@ -29,6 +29,8 @@ export class JinjaError extends Error {
 let module: QuickJSWASMModule | undefined;
 let loading: Promise<void> | undefined;
 let live: { runtime: QuickJSRuntime; ctx: QuickJSContext } | undefined;
+/** Where a streaming render's chunks go during the call. */
+let sink: ((chunk: string) => void) | undefined;
 
 /** Loads the QuickJS module once. Rendering is synchronous after this resolved. */
 export function initJinja(): Promise<void> {
@@ -53,6 +55,9 @@ function context(limits: JinjaLimits): { runtime: QuickJSRuntime; ctx: QuickJSCo
   runtime.setMemoryLimit(limits.memoryBytes);
   runtime.setMaxStackSize(1024 * 1024);
   const ctx = runtime.newContext();
+  ctx.newFunction("__atlcliSink", (chunk) => {
+    sink?.(ctx.getString(chunk));
+  }).consume((f) => ctx.setProp(ctx.global, "__atlcliSink", f));
   const boot = ctx.evalCode(`${NUNJUCKS_SOURCE}\n;${GUEST_PRELUDE}`, "atlcli:jinja", { type: "global" });
   if (boot.error) {
     const detail = ctx.dump(boot.error);
@@ -78,8 +83,18 @@ function reset(): void {
 }
 
 /** One call into the guest with a JSON payload; returns the guest's parsed JSON answer. */
-export function callGuest<T>(payload: unknown, limits: JinjaLimits = DEFAULT_JINJA_LIMITS): T {
+export function callGuest<T>(payload: unknown, limits: JinjaLimits = DEFAULT_JINJA_LIMITS, write?: (chunk: string) => void): T {
   const { runtime, ctx } = context(limits);
+  runtime.setMemoryLimit(limits.memoryBytes);
+  sink = write;
+  try {
+    return call<T>(runtime, ctx, payload, limits);
+  } finally {
+    sink = undefined;
+  }
+}
+
+function call<T>(runtime: QuickJSRuntime, ctx: QuickJSContext, payload: unknown, limits: JinjaLimits): T {
   const deadline = Date.now() + limits.timeoutMs;
   runtime.setInterruptHandler(() => Date.now() > deadline);
   ctx.newString(JSON.stringify(payload)).consume((h) => ctx.setProp(ctx.global, "__atlcliPayload", h));

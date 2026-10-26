@@ -8,7 +8,7 @@
  * as written and is reported, instead of turning into empty text.
  */
 import { analyze, applyLiteral, hasJinjaSyntax, JinjaSyntaxError, type AnalysisWarning } from "./analyze.js";
-import { callGuest, DEFAULT_JINJA_LIMITS, type JinjaLimits } from "./sandbox.js";
+import { callGuest, DEFAULT_JINJA_LIMITS, JinjaError, type JinjaLimits } from "./sandbox.js";
 
 export * from "./analyze.js";
 export { DEFAULT_JINJA_LIMITS, initJinja, JinjaError, jinjaReady } from "./sandbox.js";
@@ -67,6 +67,53 @@ export function renderJinja(source: string, vars: Record<string, unknown>, optio
   const answer = callGuest<GuestAnswer>({ mode: "render", source: template, vars, templates: options.templates ?? {}, lines: options.lines === true }, limitsOf(options));
   if (!answer.ok) return { text: source, warnings: [...warnings, renderWarning(answer.error)] };
   return { text: answer.text ?? "", warnings };
+}
+
+export interface StreamJinjaOptions extends RenderJinjaOptions {
+  /** Output collected before a chunk is written (default 16 KiB); tests use 1. */
+  flushBytes?: number;
+}
+
+/** Stream renders get 5 minutes and room for a large model (four times its JSON) by default. */
+export const DEFAULT_STREAM_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Renders `source` with `vars` like `renderJinja`, but hands the output to
+ * `write` in chunks while it renders: the joined chunks equal what
+ * `renderJinja` returns, without the whole text in memory. Text before an
+ * error is already written, so errors throw (a JinjaError for limits and
+ * template errors, or what `write` threw) instead of returning the source.
+ */
+export function streamJinja(source: string, vars: Record<string, unknown>, write: (chunk: string) => void, options: StreamJinjaOptions = {}): { warnings: JinjaWarning[] } {
+  if (!hasJinjaSyntax(source)) {
+    if (source) write(source);
+    return { warnings: [] };
+  }
+  let template = source;
+  const warnings: JinjaWarning[] = [];
+  if (options.tolerant !== false) {
+    const a = analyze(source, vars);
+    warnings.push(...a.warnings);
+    template = applyLiteral(source, a.literal);
+  }
+  const payload = { mode: "stream", source: template, vars, templates: options.templates ?? {}, lines: options.lines === true, flushBytes: options.flushBytes };
+  const json = JSON.stringify(vars).length;
+  const limits = { timeoutMs: DEFAULT_STREAM_TIMEOUT_MS, ...options.limits, memoryBytes: options.limits?.memoryBytes ?? Math.max(DEFAULT_JINJA_LIMITS.memoryBytes, 4 * json) };
+  let failed: { error: unknown } | undefined;
+  const answer = callGuest<GuestAnswer>(payload, limits, (chunk) => {
+    try {
+      write(chunk);
+    } catch (error) {
+      failed ??= { error };
+      throw error;
+    }
+  });
+  if (failed) throw failed.error;
+  if (!answer.ok) {
+    const w = renderWarning(answer.error);
+    throw new JinjaError(`${w.message}${w.line !== undefined ? ` (line ${w.line}, column ${w.column})` : ""}`, "template");
+  }
+  return { warnings };
 }
 
 /**
