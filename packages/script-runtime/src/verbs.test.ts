@@ -788,6 +788,7 @@ it("exposes the verb set", () => {
     "confluence.updatePage",
     "confluence.upsertPage",
     "confluence.versions",
+    "files.lines",
     "files.list",
     "files.read",
     "files.write",

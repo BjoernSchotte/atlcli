@@ -298,3 +298,30 @@ describe("atlcli.output", () => {
     await expect(plan(`const o = await atlcli.output("a.txt"); await o.close(); await o.line("late");`, port)).rejects.toThrow(/closed/);
   });
 });
+
+describe("atlcli.files.lines", () => {
+  it("iterates pages through the cursor, with the format from the extension and a limit", async () => {
+    const calls: unknown[] = [];
+    const port = {
+      fileLines: async (path: string, o: { format: string; limit: number; cursor?: string }) => {
+        calls.push([path, o]);
+        return o.cursor ? { items: [["c"]] } : { items: [["a"], ["b"]], cursor: "4:2" };
+      },
+    } as unknown as ScriptPort;
+    const run = await plan(
+      `const all = [];
+       for await (const row of atlcli.files.lines("data/in.csv")) all.push(row);
+       const first = [];
+       for await (const line of atlcli.files.lines("./notes.txt", { limit: 1 })) first.push(line);
+       export default { all, first };`,
+      port,
+    );
+    expect(run.value).toEqual({ all: [["a"], ["b"], ["c"]], first: [["a"]] });
+    expect(calls).toEqual([
+      ["data/in.csv", { format: "csv", limit: 1000 }],
+      ["data/in.csv", { format: "csv", limit: 1000, cursor: "4:2" }],
+      ["notes.txt", { format: "text", limit: 1000 }],
+    ]);
+    await expect(plan(`for await (const l of atlcli.files.lines("../x")) {}`, port)).rejects.toThrow(/relative/);
+  });
+});

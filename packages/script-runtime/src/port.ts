@@ -172,6 +172,11 @@ export interface ScriptPort {
   /** Local files, relative to the host's working directory; paths passed `checkLocalPath`. */
   fileRead?(path: string, options: { encoding: "utf8" | "base64" }): Promise<string>;
   fileList?(path: string): Promise<LocalFileView[]>;
+  /**
+   * Up to `limit` records of a file from `cursor` on; a
+   * `cursor` in the answer continues it. Any file size.
+   */
+  fileLines?(path: string, options: { format: LinesFormat; limit: number; cursor?: string }): Promise<{ items: unknown[]; cursor?: string }>;
   fileWrite?(path: string, content: string, options: { encoding: "utf8" | "base64" }): Promise<{ path: string; bytes: number }>;
   /**
    * Output files (atlcli.output): written while the script runs, also in a
@@ -196,6 +201,9 @@ export interface ScriptPort {
    */
   render?(input: unknown, options: RenderInput): RenderOutput | Promise<RenderOutput>;
 }
+
+/** How atlcli.files.lines splits a file: lines, CSV records (arrays of fields) or JSON Lines. */
+export type LinesFormat = "text" | "csv" | "jsonl";
 
 export type RestQuery = Record<string, string | number | boolean>;
 export type RestWriteMethod = "POST" | "PUT" | "PATCH" | "DELETE";

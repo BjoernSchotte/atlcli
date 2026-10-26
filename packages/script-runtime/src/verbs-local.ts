@@ -2,11 +2,13 @@ import { canonicalJsonV1, digestCanonicalJsonV1 } from "@atlcli/change-set";
 import { z } from "zod";
 import { SECRET_NAME } from "./meta.js";
 import type { HttpResponseView, ScriptPort } from "./port.js";
-import { hostOp, type Recorder, str, verb, type Verb } from "./recorder.js";
+import { hostOp, pagedIterator, type Recorder, str, verb, type Verb } from "./recorder.js";
 import { ScriptError } from "./sandbox.js";
 
 /** Largest HTTP response, file read and file write a script handles. */
 export const MAX_LOCAL_BYTES = 10 * 1024 * 1024;
+/** Records per files.lines page. */
+const LINES_PAGE = 1000;
 /** Largest single state value (serialized). */
 export const MAX_STATE_BYTES = 1024 * 1024;
 const MAX_REDIRECTS = 5;
@@ -242,6 +244,17 @@ export const LOCAL_VERBS: Record<string, Verb> = {
     // The host refuses files over MAX_LOCAL_BYTES.
     return hostOp(r.port.fileRead?.bind(r.port), "files.read")(checkLocalPath(path), { encoding: o?.encoding ?? "utf8" });
   }),
+  "files.lines": verb(
+    z.tuple([str, z.strictObject({ format: z.enum(["text", "csv", "jsonl"]).optional(), cursor: str.optional() }).optional()]),
+    async (r, [path, o]) => {
+      r.require("file:read");
+      return hostOp(r.port.fileLines?.bind(r.port), "files.lines")(checkLocalPath(path), {
+        format: o?.format ?? (/\.csv$/i.test(path) ? "csv" : /\.(jsonl|ndjson)$/i.test(path) ? "jsonl" : "text"),
+        limit: LINES_PAGE,
+        ...(o?.cursor ? { cursor: o.cursor } : {}),
+      });
+    },
+  ),
   "files.list": verb(z.tuple([str.optional()]), async (r, [dir]) => {
     r.require("file:read");
     return hostOp(r.port.fileList?.bind(r.port), "files.list")(checkLocalPath(dir ?? "."));
@@ -308,6 +321,7 @@ export const LOCAL_VERBS: Record<string, Verb> = {
 
 /** `atlcli.secret` is synchronous in the guest; the host function only exists for the wrapper. */
 export const LOCAL_WRAPPERS: Record<string, string> = {
+  "files.lines": pagedIterator("items", "cursor", "cursor"),
   // A writer that collects text in the guest and hands it to the host in 64 KB chunks.
   output: `(raw) => {
   const CHUNK = 65536, BACKLOG = 16 * 1024 * 1024;

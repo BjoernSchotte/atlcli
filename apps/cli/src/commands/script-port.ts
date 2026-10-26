@@ -1,5 +1,5 @@
 import { lookup } from "node:dns/promises";
-import { lstat, mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { ConfluenceClient, type FooterComment, type InlineComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
@@ -29,6 +29,7 @@ import type {
   JiraSprintView,
   ScriptPort,
 } from "@atlcli/script-runtime";
+import { readLinesPage } from "./file-lines.js";
 import { createTemplateRenderer } from "./template-flags.js";
 
 /** Content property linking a copied page to its original (read back for resuming). */
@@ -631,6 +632,33 @@ export function createCliScriptPort(
       if ((await stat(target)).size > MAX_LOCAL_BYTES) throw new Error(`${path} is larger than ${MAX_LOCAL_BYTES} bytes`);
       const data = await readFile(target);
       return encoding === "base64" ? data.toString("base64") : data.toString("utf8");
+    },
+    async fileLines(path, { format, limit, cursor }) {
+      const target = await inside(outDir, path);
+      const [offset, line] = (cursor ?? "0:0").split(":").map(Number) as [number, number];
+      const file = await open(target, "r");
+      try {
+        // Grows the window until it holds a whole record (up to MAX_LOCAL_BYTES for one record).
+        for (let size = 1024 * 1024; ; size *= 4) {
+          const buffer = Buffer.alloc(size);
+          const { bytesRead } = await file.read(buffer, 0, size, offset);
+          const eof = bytesRead < size;
+          let page;
+          try {
+            page = readLinesPage(buffer.subarray(0, bytesRead), { format, eof, max: limit, line, start: offset === 0 });
+          } catch (error) {
+            throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          if (page.items.length === 0 && page.consumed === 0 && !eof) {
+            if (size >= MAX_LOCAL_BYTES) throw new Error(`${path}: a record longer than ${MAX_LOCAL_BYTES} bytes at line ${line + 1}`);
+            continue;
+          }
+          const done = eof && page.consumed >= bytesRead;
+          return { items: page.items, ...(done ? {} : { cursor: `${offset + page.consumed}:${line + page.lines}` }) };
+        }
+      } finally {
+        await file.close();
+      }
     },
     async fileList(path) {
       const dir = await inside(outDir, path);

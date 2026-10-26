@@ -683,6 +683,14 @@ const atlcli: {
   readonly files: {
     /** Up to 10 MB; \`encoding: "base64"\` for binary files. */
     read(path: string, options?: { encoding?: "utf8" | "base64" }): Promise<string>;
+    /**
+     * The file record by record, read a window at a time (any size): CSV rows as
+     * arrays of fields (quoted fields may span lines), JSON Lines as values, else
+     * text lines. The format follows the extension (.csv, .jsonl/.ndjson) unless given.
+     */
+    lines(path: string, options: { format: "csv" } & { limit?: number }): AsyncIterable<string[]>;
+    lines(path: string, options: { format: "jsonl" } & { limit?: number }): AsyncIterable<Json>;
+    lines(path: string, options?: { format?: "text" | "csv" | "jsonl"; limit?: number }): AsyncIterable<any>;
     /** Entries of a directory (default "."). */
     list(dir?: string): Promise<LocalFile[]>;
     /** Planned; written on apply. Skipped when the file already has this content. */
