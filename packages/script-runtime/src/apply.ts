@@ -1,5 +1,7 @@
 import { normalizeBaseUrl, ScriptPlanError, type ScriptPlanV1 } from "./plan.js";
 import type { AttachmentInput, ScriptPort } from "./port.js";
+import { digestCanonicalJsonV1 } from "@atlcli/change-set";
+import { applyHttpRequest, checkLocalPath } from "./verbs-local.js";
 import { checkExportPath, PLAN_REFERENCE, type PlannedOperation, type Precondition } from "./verbs.js";
 
 export interface ApplyScriptPlanOptions {
@@ -147,8 +149,20 @@ export async function applyScriptPlan(
 
 /** Records what later operations need from an applied one: created keys/ids and page versions. */
 function remember(op: PlannedOperation, value: Record<string, unknown>, resolved: Map<number, string>, versions: Map<string, number>): void {
-  if (op.verb === "jira.create") resolved.set(op.seq, value.key as string);
-  if (op.verb === "jira.createSprint" || op.verb === "confluence.createPage") resolved.set(op.seq, String(value.id));
+  if (op.verb === "jira.create" || op.verb === "jira.clone") resolved.set(op.seq, value.key as string);
+  if (
+    op.verb === "jira.createSprint" ||
+    op.verb === "jira.createVersion" ||
+    op.verb === "jira.createComponent" ||
+    op.verb === "confluence.createPage" ||
+    op.verb === "confluence.createBlogPost"
+  ) {
+    resolved.set(op.seq, String(value.id));
+  }
+  // A REST write stands for the key or id of what it created, when the response names one.
+  if ((op.verb === "jira.request" || op.verb === "confluence.request") && (value.key ?? value.id) !== undefined) {
+    resolved.set(op.seq, String(value.key ?? value.id));
+  }
   if (op.verb === "confluence.deletePage" || op.verb === "confluence.archivePage") versions.delete(String(value.id));
   else if (op.verb.startsWith("confluence.") && typeof value.version === "number" && value.id !== undefined) {
     versions.set(String(value.id), value.version);
@@ -156,7 +170,7 @@ function remember(op: PlannedOperation, value: Record<string, unknown>, resolved
 }
 
 /** Argument names that name the object an operation acts on. */
-const TARGET_ARGS = ["key", "from", "to", "pageId", "id", "toPageId", "parentId", "sprintId", "boardId"] as const;
+const TARGET_ARGS = ["key", "from", "to", "pageId", "id", "toPageId", "parentId", "sprintId", "boardId", "before", "after", "path", "url", "stateKey"] as const;
 
 /**
  * For each operation, the earlier ones it must wait for: its `dependsOn` plus
@@ -238,6 +252,11 @@ async function checkPrecondition(port: ScriptPort, pre: Precondition): Promise<s
       case "confluence-title-absent": {
         const page = await port.confluenceFindPage(pre.spaceKey, pre.title, {});
         return page ? `page ${page.id} exists` : undefined;
+      }
+      case "state-unchanged": {
+        const value = (await required(port.stateGet, "state").call(port, pre.store, pre.key)) ?? undefined;
+        const digest = value === undefined ? null : await digestCanonicalJsonV1(value);
+        return digest === pre.digest ? undefined : value === undefined ? "unset" : "a different value";
       }
     }
   } catch (error) {
@@ -346,7 +365,87 @@ async function execute(
     case "confluence.export":
       // A plan file is editable, so the path is checked again right before writing.
       return port.confluenceExport({ pageId: args.pageId, format: args.format, path: checkExportPath(args.path, args.format) });
+    case "jira.request":
+    case "confluence.request": {
+      const send = op.verb === "jira.request" ? port.jiraRequest : port.confluenceRequest;
+      const response = await required(send, op.verb).call(port, args.method, args.path, { body: args.body, query: args.query });
+      return identity(response);
+    }
+    case "jira.updateComment":
+      await required(port.jiraUpdateComment, op.verb).call(port, args.key, args.id, "raw" in args ? { raw: args.raw } : args.markdown);
+      return { key: args.key, id: args.id };
+    case "jira.deleteComment":
+      await required(port.jiraDeleteComment, op.verb).call(port, args.key, args.id);
+      return { key: args.key, id: args.id };
+    case "jira.addWorklog": {
+      const { key, ...input } = args;
+      return { key, ...(await required(port.jiraAddWorklog, op.verb).call(port, key, input as never)) };
+    }
+    case "jira.createVersion":
+      return required(port.jiraCreateVersion, op.verb).call(port, args as never);
+    case "jira.updateVersion": {
+      const { id, ...input } = args;
+      await required(port.jiraUpdateVersion, op.verb).call(port, String(id), input);
+      return { id: String(id) };
+    }
+    case "jira.createComponent": {
+      const { leadQuery: _q, ...input } = args;
+      return required(port.jiraCreateComponent, op.verb).call(port, input as never);
+    }
+    case "jira.updateComponent": {
+      const { id, leadQuery: _q, ...input } = args;
+      await required(port.jiraUpdateComponent, op.verb).call(port, String(id), input);
+      return { id: String(id) };
+    }
+    case "jira.rank": {
+      const position = args.before !== undefined ? { before: args.before as string } : { after: args.after as string };
+      await required(port.jiraRank, op.verb).call(port, args.keys, position);
+      return { keys: args.keys };
+    }
+    case "jira.deleteIssue":
+      await required(port.jiraDeleteIssue, op.verb).call(port, args.key, { subtasks: args.subtasks === true });
+      return { key: args.key };
+    case "jira.clone": {
+      const { key, ...input } = args;
+      return { from: key, ...(await required(port.jiraCloneIssue, op.verb).call(port, key, input)) };
+    }
+    case "jira.unlink":
+      await required(port.jiraDeleteLink, op.verb).call(port, args.linkId);
+      return { key: args.key, linkId: args.linkId };
+    case "confluence.setProperty":
+      await required(port.confluenceSetProperty, op.verb).call(port, args.pageId, args.key, args.value);
+      return { pageId: args.pageId, key: args.key };
+    case "confluence.deleteProperty":
+      await required(port.confluenceDeleteProperty, op.verb).call(port, args.pageId, args.key);
+      return { pageId: args.pageId, key: args.key };
+    case "confluence.setRestrictions": {
+      const { pageId, ...input } = args;
+      await required(port.confluenceSetRestrictions, op.verb).call(port, pageId, input);
+      return { pageId };
+    }
+    case "confluence.createBlogPost":
+      return required(port.confluenceCreateBlogPost, op.verb).call(port, args as never);
+    case "http.request":
+      return applyHttpRequest(port, args as never);
+    case "files.write":
+      // Checked again: a plan file is editable.
+      return required(port.fileWrite, op.verb).call(port, checkLocalPath(args.path), args.content, { encoding: args.encoding });
+    case "state.set":
+      await required(port.stateSet, op.verb).call(port, args.store, args.stateKey, args.value);
+      return { stateKey: args.stateKey };
+    case "state.delete":
+      await required(port.stateSet, op.verb).call(port, args.store, args.stateKey, undefined);
+      return { stateKey: args.stateKey };
   }
+}
+
+/** The id and key a REST write's response names, for `plan:<seq>` references and the journal. */
+function identity(response: unknown): Record<string, unknown> {
+  const body = response && typeof response === "object" && !Array.isArray(response) ? (response as Record<string, unknown>) : {};
+  return {
+    ...(typeof body.id === "string" || typeof body.id === "number" ? { id: String(body.id) } : {}),
+    ...(typeof body.key === "string" ? { key: body.key } : {}),
+  };
 }
 
 /** Only the options a plan recorded, so hosts see `undefined` for a plain transition. */

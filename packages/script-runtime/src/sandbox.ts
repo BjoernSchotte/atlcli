@@ -48,6 +48,11 @@ export interface RunScriptOptions {
    * generator over a paged host call). Trusted code, evaluated before the script.
    */
   wrappers?: Readonly<Record<string, string>>;
+  /**
+   * Further modules the script may import, by path relative to its directory
+   * (`"lib/util.ts"`), already stripped of types. Without it any import fails.
+   */
+  modules?: Readonly<Record<string, string>>;
   /** JSON object exposed as frozen `atlcli.params` and passed to a default-export function. */
   params?: Readonly<Record<string, unknown>>;
   /**
@@ -106,7 +111,39 @@ export class ScriptError extends Error {
   }
 }
 
-const SCRIPT_MODULE = "script";
+/** Module name of the script itself; imports from it resolve against the script's directory. */
+export const SCRIPT_MODULE = "script";
+const UNRESOLVED = "atlcli:unresolved:";
+
+/**
+ * Paths a relative import may name, in lookup order, relative to the
+ * script's directory (`"lib/util.ts"`). Only relative imports are allowed:
+ * no packages, no Node built-ins, nothing outside the script's directory.
+ */
+export function moduleCandidates(base: string, requested: string): string[] | Error {
+  if (!requested.startsWith("./") && !requested.startsWith("../")) {
+    return new Error(`Imports are not allowed in scripts except relative files: ${requested}`);
+  }
+  const parts = base === SCRIPT_MODULE || !base.includes("/") ? [] : base.split("/").slice(0, -1);
+  for (const segment of requested.split("/")) {
+    if (segment === "." || segment === "") continue;
+    if (segment === "..") {
+      if (parts.length === 0) return new Error(`Import leaves the script's directory: ${requested}`);
+      parts.pop();
+    } else parts.push(segment);
+  }
+  const path = parts.join("/");
+  return [...new Set([path, `${path}.ts`, `${path}.js`, path.replace(/\.js$/, ".ts"), `${path}/index.ts`, `${path}/index.js`])];
+}
+
+/** Resolves a guest import against the module map. */
+export function resolveModule(base: string, requested: string, modules: Readonly<Record<string, string>>): string | Error {
+  if (requested === SCRIPT_MODULE) return requested;
+  const candidates = moduleCandidates(base, requested);
+  if (candidates instanceof Error) return candidates;
+  return candidates.find((c) => Object.hasOwn(modules, c)) ?? new Error(`Cannot find module ${requested} (imported from ${base === SCRIPT_MODULE ? "the script" : base})`);
+}
+
 const HOST_NAME = /^[a-z][A-Za-z0-9]*(\.[a-z][A-Za-z0-9]*)*$/;
 
 // Raw bridges are captured in closures and removed from globalThis before user
@@ -196,8 +233,19 @@ export async function runScript(js: string, options: RunScriptOptions = {}): Pro
   runtime.setMaxStackSize(limits.stackBytes);
   const deadline = Date.now() + limits.deadlineMs;
   runtime.setInterruptHandler(shouldInterruptAfterDeadline(deadline));
-  runtime.setModuleLoader((name) =>
-    name === SCRIPT_MODULE ? js : { error: new Error(`Imports are not allowed in scripts: ${name}`) },
+  const modules = options.modules ?? {};
+  // A normalizer failure loses its message on the way through QuickJS, so it
+  // resolves to a name the loader turns back into the error.
+  runtime.setModuleLoader(
+    (name) => {
+      if (name === SCRIPT_MODULE) return js;
+      if (name.startsWith(UNRESOLVED)) return { error: new Error(name.slice(UNRESOLVED.length)) };
+      return Object.hasOwn(modules, name) ? modules[name]! : { error: new Error(`Cannot find module ${name}`) };
+    },
+    (base, requested) => {
+      const resolved = resolveModule(base, requested, modules);
+      return typeof resolved === "string" ? resolved : `${UNRESOLVED}${resolved.message}`;
+    },
   );
 
   const ctx = runtime.newContext();
@@ -441,7 +489,7 @@ function toScriptError(ctx: QuickJSContext, handle: QuickJSHandle): ScriptError 
   if (name === "InternalError" && /out of memory/i.test(message)) {
     return new ScriptError("memory", "Script exceeded its memory limit");
   }
-  if (/Imports are not allowed in scripts/.test(message) || name === "SyntaxError") {
+  if (/Imports are not allowed in scripts|Cannot find module|Import leaves the script's directory/.test(message) || name === "SyntaxError") {
     return new ScriptError("invalid-script", message, stack);
   }
   return new ScriptError("guest", name ? `${name}: ${message}` : message, stack);

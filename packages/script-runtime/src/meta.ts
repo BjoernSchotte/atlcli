@@ -6,13 +6,27 @@ const KEY = "[A-Z][A-Z0-9_]*";
 
 /**
  * Optional capability declarations. Without `permissions` a script may call
- * every verb (writes are still only planned). With them, everything not listed
- * is denied; write grants are bound to one Jira project or Confluence space.
- * The executing user's or profile's own permissions always still apply.
+ * every Jira and Confluence verb and read and write local files (writes are
+ * still only planned). With them, everything not listed is denied; write
+ * grants are bound to one Jira project or Confluence space, or `*` for all.
+ * External HTTP always needs an `http:<host>` grant. The executing user's or
+ * profile's own permissions always still apply.
  */
-export const PERMISSION_PATTERN = new RegExp(`^(jira|confluence):(read|write:${KEY})$`);
+export const PERMISSION_PATTERN = new RegExp(
+  `^(?:(?:jira|confluence):(?:read|write:(?:${KEY}|\\*))|file:(?:read|write)|http:(?:\\*\\.)?[a-z0-9-]+(?:\\.[a-z0-9-]+)*(?::\\d{1,5})?)$`,
+);
 
-export type ScriptPermission = `jira:read` | `jira:write:${string}` | `confluence:read` | `confluence:write:${string}`;
+export type ScriptPermission =
+  | `jira:read`
+  | `jira:write:${string}`
+  | `confluence:read`
+  | `confluence:write:${string}`
+  | `file:read`
+  | `file:write`
+  | `http:${string}`;
+
+/** Secret names: `atlcli.secret("NAME")` reads `ATLCLI_SECRET_NAME` on the host. */
+export const SECRET_NAME = /^[A-Z][A-Z0-9_]*$/;
 
 const paramSpec = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("string"), default: z.string().optional(), description: z.string().optional() }),
@@ -26,8 +40,20 @@ export const scriptMetaSchema = z.strictObject({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes").optional(),
   description: z.string().optional(),
   permissions: z
-    .array(z.string().regex(PERMISSION_PATTERN, "expected jira:read, jira:write:<PROJECT>, confluence:read or confluence:write:<SPACE>"))
+    .array(
+      z
+        .string()
+        .regex(
+          PERMISSION_PATTERN,
+          "expected jira:read, jira:write:<PROJECT|*>, confluence:read, confluence:write:<SPACE|*>, file:read, file:write or http:<host>",
+        ),
+    )
     .transform((list) => [...new Set(list)] as ScriptPermission[])
+    .optional(),
+  /** Secrets the script uses (`atlcli.secret`); each must be set on the host as ATLCLI_SECRET_<NAME>. */
+  secrets: z
+    .array(z.string().regex(SECRET_NAME, "secret names are upper case letters, digits and _"))
+    .transform((list) => [...new Set(list)])
     .optional(),
   limits: z.strictObject({ maxWrites: z.number().int().positive().optional() }).optional(),
   params: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), paramSpec).optional(),

@@ -18,7 +18,21 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { ERROR_CODES, fail, getFlag, hasFlag, output, type OutputOptions, promptConfirm, stripControlChars } from "@atlcli/core";
 import type { JiraIssueView, PlannedOperation, ScriptMeta, ScriptPort, Templating } from "@atlcli/script-runtime";
-import { connect, describeOperation, displayPath, type Flags, guard, parseConcurrency, parseLimits, readSource, transpile } from "./script.js";
+import {
+  connect,
+  describeOperation,
+  digestSource,
+  displayPath,
+  type Flags,
+  guard,
+  parseConcurrency,
+  parseLimits,
+  loadImports,
+  readSource,
+  scriptName,
+  transpile,
+  transpileModules,
+} from "./script.js";
 
 const runtime = () => import("@atlcli/script-runtime");
 
@@ -76,7 +90,14 @@ const FINISHED = new Set<Outcome["status"]>(["planned", "unchanged", "applied", 
 
 export const jobsRoot = () => join(homedir(), ".atlcli", "jobs");
 const jobDir = (id: string) => join(jobsRoot(), id);
-const file = (job: ScriptJob, name: "job.json" | "items.jsonl" | "plans.jsonl" | "results.jsonl" | "script.ts") => join(jobDir(job.id), name);
+const file = (job: ScriptJob, name: "job.json" | "items.jsonl" | "plans.jsonl" | "results.jsonl" | "script.ts" | "modules.json") =>
+  join(jobDir(job.id), name);
+
+/** The files the job's script imports, saved with it so a resume runs the same code. */
+async function readJobModules(job: ScriptJob): Promise<Record<string, string>> {
+  const text = await readFile(file(job, "modules.json"), "utf8").catch(() => "{}");
+  return JSON.parse(text) as Record<string, string>;
+}
 const sha256 = (data: string) => createHash("sha256").update(data).digest("hex");
 
 // ============ Entry points ============
@@ -102,15 +123,16 @@ export async function runEach(
     fail(opts, 1, ERROR_CODES.USAGE, error instanceof Error ? error.message : String(error));
   }
   const { limits, maxWrites } = parseLimits(flags, opts);
+  const modules = "path" in origin ? await loadImports(origin.path, source, opts) : {};
   const { profile, port } = await connect(flags, opts);
-  const name = meta.name ?? ("path" in origin ? origin.path.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, "") : origin.name);
+  const name = meta.name ?? scriptName(origin);
   const now = new Date();
   const job: ScriptJob = {
     schema: JOB_SCHEMA,
     id: `${now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15)}-${name.replace(/[^a-z0-9-]/gi, "").toLowerCase() || "script"}-${randomBytes(2).toString("hex")}`,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
-    script: { name, ...("path" in origin ? { path: origin.path } : {}), sha256: sha256(source) },
+    script: { name, ...("path" in origin ? { path: origin.path } : {}), sha256: sha256(digestSource(source, modules)) },
     params: resolvedParams,
     jql,
     fields: meta.each?.fields ?? DEFAULT_EACH_FIELDS,
@@ -128,6 +150,7 @@ export async function runEach(
 
   await mkdir(jobDir(job.id), { recursive: true });
   await writeFile(file(job, "script.ts"), source, "utf8");
+  if (Object.keys(modules).length > 0) await writeFile(file(job, "modules.json"), JSON.stringify(modules), "utf8");
   job.total = await snapshot(job, port, opts);
   await saveJob(job);
   if (job.mode === "stream") await confirmStream(job, flags, opts);
@@ -147,8 +170,10 @@ export async function resumeCommand(args: string[], flags: Flags, opts: OutputOp
   let source = await readFile(file(job, "script.ts"), "utf8");
   if (replacement) {
     source = await readSource(replacement, opts);
-    job.script.sha256 = sha256(source);
+    const modules = await loadImports(replacement, source, opts);
+    job.script.sha256 = sha256(digestSource(source, modules));
     await writeFile(file(job, "script.ts"), source, "utf8");
+    await writeFile(file(job, "modules.json"), JSON.stringify(modules), "utf8");
   }
   job.concurrency = parseConcurrency(flags, opts, job.concurrency);
   const maxFailures = getFlag(flags, "max-failures");
@@ -263,6 +288,7 @@ interface Tally {
 async function processJob(job: ScriptJob, source: string, port: ScriptPort, flags: Flags, opts: OutputOptions): Promise<void> {
   const rt = await runtime();
   const js = transpile(source, opts);
+  const modules = transpileModules(await readJobModules(job), opts);
   const out = job.mode === "plan" ? "plans.jsonl" : "results.jsonl";
   const finished = await finishedIds(job, out);
   const items = (await readItems(job)).filter((item) => !finished.has(item.id));
@@ -287,7 +313,7 @@ async function processJob(job: ScriptJob, source: string, port: ScriptPort, flag
       const issue = issues.get(item.id);
       let outcome: Outcome;
       if (!issue) outcome = { ...item, status: "gone", error: "issue no longer exists or is not visible" };
-      else outcome = await runItem(rt, job, js, port, issue, memo, opts);
+      else outcome = await runItem(rt, job, js, modules, port, issue, memo, opts);
       if (outcome.operations) {
         for (const op of outcome.operations) {
           verbs.set(op.verb, (verbs.get(op.verb) ?? 0) + 1);
@@ -323,6 +349,7 @@ async function runItem(
   rt: Awaited<ReturnType<typeof runtime>>,
   job: ScriptJob,
   js: string,
+  modules: Record<string, string>,
   port: ScriptPort,
   issue: JiraIssueView,
   memo: Map<string, Promise<unknown>>,
@@ -334,6 +361,8 @@ async function runItem(
   try {
     run = await rt.planScript(js, {
       port,
+      name: job.script.name,
+      modules,
       item: issue,
       params: job.params,
       limits,
