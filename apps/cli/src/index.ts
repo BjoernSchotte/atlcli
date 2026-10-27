@@ -1,3 +1,5 @@
+// Hands the embedded QuickJS WASM to Jinja and scripts before any command runs.
+import "./quickjs-wasm.js";
 import {
   hasFlag,
   output,

@@ -1,4 +1,4 @@
-import { newQuickJSAsyncWASMModuleFromVariant, type QuickJSContext, type QuickJSRuntime, type QuickJSWASMModule } from "quickjs-emscripten-core";
+import { newQuickJSAsyncWASMModuleFromVariant, newVariant, type QuickJSContext, type QuickJSRuntime, type QuickJSWASMModule } from "quickjs-emscripten-core";
 import { GUEST_PRELUDE } from "./guest.js";
 import { NUNJUCKS_SOURCE } from "./vendor/nunjucks-source.js";
 
@@ -32,11 +32,28 @@ let live: { runtime: QuickJSRuntime; ctx: QuickJSContext } | undefined;
 /** Where a streaming render's chunks go during the call. */
 let sink: ((chunk: string) => void) | undefined;
 
+let wasmBinary: (() => Promise<ArrayBuffer>) | undefined;
+
+/**
+ * Supplies the WASM bytes instead of the file the loader reads beside the
+ * bundle. A compiled CLI binary embeds the WASM under its own path, so it must
+ * hand the bytes over (see apps/cli/src/quickjs-wasm.ts). Pass `undefined` to
+ * return to the loader's lookup. Drops a loaded module; the next render needs
+ * `initJinja()` again.
+ */
+export function setJinjaWasmBinary(load: (() => Promise<ArrayBuffer>) | undefined): void {
+  reset();
+  wasmBinary = load;
+  module = undefined;
+  loading = undefined;
+}
+
 /** Loads the QuickJS module once. Rendering is synchronous after this resolved. */
 export function initJinja(): Promise<void> {
-  // The QuickJS build the CLI already ships (one emscripten-module.wasm beside the bundle).
+  // The QuickJS build the CLI already ships: emscripten-module.wasm beside the
+  // bundle, or the bytes from setJinjaWasmBinary().
   return (loading ??= import("@jitl/quickjs-ng-wasmfile-release-asyncify")
-    .then((v) => newQuickJSAsyncWASMModuleFromVariant(v.default))
+    .then((v) => newQuickJSAsyncWASMModuleFromVariant(wasmBinary ? newVariant(v.default, { wasmBinary }) : v.default))
     .then((m) => {
       // Only the synchronous API is used, which the asyncify build shares.
       module = m as unknown as QuickJSWASMModule;

@@ -10,4 +10,4 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (29): Analysis, AnalysisWarning, DEFAULT_JINJA_LIMITS, DEFAULT_STREAM_TIMEOUT_MS, ExpressionRefs, JINJA_FILTERS, JINJA_GLOBALS, JinjaError, JinjaLimits, JinjaSyntaxError, JinjaWarning, JinjaWarningCode, RenderJinjaOptions, StreamJinjaOptions, Token, WarningCode, analyze, applyLiteral, evaluateJinja, expressionRefs, hasJinjaSyntax, initJinja, jinjaReady, renderJinja, renderJinjaSegments, resolvesIn, streamJinja, tagName, tokenize
+- exported symbols (30): Analysis, AnalysisWarning, DEFAULT_JINJA_LIMITS, DEFAULT_STREAM_TIMEOUT_MS, ExpressionRefs, JINJA_FILTERS, JINJA_GLOBALS, JinjaError, JinjaLimits, JinjaSyntaxError, JinjaWarning, JinjaWarningCode, RenderJinjaOptions, StreamJinjaOptions, Token, WarningCode, analyze, applyLiteral, evaluateJinja, expressionRefs, hasJinjaSyntax, initJinja, jinjaReady, renderJinja, renderJinjaSegments, resolvesIn, setJinjaWasmBinary, streamJinja, tagName, tokenize

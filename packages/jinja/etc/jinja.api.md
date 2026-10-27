@@ -138,6 +138,9 @@ export declare function renderJinjaSegments(source: string, vars: Record<string,
 // export: resolvesIn
 export declare function resolvesIn(vars: unknown, path: string[]): boolean;
 
+// export: setJinjaWasmBinary
+export declare function setJinjaWasmBinary(load: (() => Promise<ArrayBuffer>) | undefined): void;
+
 // export: streamJinja
 export declare function streamJinja(source: string, vars: Record<string, unknown>, write: (chunk: string) => void, options?: StreamJinjaOptions): {
     warnings: JinjaWarning[];
