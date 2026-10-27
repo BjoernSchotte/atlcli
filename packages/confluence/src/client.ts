@@ -269,6 +269,40 @@ export type ConfluenceSpace = {
   url?: string;
 };
 
+/** One space permission record (`GET /api/v2/spaces/{id}/permissions`). */
+export type SpacePermissionV2 = {
+  id: string;
+  /** `type`: "user", "group" or "access-class" (e.g. ALL_LICENSED_USERS, ANONYMOUS). */
+  principal: { type: string; id: string };
+  operation: { key: string; targetType: string };
+};
+
+/** A space role of the site's role model (`GET /api/v2/space-roles`). */
+export type SpaceRoleV2 = {
+  id: string;
+  type: string;
+  name: string;
+  description?: string;
+  /** e.g. "read/space", "write/space". */
+  spacePermissions: string[];
+};
+
+/** `principalType`: "USER", "GROUP" or "ACCESS_CLASS". */
+export type SpaceRolePrincipalV2 = { principalType: string; principalId: string };
+
+export type SpaceRoleAssignmentV2 = { roleId: string; principal: SpaceRolePrincipalV2 };
+
+/** A user as `/user/bulk` and `/group/{id}/membersByGroupId` describe it. */
+export type ConfluenceUserDetails = {
+  accountId: string;
+  displayName: string;
+  status: "active" | "inactive" | "closed" | "unknown";
+  /** "atlassian", "app" or "customer". */
+  accountType: string;
+  external: boolean;
+  guest: boolean;
+};
+
 /** A single bounded page from the cursor-paginated v2 spaces endpoint. */
 export type ConfluenceSpacePageV2 = {
   spaces: ConfluenceSpace[];
@@ -549,7 +583,20 @@ function extractCursor(nextLink: string | undefined, baseUrl: string): string | 
   return nextUrl.searchParams.get("cursor") ?? undefined;
 }
 
-type RetryScheduler = (delayMs: number, signal?: AbortSignal) => Promise<void>;
+const ACCOUNT_STATUSES = new Set(["active", "inactive", "closed"]);
+
+function userDetails(u: any): ConfluenceUserDetails {
+  return {
+    accountId: String(u?.accountId),
+    displayName: String(u?.displayName ?? u?.publicName ?? u?.accountId),
+    status: ACCOUNT_STATUSES.has(u?.accountStatus) ? u.accountStatus : "unknown",
+    accountType: typeof u?.accountType === "string" ? u.accountType : "unknown",
+    external: u?.isExternalCollaborator === true,
+    guest: u?.isGuest === true,
+  };
+}
+
+type RetryScheduler =(delayMs: number, signal?: AbortSignal) => Promise<void>;
 
 export type ConfluenceTransportEvent =
   | {
@@ -5226,6 +5273,108 @@ export class ConfluenceClient {
     }
 
     return results;
+  }
+
+  /** Users by account id via v1 `/user/bulk`, 100 per request; unknown ids are left out. */
+  async getUsersDetails(accountIds: readonly string[], options: { signal?: AbortSignal } = {}): Promise<ConfluenceUserDetails[]> {
+    const ids = [...new Set(accountIds)];
+    const users: ConfluenceUserDetails[] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const data = (await this.request("/user/bulk", {
+        query: { accountId: ids.slice(i, i + 100).join(","), expand: "isExternalCollaborator", limit: 100 },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      users.push(...(data?.results ?? []).map(userDetails));
+    }
+    return users;
+  }
+
+  // ============ Space Permissions and Roles ============
+
+  /** Every permission record of a space (v2, all pages). */
+  async getSpacePermissionsV2(spaceId: string, options: { signal?: AbortSignal } = {}): Promise<SpacePermissionV2[]> {
+    return this.drainV2(`/spaces/${encodeURIComponent(spaceId)}/permissions`, options.signal, (r: any) => ({
+      id: String(r.id),
+      principal: { type: String(r.principal?.type), id: String(r.principal?.id) },
+      operation: { key: String(r.operation?.key), targetType: String(r.operation?.targetType) },
+    }));
+  }
+
+  /** The site's space permission model; a site without the endpoint predates roles. */
+  async getSpaceRoleMode(options: { signal?: AbortSignal } = {}): Promise<"PRE_ROLES" | "ROLES_TRANSITION" | "ROLES"> {
+    try {
+      const data = (await this.requestV2("/space-role-mode", { signal: options.signal, logBody: "meta-only" })) as any;
+      return data?.mode === "ROLES" || data?.mode === "ROLES_TRANSITION" ? data.mode : "PRE_ROLES";
+    } catch (error) {
+      if (error instanceof ConfluenceV2RequestError && error.status === 404) return "PRE_ROLES";
+      throw error;
+    }
+  }
+
+  async listSpaceRoles(options: { signal?: AbortSignal } = {}): Promise<SpaceRoleV2[]> {
+    return this.drainV2("/space-roles", options.signal, (r: any) => ({
+      id: String(r.id),
+      type: String(r.type),
+      name: String(r.name),
+      ...(typeof r.description === "string" ? { description: r.description } : {}),
+      spacePermissions: Array.isArray(r.spacePermissions) ? r.spacePermissions.map(String) : [],
+    }));
+  }
+
+  async getSpaceRoleAssignments(spaceId: string, options: { signal?: AbortSignal } = {}): Promise<SpaceRoleAssignmentV2[]> {
+    return this.drainV2(`/spaces/${encodeURIComponent(spaceId)}/role-assignments`, options.signal, (r: any) => ({
+      roleId: String(r.roleId),
+      principal: { principalType: String(r.principal?.principalType), principalId: String(r.principal?.principalId) },
+    }));
+  }
+
+  /** Sets the principals' roles in a space; an entry without `roleId` removes that principal's assignment. */
+  async setSpaceRoleAssignments(
+    spaceId: string,
+    entries: ReadonlyArray<{ principal: SpaceRolePrincipalV2; roleId?: string }>,
+  ): Promise<void> {
+    await this.requestV2(`/spaces/${encodeURIComponent(spaceId)}/role-assignments`, {
+      method: "POST",
+      body: entries.map((e) => ({ principal: e.principal, ...(e.roleId !== undefined ? { roleId: e.roleId } : {}) })),
+      logBody: "meta-only",
+    });
+  }
+
+  /** Removes one space permission record (v1); one already gone counts as removed. */
+  async removeSpacePermission(spaceKey: string, permissionId: string): Promise<void> {
+    try {
+      await this.request(`/space/${encodeURIComponent(spaceKey)}/permission/${encodeURIComponent(permissionId)}`, {
+        method: "DELETE",
+        logBody: "meta-only",
+      });
+    } catch (error) {
+      if (!(error instanceof ConfluenceRequestError && error.status === 404)) throw error;
+    }
+  }
+
+  /** Every member of a group, by group id (v1, offset paged). */
+  async getGroupMembersById(groupId: string, options: { signal?: AbortSignal } = {}): Promise<ConfluenceUserDetails[]> {
+    const limit = 200;
+    const members: ConfluenceUserDetails[] = [];
+    for (let start = 0; ; start += limit) {
+      const data = (await this.request(`/group/${encodeURIComponent(groupId)}/membersByGroupId`, {
+        query: { start, limit, expand: "isExternalCollaborator" },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const results = data?.results ?? [];
+      members.push(...results.map(userDetails));
+      if (results.length < limit || !data?._links?.next) return members;
+    }
+  }
+
+  /** All items of a cursor-paged v2 list. */
+  private drainV2<T>(path: string, signal: AbortSignal | undefined, map: (item: unknown) => T): Promise<T[]> {
+    return drainPaginated<T>(async (cursor) => {
+      const data = (await this.requestV2(path, { query: { limit: 250, cursor }, signal, logBody: "meta-only" })) as any;
+      return { items: (data?.results ?? []).map(map), next: extractCursor(data?._links?.next, this.confluenceBaseUrl) };
+    });
   }
 
   // ============ Version History API ============

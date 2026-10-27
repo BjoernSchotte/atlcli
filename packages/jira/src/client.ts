@@ -35,6 +35,9 @@ import type {
   JiraVersion,
   JiraRemoteLink,
   JiraStatus,
+  JiraPermissionScheme,
+  JiraProjectRole,
+  JiraUserDetails,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
@@ -49,6 +52,15 @@ import type {
 export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission, JiraAttachment, JiraRemoteLink, CreateRemoteLinkInput } from "./types.js";
 
 type RetryScheduler = (delayMs: number, signal?: AbortSignal) => Promise<void>;
+
+function jiraUserDetails(u: any): JiraUserDetails {
+  return {
+    accountId: String(u?.accountId),
+    displayName: String(u?.displayName ?? u?.accountId),
+    active: u?.active !== false,
+    accountType: typeof u?.accountType === "string" ? u.accountType : "unknown",
+  };
+}
 
 export type JiraTransportEvent =
   | {
@@ -318,7 +330,8 @@ export class JiraClient {
     path: string,
     options: {
       method?: string;
-      query?: Record<string, string | number | boolean | undefined>;
+      /** An array repeats the parameter (`accountId=a&accountId=b`). */
+      query?: Record<string, string | number | boolean | readonly string[] | undefined>;
       body?: unknown;
       apiBase?: string; // Override API base path
       /**
@@ -341,7 +354,8 @@ export class JiraClient {
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
         if (value === undefined) continue;
-        url.searchParams.set(key, String(value));
+        if (Array.isArray(value)) for (const item of value) url.searchParams.append(key, item);
+        else url.searchParams.set(key, String(value));
       }
     }
 
@@ -765,6 +779,117 @@ export class JiraClient {
    */
   async deleteComponent(id: string): Promise<void> {
     await this.request(`/component/${id}`, { method: "DELETE" });
+  }
+
+  // ============ Permissions, Roles and Groups ============
+
+  /**
+   * Every permission scheme with its grants (Cloud). Holders carry the role,
+   * group or user display name in `name`.
+   *
+   * GET /rest/api/3/permissionscheme?expand=permissions,group,projectRole,user
+   */
+  async listPermissionSchemes(): Promise<JiraPermissionScheme[]> {
+    const data = await this.request<{ permissionSchemes?: any[] }>("/permissionscheme", {
+      query: { expand: "permissions,group,projectRole,user" },
+    });
+    return (data.permissionSchemes ?? []).map((s) => ({
+      id: Number(s.id),
+      name: String(s.name),
+      grants: (s.permissions ?? []).map((p: any) => {
+        const h = p.holder ?? {};
+        const name = h.projectRole?.name ?? h.group?.name ?? h.user?.displayName;
+        return {
+          id: Number(p.id),
+          permission: String(p.permission),
+          holder: {
+            type: String(h.type),
+            ...(h.value !== undefined ? { value: String(h.value) } : {}),
+            ...(h.parameter !== undefined ? { parameter: String(h.parameter) } : {}),
+            ...(name !== undefined ? { name: String(name) } : {}),
+          },
+        };
+      }),
+    }));
+  }
+
+  /** GET /rest/api/3/project/{key}/permissionscheme */
+  async getProjectPermissionScheme(projectKey: string): Promise<{ id: number; name: string }> {
+    const data = await this.request<{ id: number | string; name: string }>(`/project/${encodeURIComponent(projectKey)}/permissionscheme`);
+    return { id: Number(data.id), name: data.name };
+  }
+
+  /**
+   * A project's roles with their actors: one `roledetails` call, then one per
+   * role. Reading actors needs Administer Projects; a refusal throws the API
+   * error (its `status` is 403 or 404).
+   */
+  async getProjectRoles(projectKey: string): Promise<JiraProjectRole[]> {
+    const project = encodeURIComponent(projectKey);
+    const details = await this.request<Array<{ id: number; name: string; admin?: boolean }>>(`/project/${project}/roledetails`);
+    const roles: JiraProjectRole[] = [];
+    for (const d of details) {
+      const role = await this.request<{ actors?: any[] }>(`/project/${project}/role/${d.id}`);
+      roles.push({
+        id: Number(d.id),
+        name: d.name,
+        admin: d.admin === true,
+        actors: (role.actors ?? []).flatMap((a): JiraProjectRole["actors"] =>
+          a.actorUser?.accountId
+            ? [{ type: "user" as const, id: String(a.actorUser.accountId), name: String(a.displayName ?? a.actorUser.accountId) }]
+            : a.actorGroup
+              ? [{ type: "group" as const, id: String(a.actorGroup.groupId ?? a.actorGroup.name), name: String(a.actorGroup.displayName ?? a.actorGroup.name ?? a.displayName) }]
+              : [],
+        ),
+      });
+    }
+    return roles;
+  }
+
+  /** Every member of a group (all pages). GET /rest/api/3/group/member */
+  async getGroupMembers(groupId: string, options: { includeInactive?: boolean } = {}): Promise<JiraUserDetails[]> {
+    const members: JiraUserDetails[] = [];
+    for (let startAt = 0; ; ) {
+      const page = await this.request<{ values?: any[]; isLast?: boolean }>("/group/member", {
+        query: { groupId, includeInactiveUsers: options.includeInactive ?? true, startAt, maxResults: 50 },
+      });
+      const values = page.values ?? [];
+      members.push(...values.map(jiraUserDetails));
+      startAt += values.length;
+      if (page.isLast !== false || values.length === 0) return members;
+    }
+  }
+
+  /** Users by account id, 100 per request; unknown ids are left out. GET /rest/api/3/user/bulk */
+  async getUsersDetails(accountIds: readonly string[]): Promise<JiraUserDetails[]> {
+    const ids = [...new Set(accountIds)];
+    const users: JiraUserDetails[] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const page = await this.request<{ values?: any[] }>("/user/bulk", { query: { accountId: ids.slice(i, i + 100), maxResults: 100 } });
+      users.push(...(page.values ?? []).map(jiraUserDetails));
+    }
+    return users;
+  }
+
+  /** Whether the caller holds each permission (in the project, or globally without one). GET /rest/api/3/mypermissions */
+  async myPermissions(projectKey: string | undefined, permissions: readonly string[]): Promise<Record<string, boolean>> {
+    const data = await this.request<{ permissions?: Record<string, { havePermission?: boolean }> }>("/mypermissions", {
+      query: { projectKey, permissions: permissions.join(",") },
+    });
+    return Object.fromEntries(permissions.map((p) => [p, data.permissions?.[p]?.havePermission === true]));
+  }
+
+  /** DELETE /rest/api/3/project/{key}/role/{roleId}?user=… or ?groupId=… */
+  async removeProjectRoleActor(projectKey: string, roleId: number, principal: { type: "user" | "group"; id: string }): Promise<void> {
+    await this.request(`/project/${encodeURIComponent(projectKey)}/role/${roleId}`, {
+      method: "DELETE",
+      query: principal.type === "user" ? { user: principal.id } : { groupId: principal.id },
+    });
+  }
+
+  /** DELETE /rest/api/3/permissionscheme/{schemeId}/permission/{grantId} */
+  async deletePermissionGrant(schemeId: number, grantId: number): Promise<void> {
+    await this.request(`/permissionscheme/${schemeId}/permission/${grantId}`, { method: "DELETE" });
   }
 
   // ============ Version Operations ============

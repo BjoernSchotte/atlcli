@@ -1246,6 +1246,30 @@ export declare class ConfluenceClient {
         concurrency?: number;
         signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
+    getUsersDetails(accountIds: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    getSpacePermissionsV2(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpacePermissionV2[]>;
+    getSpaceRoleMode(options?: {
+        signal?: AbortSignal;
+    }): Promise<"PRE_ROLES" | "ROLES_TRANSITION" | "ROLES">;
+    listSpaceRoles(options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleV2[]>;
+    getSpaceRoleAssignments(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleAssignmentV2[]>;
+    setSpaceRoleAssignments(spaceId: string, entries: ReadonlyArray<{
+        principal: SpaceRolePrincipalV2;
+        roleId?: string;
+    }>): Promise<void>;
+    removeSpacePermission(spaceKey: string, permissionId: string): Promise<void>;
+    getGroupMembersById(groupId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    private drainV2;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
@@ -1418,6 +1442,16 @@ export type ConfluenceUser = {
     accountId?: string;
     displayName: string;
     email?: string;
+};
+
+// export: ConfluenceUserDetails
+export type ConfluenceUserDetails = {
+    accountId: string;
+    displayName: string;
+    status: "active" | "inactive" | "closed" | "unknown";
+    accountType: string;
+    external: boolean;
+    guest: boolean;
 };
 
 // export: ConversionOptions
@@ -2993,6 +3027,40 @@ export type SpaceIcon = {
     width?: number;
     height?: number;
     isDefault?: boolean;
+};
+
+// export: SpacePermissionV2
+export type SpacePermissionV2 = {
+    id: string;
+    principal: {
+        type: string;
+        id: string;
+    };
+    operation: {
+        key: string;
+        targetType: string;
+    };
+};
+
+// export: SpaceRoleAssignmentV2
+export type SpaceRoleAssignmentV2 = {
+    roleId: string;
+    principal: SpaceRolePrincipalV2;
+};
+
+// export: SpaceRolePrincipalV2
+export type SpaceRolePrincipalV2 = {
+    principalType: string;
+    principalId: string;
+};
+
+// export: SpaceRoleV2
+export type SpaceRoleV2 = {
+    id: string;
+    type: string;
+    name: string;
+    description?: string;
+    spacePermissions: string[];
 };
 
 // export: StandardCalloutKind
@@ -4712,6 +4780,30 @@ export declare class ConfluenceClient {
         concurrency?: number;
         signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
+    getUsersDetails(accountIds: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    getSpacePermissionsV2(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpacePermissionV2[]>;
+    getSpaceRoleMode(options?: {
+        signal?: AbortSignal;
+    }): Promise<"PRE_ROLES" | "ROLES_TRANSITION" | "ROLES">;
+    listSpaceRoles(options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleV2[]>;
+    getSpaceRoleAssignments(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleAssignmentV2[]>;
+    setSpaceRoleAssignments(spaceId: string, entries: ReadonlyArray<{
+        principal: SpaceRolePrincipalV2;
+        roleId?: string;
+    }>): Promise<void>;
+    removeSpacePermission(spaceKey: string, permissionId: string): Promise<void>;
+    getGroupMembersById(groupId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    private drainV2;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
@@ -4884,6 +4976,16 @@ export type ConfluenceUser = {
     accountId?: string;
     displayName: string;
     email?: string;
+};
+
+// export: ConfluenceUserDetails
+export type ConfluenceUserDetails = {
+    accountId: string;
+    displayName: string;
+    status: "active" | "inactive" | "closed" | "unknown";
+    accountType: string;
+    external: boolean;
+    guest: boolean;
 };
 
 // export: ConversionOptions
@@ -6459,6 +6561,40 @@ export type SpaceIcon = {
     width?: number;
     height?: number;
     isDefault?: boolean;
+};
+
+// export: SpacePermissionV2
+export type SpacePermissionV2 = {
+    id: string;
+    principal: {
+        type: string;
+        id: string;
+    };
+    operation: {
+        key: string;
+        targetType: string;
+    };
+};
+
+// export: SpaceRoleAssignmentV2
+export type SpaceRoleAssignmentV2 = {
+    roleId: string;
+    principal: SpaceRolePrincipalV2;
+};
+
+// export: SpaceRolePrincipalV2
+export type SpaceRolePrincipalV2 = {
+    principalType: string;
+    principalId: string;
+};
+
+// export: SpaceRoleV2
+export type SpaceRoleV2 = {
+    id: string;
+    type: string;
+    name: string;
+    description?: string;
+    spacePermissions: string[];
 };
 
 // export: StandardCalloutKind
@@ -8178,6 +8314,30 @@ export declare class ConfluenceClient {
         concurrency?: number;
         signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
+    getUsersDetails(accountIds: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    getSpacePermissionsV2(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpacePermissionV2[]>;
+    getSpaceRoleMode(options?: {
+        signal?: AbortSignal;
+    }): Promise<"PRE_ROLES" | "ROLES_TRANSITION" | "ROLES">;
+    listSpaceRoles(options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleV2[]>;
+    getSpaceRoleAssignments(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleAssignmentV2[]>;
+    setSpaceRoleAssignments(spaceId: string, entries: ReadonlyArray<{
+        principal: SpaceRolePrincipalV2;
+        roleId?: string;
+    }>): Promise<void>;
+    removeSpacePermission(spaceKey: string, permissionId: string): Promise<void>;
+    getGroupMembersById(groupId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    private drainV2;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
@@ -8350,6 +8510,16 @@ export type ConfluenceUser = {
     accountId?: string;
     displayName: string;
     email?: string;
+};
+
+// export: ConfluenceUserDetails
+export type ConfluenceUserDetails = {
+    accountId: string;
+    displayName: string;
+    status: "active" | "inactive" | "closed" | "unknown";
+    accountType: string;
+    external: boolean;
+    guest: boolean;
 };
 
 // export: ConversionOptions
@@ -9927,6 +10097,40 @@ export type SpaceIcon = {
     isDefault?: boolean;
 };
 
+// export: SpacePermissionV2
+export type SpacePermissionV2 = {
+    id: string;
+    principal: {
+        type: string;
+        id: string;
+    };
+    operation: {
+        key: string;
+        targetType: string;
+    };
+};
+
+// export: SpaceRoleAssignmentV2
+export type SpaceRoleAssignmentV2 = {
+    roleId: string;
+    principal: SpaceRolePrincipalV2;
+};
+
+// export: SpaceRolePrincipalV2
+export type SpaceRolePrincipalV2 = {
+    principalType: string;
+    principalId: string;
+};
+
+// export: SpaceRoleV2
+export type SpaceRoleV2 = {
+    id: string;
+    type: string;
+    name: string;
+    description?: string;
+    spacePermissions: string[];
+};
+
 // export: StandardCalloutKind
 export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
@@ -11338,6 +11542,30 @@ export declare class ConfluenceClient {
         concurrency?: number;
         signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
+    getUsersDetails(accountIds: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    getSpacePermissionsV2(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpacePermissionV2[]>;
+    getSpaceRoleMode(options?: {
+        signal?: AbortSignal;
+    }): Promise<"PRE_ROLES" | "ROLES_TRANSITION" | "ROLES">;
+    listSpaceRoles(options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleV2[]>;
+    getSpaceRoleAssignments(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleAssignmentV2[]>;
+    setSpaceRoleAssignments(spaceId: string, entries: ReadonlyArray<{
+        principal: SpaceRolePrincipalV2;
+        roleId?: string;
+    }>): Promise<void>;
+    removeSpacePermission(spaceKey: string, permissionId: string): Promise<void>;
+    getGroupMembersById(groupId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    private drainV2;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
@@ -11506,6 +11734,16 @@ export type ConfluenceUser = {
     accountId?: string;
     displayName: string;
     email?: string;
+};
+
+// export: ConfluenceUserDetails
+export type ConfluenceUserDetails = {
+    accountId: string;
+    displayName: string;
+    status: "active" | "inactive" | "closed" | "unknown";
+    accountType: string;
+    external: boolean;
+    guest: boolean;
 };
 
 // export: ContentPropertyRecord
@@ -13309,6 +13547,40 @@ export type SpaceIcon = {
     width?: number;
     height?: number;
     isDefault?: boolean;
+};
+
+// export: SpacePermissionV2
+export type SpacePermissionV2 = {
+    id: string;
+    principal: {
+        type: string;
+        id: string;
+    };
+    operation: {
+        key: string;
+        targetType: string;
+    };
+};
+
+// export: SpaceRoleAssignmentV2
+export type SpaceRoleAssignmentV2 = {
+    roleId: string;
+    principal: SpaceRolePrincipalV2;
+};
+
+// export: SpaceRolePrincipalV2
+export type SpaceRolePrincipalV2 = {
+    principalType: string;
+    principalId: string;
+};
+
+// export: SpaceRoleV2
+export type SpaceRoleV2 = {
+    id: string;
+    type: string;
+    name: string;
+    description?: string;
+    spacePermissions: string[];
 };
 
 // export: SqliteAdapter
@@ -15176,6 +15448,30 @@ export declare class ConfluenceClient {
         concurrency?: number;
         signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
+    getUsersDetails(accountIds: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    getSpacePermissionsV2(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpacePermissionV2[]>;
+    getSpaceRoleMode(options?: {
+        signal?: AbortSignal;
+    }): Promise<"PRE_ROLES" | "ROLES_TRANSITION" | "ROLES">;
+    listSpaceRoles(options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleV2[]>;
+    getSpaceRoleAssignments(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleAssignmentV2[]>;
+    setSpaceRoleAssignments(spaceId: string, entries: ReadonlyArray<{
+        principal: SpaceRolePrincipalV2;
+        roleId?: string;
+    }>): Promise<void>;
+    removeSpacePermission(spaceKey: string, permissionId: string): Promise<void>;
+    getGroupMembersById(groupId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    private drainV2;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
@@ -15348,6 +15644,16 @@ export type ConfluenceUser = {
     accountId?: string;
     displayName: string;
     email?: string;
+};
+
+// export: ConfluenceUserDetails
+export type ConfluenceUserDetails = {
+    accountId: string;
+    displayName: string;
+    status: "active" | "inactive" | "closed" | "unknown";
+    accountType: string;
+    external: boolean;
+    guest: boolean;
 };
 
 // export: ConversionOptions
@@ -16925,6 +17231,40 @@ export type SpaceIcon = {
     isDefault?: boolean;
 };
 
+// export: SpacePermissionV2
+export type SpacePermissionV2 = {
+    id: string;
+    principal: {
+        type: string;
+        id: string;
+    };
+    operation: {
+        key: string;
+        targetType: string;
+    };
+};
+
+// export: SpaceRoleAssignmentV2
+export type SpaceRoleAssignmentV2 = {
+    roleId: string;
+    principal: SpaceRolePrincipalV2;
+};
+
+// export: SpaceRolePrincipalV2
+export type SpaceRolePrincipalV2 = {
+    principalType: string;
+    principalId: string;
+};
+
+// export: SpaceRoleV2
+export type SpaceRoleV2 = {
+    id: string;
+    type: string;
+    name: string;
+    description?: string;
+    spacePermissions: string[];
+};
+
 // export: StandardCalloutKind
 export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
@@ -17834,6 +18174,30 @@ export declare class ConfluenceClient {
         concurrency?: number;
         signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
+    getUsersDetails(accountIds: readonly string[], options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    getSpacePermissionsV2(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpacePermissionV2[]>;
+    getSpaceRoleMode(options?: {
+        signal?: AbortSignal;
+    }): Promise<"PRE_ROLES" | "ROLES_TRANSITION" | "ROLES">;
+    listSpaceRoles(options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleV2[]>;
+    getSpaceRoleAssignments(spaceId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceRoleAssignmentV2[]>;
+    setSpaceRoleAssignments(spaceId: string, entries: ReadonlyArray<{
+        principal: SpaceRolePrincipalV2;
+        roleId?: string;
+    }>): Promise<void>;
+    removeSpacePermission(spaceKey: string, permissionId: string): Promise<void>;
+    getGroupMembersById(groupId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUserDetails[]>;
+    private drainV2;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
     }): Promise<PageHistory>;
