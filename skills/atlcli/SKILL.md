@@ -10,7 +10,8 @@ description: >-
   workspace sync (wiki docs pull/push), Confluence as a shell or filesystem
   (wiki sh/mount), page templates, DOCX and PDF export, DOCX and PDF import
   as Confluence pages, static-site publishing, wiki content audits, Jira
-  hygiene audits with a rules file and baseline, and a daily digest of what
+  hygiene audits with a rules file and baseline, access audits (who can see
+  and change spaces and projects), and a daily digest of what
   changed across Jira and Confluence. Use whenever
   "atlcli" is mentioned, and whenever a task touches Jira or Confluence at
   all, such as reading or filing a ticket, commenting, updating a status,
@@ -54,8 +55,8 @@ path as linked, for example `atlcli skill references/safety.md`.
    `--json`, stdout carries only JSON, and every error comes back on stdout
    as `{"error":{"code":"ATLCLI_ERR_…"}}` with exit code 1, including an HTTP
    error from Jira or Confluence (`details.status` holds the HTTP status).
-   Help and progress text go to stderr. `atlcli audit jira` exits 2 when it
-   lists findings at `--fail-on`, which is a result, not a failure.
+   Help and progress text go to stderr. `atlcli audit jira`, `wiki` and `access`
+   exit 2 when they list findings at `--fail-on`, which is a result, not a failure.
 3. **Quote values with spaces as one argument.** `--jql 'project = PROJ'` and
    `--jql='project = PROJ'` mean the same. Switches such as `--json`,
    `--confirm` and `--dry-run` never take a value, so they can stand anywhere.
@@ -111,6 +112,7 @@ path as linked, for example `atlcli skill references/safety.md`.
 | A static Astro or Starlight site from Confluence pages: `wiki publish` | [references/confluence-publish.md](references/confluence-publish.md) |
 | Content health of a synced docs directory: stale pages, orphans, broken links (`audit wiki`) | [references/confluence-audit.md](references/confluence-audit.md) |
 | Jira hygiene: stuck or unassigned work, stale and overdue issues, rules file, baseline (`audit jira`) | [references/jira-audit.md](references/jira-audit.md) |
+| Who can see and change what: anonymous access, inactive accounts, missing admins, page restrictions, fix plans that remove access (`audit access`) | [references/access-audit.md](references/access-audit.md) |
 | What changed since the last look, what waits on the user, a standup note: `atlcli digest` | [references/digest.md](references/digest.md) |
 | Many changes or changes needing logic, as one reviewed plan: TypeScript scripts with `atlcli script` (plan, then apply) | [references/scripts.md](references/scripts.md) |
 | Plugins (`git`, `drawio`), `models`, `log`, `update`, `completion` | [references/plugins-and-local-tools.md](references/plugins-and-local-tools.md) |

@@ -28,7 +28,7 @@ Every check is a TypeScript rule script that runs read-only in the [script sandb
 
 - The audit feature flag, shared with Jira Audit: `atlcli flag set audit true --global`
 - A directory set up with `atlcli wiki docs init` and pulled with `atlcli wiki docs pull` (see [Sync](sync.md))
-- A profile for `--fix`, `--include-remote` and `--refresh-users`; the plain audit works offline
+- A profile for `--fix`, `--include-remote`, `--refresh-users` and `content/restricted`; the other rules work offline
 
 ## Steps
 
@@ -92,6 +92,8 @@ Each rule has an id `<category>/<name>`. `--list-rules` lists them with their so
 - **`--checks <list>`:** narrows the active rules to rule ids, categories (`content`, `links`, `people`, `structure`) or the older names. It turns rules off, never on.
 
 `links/external-broken` makes an HTTP request to every external URL (5 at a time, 10 s timeout). `content/unsynced` and `--include-remote` list the space's pages through the API.
+
+`content/restricted` reads each page's restrictions live, one request per page (8 at a time), because the sync database holds none. It needs a profile; without one the report is marked partial (`restrictions (no profile to read them)`). For who may view and edit across spaces, see [Access Audit](../access-audit.md).
 
 ## Fixes
 
@@ -393,6 +395,9 @@ Confluence archives in the background. Pull again after a moment.
 **External link checks take long.**
 Each URL gets one request, 5 at a time with a 10-second timeout. Leave `--check-external` for scheduled runs.
 
+**`Partial: restrictions (no profile to read them) hit a limit`.**
+`content/restricted` reads restrictions through the API. Log in (`atlcli auth login`) or pass `--profile <name>`.
+
 **Stale pages look wrong.**
 The audit reads `lastModified` from the last pull. Pull first.
 
@@ -401,6 +406,7 @@ The audit reads `lastModified` from the last pull. Pull first.
 - [Custom Audit Rules](../audit-scripts.md)
 - [Audit Rules](../jira/audit-rules.md): rules-file grammar
 - [Jira Audit](../jira/audit.md)
+- [Access Audit](../access-audit.md)
 - [Folders](folders.md#validating-folders)
 - [Sync](sync.md) and [Storage](storage.md)
 - [Configuration](../configuration.md)

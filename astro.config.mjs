@@ -32,6 +32,7 @@ export default defineConfig({
         { label: 'Per-Issue Script Jobs', link: '/script-jobs/' },
         { label: 'Templating', link: '/templating/' },
         { label: 'Custom Audit Rules', link: '/audit-scripts/' },
+        { label: 'Access Audit', link: '/access-audit/' },
         { label: 'Terminal UI', link: '/tui/' },
         {
           label: 'Confluence',

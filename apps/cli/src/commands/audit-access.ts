@@ -586,7 +586,7 @@ Baseline: ~/.atlcli/profiles/<profile>/audit-access-baseline.json
 Options:
   --space <keys>        Spaces (comma-separated, or '*' for all but personal spaces)
   --project <keys>      Projects (comma-separated, or '*')
-  --product <p>         confluence, jira or both (default) when neither is given
+  --product <p>         confluence or jira only (default: both)
   --personal            With --space '*': include personal spaces
   --pages               Also read page restrictions of the spaces (one request per page)
   --max-pages <n>       Stop reading pages after n (default: ${DEFAULT_MAX_PAGES})
