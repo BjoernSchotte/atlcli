@@ -192,14 +192,17 @@ atlcli wiki page comments add --id 12345 --file ./comment.md --json
 atlcli wiki page comments reply --id 12345 --parent 67890 'Thanks!' --json
 atlcli wiki page comments add-inline --id 12345 --selection 'important text' 'Please clarify' --json
 atlcli wiki page comments resolve --comment 67890 --json
+atlcli wiki page comments reopen --comment 67890 --json
 atlcli wiki page comments delete --comment 67890 --confirm --json
 ```
 
 Comment text is Markdown, converted to storage format; `--file` reads it from a
 file. `--match-index <n>` selects which occurrence of `--selection` an inline
-comment attaches to (default 0). `resolve` and `delete` target `--comment <id>`,
-not `--id`, and treat the comment as a footer comment unless you pass
-`--type inline`.
+comment attaches to (default 0). `resolve`, `reopen` and `delete` target
+`--comment <id>`, not `--id`. `resolve` and `reopen` work only on inline
+comments (footer comments have no resolved state) and fail if the read-back
+state did not change. `delete` treats the comment as a footer comment unless
+you pass `--type inline`.
 
 ## History, diff and restore
 

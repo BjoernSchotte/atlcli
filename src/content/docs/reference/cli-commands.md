@@ -277,8 +277,8 @@ atlcli wiki page comments add --id <id> "Comment text"
 atlcli wiki page comments reply --id <id> --parent <comment-id> "Reply text"
 atlcli wiki page comments update --id <id> --comment <comment-id> "Updated text"
 atlcli wiki page comments delete --id <id> --comment <comment-id> --confirm
-atlcli wiki page comments resolve --id <id> --comment <comment-id>
-atlcli wiki page comments reopen --id <id> --comment <comment-id>
+atlcli wiki page comments resolve --comment <comment-id>   # inline comments only
+atlcli wiki page comments reopen --comment <comment-id>    # inline comments only
 
 # Inline comments
 atlcli wiki page comments list --id <id> --inline

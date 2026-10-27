@@ -103,25 +103,26 @@ The `--selection` option matches the exact text string in the page. If your targ
 
 ## Comment Resolution
 
-Mark comments as resolved (for review workflows):
+Mark inline comments as resolved (for review workflows). Only inline comments
+have a resolved state in Confluence; footer comments cannot be resolved.
 
 ```bash
-# Resolve a footer comment
+# Resolve an inline comment
 atlcli wiki page comments resolve --comment 67890
 
-# Resolve an inline comment (specify type)
-atlcli wiki page comments resolve --comment 67890 --type inline
-
-# Reopen a resolved comment
+# Reopen a resolved inline comment
 atlcli wiki page comments reopen --comment 67890
 ```
+
+atlcli reads the comment back after the update and fails if Confluence still
+reports the old state, so a reported success means the comment really changed.
 
 Options:
 
 | Flag | Description |
 |------|-------------|
 | `--comment` | Comment ID |
-| `--type` | Comment type: `footer` (default), `inline` |
+| `--type` | `inline` (default). `footer` is rejected: footer comments have no resolved state |
 
 ## Delete Comment
 

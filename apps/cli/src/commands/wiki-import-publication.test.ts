@@ -137,6 +137,18 @@ describe("DOCX publication compatibility over the shared transaction", () => {
     expect(fake.calls).toEqual(["inline:c1:root", "inline:c2:c1", "resolve:c1:inline"]);
   });
 
+  it("keeps a resolved footer comment open and reports it, because footer comments cannot be resolved", async () => {
+    const fake = new CloudPublicationFake();
+    const comment: ImportComment = { id: "comment", author: "Author", text: "Comment", resolved: true, replies: [] };
+    const issues: Parameters<typeof publishComments>[4] = [];
+    const bindings = await publishComments(client(fake), "p1", [comment], "auto", issues);
+    expect(bindings).toEqual([{ sourceCommentId: "comment", confluenceCommentId: "c1", location: "footer" }]);
+    expect(fake.calls).toEqual(["footer:c1:root"]);
+    expect(issues).toContainEqual(
+      expect.objectContaining({ code: "docx-import/comment-resolved-footer", context: { sourceCommentId: "comment" } }),
+    );
+  });
+
   it("rejects semantic body drift after create so the caller can roll back the registered id", async () => {
     const fake = new CloudPublicationFake();
     fake.drift = true;

@@ -4746,36 +4746,58 @@ export class ConfluenceClient {
   }
 
   /**
-   * Resolve a comment (mark as resolved).
+   * Resolve an inline comment (mark as resolved).
    *
-   * PUT /api/v2/{type}-comments/{id}
+   * PUT /api/v2/inline-comments/{id} with `resolved: true`. Confluence Cloud
+   * ignores unknown fields such as `resolutionStatus` and still answers 200,
+   * so the state is read back and a comment that stays open is an error.
+   * Footer comments have no resolved state in Confluence Cloud and are rejected.
    */
   async resolveComment(
     commentId: string,
     type: "footer" | "inline"
   ): Promise<void> {
-    const endpoint = type === "footer" ? "footer-comments" : "inline-comments";
+    if (type === "footer") {
+      throw new Error(
+        `Cannot resolve footer comment ${commentId}: Confluence footer comments have no resolved state. Only inline comments can be resolved.`
+      );
+    }
+    await this.setInlineCommentResolved(commentId, true);
+  }
 
-    // First fetch the comment to get its current body and version
-    const current = (await this.requestV2(
-      `/${endpoint}/${commentId}?body-format=storage`,
-      { method: "GET" }
-    )) as any;
+  /**
+   * Reopen a resolved inline comment.
+   *
+   * PUT /api/v2/inline-comments/{id} with `resolved: false`, then read back.
+   */
+  async reopenComment(commentId: string): Promise<void> {
+    await this.setInlineCommentResolved(commentId, false);
+  }
 
+  private async setInlineCommentResolved(commentId: string, resolved: boolean): Promise<void> {
+    const path = `/inline-comments/${commentId}`;
+
+    // Fetch the comment to get its current body and version
+    const current = (await this.requestV2(`${path}?body-format=storage`, { method: "GET" })) as any;
     const version = current.version?.number ?? 1;
     const body = current.body?.storage?.value ?? "";
 
-    await this.requestV2(`/${endpoint}/${commentId}`, {
+    await this.requestV2(path, {
       method: "PUT",
       body: {
         version: { number: version + 1 },
-        body: {
-          representation: "storage",
-          value: body,
-        },
-        resolutionStatus: "resolved",
+        body: { representation: "storage", value: body },
+        resolved,
       },
     });
+
+    const after = (await this.requestV2(path, { method: "GET" })) as any;
+    const isResolved = after.resolutionStatus === "resolved";
+    if (isResolved !== resolved) {
+      throw new Error(
+        `Inline comment ${commentId} is still ${isResolved ? "resolved" : "open"} after the update (resolutionStatus: ${after.resolutionStatus ?? "unknown"}).`
+      );
+    }
   }
 
   /**

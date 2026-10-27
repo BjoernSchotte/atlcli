@@ -1625,7 +1625,18 @@ export async function publishComments(
     }
 
     if (comment.resolved) {
-      await client.resolveComment(created.id, location);
+      if (location === "inline") {
+        await client.resolveComment(created.id, location);
+      } else {
+        // Confluence footer comments have no resolved state.
+        issues.push({
+          code: "docx-import/comment-resolved-footer",
+          severity: "info",
+          outcome: "approximated",
+          message: "Resolved comment was imported as a footer comment, which Confluence cannot mark as resolved; it stays open.",
+          context: { sourceCommentId: comment.id },
+        });
+      }
     }
   }
   return bindings;
