@@ -2,6 +2,28 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.14] - 2026-10-27
+
+### Bug Fixes
+
+- **audit:** Content/restricted reads restrictions live ([0f733f3](https://github.com/bjoernschotte/atlcli/commit/0f733f3ed291add7620569518a15b495077366af))
+- **audit:** Access levels from live data – delete own content is not admin, team-managed all-user grants, open admin counts ([ccff821](https://github.com/bjoernschotte/atlcli/commit/ccff821e2f1f40727a849bdcb216f3975fb9435c))
+
+### Documentation
+
+- **spec:** Access audit – permissions, roles, groups and users as audit rules with fix plans ([a9b87f3](https://github.com/bjoernschotte/atlcli/commit/a9b87f3740ce4c0ea6c4bd142734048cd696df93))
+- **spec:** Access audit – deviations, live findings and sources ([eeb27ed](https://github.com/bjoernschotte/atlcli/commit/eeb27ed601fd9836b1679267c1d0ef43f6c7a1c6))
+- Access audit guide, access verbs, live content/restricted; agent skill ([310c98e](https://github.com/bjoernschotte/atlcli/commit/310c98eee53b772ed990b2524446fe3c397ff6cd))
+
+### Features
+
+- **confluence,jira:** Space permissions and roles, permission schemes, project roles, group members and user details ([f2d7c60](https://github.com/bjoernschotte/atlcli/commit/f2d7c607cfc32cd8c02f955d3b461601e0e2f640))
+- **script:** Access verbs – space permissions and roles, groups, users, schemes, project roles; planned access removal ([16f2159](https://github.com/bjoernschotte/atlcli/commit/16f2159687b3e867705299f7ebfabb26c3411c24))
+- **audit:** Audit access – who can see and change what in Confluence and Jira, as rule scripts with fix plans ([57f2106](https://github.com/bjoernschotte/atlcli/commit/57f21064469c9e1c547078fbf7eac8f1173a6d47))
+
+### Testing
+
+- **skill:** Failed install names any reference file, not a fixed first one ([7575eb9](https://github.com/bjoernschotte/atlcli/commit/7575eb9493544c9f1dbd4bb673c4f5d108f7d397))
 ## [2026.10.13] - 2026-10-26
 
 ### Bug Fixes
