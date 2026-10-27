@@ -1,0 +1,18 @@
+// Spaces and projects that grant many people one by one instead of through groups.
+// Option max (default 10): how many individually named users are fine.
+export const meta = {
+  audit: {
+    id: "hygiene/direct-user-grants",
+    product: "access",
+    title: "Many individual grants",
+    category: "hygiene",
+    options: { max: [] },
+    profiles: { strict: "info" },
+  },
+};
+
+export default (resource, rule) => {
+  const max = Number(rule.config.options?.max?.[0] ?? 10);
+  const users = new Set(resource.grants.filter((g) => g.principal.type === "user" && g.principal.accountType !== "app").map((g) => g.principal.id));
+  if (users.size > max) return rule.finding({ detail: `${users.size} users are granted access one by one (more than ${max}); a group is easier to review.` });
+};

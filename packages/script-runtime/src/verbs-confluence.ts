@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ConfluenceRestrictionsView, RestWriteMethod } from "./port.js";
+import type { ConfluencePrincipalRef, ConfluenceRestrictionsView, RestWriteMethod } from "./port.js";
 import { hostOp, pagedIterator, restOptions, restPath, str, verb, type Verb } from "./recorder.js";
 
 const SEARCH_PAGE_SIZE = 100;
@@ -15,6 +15,20 @@ const principals = z.strictObject({ accountIds: z.array(str).optional(), groupId
 const restrictions = z
   .strictObject({ read: principals.optional(), update: principals.optional() })
   .refine((r) => r.read !== undefined || r.update !== undefined, "pass read, update or both");
+
+const spaceKey = str.regex(/^[A-Za-z0-9~_-]+$/, "a space key such as DOCSY");
+const groupId = str.max(255);
+/** A name is accepted (audit principals carry one) and left out of the plan. */
+const principal = z.strictObject({ type: z.enum(["user", "group", "access-class"]), id: str, name: str.optional() });
+/** Most account ids confluence.users takes in one call. */
+const MAX_USER_IDS = 500;
+
+/**
+ * Same principal in either API: access classes are spelled ALL_LICENSED_USERS
+ * in permissions and all-licensed-users in role assignments.
+ */
+const samePrincipal = (a: { type: string; id: string }, b: ConfluencePrincipalRef) =>
+  a.type === b.type && (b.type === "access-class" ? a.id.toLowerCase().replace(/_/g, "-") === b.id.toLowerCase().replace(/_/g, "-") : a.id === b.id);
 
 const canonical = (value: unknown): string =>
   JSON.stringify(value, (_k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v));
@@ -121,6 +135,63 @@ export const CONFLUENCE_VERBS: Record<string, Verb> = {
     r.require(`confluence:write:${input.space}`);
     const seq = await r.record("confluence.createBlogPost", { spaceKey: input.space, title: input.title, markdown: input.markdown });
     return { id: `plan:${seq}` };
+  }),
+  "confluence.spacePermissions": verb(z.tuple([spaceKey]), async (r, [key], signal) => {
+    r.require("confluence:read");
+    return hostOp(r.port.confluenceSpacePermissions?.bind(r.port), "confluence.spacePermissions")(key, { signal });
+  }),
+  "confluence.spaceRoles": verb(z.tuple([]), async (r, [], signal) => {
+    r.require("confluence:read");
+    return hostOp(r.port.confluenceSpaceRoles?.bind(r.port), "confluence.spaceRoles")({ signal });
+  }),
+  "confluence.roleAssignments": verb(z.tuple([spaceKey]), async (r, [key], signal) => {
+    r.require("confluence:read");
+    return hostOp(r.port.confluenceRoleAssignments?.bind(r.port), "confluence.roleAssignments")(key, { signal });
+  }),
+  "confluence.groupMembers": verb(z.tuple([groupId]), async (r, [group], signal) => {
+    r.require("confluence:read");
+    return hostOp(r.port.confluenceGroupMembers?.bind(r.port), "confluence.groupMembers")(group, { signal });
+  }),
+  "confluence.users": verb(z.tuple([z.array(str).max(MAX_USER_IDS, `at most ${MAX_USER_IDS} account ids per call`)]), async (r, [ids], signal) => {
+    r.require("confluence:read");
+    if (ids.length === 0) return [];
+    return hostOp(r.port.confluenceUsers?.bind(r.port), "confluence.users")([...new Set(ids)], { signal });
+  }),
+  /**
+   * Removes a principal's access to a space: its role assignment (role model)
+   * and/or its permission records (before roles, and custom records during
+   * the transition). Skipped when it has neither.
+   */
+  "confluence.removeSpaceAccess": verb(z.tuple([spaceKey, principal]), async (r, [key, who], signal) => {
+    r.require(`confluence:write:${key}`);
+    const title = `${who.type}:${who.id}`;
+    const object = `confluence-space-access:${key}\u0000${title}`;
+    const unchanged = () => {
+      r.skipped.push({ verb: "confluence.removeSpaceAccess", target: key, title, reason: "unchanged" });
+      return null;
+    };
+    if (r.lastWrite(object) !== undefined) return unchanged();
+    const verbName = "confluence.removeSpaceAccess";
+    const { mode } = await hostOp(r.port.confluenceSpaceRoles?.bind(r.port), verbName)({ signal });
+    const assignment =
+      mode === "PRE_ROLES"
+        ? undefined
+        : (await hostOp(r.port.confluenceRoleAssignments?.bind(r.port), verbName)(key, { signal })).find((a) => samePrincipal(a.principal, who));
+    // In the role model a space's permissions follow from its roles.
+    const permissionIds =
+      assignment && mode === "ROLES"
+        ? []
+        : (await hostOp(r.port.confluenceSpacePermissions?.bind(r.port), verbName)(key, { signal })).filter((p) => samePrincipal(p.principal, who)).map((p) => p.id);
+    if (!assignment && permissionIds.length === 0) return unchanged();
+    const role = assignment
+      ? { spaceId: await hostOp(r.port.confluenceSpaceId?.bind(r.port), verbName)(key, { signal }), roleId: assignment.roleId }
+      : {};
+    await r.record(
+      "confluence.removeSpaceAccess",
+      { spaceKey: key, ...role, principal: assignment?.principal ?? { type: who.type, id: who.id }, ...(permissionIds.length ? { permissionIds } : {}) },
+      object,
+    );
+    return null;
   }),
 };
 

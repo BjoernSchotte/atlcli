@@ -1,4 +1,4 @@
-// Pages with view or edit restrictions.
+// Pages with view or edit restrictions (read live, one request per page).
 export const meta = {
   audit: {
     id: "content/restricted",
@@ -6,6 +6,7 @@ export const meta = {
     title: "Restricted pages",
     category: "content",
     legacy: "restricted",
+    needs: ["restrictions"],
     profiles: { default: "info", strict: "info" },
   },
 };

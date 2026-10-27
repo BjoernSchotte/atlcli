@@ -137,7 +137,7 @@ export function findFlaggedField(fields: JiraField[]): string | undefined {
   return (candidates.find((f) => f.schema?.custom?.endsWith(":multicheckboxes")) ?? candidates[0])?.id;
 }
 
-async function readBaseline(path: string): Promise<{ baseline?: AuditBaseline; warning?: string }> {
+export async function readBaseline(path: string): Promise<{ baseline?: AuditBaseline; warning?: string }> {
   let text: string;
   try {
     text = await readFile(path, "utf8");

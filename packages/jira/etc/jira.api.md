@@ -367,6 +367,22 @@ export declare class JiraClient {
         leadAccountId?: string;
     }): Promise<JiraComponent>;
     deleteComponent(id: string): Promise<void>;
+    listPermissionSchemes(): Promise<JiraPermissionScheme[]>;
+    getProjectPermissionScheme(projectKey: string): Promise<{
+        id: number;
+        name: string;
+    }>;
+    getProjectRoles(projectKey: string): Promise<JiraProjectRole[]>;
+    getGroupMembers(groupId: string, options?: {
+        includeInactive?: boolean;
+    }): Promise<JiraUserDetails[]>;
+    getUsersDetails(accountIds: readonly string[]): Promise<JiraUserDetails[]>;
+    myPermissions(projectKey: string | undefined, permissions: readonly string[]): Promise<Record<string, boolean>>;
+    removeProjectRoleActor(projectKey: string, roleId: number, principal: {
+        type: "user" | "group";
+        id: string;
+    }): Promise<void>;
+    deletePermissionGrant(schemeId: number, grantId: number): Promise<void>;
     getProjectVersions(projectKeyOrId: string): Promise<JiraVersion[]>;
     getVersion(id: string): Promise<JiraVersion>;
     createVersion(input: {
@@ -952,6 +968,28 @@ export interface JiraIssueType {
     hierarchyLevel?: number;
 }
 
+// export: JiraPermissionGrant
+export interface JiraPermissionGrant {
+    id: number;
+    permission: string;
+    holder: JiraPermissionHolder;
+}
+
+// export: JiraPermissionHolder
+export interface JiraPermissionHolder {
+    type: string;
+    value?: string;
+    parameter?: string;
+    name?: string;
+}
+
+// export: JiraPermissionScheme
+export interface JiraPermissionScheme {
+    id: number;
+    name: string;
+    grants: JiraPermissionGrant[];
+}
+
 // export: JiraPriority
 export interface JiraPriority {
     id: string;
@@ -980,6 +1018,18 @@ export interface JiraProjectCategory {
     id: string;
     name: string;
     description?: string;
+}
+
+// export: JiraProjectRole
+export interface JiraProjectRole {
+    id: number;
+    name: string;
+    admin: boolean;
+    actors: Array<{
+        type: "user" | "group";
+        id: string;
+        name: string;
+    }>;
 }
 
 // export: JiraRemoteLink
@@ -1108,6 +1158,14 @@ export interface JiraUser {
     emailAddress?: string;
     avatarUrls?: Record<string, string>;
     active?: boolean;
+}
+
+// export: JiraUserDetails
+export interface JiraUserDetails {
+    accountId: string;
+    displayName: string;
+    active: boolean;
+    accountType: string;
 }
 
 // export: JiraVersion
@@ -2089,6 +2147,22 @@ export declare class JiraClient {
         leadAccountId?: string;
     }): Promise<JiraComponent>;
     deleteComponent(id: string): Promise<void>;
+    listPermissionSchemes(): Promise<JiraPermissionScheme[]>;
+    getProjectPermissionScheme(projectKey: string): Promise<{
+        id: number;
+        name: string;
+    }>;
+    getProjectRoles(projectKey: string): Promise<JiraProjectRole[]>;
+    getGroupMembers(groupId: string, options?: {
+        includeInactive?: boolean;
+    }): Promise<JiraUserDetails[]>;
+    getUsersDetails(accountIds: readonly string[]): Promise<JiraUserDetails[]>;
+    myPermissions(projectKey: string | undefined, permissions: readonly string[]): Promise<Record<string, boolean>>;
+    removeProjectRoleActor(projectKey: string, roleId: number, principal: {
+        type: "user" | "group";
+        id: string;
+    }): Promise<void>;
+    deletePermissionGrant(schemeId: number, grantId: number): Promise<void>;
     getProjectVersions(projectKeyOrId: string): Promise<JiraVersion[]>;
     getVersion(id: string): Promise<JiraVersion>;
     createVersion(input: {
@@ -2674,6 +2748,28 @@ export interface JiraIssueType {
     hierarchyLevel?: number;
 }
 
+// export: JiraPermissionGrant
+export interface JiraPermissionGrant {
+    id: number;
+    permission: string;
+    holder: JiraPermissionHolder;
+}
+
+// export: JiraPermissionHolder
+export interface JiraPermissionHolder {
+    type: string;
+    value?: string;
+    parameter?: string;
+    name?: string;
+}
+
+// export: JiraPermissionScheme
+export interface JiraPermissionScheme {
+    id: number;
+    name: string;
+    grants: JiraPermissionGrant[];
+}
+
 // export: JiraPriority
 export interface JiraPriority {
     id: string;
@@ -2702,6 +2798,18 @@ export interface JiraProjectCategory {
     id: string;
     name: string;
     description?: string;
+}
+
+// export: JiraProjectRole
+export interface JiraProjectRole {
+    id: number;
+    name: string;
+    admin: boolean;
+    actors: Array<{
+        type: "user" | "group";
+        id: string;
+        name: string;
+    }>;
 }
 
 // export: JiraRemoteLink
@@ -2931,6 +3039,14 @@ export interface JiraUser {
     emailAddress?: string;
     avatarUrls?: Record<string, string>;
     active?: boolean;
+}
+
+// export: JiraUserDetails
+export interface JiraUserDetails {
+    accountId: string;
+    displayName: string;
+    active: boolean;
+    accountType: string;
 }
 
 // export: JiraVersion
@@ -4049,6 +4165,22 @@ export declare class JiraClient {
         leadAccountId?: string;
     }): Promise<JiraComponent>;
     deleteComponent(id: string): Promise<void>;
+    listPermissionSchemes(): Promise<JiraPermissionScheme[]>;
+    getProjectPermissionScheme(projectKey: string): Promise<{
+        id: number;
+        name: string;
+    }>;
+    getProjectRoles(projectKey: string): Promise<JiraProjectRole[]>;
+    getGroupMembers(groupId: string, options?: {
+        includeInactive?: boolean;
+    }): Promise<JiraUserDetails[]>;
+    getUsersDetails(accountIds: readonly string[]): Promise<JiraUserDetails[]>;
+    myPermissions(projectKey: string | undefined, permissions: readonly string[]): Promise<Record<string, boolean>>;
+    removeProjectRoleActor(projectKey: string, roleId: number, principal: {
+        type: "user" | "group";
+        id: string;
+    }): Promise<void>;
+    deletePermissionGrant(schemeId: number, grantId: number): Promise<void>;
     getProjectVersions(projectKeyOrId: string): Promise<JiraVersion[]>;
     getVersion(id: string): Promise<JiraVersion>;
     createVersion(input: {
@@ -4634,6 +4766,28 @@ export interface JiraIssueType {
     hierarchyLevel?: number;
 }
 
+// export: JiraPermissionGrant
+export interface JiraPermissionGrant {
+    id: number;
+    permission: string;
+    holder: JiraPermissionHolder;
+}
+
+// export: JiraPermissionHolder
+export interface JiraPermissionHolder {
+    type: string;
+    value?: string;
+    parameter?: string;
+    name?: string;
+}
+
+// export: JiraPermissionScheme
+export interface JiraPermissionScheme {
+    id: number;
+    name: string;
+    grants: JiraPermissionGrant[];
+}
+
 // export: JiraPriority
 export interface JiraPriority {
     id: string;
@@ -4662,6 +4816,18 @@ export interface JiraProjectCategory {
     id: string;
     name: string;
     description?: string;
+}
+
+// export: JiraProjectRole
+export interface JiraProjectRole {
+    id: number;
+    name: string;
+    admin: boolean;
+    actors: Array<{
+        type: "user" | "group";
+        id: string;
+        name: string;
+    }>;
 }
 
 // export: JiraRemoteLink
@@ -4790,6 +4956,14 @@ export interface JiraUser {
     emailAddress?: string;
     avatarUrls?: Record<string, string>;
     active?: boolean;
+}
+
+// export: JiraUserDetails
+export interface JiraUserDetails {
+    accountId: string;
+    displayName: string;
+    active: boolean;
+    accountType: string;
 }
 
 // export: JiraVersion
@@ -5771,6 +5945,22 @@ export declare class JiraClient {
         leadAccountId?: string;
     }): Promise<JiraComponent>;
     deleteComponent(id: string): Promise<void>;
+    listPermissionSchemes(): Promise<JiraPermissionScheme[]>;
+    getProjectPermissionScheme(projectKey: string): Promise<{
+        id: number;
+        name: string;
+    }>;
+    getProjectRoles(projectKey: string): Promise<JiraProjectRole[]>;
+    getGroupMembers(groupId: string, options?: {
+        includeInactive?: boolean;
+    }): Promise<JiraUserDetails[]>;
+    getUsersDetails(accountIds: readonly string[]): Promise<JiraUserDetails[]>;
+    myPermissions(projectKey: string | undefined, permissions: readonly string[]): Promise<Record<string, boolean>>;
+    removeProjectRoleActor(projectKey: string, roleId: number, principal: {
+        type: "user" | "group";
+        id: string;
+    }): Promise<void>;
+    deletePermissionGrant(schemeId: number, grantId: number): Promise<void>;
     getProjectVersions(projectKeyOrId: string): Promise<JiraVersion[]>;
     getVersion(id: string): Promise<JiraVersion>;
     createVersion(input: {
@@ -6356,6 +6546,28 @@ export interface JiraIssueType {
     hierarchyLevel?: number;
 }
 
+// export: JiraPermissionGrant
+export interface JiraPermissionGrant {
+    id: number;
+    permission: string;
+    holder: JiraPermissionHolder;
+}
+
+// export: JiraPermissionHolder
+export interface JiraPermissionHolder {
+    type: string;
+    value?: string;
+    parameter?: string;
+    name?: string;
+}
+
+// export: JiraPermissionScheme
+export interface JiraPermissionScheme {
+    id: number;
+    name: string;
+    grants: JiraPermissionGrant[];
+}
+
 // export: JiraPriority
 export interface JiraPriority {
     id: string;
@@ -6384,6 +6596,18 @@ export interface JiraProjectCategory {
     id: string;
     name: string;
     description?: string;
+}
+
+// export: JiraProjectRole
+export interface JiraProjectRole {
+    id: number;
+    name: string;
+    admin: boolean;
+    actors: Array<{
+        type: "user" | "group";
+        id: string;
+        name: string;
+    }>;
 }
 
 // export: JiraRemoteLink
@@ -6613,6 +6837,14 @@ export interface JiraUser {
     emailAddress?: string;
     avatarUrls?: Record<string, string>;
     active?: boolean;
+}
+
+// export: JiraUserDetails
+export interface JiraUserDetails {
+    accountId: string;
+    displayName: string;
+    active: boolean;
+    accountType: string;
 }
 
 // export: JiraVersion

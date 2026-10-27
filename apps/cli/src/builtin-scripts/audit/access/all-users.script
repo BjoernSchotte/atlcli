@@ -1,0 +1,22 @@
+// Spaces and projects every licensed user can edit or administer.
+// Administering is a warning; editing is info (often wanted for open spaces).
+export const meta = {
+  audit: {
+    id: "exposure/all-users",
+    product: "access",
+    title: "Open to all licensed users",
+    category: "exposure",
+    profiles: { default: "warning", strict: "warning" },
+  },
+};
+
+export default (resource, rule) =>
+  resource.grants
+    .filter((g) => g.principal.type === "all-users" && g.level !== "read")
+    .map((g) =>
+      rule.finding({
+        severity: g.level === "admin" ? "warning" : "info",
+        principal: g.principal,
+        detail: `${g.principal.name} can ${g.level === "admin" ? "administer" : "edit"} this ${resource.kind}${g.role ? ` (role ${g.role.name})` : ""}.`,
+      }),
+    );

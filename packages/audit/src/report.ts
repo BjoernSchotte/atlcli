@@ -4,7 +4,14 @@
  */
 import { AUDIT_SEVERITY_RANK, type AuditCategory, type AuditRules, type AuditSeverity } from "./config.js";
 
-export type AuditTargetKind = "issue" | "page" | "status" | "space" | "other";
+export type AuditTargetKind = "issue" | "page" | "status" | "space" | "project" | "user" | "group" | "other";
+
+/** A user, group or access class a finding is about (access audit). */
+export interface AuditPrincipalRef {
+  type: string;
+  id: string;
+  name: string;
+}
 
 export interface AuditFinding {
   /** Rule id, e.g. `hygiene/stale`, a custom `team/bug-without-component`, or a script's id. */
@@ -23,13 +30,15 @@ export interface AuditFinding {
   ageDays?: number;
   /** What the baseline records: usually the key; `status:<id>` for status-level rules. */
   subject: string;
+  /** Access audit: the user, group or class holding the access. */
+  principal?: AuditPrincipalRef;
   /** Set when the rule script exports `fix`: `--fix` can plan a change for it. */
   fixable?: boolean;
 }
 
 export interface AuditReportV3 {
   schemaVersion: "3";
-  product: "jira" | "confluence";
+  product: "jira" | "confluence" | "access";
   generatedAt: string;
   query: string;
   rules: { source: string; extends: string; minLevel: AuditSeverity };
@@ -200,10 +209,12 @@ export function reportFooter(report: AuditReportV3): string[] {
   return lines;
 }
 
+const PRODUCT_NAMES: Record<AuditReportV3["product"], string> = { jira: "Jira", confluence: "Wiki", access: "Access" };
+
 /** Plain-text report for the terminal. */
 export function renderAuditText(report: AuditReportV3): string {
   const { summary } = report;
-  const name = report.product === "jira" ? "Jira" : "Wiki";
+  const name = PRODUCT_NAMES[report.product];
   const lines = [
     `${name} audit: ${summary.total} finding(s) — ${summary.bySeverity.error} error, ${summary.bySeverity.warning} warning, ${summary.bySeverity.info} info`,
     `${report.product === "jira" ? "Query" : "Scope"}: ${report.query}`,
@@ -224,7 +235,7 @@ export function renderAuditText(report: AuditReportV3): string {
  * with `--print-template` to adapt it). Rendered in "lines" mode with the
  * report plus `groups` (findings by rule), `footer`, `query` and `baseUrl`.
  */
-export const DEFAULT_MARKDOWN_TEMPLATE = `# {{ "Jira" if product == "jira" else "Wiki" }} audit
+export const DEFAULT_MARKDOWN_TEMPLATE = `# {{ "Jira" if product == "jira" else ("Access" if product == "access" else "Wiki") }} audit
 
 Generated {{ generatedAt | date }} · \`{{ query | replace("\`", "'") }}\` · rules: {{ rules.source | mdcell }} (extends {{ rules.extends }})
 
@@ -233,7 +244,7 @@ Generated {{ generatedAt | date }} · \`{{ query | replace("\`", "'") }}\` · ru
 
 ## {{ group.title | mdcell }} ({{ group.findings | length }})
 
-| Severity | {{ "Issue" if product == "jira" else "Page" }} | Summary | {{ "Assignee" if product == "jira" else "Owner" }} | Finding |
+| Severity | {{ "Issue" if product == "jira" else ("Resource" if product == "access" else "Page") }} | Summary | {{ "Assignee" if product == "jira" else ("Principal" if product == "access" else "Owner") }} | Finding |
 |---|---|---|---|---|
 {% for f in group.findings %}
 | {{ f.severity }} | {% if f.target.url %}[{{ f.key }}]({{ f.target.url }}){% else %}{{ f.key }}{% endif %} | {{ f.summary | mdcell }} | {{ (f.assignee or "") | mdcell }} | {{ f.detail | mdcell }} |

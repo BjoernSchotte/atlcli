@@ -64,7 +64,7 @@ type AuditPatch = "off" | AuditSeverity | { level?: AuditSeverity; info?: string
 interface AuditMeta {
   /** "<group>/<name>" in lower case; a built-in's id replaces that built-in. */
   id: string;
-  product: "jira" | "confluence";
+  product: "jira" | "confluence" | "access";
   title?: string;
   /** Defaults to the id's group. */
   category?: string;
@@ -72,10 +72,14 @@ interface AuditMeta {
   kind?: "flag" | "age" | "until";
   /**
    * item (default): \`default(item, rule)\` per issue or AuditPage; run: \`default(data, rule)\`
-   * once, with Jira \`{ open, done, now }\` or Confluence \`{ pages, folderIssues, now }\`.
+   * once, with Jira \`{ open, done, now }\`, Confluence \`{ pages, folderIssues, now }\` or
+   * access \`{ resources, pages, users, groups, coverage, userAccess }\`.
    */
   scope?: "item" | "run";
-  /** Jira: which issues the rule gets: open (default) or done (last 90 days). Confluence: every page. */
+  /**
+   * Jira: which issues the rule gets: open (default) or done (last 90 days). Confluence: every page.
+   * Access: resources (spaces and projects, default), spaces, projects, pages (with --pages) or users.
+   */
   items?: string;
   /** Extra Jira fields to load for the items. */
   fields?: string[];
@@ -122,6 +126,10 @@ interface AuditFindingInput {
   subject?: string;
   /** When the item last changed (ISO), for the legacy cutoff. */
   updated?: string;
+  /** Access rules: the user, group or class the finding is about (default subject: \`<kind>:<key>|<type>:<id>\`). */
+  principal?: AuditPrincipalRef;
+  /** Run-scope rules: what the finding is about, when not an item. */
+  target?: AuditFinding["target"];
 }
 
 /** The third argument of \`fix(finding, item, rule)\`: the rule's settings. */
@@ -177,7 +185,7 @@ interface AuditFinding {
   rule: string;
   category: string;
   severity: AuditSeverity;
-  target: { kind: "issue" | "page" | "status" | "space" | "other"; key: string; url?: string };
+  target: { kind: "issue" | "page" | "status" | "space" | "project" | "user" | "group" | "other"; key: string; url?: string };
   key: string;
   summary: string;
   status: string;
@@ -185,7 +193,92 @@ interface AuditFinding {
   detail: string;
   ageDays?: number;
   subject: string;
+  /** Access audit: who holds the access. */
+  principal?: AuditPrincipalRef;
   fixable?: boolean;
+}
+
+interface AuditPrincipalRef {
+  type: string;
+  id: string;
+  name: string;
+}
+
+/**
+ * Who holds access in an access audit. all-users: every licensed user;
+ * product-admins: site and product admins; dynamic: decided per issue
+ * (reporter, assignee, project lead, a field).
+ */
+interface AccessPrincipal {
+  type: "user" | "group" | "anonymous" | "all-users" | "product-admins" | "dynamic";
+  /** Account id, group id, ANONYMOUS, ALL_LICENSED_USERS, … */
+  id: string;
+  name: string;
+  /** Users: null when the account could not be looked up. */
+  active?: boolean | null;
+  /** Users: atlassian, app, customer. */
+  accountType?: string;
+  /** Users: an external collaborator or guest. */
+  external?: boolean;
+  /** Groups: members with an active account; null when not readable. */
+  activeMembers?: number | null;
+}
+
+/** One principal's access to a space or project through one path: a role, or direct grants. */
+interface AccessGrant {
+  principal: AccessPrincipal;
+  level: "read" | "write" | "admin";
+  /** Confluence \`operation:target\` keys or Jira permission keys. */
+  operations: string[];
+  /** The space role or project role the access comes through. */
+  role?: { id: string; name: string };
+  /** Jira: the permission scheme grants naming the principal directly. */
+  grantIds?: number[];
+}
+
+/** A space or project, as access rules see it. */
+interface AccessResource {
+  kind: "space" | "project";
+  product: "confluence" | "jira";
+  key: string;
+  id: string;
+  name: string;
+  url?: string;
+  /** Spaces: PRE_ROLES, ROLES_TRANSITION or ROLES. Projects: classic or team. */
+  mode: string;
+  /** Projects: the permission scheme. */
+  scheme?: { id: number; name: string };
+  grants: AccessGrant[];
+  /** False when some grants could not be read (see note): judge with care. */
+  complete: boolean;
+  note?: string;
+}
+
+/** A page with its restrictions (\`audit access --pages\`). Empty lists: no restriction. */
+interface AccessPage {
+  kind: "page";
+  id: string;
+  title: string;
+  spaceKey: string;
+  url?: string;
+  parentId: string | null;
+  read: AccessPrincipal[];
+  update: AccessPrincipal[];
+  /** Ancestors' view restrictions, nearest first: a viewer must pass each of them too. */
+  inheritedRead: Array<{ pageId: string; title: string; principals: AccessPrincipal[] }>;
+}
+
+/** A user with what they reach, directly or through groups (\`items: "users"\`). */
+interface AccessUserItem {
+  kind: "user";
+  accountId: string;
+  displayName: string;
+  active: boolean | null;
+  status: string;
+  accountType: string;
+  external: boolean;
+  guest: boolean;
+  access: Array<{ kind: "space" | "project"; key: string; name: string; level: "read" | "write" | "admin"; via: string }>;
 }
 
 /**
@@ -196,7 +289,7 @@ interface AuditFinding {
  */
 interface AuditReport {
   schemaVersion: "3";
-  product: "jira" | "confluence";
+  product: "jira" | "confluence" | "access";
   generatedAt: string;
   query: string;
   rules: { source: string; extends: string; minLevel: AuditSeverity };
@@ -373,6 +466,57 @@ interface JiraAttachmentInfo {
 interface ConfluenceRestrictions {
   read: { accountIds: string[]; groupIds: string[] };
   update: { accountIds: string[]; groupIds: string[] };
+}
+
+/** "access-class" covers ALL_LICENSED_USERS, ANONYMOUS and the like. */
+interface ConfluencePrincipal {
+  type: "user" | "group" | "access-class";
+  id: string;
+  /** Accepted (and ignored) when passing a principal read elsewhere. */
+  name?: string;
+}
+
+interface ConfluenceSpacePermission {
+  id: string;
+  /** As the API names it: "user", "group" or "access-class". */
+  principal: { type: string; id: string };
+  /** e.g. "read", "administer". */
+  operation: string;
+  /** e.g. "space", "page", "comment". */
+  targetType: string;
+}
+
+interface ConfluenceUserDetails {
+  accountId: string;
+  displayName: string;
+  active: boolean;
+  status: "active" | "inactive" | "closed" | "unknown";
+  /** "atlassian", "app" or "customer". */
+  accountType: string;
+  external: boolean;
+  guest: boolean;
+}
+
+interface JiraPermissionScheme {
+  id: number;
+  name: string;
+  /** \`holder.type\`: "projectRole", "group", "user", "anyone", "applicationRole", …; \`name\` when Jira names it. */
+  grants: Array<{ id: number; permission: string; holder: { type: string; value?: string; parameter?: string; name?: string } }>;
+}
+
+interface JiraProjectRole {
+  id: number;
+  name: string;
+  admin: boolean;
+  /** \`id\`: account id or group id. */
+  actors: Array<{ type: "user" | "group"; id: string; name: string }>;
+}
+
+interface JiraMember {
+  accountId: string;
+  displayName: string;
+  active: boolean;
+  accountType: string;
 }
 
 interface ConfluenceVersion {
@@ -607,6 +751,16 @@ const atlcli: {
     /** Users matching a name or email. */
     users(query: string): Promise<JiraUserMatch[]>;
     attachments(key: string): Promise<JiraAttachmentInfo[]>;
+    permissionSchemes(): Promise<JiraPermissionScheme[]>;
+    projectPermissionScheme(project: string): Promise<{ id: number; name: string }>;
+    /** Roles with their actors; needs Administer Projects. */
+    projectRoles(project: string): Promise<JiraProjectRole[]>;
+    /** Every member of a group, inactive ones included. */
+    groupMembers(groupId: string): Promise<JiraMember[]>;
+    /** \`role\`: id or name. Skipped when the user or group is not in the role. Needs jira:write:<project>. */
+    removeRoleActor(project: string, role: string | number, principal: { type: "user" | "group"; id: string; name?: string }): Promise<null>;
+    /** Deletes a grant from a permission scheme (from \`permissionSchemes\`); skipped when it is gone. Needs jira:write:*. */
+    deletePermissionGrant(schemeId: number, grantId: number): Promise<null>;
   };
   readonly confluence: {
     /** All pages matching \`cql\`, paged transparently. */
@@ -668,6 +822,20 @@ const atlcli: {
     inlineComments(pageId: string): Promise<ConfluenceInlineComment[]>;
     /** \`markdown\` is converted. Read it back with \`getPage\`. */
     createBlogPost(input: { space: string; title: string; markdown: string }): Promise<{ id: PlannedRef }>;
+    /** Every permission record of the space. */
+    spacePermissions(spaceKey: string): Promise<ConfluenceSpacePermission[]>;
+    /** The site's permission model and its space roles. */
+    spaceRoles(): Promise<{ mode: "PRE_ROLES" | "ROLES_TRANSITION" | "ROLES"; roles: Array<{ id: string; name: string; type: string; permissions: string[] }> }>;
+    /** Who holds which role in the space; empty before the role model. */
+    roleAssignments(spaceKey: string): Promise<Array<{ roleId: string; principal: ConfluencePrincipal }>>;
+    groupMembers(groupId: string): Promise<ConfluenceUserDetails[]>;
+    /** Up to 500 account ids; unknown ones are left out. */
+    users(accountIds: string[]): Promise<ConfluenceUserDetails[]>;
+    /**
+     * Removes the principal's role assignment and/or permission records in the
+     * space. Skipped when it has neither. Needs confluence:write:<space>.
+     */
+    removeSpaceAccess(spaceKey: string, principal: ConfluencePrincipal): Promise<null>;
   };
   /** External HTTP, https only (http for localhost). Every host needs "http:<host>" in meta.permissions. */
   readonly http: {

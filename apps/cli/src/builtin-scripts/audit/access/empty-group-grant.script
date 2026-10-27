@@ -1,0 +1,18 @@
+// Groups without active members that still hold access: dead weight, or a
+// door someone can reopen by adding a member.
+export const meta = {
+  audit: {
+    id: "stale/empty-group-grant",
+    product: "access",
+    title: "Access held by empty groups",
+    category: "stale",
+    profiles: { default: "info", strict: "info" },
+  },
+};
+
+export default (resource, rule) => {
+  const seen = new Set();
+  return resource.grants
+    .filter((g) => g.principal.type === "group" && g.principal.activeMembers === 0 && !seen.has(g.principal.id) && seen.add(g.principal.id))
+    .map((g) => rule.finding({ principal: g.principal, detail: `Group without active members has ${g.level} access${g.role ? ` (role ${g.role.name})` : ""}.` }));
+};

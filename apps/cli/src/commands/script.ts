@@ -779,6 +779,9 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
       "confluence.setProperty": "same value",
       "confluence.deleteProperty": "not set",
       "confluence.setRestrictions": "same restrictions",
+      "confluence.removeSpaceAccess": "no access",
+      "jira.removeRoleActor": "not in role",
+      "jira.deletePermissionGrant": "no such grant",
       "jira.updateVersion": "already so",
       "jira.updateComponent": "already so",
       "files.write": "same content",
@@ -786,7 +789,8 @@ export function renderPlan(plan: ScriptPlanV1, planOut: string | undefined, appl
       "state.delete": "not set",
     };
     for (const skip of plan.skipped) {
-      const what = skip.verb.startsWith("confluence.") ? `page ${skip.target}` : skip.target;
+      const what =
+        skip.verb === "confluence.removeSpaceAccess" ? `space ${skip.target}` : skip.verb.startsWith("confluence.") ? `page ${skip.target}` : skip.target;
       lines.push(`       ${what}${skip.title ? ` ${JSON.stringify(skip.title)}` : ""} (${why[skip.verb] ?? "no change"})`);
     }
   }
@@ -925,6 +929,12 @@ export function describeOperation(op: PlannedOperation): string {
       return `page restrict    ${ref(a.pageId)} ${["read", "update"].filter((k) => a[k]).map((k) => `${k}: ${a[k].accountIds.length} user(s), ${a[k].groupIds.length} group(s)`).join("; ")}${after}`;
     case "confluence.createBlogPost":
       return `blog create      ${a.spaceKey} ${text(a.title)}${after}`;
+    case "confluence.removeSpaceAccess":
+      return `space access     ${a.spaceKey} - ${a.principal.type}:${a.principal.id} (${[...(a.roleId !== undefined ? [`role ${a.roleId}`] : []), ...(a.permissionIds?.length ? [`${a.permissionIds.length} permission(s)`] : [])].join(", ")})${after}`;
+    case "jira.removeRoleActor":
+      return `jira role        ${a.projectKey} ${text(a.role)} - ${a.principal.type}:${a.principal.id}${after}`;
+    case "jira.deletePermissionGrant":
+      return `jira grant       DELETE ${a.grantId} of scheme ${a.schemeId} ${text(a.scheme)}: ${a.permission} → ${a.holder.type}${a.holder.name ?? a.holder.value ? ` ${a.holder.name ?? a.holder.value}` : ""}${after}`;
     case "http.request":
       return `http             ${a.method} ${String(a.url).replace(/\?.*$/, "")}${a.body !== undefined ? ` (${bytes(Buffer.byteLength(a.body))} body)` : ""}${after}`;
     case "files.write":

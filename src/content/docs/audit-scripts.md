@@ -5,7 +5,7 @@ description: "Write audit rules in TypeScript: checks per issue or page, fixes a
 
 # Custom Audit Rules
 
-Every check of `atlcli audit jira` and `atlcli audit wiki` is a small TypeScript script, and so is every check you add. A rule gets one item at a time, an issue or a page, and returns a finding or nothing. atlcli loads the data once for all rules, runs the rules read-only in the [script sandbox](scripts.md), and applies severities, the [rules file](jira/audit-rules.md), the baseline and the report the same way for built-in and custom rules.
+Every check of `atlcli audit jira`, `atlcli audit wiki` and `atlcli audit access` is a small TypeScript script, and so is every check you add. A rule gets one item at a time (an issue, a page, or a space, project or user) and returns a finding or nothing. atlcli loads the data once for all rules, runs the rules read-only in the [script sandbox](scripts.md), and applies severities, the [rules file](jira/audit-rules.md), the baseline and the report the same way for built-in and custom rules.
 
 A rule can also:
 - propose a fix (`export async function fix`), which `--fix` turns into a plan you review and apply;
@@ -23,6 +23,7 @@ A rule can also:
    ```bash
    atlcli audit init                       # a Jira rule
    atlcli audit init --product confluence  # a wiki rule (see Wiki rules)
+   atlcli audit init --product access      # an access rule (see Access rules)
    ```
 
 2. Edit `.atlcli/audit/bug-without-component.ts`:
@@ -65,7 +66,7 @@ Rules load in this order. A rule with the id of an earlier one replaces it and k
 | 1 | The built-in rules (`--print-rule <id>` prints one) |
 | 2 | `~/.atlcli/audit/*.ts` |
 | 3 | `./.atlcli/audit/*.ts` |
-| 4 | `scripts:` in the [rules file](jira/audit-rules.md#rule-scripts) (`confluence.scripts:` for wiki rules), relative to that file |
+| 4 | `scripts:` in the [rules file](jira/audit-rules.md#rule-scripts) (`confluence.scripts:` for wiki rules, `access.scripts:` for access rules), relative to that file |
 | 5 | `--script <file>`, repeatable |
 
 Files ending in `.d.ts` are skipped, and so are rules for the other product, except ones named with `--script`, which then fail.
@@ -86,12 +87,12 @@ A replacement keeps the built-in's older check name (`--checks stale`).
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `id` | `"<group>/<name>"`, lower case | required | Unique id; the group is the category unless `category` says otherwise |
-| `product` | `jira`, `confluence` | required | Which audit runs it |
+| `product` | `jira`, `confluence`, `access` | required | Which audit runs it |
 | `title` | string | the id | Heading in reports |
 | `category` | string | the id's group | Used by `--checks <category>` |
 | `kind` | `flag`, `age`, `until` | `flag` | `flag`: a finding or not. `age`/`until`: compare a number of days with thresholds through `rule.severity(days)` |
 | `scope` | `item`, `run` | `item` | `item`: `default(item, rule)` per item. `run`: `default(data, rule)` once (see [Run-scope rules](#run-scope-rules)) |
-| `items` | `open`, `done` | `open` | Jira: open issues, or issues done in the last 90 days |
+| `items` | `open`, `done`; access: `resources`, `spaces`, `projects`, `pages`, `users` | `open`; access: `resources` | Jira: open issues, or issues done in the last 90 days. Access: see [Access rules](#access-rules) |
 | `fields` | string list | `[]` | Extra Jira fields to load |
 | `needs` | string list | `[]` | Host data to prepare, see [Facts](#facts) |
 | `defaults` | setting | `warning` for `flag` rules | The setting in every profile, in the [rules-file grammar](jira/audit-rules.md#rule-settings): `warning`, `off`, `{ warning: 30d, error: 60d }` |
@@ -121,6 +122,8 @@ Return `rule.finding({ … })`, a list of them, or nothing:
 | `severity` | no | Defaults to the configured level |
 | `ageDays` | no | Sorts findings and shows in reports |
 | `key`, `summary`, `status`, `assignee` | no | For run-scope rules: what the finding is about |
+| `principal` | no | Access rules: the user, group or access class `{ type, id, name }` holding the access; shown as the assignee and part of the default subject |
+| `target` | no | Run-scope rules: `{ kind, key, url? }`, with `kind` one of `issue`, `page`, `status`, `space`, `project`, `user`, `group` |
 | `subject` | no | What the baseline records (default: the key) |
 | `updated` | no | When the item last changed (ISO), for the legacy cutoff |
 
@@ -204,6 +207,10 @@ confluence:
 ```
 
 Fixes can use every Confluence write verb, `atlcli.confluence.archivePage(id)` included (Confluence archives in the background).
+
+### Access rules
+
+Rules with `product: "access"` run in `atlcli audit access` over the spaces, projects, pages and users it read. `meta.audit.items` picks the item: `resources` (spaces and projects, the default), `spaces`, `projects`, `pages` (only with `--pages`) or `users`. A space or project carries its grants (`{ principal, level, operations, role?, grantIds? }`); a run-scope rule gets `{ resources, pages, users, groups, coverage, userAccess }`. Findings target a `space`, `project`, `page` or `user`, and `fix(finding, item, rule)` gets that item. The item types, levels and an example with a fix are in [Access Audit](access-audit.md#writing-your-own-access-rule).
 
 ### Read-only
 
@@ -341,6 +348,7 @@ A rule check or `fix` called `atlcli.output`. Rules only report findings; write 
 
 - [Jira Audit](jira/audit.md)
 - [Wiki Audit](confluence/audit.md)
+- [Access Audit](access-audit.md)
 - [Audit Rules](jira/audit-rules.md)
 - [Automation Scripts](scripts.md) and the [Script API](reference/scripts.md)
 - [Templating](templating.md): Jinja syntax and filters

@@ -1,0 +1,32 @@
+// Page restrictions that name inactive accounts (needs --pages).
+// --fix removes them from the restriction, unless that would lift it entirely.
+export const meta = {
+  audit: {
+    id: "stale/inactive-in-restriction",
+    product: "access",
+    title: "Inactive accounts in page restrictions",
+    category: "stale",
+    items: "pages",
+    profiles: { strict: "info" },
+  },
+};
+
+export default (page, rule) =>
+  ["read", "update"].flatMap((op) =>
+    page[op]
+      .filter((p) => p.type === "user" && p.active === false)
+      .map((p) => rule.finding({ principal: p, subject: `page:${page.id}|${op}|user:${p.id}`, detail: `Inactive account in the ${op === "read" ? "view" : "edit"} restriction.` })),
+  );
+
+export async function fix(finding, page) {
+  // The subject names the restriction: page:<id>|read|user:<id>.
+  const op = finding.subject.split("|")[1];
+  const keep = page[op].filter((p) => !(p.type === "user" && p.id === finding.principal.id));
+  if (keep.length === 0) {
+    atlcli.log(`${page.title}: removing ${finding.principal.name} would lift the ${op} restriction; left as is.`);
+    return;
+  }
+  await atlcli.confluence.setRestrictions(page.id, {
+    [op]: { accountIds: keep.filter((p) => p.type === "user").map((p) => p.id), groupIds: keep.filter((p) => p.type === "group").map((p) => p.id) },
+  });
+}

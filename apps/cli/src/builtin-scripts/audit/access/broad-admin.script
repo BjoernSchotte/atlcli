@@ -1,0 +1,20 @@
+// People who administer many spaces and projects, directly or through groups.
+// Option max (default 10).
+export const meta = {
+  audit: {
+    id: "reach/broad-admin",
+    product: "access",
+    title: "Administrators of many spaces or projects",
+    category: "reach",
+    items: "users",
+    options: { max: [] },
+    profiles: { strict: "info" },
+  },
+};
+
+export default (user, rule) => {
+  if (user.accountType === "app" || user.active === false) return;
+  const max = Number(rule.config.options?.max?.[0] ?? 10);
+  const admin = new Set(user.access.filter((a) => a.level === "admin").map((a) => `${a.kind}:${a.key}`));
+  if (admin.size > max) return rule.finding({ principal: { type: "user", id: user.accountId, name: user.displayName }, detail: `Administers ${admin.size} spaces and projects (more than ${max}).` });
+};

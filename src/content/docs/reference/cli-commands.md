@@ -918,6 +918,22 @@ The same options apply to `audit wiki`. See [Jira Audit: report files and format
 
 Needs `atlcli flag set audit true --global`. See [Jira Audit](../jira/audit.md) and [Audit Rules](../jira/audit-rules.md).
 
+### Access Audit
+
+Who can see and change what, across Confluence spaces and Jira projects:
+
+```bash
+atlcli audit access                                         # Every shared space and every project you can see
+atlcli audit access --space <key> --project <key>
+atlcli audit access --product confluence --checks exposure --fail-on error
+atlcli audit access --space <key> --pages --min-level info  # Also page restrictions (one request per page)
+atlcli audit access --project '*' --checks stale --fix --plan-out access-fix.json
+atlcli audit access --output access.csv
+atlcli audit init --product access                          # Skeleton for your own access rule
+```
+
+The report, baseline and rule options are the same as for `audit jira`. Needs `atlcli flag set audit true --global`. See [Access Audit](../access-audit.md).
+
 ### Fields
 
 ```bash

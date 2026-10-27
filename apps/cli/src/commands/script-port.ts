@@ -7,7 +7,7 @@ import { isIP } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
-import { ConfluenceClient, type FooterComment, type InlineComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
+import { ConfluenceClient, type ConfluenceUserDetails, type FooterComment, type InlineComment, markdownToStorage, storageToMarkdown } from "@atlcli/confluence";
 import type { Profile } from "@atlcli/core";
 import {
   adfToMarkdown,
@@ -31,6 +31,8 @@ import type {
   HttpRequestInput,
   HttpResponseView,
   ConfluenceInlineCommentView,
+  ConfluencePrincipalRef,
+  ConfluenceUserDetailsView,
   JiraBoardView,
   JiraIssueView,
   JiraSprintView,
@@ -73,6 +75,17 @@ export function createCliScriptPort(
   { profileName, outDir = process.cwd(), stateDir = stateRoot() }: { profileName: string; outDir?: string; stateDir?: string },
 ): ScriptPort {
   const conversion = { baseUrl };
+  /** Space key → v2 id, looked up once per port. */
+  const spaceIds = new Map<string, Promise<string>>();
+  const spaceId = (key: string) => {
+    let id = spaceIds.get(key);
+    if (!id) {
+      id = confluence().getSpace(key).then((sp) => String(sp.id));
+      spaceIds.set(key, id);
+      id.catch(() => spaceIds.delete(key));
+    }
+    return id;
+  };
   const richText = (markdown: string) => toJiraRichText(jira(), markdown);
   /**
    * Moves an issue with screen fields and a comment. Jira drops a comment sent
@@ -569,6 +582,24 @@ export function createCliScriptPort(
         ...(a.author?.displayName ? { author: a.author.displayName } : {}),
       }));
     },
+    async jiraPermissionSchemes() {
+      return jira().listPermissionSchemes();
+    },
+    async jiraProjectPermissionScheme(project) {
+      return jira().getProjectPermissionScheme(project);
+    },
+    async jiraProjectRoles(project) {
+      return jira().getProjectRoles(project);
+    },
+    async jiraGroupMembers(groupId) {
+      return jira().getGroupMembers(groupId, { includeInactive: true });
+    },
+    async jiraRemoveRoleActor(project, roleId, principal) {
+      await jira().removeProjectRoleActor(project, roleId, principal);
+    },
+    async jiraDeletePermissionGrant(schemeId, grantId) {
+      await jira().deletePermissionGrant(schemeId, grantId);
+    },
 
     async confluenceProperties(pageId, { signal }) {
       return confluence().listPageProperties(pageId, { signal });
@@ -617,6 +648,41 @@ export function createCliScriptPort(
     },
     async confluenceCreateBlogPost({ spaceKey, title, markdown }) {
       return confluence().createBlogPost({ spaceKey, title, storage: markdownToStorage(markdown, conversion) });
+    },
+    confluenceSpaceId: (spaceKey) => spaceId(spaceKey),
+    async confluenceSpacePermissions(spaceKey, { signal }) {
+      return (await confluence().getSpacePermissionsV2(await spaceId(spaceKey), { signal })).map((p) => ({
+        id: p.id,
+        principal: p.principal,
+        operation: p.operation.key,
+        targetType: p.operation.targetType,
+      }));
+    },
+    async confluenceSpaceRoles({ signal }) {
+      const mode = await confluence().getSpaceRoleMode({ signal });
+      if (mode === "PRE_ROLES") return { mode, roles: [] };
+      const roles = await confluence().listSpaceRoles({ signal });
+      return { mode, roles: roles.map((r) => ({ id: r.id, name: r.name, type: r.type, permissions: r.spacePermissions })) };
+    },
+    async confluenceRoleAssignments(spaceKey, { signal }) {
+      if ((await confluence().getSpaceRoleMode({ signal })) === "PRE_ROLES") return [];
+      return (await confluence().getSpaceRoleAssignments(await spaceId(spaceKey), { signal })).map((a) => ({
+        roleId: a.roleId,
+        principal: { type: principalType(a.principal.principalType), id: a.principal.principalId },
+      }));
+    },
+    async confluenceGroupMembers(groupId, { signal }) {
+      return (await confluence().getGroupMembersById(groupId, { signal })).map(userDetailsView);
+    },
+    async confluenceUsers(accountIds, { signal }) {
+      return (await confluence().getUsersDetails(accountIds, { signal })).map(userDetailsView);
+    },
+    async confluenceRemoveRoleAssignment(id, principal) {
+      // An entry without a roleId removes the principal's assignment.
+      await confluence().setSpaceRoleAssignments(id, [{ principal: { principalType: principal.type.toUpperCase().replace("-", "_"), principalId: principal.id } }]);
+    },
+    async confluenceRemoveSpacePermission(spaceKey, permissionId) {
+      await confluence().removeSpacePermission(spaceKey, permissionId);
     },
 
     httpFetch: (request, { signal }) => sendHttp(request, signal),
@@ -753,6 +819,15 @@ async function runSelf(args: string[]): Promise<void> {
 function userView(user: JiraUser | undefined): { author?: { accountId?: string; displayName?: string } } {
   if (!user) return {};
   return { author: { ...(user.accountId ? { accountId: user.accountId } : {}), ...(user.displayName ? { displayName: user.displayName } : {}) } };
+}
+
+/** USER / GROUP / ACCESS_CLASS of the role API → the script's principal types. */
+function principalType(type: string): ConfluencePrincipalRef["type"] {
+  return type === "GROUP" ? "group" : type === "ACCESS_CLASS" ? "access-class" : "user";
+}
+
+function userDetailsView(u: ConfluenceUserDetails): ConfluenceUserDetailsView {
+  return { ...u, active: u.status === "active" };
 }
 
 function versionView(v: JiraVersion, project: string | undefined) {

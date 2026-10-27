@@ -8,6 +8,7 @@
  * `skill-files.test.ts` fails until it has both.
  */
 import skillMd from "../../../skills/atlcli/SKILL.md" with { type: "text" };
+import accessAudit from "../../../skills/atlcli/references/access-audit.md" with { type: "text" };
 import authAndConfig from "../../../skills/atlcli/references/auth-and-config.md" with { type: "text" };
 import confluenceAudit from "../../../skills/atlcli/references/confluence-audit.md" with { type: "text" };
 import confluenceDocsSync from "../../../skills/atlcli/references/confluence-docs-sync.md" with { type: "text" };
@@ -38,6 +39,7 @@ export interface SkillFile {
 /** `SKILL.md` first, then the references sorted by path. */
 export const SKILL_FILES: readonly SkillFile[] = [
   { path: "SKILL.md", content: skillMd },
+  { path: "references/access-audit.md", content: accessAudit },
   { path: "references/auth-and-config.md", content: authAndConfig },
   { path: "references/confluence-audit.md", content: confluenceAudit },
   { path: "references/confluence-docs-sync.md", content: confluenceDocsSync },

@@ -425,6 +425,17 @@ async function execute(
     }
     case "confluence.createBlogPost":
       return required(port.confluenceCreateBlogPost, op.verb).call(port, args as never);
+    case "confluence.removeSpaceAccess": {
+      if (args.roleId !== undefined) await required(port.confluenceRemoveRoleAssignment, op.verb).call(port, args.spaceId, args.principal);
+      for (const id of args.permissionIds ?? []) await required(port.confluenceRemoveSpacePermission, op.verb).call(port, args.spaceKey, id);
+      return { spaceKey: args.spaceKey };
+    }
+    case "jira.removeRoleActor":
+      await required(port.jiraRemoveRoleActor, op.verb).call(port, args.projectKey, args.roleId, args.principal);
+      return { projectKey: args.projectKey, roleId: args.roleId };
+    case "jira.deletePermissionGrant":
+      await required(port.jiraDeletePermissionGrant, op.verb).call(port, args.schemeId, args.grantId);
+      return { schemeId: args.schemeId, grantId: args.grantId };
     case "http.request":
       return applyHttpRequest(port, args as never);
     case "files.write":

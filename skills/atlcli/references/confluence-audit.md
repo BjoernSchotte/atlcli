@@ -57,6 +57,10 @@ atlcli audit wiki --list-rules
 - Network: `--include-remote`, `--refresh-users` and `--fix` call the API
   (need a profile); `--check-external` requests every external URL. Neither
   external check is part of `--all`.
+- `content/restricted` (`--restricted`, `--all`) reads each page's
+  restrictions live, one request per page, and needs a profile; without one
+  `partial` lists `restrictions (no profile to read them)`. For who can see and
+  change spaces, use `audit access` ([access-audit.md](access-audit.md)).
 - Baseline: `--update-baseline`, `--prune-baseline`, `--no-baseline`; stored
   in `.atlcli/audit-baseline.json` of the synced directory. No legacy cutoff.
 - Reports: `--markdown`, `--template <file.j2>`, a rule's

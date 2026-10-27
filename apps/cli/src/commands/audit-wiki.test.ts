@@ -8,7 +8,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ConfluenceClient } from "@atlcli/confluence";
 import { createSyncDb, initAtlcliDir, type PageRecord } from "@atlcli/confluence/internal";
+import { buildPageSnapshots } from "./audit-wiki.js";
 
 // Each test spawns the CLI several times; CI runners need more than Bun's 5 s.
 setDefaultTimeout(60_000);
@@ -205,5 +207,30 @@ export default (page: AuditPage, rule: AuditRule) => page.labels.some((l) => l.s
     const md = await runCli(["--checks", "links/broken", "--output", join(out, "audit.md")]);
     expect(md.stderr).toContain("Report written to");
     expect(await readFile(join(out, "audit.md"), "utf8")).toContain("# Wiki audit");
+  });
+});
+
+describe("restrictions", () => {
+  // Regression: no pull writes is_restricted, so content/restricted never fired; it now reads restrictions live.
+  test("are read live when a rule needs them, and the run is partial without a profile", async () => {
+    const db = await createSyncDb(join(docs, ".atlcli"), { autoMigrate: true });
+    await db.init();
+    try {
+      const restrictions = (id: string) => ({
+        read: { accountIds: id === "2" ? ["ann"] : [], groupIds: [] },
+        update: { accountIds: [], groupIds: id === "1" ? ["admins"] : [] },
+      });
+      const client = { getContentRestrictions: async (id: string) => restrictions(id) } as unknown as ConfluenceClient;
+      const live = await buildPageSnapshots(db, { needs: new Set(["restrictions"]), spaceKey: "TEST", client });
+      expect(live.pages.map((p) => [p.id, p.restricted])).toEqual([
+        ["1", true],
+        ["2", true],
+        ["3", false],
+      ]);
+      const offline = await buildPageSnapshots(db, { needs: new Set(["restrictions"]), spaceKey: "TEST" });
+      expect(offline.partial).toEqual(["restrictions (no profile to read them)"]);
+    } finally {
+      await db.close();
+    }
   });
 });

@@ -199,6 +199,12 @@ Reads return live data. Writes return placeholder ids (see [Placeholders](#place
 | `jira.fieldId(name)` | string | `jira:read` | the id of a field by id or name, ignoring case: `fieldId("Story Points")` → `"customfield_10016"`. Two fields of that name are an error naming both ids |
 | `jira.users(query)` | `[{ accountId?, name?, displayName?, email?, active }]` | `jira:read` | read; users matching a name or email |
 | `jira.attachments(key)` | `[{ id, filename, size, mimeType, created?, author? }]` | `jira:read` | read |
+| `jira.permissionSchemes()` | `[{ id, name, grants: [{ id, permission, holder: { type, value?, parameter?, name? } }] }]` | `jira:read` | read; every permission scheme with its grants. `holder.type` is `projectRole`, `group`, `user`, `anyone`, `applicationRole`, … |
+| `jira.projectPermissionScheme(project)` | `{ id, name }` | `jira:read` | read; the scheme the project uses |
+| `jira.projectRoles(project)` | `[{ id, name, admin, actors: [{ type, id, name }] }]` | `jira:read` | read; `type` is `user` or `group`, `id` an account or group id. Jira returns the actors only with **Administer Projects** for that project |
+| `jira.groupMembers(groupId)` | `[{ accountId, displayName, active, accountType }]` | `jira:read` | read; every member, inactive ones included |
+| `jira.removeRoleActor(project, role, { type, id })` | `null` | `jira:write:<project>` | removes a user or group from a project role; `role` is the id or the name (ignoring case). Left out when the principal is not in the role. An unknown role throws |
+| `jira.deletePermissionGrant(schemeId, grantId)` | `null` | `jira:write:*` | deletes a grant from a permission scheme (ids from `permissionSchemes`). The scheme is shared, so this changes every project that uses it. Left out when the grant is gone |
 
 `description` and comment bodies are Markdown. They become Atlassian Document Format on Cloud and stay text on Data Center. `fields` passes raw Jira field values through (`{ labels: ["x"], priority: { name: "High" } }`). Dates are ISO 8601 with an offset, e.g. `"2026-11-02T09:00:00.000Z"`. Sprint ids may be numbers, numeric strings or placeholders of `createSprint`.
 
@@ -238,10 +244,18 @@ Once `meta.permissions` is declared, sprint writes on a board that belongs to no
 | `confluence.spaces({ type?, limit? })` | async iterator of `{ id?, key, name, type }` | `confluence:read` | read; `type` is `global` or `personal` |
 | `confluence.inlineComments(pageId)` | `[{ id, authorId?, created?, status?, selection?, markdown, replies }]` | `confluence:read` | read; Cloud |
 | `confluence.createBlogPost({ space, title, markdown })` | `{ id }` placeholder | `confluence:write:<space>` | create; read it back with `getPage` |
+| `confluence.spacePermissions(spaceKey)` | `[{ id, principal: { type, id }, operation, targetType }]` | `confluence:read` | read; every permission record of the space. `principal.type` is `user`, `group` or `access-class` (`ANONYMOUS`, `ALL_LICENSED_USERS`, …) |
+| `confluence.spaceRoles()` | `{ mode, roles: [{ id, name, type, permissions }] }` | `confluence:read` | read; `mode` is `PRE_ROLES`, `ROLES_TRANSITION` or `ROLES`; `roles` is empty before roles |
+| `confluence.roleAssignments(spaceKey)` | `[{ roleId, principal: { type, id } }]` | `confluence:read` | read; who holds which space role. Empty in `PRE_ROLES` |
+| `confluence.groupMembers(groupId)` | `[{ accountId, displayName, active, status, accountType, external, guest }]` | `confluence:read` | read; `status` is `active`, `inactive`, `closed` or `unknown` |
+| `confluence.users(accountIds)` | `[{ accountId, displayName, active, status, accountType, external, guest }]` | `confluence:read` | read; up to 500 account ids per call, unknown ones are left out |
+| `confluence.removeSpaceAccess(spaceKey, { type, id })` | `null` | `confluence:write:<space>` | removes a user's, group's or access class's access to the space, by role mode: `ROLES` the role assignment (or the records, when it has no role); `ROLES_TRANSITION` the role assignment and the matching permission records; `PRE_ROLES` the permission records. Left out when the principal has neither |
 
 Creating the same title twice in one plan is an error; use `upsertPage`, which also finds pages the plan itself creates.
 
 Comments, labels and attachments do not change a page's version, so they never take the version precondition away from a later `updatePage` on the same page.
+
+The permission verbs (`spacePermissions` to `removeSpaceAccess`, and in Jira `permissionSchemes` to `deletePermissionGrant`) back the [Access Audit](/access-audit/). Confluence Free and Jira Free do not allow changing permissions through REST, so a plan with `removeSpaceAccess`, `removeRoleActor` or `deletePermissionGrant` fails on apply there.
 
 ### Attachments
 

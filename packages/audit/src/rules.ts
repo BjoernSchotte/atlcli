@@ -7,8 +7,13 @@
  */
 import { inspectScript, planScript, ScriptError, type RunScriptOptions, type ScriptPort, type ScriptRunPlan } from "@atlcli/script-runtime";
 import type { AuditProfileName, AuditRuleConfig, AuditRuleDef, AuditRuleKind, AuditSeverity, Patch } from "./config.js";
+import type { AuditPrincipalRef, AuditTargetKind } from "./report.js";
 
 type Variant = NonNullable<RunScriptOptions["variant"]>;
+
+/** What an audit judges: Jira issues, wiki pages, or who can access what. */
+export type AuditProduct = "jira" | "confluence" | "access";
+const PRODUCTS: readonly AuditProduct[] = ["jira", "confluence", "access"];
 
 const ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 const KINDS: readonly AuditRuleKind[] = ["flag", "age", "until"];
@@ -16,13 +21,13 @@ const KINDS: readonly AuditRuleKind[] = ["flag", "age", "until"];
 /** `meta.audit` as a rule script declares it. */
 export interface AuditMeta {
   id: string;
-  product: "jira" | "confluence";
+  product: AuditProduct;
   title: string;
   category: string;
   kind: AuditRuleKind;
   /** item (default): `default(item, rule)` per item; run: `default(data, rule)` once. */
   scope: "item" | "run";
-  /** Which items the host passes (Jira: open, done, resolved-not-done; wiki: pages). */
+  /** Which items the host passes (Jira: open, done, resolved-not-done; wiki: pages; access: resources, spaces, projects, pages, users). */
   items?: string;
   /** Extra fields the host loads for the items. */
   fields: string[];
@@ -68,7 +73,7 @@ export function parseAuditMeta(raw: unknown, origin: string): AuditMeta {
   const known = new Set(["id", "product", "title", "category", "kind", "scope", "items", "fields", "needs", "percentiles", "expensive", "legacy", "options", "defaults", "profiles", "description"]);
   for (const key of Object.keys(a)) if (!known.has(key)) throw new AuditScriptError(`${at(key)}: unknown key`);
   if (typeof a.id !== "string" || !ID.test(a.id)) throw new AuditScriptError(`${at("id")}: expected "<group>/<name>" in lower case, e.g. team/done-without-component`);
-  if (a.product !== "jira" && a.product !== "confluence") throw new AuditScriptError(`${at("product")}: expected jira or confluence`);
+  if (!PRODUCTS.includes(a.product as AuditProduct)) throw new AuditScriptError(`${at("product")}: expected ${PRODUCTS.join(", ")}`);
   const kind = (a.kind ?? "flag") as AuditRuleKind;
   if (!KINDS.includes(kind)) throw new AuditScriptError(`${at("kind")}: expected flag, age or until`);
   const scope = a.scope ?? "item";
@@ -84,7 +89,7 @@ export function parseAuditMeta(raw: unknown, origin: string): AuditMeta {
   }
   return {
     id: a.id,
-    product: a.product,
+    product: a.product as AuditProduct,
     title: typeof a.title === "string" ? a.title : a.id,
     category: typeof a.category === "string" ? a.category : a.id.split("/")[0]!,
     kind,
@@ -199,6 +204,10 @@ export interface RuleHit {
   assignee?: string;
   subject?: string;
   updated?: string;
+  /** Run-scope rules: what the finding is about, when not an item. */
+  target?: { kind: AuditTargetKind; key: string; url?: string };
+  /** Access rules: the user, group or class the finding is about (fixes read it). */
+  principal?: AuditPrincipalRef;
 }
 
 export interface RuleEntry {

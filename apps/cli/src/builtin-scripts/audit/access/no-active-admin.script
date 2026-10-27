@@ -1,0 +1,23 @@
+// Spaces and projects no active person administers. Site and product admins
+// are not counted; a project whose role members could not be read is skipped.
+export const meta = {
+  audit: {
+    id: "admin/no-active-admin",
+    product: "access",
+    title: "No active administrator",
+    category: "admin",
+    profiles: { minimal: "error", default: "error", strict: "error" },
+  },
+};
+
+// Every licensed user administering (Jira Free, open schemes) counts as administered.
+const counts = (g) =>
+  g.level === "admin" &&
+  ((g.principal.type === "user" && g.principal.active !== false && g.principal.accountType !== "app") ||
+    (g.principal.type === "group" && g.principal.activeMembers !== 0) ||
+    g.principal.type === "all-users");
+
+export default (resource, rule) => {
+  if (!resource.complete) return;
+  if (!resource.grants.some(counts)) return rule.finding({ detail: `No active user or group with members administers this ${resource.kind}.` });
+};

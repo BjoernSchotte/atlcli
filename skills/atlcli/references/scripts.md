@@ -102,6 +102,12 @@ case.
 | `atlcli.confluence.restrictions(pageId)` / `setRestrictions(pageId, { read?, update? })` | account and group ids; an operation left out keeps its restrictions |
 | `atlcli.confluence.versions(pageId)` / `descendants(pageId)` / `spaces()` / `inlineComments(pageId)` | `descendants` and `spaces` are async iterators |
 | `atlcli.confluence.createBlogPost({ space, title, markdown })` | |
+| `atlcli.confluence.spacePermissions(key)` / `spaceRoles()` / `roleAssignments(key)` | reads (`confluence:read`): permission records `{ id, principal: { type, id }, operation, targetType }` (type `user`, `group`, `access-class`); `{ mode, roles }` with `mode` `PRE_ROLES`, `ROLES_TRANSITION` or `ROLES`; `{ roleId, principal }`, empty in `PRE_ROLES` |
+| `atlcli.confluence.groupMembers(groupId)` / `users(accountIds)` | `{ accountId, displayName, active, status, accountType, external, guest }`; `users` takes up to 500 ids |
+| `atlcli.confluence.removeSpaceAccess(key, { type, id })` | `confluence:write:<space>`; `ROLES`: the role assignment, `ROLES_TRANSITION`: role and matching permission records, `PRE_ROLES`: the records; skipped when the principal has no access |
+| `atlcli.jira.permissionSchemes()` / `projectPermissionScheme(project)` / `projectRoles(project)` / `groupMembers(groupId)` | reads (`jira:read`); role actors need Administer Projects on that project; `groupMembers` includes inactive members |
+| `atlcli.jira.removeRoleActor(project, role, { type, id })` | `jira:write:<project>`; `role` id or name; skipped when not in the role |
+| `atlcli.jira.deletePermissionGrant(schemeId, grantId)` | `jira:write:*`: the scheme is shared, so every project using it changes; skipped when the grant is gone |
 | `await atlcli.render(input, { vars?, format?, source?, parent?, unit? })` | renders a template with `--var`/`--vars-file`/`--now`; strings are text, objects ADF, `format: "storage"` for pages; warnings go to the plan, `--strict` makes them fail (`template` error kind) |
 
 ## HTTP, secrets, files, state

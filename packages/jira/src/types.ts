@@ -713,3 +713,42 @@ export interface CreateRemoteLinkInput {
     };
   };
 }
+
+/** Who a permission grant is for: `type` "projectRole", "group", "user", "anyone", "applicationRole", "reporter", … */
+export interface JiraPermissionHolder {
+  type: string;
+  /** Role id, group id, account id or application key, as Jira sends it. */
+  value?: string;
+  parameter?: string;
+  /** Role, group or user display name when Jira expanded it. */
+  name?: string;
+}
+
+export interface JiraPermissionGrant {
+  id: number;
+  /** e.g. "BROWSE_PROJECTS". */
+  permission: string;
+  holder: JiraPermissionHolder;
+}
+
+export interface JiraPermissionScheme {
+  id: number;
+  name: string;
+  grants: JiraPermissionGrant[];
+}
+
+export interface JiraProjectRole {
+  id: number;
+  name: string;
+  admin: boolean;
+  /** `id`: account id for users, group id for groups. */
+  actors: Array<{ type: "user" | "group"; id: string; name: string }>;
+}
+
+export interface JiraUserDetails {
+  accountId: string;
+  displayName: string;
+  active: boolean;
+  /** "atlassian", "app" or "customer". */
+  accountType: string;
+}
