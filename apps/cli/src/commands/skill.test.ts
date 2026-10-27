@@ -324,7 +324,9 @@ describe("atlcli skill --install", () => {
     try {
       const { failure } = await run([], { install: root });
       expect(failure?.errCode).toBe("ATLCLI_ERR_IO");
-      expect(failure?.message).toStartWith(`Cannot write ${join(references, "auth-and-config.md")}:`);
+      // The first reference file in write order fails.
+      expect(failure?.message).toStartWith(`Cannot write ${references}`);
+      expect(failure?.message).toMatch(/\/references\/[a-z-]+\.md: /);
       expect(readFileSync(join(root, "atlcli", "SKILL.md"), "utf8")).toBe(SKILL_MD);
       expect(readdirSync(references)).toEqual([]);
     } finally {
