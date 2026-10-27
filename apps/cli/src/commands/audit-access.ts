@@ -183,7 +183,7 @@ export async function collectAccessModel(source: AccessSource, scope: AccessScop
           resource.complete = false;
           resource.note = `role members not readable (${why(error)}; needs Administer Projects)`;
         }
-        resource.grants = jiraProjectGrants(scheme?.grants ?? [], roles, principal);
+        resource.grants = jiraProjectGrants(scheme?.grants ?? [], roles, principal, project.style === "team");
         if (!scheme) {
           resource.complete = false;
           resource.note = `permission scheme ${ref.name} not readable`;
@@ -341,9 +341,10 @@ export function clientAccessSource(profile: Profile, products: { confluence: boo
     const base = wikiBase(profile.baseUrl);
     out.confluence = {
       async spaces(keys, personal) {
-        const query: Record<string, string | number> = { status: "current", ...(keys === "*" ? (personal ? {} : { type: "global" }) : { keys: keys.join(",") }) };
-        const { items } = await allV2<{ id: string; key: string; name: string }>(client, "/api/v2/spaces", query);
-        return items.map((s) => ({ id: String(s.id), key: s.key, name: s.name }));
+        const query: Record<string, string | number> = { status: "current", ...(keys === "*" ? {} : { keys: keys.join(",") }) };
+        const { items } = await allV2<{ id: string; key: string; name: string; type?: string }>(client, "/api/v2/spaces", query);
+        // Shared spaces come as global, collaboration, knowledge_base, onboarding, …; only personal ones are left out.
+        return items.filter((s) => keys !== "*" || personal || s.type !== "personal").map((s) => ({ id: String(s.id), key: s.key, name: s.name }));
       },
       roleMode: () => client.getSpaceRoleMode(),
       roles: async () => (await client.listSpaceRoles()).map((r) => ({ id: r.id, name: r.name, permissions: r.spacePermissions })),
@@ -504,7 +505,7 @@ export async function handleAuditAccess(args: string[], flags: Flags, opts: Outp
   const scope: AccessScope = { ...(spaces !== undefined ? { spaces } : {}), ...(projects !== undefined ? { projects } : {}), personal: hasFlag(flags, "personal"), pages: hasFlag(flags, "pages"), maxPages };
   const { model, partial } = await collectAccessModel(source, scope);
   const query = [
-    spaces !== undefined ? `spaces ${spaces === "*" ? `all${scope.personal ? "" : " global"}` : spaces.join(", ")}` : "",
+    spaces !== undefined ? `spaces ${spaces === "*" ? `all${scope.personal ? "" : " shared"}` : spaces.join(", ")}` : "",
     projects !== undefined ? `projects ${projects === "*" ? "all" : projects.join(", ")}` : "",
     scope.pages ? "with pages" : "",
   ]
@@ -560,7 +561,7 @@ export function auditAccessHelp(): string {
 
 Who can see and change what: space permissions and roles, Jira permission schemes
 and project roles, groups and users, and with --pages the restrictions of pages.
-Without --space and --project every global space and every project you can see
+Without --space and --project every shared space and every project you can see
 is read. What your account may not read is listed as incomplete, not guessed.
 
 Rules (category/rule):
@@ -583,7 +584,7 @@ Rules file (first found): --rules <file>, ./.atlcli/audit-rules.yaml,
 Baseline: ~/.atlcli/profiles/<profile>/audit-access-baseline.json
 
 Options:
-  --space <keys>        Spaces (comma-separated, or '*' for all global spaces)
+  --space <keys>        Spaces (comma-separated, or '*' for all but personal spaces)
   --project <keys>      Projects (comma-separated, or '*')
   --product <p>         confluence, jira or both (default) when neither is given
   --personal            With --space '*': include personal spaces

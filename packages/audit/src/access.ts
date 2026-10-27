@@ -155,11 +155,14 @@ export function confluencePrincipalType(type: string, id: string): AccessPrincip
   return "dynamic";
 }
 
-const WRITE_TARGETS = new Set(["page", "blogpost", "attachment", "whiteboard", "database", "folder", "embed", "space"]);
+const WRITE_TARGETS = new Set(["page", "blogpost", "attachment", "whiteboard", "database", "folder", "embed"]);
 
-/** Access level of a space permission record (`administer:space`, `create:page`, `read:space`, …). */
+/**
+ * Access level of a space permission record (`administer:space`, `create:page`,
+ * `read:space`, …). `delete:space` is "delete own content", which viewers have too.
+ */
 export function confluenceOperationLevel(operation: string, targetType: string): AccessLevel {
-  if (operation === "administer" || (operation === "delete" && targetType === "space")) return "admin";
+  if (operation === "administer" && targetType === "space") return "admin";
   if (["create", "update", "delete", "archive", "restrict_content"].includes(operation) && WRITE_TARGETS.has(targetType)) return "write";
   return "read";
 }
@@ -270,11 +273,16 @@ export function jiraPermissionLevel(permissions: string[]): AccessLevel | undefi
 /**
  * A project's grants from its permission scheme: role grants become one grant
  * per role actor (when the roles could be read), the rest one per holder.
+ * Team-managed projects mirror their access level (open, limited) as
+ * application role grants that also list Administer Projects; administration
+ * there goes through the Administrator role only, so those grants count as
+ * edit access at most.
  */
 export function jiraProjectGrants(
   scheme: PermissionSchemeGrant[],
   roles: ProjectRoleRecord[] | undefined,
   principal: (type: AccessPrincipalType, id: string, name?: string) => AccessPrincipal,
+  teamManaged = false,
 ): AccessGrant[] {
   const paths = new Map<string, { type: AccessPrincipalType; id: string; name?: string; role?: { id: string; name: string }; perms: string[]; grantIds: number[] }>();
   const add = (type: AccessPrincipalType, id: string, name: string | undefined, permission: string, role?: { id: string; name: string }, grantId?: number) => {
@@ -311,8 +319,10 @@ export function jiraProjectGrants(
   }
   const out: AccessGrant[] = [];
   for (const e of paths.values()) {
-    const level = jiraPermissionLevel(e.perms);
+    let level = jiraPermissionLevel(e.perms);
     if (!level) continue;
+    // ponytail: inferred from the scheme Jira shows for team-managed projects; verify against a non-admin account if findings look off.
+    if (teamManaged && e.type === "all-users" && level === "admin") level = jiraPermissionLevel(e.perms.filter((p) => p !== "ADMINISTER_PROJECTS")) ?? "read";
     out.push({
       principal: principal(e.type, e.id, e.name),
       level,
@@ -471,7 +481,8 @@ function assemble(script: AuditRuleScript, hit: RuleHit, item: AccessItem | unde
     key: hit.key ?? target.key,
     summary: hit.summary ?? name,
     status: hit.status ?? (item && item.kind !== "page" && item.kind !== "user" ? item.mode : ""),
-    ...((hit.assignee ?? principal?.name) ? { assignee: (hit.assignee ?? principal?.name)! } : {}),
+    // A user finding's summary is already the user's name.
+    ...((hit.assignee ?? principal?.name) && item?.kind !== "user" ? { assignee: (hit.assignee ?? principal?.name)! } : {}),
     detail: hit.detail,
     ...(hit.ageDays !== undefined ? { ageDays: Math.floor(hit.ageDays) } : {}),
     subject: hit.subject ?? `${target.kind}:${target.key}${principal ? `|${principal.type}:${principal.id}` : ""}`,

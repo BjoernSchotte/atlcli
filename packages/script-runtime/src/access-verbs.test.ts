@@ -128,7 +128,8 @@ describe("confluence.removeSpaceAccess", () => {
     expect(roles.operations[0]!.args).toEqual({ spaceKey: "DOCSY", spaceId: "7", roleId: "r1", principal: { type: "user", id: "u1" } });
     const { port, calls } = site("PRE_ROLES");
     (port as { confluenceRoleAssignments: unknown }).confluenceRoleAssignments = async () => (calls.push(["assignments"]), []);
-    const pre = await plan(`await atlcli.confluence.removeSpaceAccess("DOCSY", { type: "user", id: "u1" });`, port);
+    // A principal read elsewhere may carry its name; the plan leaves it out.
+    const pre = await plan(`await atlcli.confluence.removeSpaceAccess("DOCSY", { type: "user", id: "u1", name: "U One" });`, port);
     expect(pre.operations[0]!.args).toEqual({ spaceKey: "DOCSY", principal: { type: "user", id: "u1" }, permissionIds: ["11"] });
     expect(calls).not.toContainEqual(["assignments"]);
   });
@@ -146,7 +147,7 @@ describe("jira access writes", () => {
   it("removeRoleActor finds the role by id or name and skips an absent actor", async () => {
     const { port, writes } = site();
     const run = await plan(
-      `await atlcli.jira.removeRoleActor("ATL", "administrators", { type: "user", id: "a1" });
+      `await atlcli.jira.removeRoleActor("ATL", "administrators", { type: "user", id: "a1", name: "Ann" });
        await atlcli.jira.removeRoleActor("ATL", 10002, { type: "user", id: "a1" });
        await atlcli.jira.removeRoleActor("ATL", 10002, { type: "group", id: "g1" });`,
       port,

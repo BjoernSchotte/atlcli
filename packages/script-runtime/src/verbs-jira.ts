@@ -273,7 +273,8 @@ export const JIRA_VERBS: Record<string, Verb> = {
   }),
   /** `role`: id or name (case-insensitive). Skipped when the principal is not in the role. */
   "jira.removeRoleActor": verb(
-    z.tuple([project, z.union([str, id]), z.strictObject({ type: z.enum(["user", "group"]), id: str })]),
+    // A name is accepted (role actors and audit principals carry one) and left out of the plan.
+    z.tuple([project, z.union([str, id]), z.strictObject({ type: z.enum(["user", "group"]), id: str, name: str.optional() })]),
     async (r, [key, ref, who], signal) => {
       r.require(`jira:write:${key}`);
       const roles = await hostOp(r.port.jiraProjectRoles?.bind(r.port), "jira.removeRoleActor")(key, { signal });
@@ -286,7 +287,7 @@ export const JIRA_VERBS: Record<string, Verb> = {
         r.skipped.push({ verb: "jira.removeRoleActor", target: key, title, reason: "unchanged" });
         return null;
       }
-      await r.record("jira.removeRoleActor", { projectKey: key, roleId: role.id, role: role.name, principal: who }, object);
+      await r.record("jira.removeRoleActor", { projectKey: key, roleId: role.id, role: role.name, principal: { type: who.type, id: who.id } }, object);
       return null;
     },
   ),

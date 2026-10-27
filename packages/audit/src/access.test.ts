@@ -29,6 +29,8 @@ test("Confluence levels from permission records and role permissions", () => {
   expect(confluenceOperationLevel("create", "comment")).toBe("read");
   expect(confluenceOperationLevel("create", "page")).toBe("write");
   expect(confluenceOperationLevel("administer", "space")).toBe("admin");
+  expect(confluenceOperationLevel("delete", "space")).toBe("read");
+  expect(confluenceOperationLevel("restrict_content", "space")).toBe("read");
   expect(confluenceRoleLevel(["read/space", "read/comment", "delete/own-content"])).toBe("read");
   expect(confluenceRoleLevel(["read/space", "write/space", "edit/blogpost"])).toBe("write");
   expect(confluenceRoleLevel(["read/space", "administer/space"])).toBe("admin");
@@ -94,6 +96,9 @@ test("project grants: role grants per role actor, the rest per holder with the s
     ["all-users", "any", "read", null, [6]],
     ["dynamic", "reporter", "read", null, [7]],
   ]);
+  // Team-managed: the access-level mirror does not make all users admins.
+  const team = jiraProjectGrants([g(1, "BROWSE_PROJECTS", { type: "applicationRole" }), g(2, "EDIT_ISSUES", { type: "applicationRole" }), g(3, "ADMINISTER_PROJECTS", { type: "applicationRole" })], [], principal, true);
+  expect(team.map((x) => [x.principal.type, x.level])).toEqual([["all-users", "write"]]);
   // Without readable roles, role grants name nobody.
   expect(jiraProjectGrants(scheme, undefined, principal).some((x) => x.role)).toBe(false);
 });

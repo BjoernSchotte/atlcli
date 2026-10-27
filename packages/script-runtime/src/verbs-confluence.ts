@@ -18,7 +18,8 @@ const restrictions = z
 
 const spaceKey = str.regex(/^[A-Za-z0-9~_-]+$/, "a space key such as DOCSY");
 const groupId = str.max(255);
-const principal = z.strictObject({ type: z.enum(["user", "group", "access-class"]), id: str });
+/** A name is accepted (audit principals carry one) and left out of the plan. */
+const principal = z.strictObject({ type: z.enum(["user", "group", "access-class"]), id: str, name: str.optional() });
 /** Most account ids confluence.users takes in one call. */
 const MAX_USER_IDS = 500;
 
@@ -187,7 +188,7 @@ export const CONFLUENCE_VERBS: Record<string, Verb> = {
       : {};
     await r.record(
       "confluence.removeSpaceAccess",
-      { spaceKey: key, ...role, principal: assignment?.principal ?? who, ...(permissionIds.length ? { permissionIds } : {}) },
+      { spaceKey: key, ...role, principal: assignment?.principal ?? { type: who.type, id: who.id }, ...(permissionIds.length ? { permissionIds } : {}) },
       object,
     );
     return null;

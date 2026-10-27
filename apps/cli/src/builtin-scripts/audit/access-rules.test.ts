@@ -174,6 +174,14 @@ describe("access rules", () => {
     expect(report.legacyDays).toBeNull();
   });
 
+  test("a project every licensed user administers is not without an admin", async () => {
+    const { model } = await collectAccessModel(fakeSource(), { projects: "*", personal: false, pages: false, maxPages: 1 });
+    const pub = model.resources.find((r) => r.key === "PUB")!;
+    pub.grants.push({ principal: { type: "all-users", id: "any", name: "All licensed users" }, level: "admin", operations: ["ADMINISTER_PROJECTS"] });
+    const { report } = await auditAccess({ rules: strict(), registry, scripts, model, now: NOW, useBaseline: false, query: "", pagesRead: false }, { port, now: NOW });
+    expect(report.findings.filter((f) => f.rule === "admin/no-active-admin")).toEqual([]);
+  });
+
   test("minimal: exposure and missing admins only", async () => {
     const { report } = await run(defaultAuditRules(registry, "minimal"));
     expect(new Set(report.findings.map((f) => f.rule))).toEqual(new Set(["exposure/anonymous-space", "exposure/anonymous-project", "admin/no-active-admin"]));

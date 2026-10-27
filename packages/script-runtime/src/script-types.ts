@@ -472,6 +472,8 @@ interface ConfluenceRestrictions {
 interface ConfluencePrincipal {
   type: "user" | "group" | "access-class";
   id: string;
+  /** Accepted (and ignored) when passing a principal read elsewhere. */
+  name?: string;
 }
 
 interface ConfluenceSpacePermission {
@@ -756,7 +758,7 @@ const atlcli: {
     /** Every member of a group, inactive ones included. */
     groupMembers(groupId: string): Promise<JiraMember[]>;
     /** \`role\`: id or name. Skipped when the user or group is not in the role. Needs jira:write:<project>. */
-    removeRoleActor(project: string, role: string | number, principal: { type: "user" | "group"; id: string }): Promise<null>;
+    removeRoleActor(project: string, role: string | number, principal: { type: "user" | "group"; id: string; name?: string }): Promise<null>;
     /** Deletes a grant from a permission scheme (from \`permissionSchemes\`); skipped when it is gone. Needs jira:write:*. */
     deletePermissionGrant(schemeId: number, grantId: number): Promise<null>;
   };
