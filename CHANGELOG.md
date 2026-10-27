@@ -2,6 +2,11 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.16] - 2026-10-27
+
+### Bug Fixes
+
+- **cli:** Embed the QuickJS WASM in compiled binaries ([ee8ed3a](https://github.com/bjoernschotte/atlcli/commit/ee8ed3a5856d56efb87303855b104dbc2ffef0f8))
 ## [2026.10.15] - 2026-10-27
 
 ### Bug Fixes
