@@ -217,3 +217,23 @@ interface AccessGrant { principal: {type: "user"|"group"|"anonymous"|"all-users"
 - Gibt es im Rollenmodus einen REST-Write für Rollen-Zuweisungen? Wenn nicht, gibt es den Fix nur im Modus `PRE_ROLES`.
 - Wie erkennt man „alle lizenzierten User“ bei Confluence (Principal-Typ im v2-Response)? Wird am kiteweave-Space beobachtet.
 - Team-managed Jira-Projekte haben kein Permission Scheme. Erfasst werden ihre Rollen; ihr Zugriffsmodus (open/limited/private) kommt aus `/project/{key}`.
+
+## Umsetzung: Abweichungen und Befunde (2026-10-27)
+- **Pull setzt `is_restricted` nicht.** `content/restricted` liest Restrictions stattdessen live im Wiki-Audit (`needs: ["restrictions"]`). Ein zusätzlicher Request pro Seite bei jedem Pull war es nicht wert.
+- **Space-Auswahl:** Bei `--space '*'` werden alle Spaces außer persönlichen gelesen. Geteilte Spaces heißen nicht nur `global`, sondern auch `onboarding`, `collaboration` usw.
+- **Live-Befunde zu Confluence:**
+  - Access Classes kommen als `access-class ALL_LICENSED_USERS` in Permissions und als `ACCESS_CLASS all-licensed-users` in Rollen-Zuweisungen.
+  - `delete:space` bedeutet „eigene Inhalte löschen“ und ist kein Adminrecht.
+- **Live-Befund zu Jira:** Team-managed Projekte spiegeln ihre Zugriffsstufe als applicationRole-Grants inklusive `ADMINISTER_PROJECTS`. Diese Grants zählen höchstens als Bearbeitungsrecht.
+- **Free-Pläne:** Confluence Free verweigert jede Berechtigungsänderung per REST (403 „Free Edition“, Rollen-POST 404). Jira Free erlaubt keine eigenen Permission Schemes. Deshalb ließ sich das Schreiben der Fix-Verben auf kiteweave nicht live prüfen. Auf mayflower (DOCSY/ATLCLI) wurden die Pläne live geprüft, ohne Apply; das Apply ist per Stub-Tests abgedeckt.
+- **Rollenmodus beim Entfernen von Zugriff:**
+  - `ROLES`: nur die Rollen-Zuweisung entfernen.
+  - `ROLES_TRANSITION`: die Rolle und die passenden Permission-Datensätze entfernen.
+  - `PRE_ROLES`: nur die Permission-Datensätze entfernen.
+
+## Quellen
+- Confluence v2 OpenAPI: https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json
+- Confluence v1: https://dac-static.atlassian.com/cloud/confluence/swagger.v3.json
+- Jira v3: https://dac-static.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
+- Org Admin API: https://developer.atlassian.com/cloud/admin/organization/rest/api-group-directory/
+- Rollenbasierter Zugriff: https://support.atlassian.com/confluence-cloud/docs/faq-role-based-access-in-confluence/
