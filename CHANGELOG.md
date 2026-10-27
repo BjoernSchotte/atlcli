@@ -2,6 +2,11 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.10.15] - 2026-10-27
+
+### Bug Fixes
+
+- **confluence:** Resolve inline comments with `resolved: true` ([36d5e47](https://github.com/bjoernschotte/atlcli/commit/36d5e474538d33cd6785b5591d67aa1f0c4a8a68))
 ## [2026.10.14] - 2026-10-27
 
 ### Bug Fixes
