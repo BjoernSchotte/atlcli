@@ -214,8 +214,8 @@ export function defaultAuditRules(registry: AuditRegistry, profile: AuditProfile
 }
 
 const CUSTOM_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
-const TOP_LEVEL = new Set(["version", "extends", "minLevel", "rules", "custom", "overrides", "baseline", "flagged", "scripts", "confluence"]);
-const CONFLUENCE_KEYS = new Set(["extends", "minLevel", "rules", "scripts"]);
+const TOP_LEVEL = new Set(["version", "extends", "minLevel", "rules", "custom", "overrides", "baseline", "flagged", "scripts", "confluence", "access"]);
+const SECTION_KEYS = new Set(["extends", "minLevel", "rules", "scripts"]);
 
 function stringList(value: unknown, path: string): string[] {
   const list = Array.isArray(value) ? value : [value];
@@ -330,25 +330,29 @@ export function parseAuditRules(raw: unknown, source: string, registry: AuditReg
 }
 
 /**
- * The rules for `audit wiki`: the file's `confluence:` section (extends,
- * minLevel, rules, scripts), resolved like the top level. Pages have no
- * legacy cutoff: a stale page is by definition not updated.
+ * The rules for `audit wiki` (the file's `confluence:` section) or `audit
+ * access` (`access:`): extends, minLevel, rules, scripts, resolved like the
+ * top level. Neither has a legacy cutoff: a stale page is by definition not
+ * updated, and access has no update date.
  */
-export function parseConfluenceAuditRules(raw: unknown, source: string, registry: AuditRegistry): AuditRules {
-  const section = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).confluence : undefined;
+export function parseSectionAuditRules(raw: unknown, name: "confluence" | "access", source: string, registry: AuditRegistry): AuditRules {
+  const section = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>)[name] : undefined;
   if (section !== undefined && section !== null) {
-    if (typeof section !== "object" || Array.isArray(section)) throw new AuditRulesError(`${source}: confluence: expected a mapping.`);
+    if (typeof section !== "object" || Array.isArray(section)) throw new AuditRulesError(`${source}: ${name}: expected a mapping.`);
     for (const key of Object.keys(section)) {
-      if (!CONFLUENCE_KEYS.has(key)) throw new AuditRulesError(`${source}: confluence: unknown key "${key}". Use ${[...CONFLUENCE_KEYS].join(", ")}.`);
+      if (!SECTION_KEYS.has(key)) throw new AuditRulesError(`${source}: ${name}: unknown key "${key}". Use ${[...SECTION_KEYS].join(", ")}.`);
     }
   }
   try {
     return { ...parseAuditRules(section ?? null, source, registry), legacyDays: null };
   } catch (err) {
-    if (err instanceof AuditRulesError && !err.message.startsWith(source)) throw new AuditRulesError(`confluence.${err.message}`);
+    if (err instanceof AuditRulesError && !err.message.startsWith(source)) throw new AuditRulesError(`${name}.${err.message}`);
     throw err;
   }
 }
+
+/** `audit wiki`'s rules: the `confluence:` section. */
+export const parseConfluenceAuditRules = (raw: unknown, source: string, registry: AuditRegistry): AuditRules => parseSectionAuditRules(raw, "confluence", source, registry);
 
 /** What an issue looks like to override matching. */
 export interface AuditIssueContext {

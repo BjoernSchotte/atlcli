@@ -1,0 +1,17 @@
+// External collaborators and guests who administer a space or project.
+export const meta = {
+  audit: {
+    id: "admin/external-admin",
+    product: "access",
+    title: "External administrators",
+    category: "admin",
+    profiles: { default: "warning", strict: "warning" },
+  },
+};
+
+export default (resource, rule) => {
+  const seen = new Set();
+  return resource.grants
+    .filter((g) => g.level === "admin" && g.principal.type === "user" && g.principal.external && !seen.has(g.principal.id) && seen.add(g.principal.id))
+    .map((g) => rule.finding({ principal: g.principal, detail: `External account administers this ${resource.kind}${g.role ? ` (role ${g.role.name})` : ""}.` }));
+};

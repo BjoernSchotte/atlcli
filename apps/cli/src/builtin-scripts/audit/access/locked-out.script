@@ -1,0 +1,17 @@
+// Pages with an edit restriction no active person passes (needs --pages).
+export const meta = {
+  audit: {
+    id: "pages/locked-out",
+    product: "access",
+    title: "Pages nobody can edit",
+    category: "pages",
+    items: "pages",
+    profiles: { default: "warning", strict: "warning" },
+  },
+};
+
+export default (page, rule) => {
+  if (!page.update.length) return;
+  const someone = page.update.some((p) => (p.type === "user" && p.active !== false) || (p.type === "group" && p.activeMembers !== 0));
+  if (!someone) return rule.finding({ detail: "Only inactive accounts or empty groups may edit this page." });
+};

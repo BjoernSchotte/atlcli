@@ -1,0 +1,28 @@
+// Deactivated or closed accounts that still hold access to a space or project.
+// --fix removes their access: the space role or permissions, the project role,
+// or the permission scheme grant naming them.
+export const meta = {
+  audit: {
+    id: "stale/inactive-user-grant",
+    product: "access",
+    title: "Access held by inactive accounts",
+    category: "stale",
+    profiles: { default: "warning", strict: "warning" },
+  },
+};
+
+export default (resource, rule) => {
+  const seen = new Set();
+  return resource.grants
+    .filter((g) => g.principal.type === "user" && g.principal.active === false && !seen.has(g.principal.id) && seen.add(g.principal.id))
+    .map((g) => rule.finding({ principal: g.principal, detail: `Inactive account with ${g.level} access${g.role ? ` (role ${g.role.name})` : ""}.` }));
+};
+
+export async function fix(finding, resource) {
+  const user = { type: "user", id: finding.principal.id };
+  if (resource.kind === "space") return atlcli.confluence.removeSpaceAccess(resource.key, user);
+  for (const g of resource.grants.filter((x) => x.principal.type === "user" && x.principal.id === user.id)) {
+    if (g.role) await atlcli.jira.removeRoleActor(resource.key, Number(g.role.id), user);
+    for (const id of g.grantIds ?? []) await atlcli.jira.deletePermissionGrant(resource.scheme.id, id);
+  }
+}

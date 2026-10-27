@@ -1,0 +1,27 @@
+// Projects whose permission scheme lets anyone in without logging in.
+// --fix deletes those grants from the scheme, which changes every project using it.
+export const meta = {
+  audit: {
+    id: "exposure/anonymous-project",
+    product: "access",
+    title: "Anonymous access to projects",
+    category: "exposure",
+    items: "projects",
+    profiles: { minimal: "error", default: "error", strict: "error" },
+  },
+};
+
+export default (project, rule) =>
+  project.grants
+    .filter((g) => g.principal.type === "anonymous")
+    .map((g) =>
+      rule.finding({
+        principal: g.principal,
+        detail: `Permission scheme ${project.scheme ? `"${project.scheme.name}" ` : ""}gives anyone, without logging in, ${g.operations.join(", ")}; the scheme applies to every project using it.`,
+      }),
+    );
+
+export async function fix(finding, project) {
+  const grant = project.grants.find((g) => g.principal.type === "anonymous");
+  for (const id of grant?.grantIds ?? []) await atlcli.jira.deletePermissionGrant(project.scheme.id, id);
+}

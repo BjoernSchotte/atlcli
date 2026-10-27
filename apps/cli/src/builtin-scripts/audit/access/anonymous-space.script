@@ -1,0 +1,21 @@
+// Spaces anyone can open without logging in.
+// --fix removes the anonymous access (role assignment or space permissions).
+export const meta = {
+  audit: {
+    id: "exposure/anonymous-space",
+    product: "access",
+    title: "Anonymous access to spaces",
+    category: "exposure",
+    items: "spaces",
+    profiles: { minimal: "error", default: "error", strict: "error" },
+  },
+};
+
+export default (space, rule) =>
+  space.grants
+    .filter((g) => g.principal.type === "anonymous")
+    .map((g) => rule.finding({ principal: g.principal, detail: `Anyone, without logging in, can ${g.level === "read" ? "view" : g.level === "write" ? "edit" : "administer"} this space${g.role ? ` (role ${g.role.name})` : ""}.` }));
+
+export async function fix(finding, space) {
+  await atlcli.confluence.removeSpaceAccess(space.key, { type: "access-class", id: finding.principal.id });
+}

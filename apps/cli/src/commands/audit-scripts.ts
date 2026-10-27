@@ -11,6 +11,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import {
   AuditRegistry,
   type AuditFinding,
+  type AuditProduct,
   type AuditReportV3,
   type AuditRuleConfig,
   type AuditRuleScript,
@@ -27,11 +28,11 @@ import { ERROR_CODES, fail, getFlag, getFlags, hasFlag, initJinja, output, type 
 import { JinjaError, streamJinja } from "@atlcli/jinja";
 import type { PlannedOperation, RunScriptOptions, ScriptPort, ScriptRunPlan } from "@atlcli/script-runtime";
 import { AtomicFile, formatSize, singleOutputPort } from "./output-files.js";
-import { BUILTIN_CONFLUENCE_AUDIT_RULES, BUILTIN_JIRA_AUDIT_RULES } from "../builtin-scripts/audit/index.js";
+import { BUILTIN_ACCESS_AUDIT_RULES, BUILTIN_CONFLUENCE_AUDIT_RULES, BUILTIN_JIRA_AUDIT_RULES } from "../builtin-scripts/audit/index.js";
 
 type Variant = RunScriptOptions["variant"];
 type Flags = Record<string, string | boolean | string[]>;
-export type AuditProduct = "jira" | "confluence";
+export type { AuditProduct };
 
 const transpile = (source: string) => new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(source);
 const runtime = () => import("@atlcli/script-runtime");
@@ -49,7 +50,7 @@ async function readRuleImports(path: string, source: string): Promise<Record<str
 
 /** The built-in rules of a product, loaded (meta read, nothing run). */
 export async function loadBuiltinAuditRules(product: AuditProduct, variant?: Variant): Promise<AuditRuleScript[]> {
-  const sources = product === "jira" ? BUILTIN_JIRA_AUDIT_RULES : BUILTIN_CONFLUENCE_AUDIT_RULES;
+  const sources = { jira: BUILTIN_JIRA_AUDIT_RULES, confluence: BUILTIN_CONFLUENCE_AUDIT_RULES, access: BUILTIN_ACCESS_AUDIT_RULES }[product];
   return Promise.all(sources.map((source) => loadAuditRule(source, "built-in", transpile, variant)));
 }
 
@@ -100,7 +101,7 @@ export async function loadAuditScripts(
     const modules = await readRuleImports(path, text);
     const rule = await loadAuditRule(text, path, transpile, options.variant, modules);
     if (rule.meta.product !== product) {
-      if (explicit) throw new AuditScriptError(`${path} is a ${rule.meta.product} rule; use it with atlcli audit ${rule.meta.product === "jira" ? "jira" : "wiki"}`);
+      if (explicit) throw new AuditScriptError(`${path} is a ${rule.meta.product} rule; use it with atlcli audit ${auditCommand(rule.meta.product)}`);
       continue;
     }
     const at = scripts.findIndex((s) => s.meta.id === rule.meta.id);
@@ -423,18 +424,37 @@ export default (page: AuditPage, rule: AuditRule) => {
 //   await atlcli.confluence.addLabels(page.id, ["owner-unknown"]);
 // }
 `,
+  access: `// An audit rule: runs read-only for every space and project of \`atlcli audit access\`.
+// Print a built-in to start from: atlcli audit access --print-rule stale/inactive-user-grant
+export const meta = {
+  audit: {
+    id: "team/no-contractor-admins",
+    product: "access",
+    title: "Contractors do not administer",
+    defaults: "warning",
+  },
 };
 
-/** `atlcli audit init [--product jira|confluence] [--force]`: a rule skeleton and types in ./.atlcli/audit/. */
+export default (resource: AccessResource, rule: AuditRule) =>
+  resource.grants
+    .filter((g) => g.level === "admin" && g.principal.type === "group" && g.principal.name.startsWith("contractors"))
+    .map((g) => rule.finding({ principal: g.principal, detail: \`\${g.principal.name} administers this \${resource.kind}.\` }));
+`,
+};
+
+/** The `atlcli audit` subcommand of a product. */
+export const auditCommand = (product: AuditProduct): string => (product === "confluence" ? "wiki" : product);
+
+/** `atlcli audit init [--product jira|confluence|access] [--force]`: a rule skeleton and types in ./.atlcli/audit/. */
 export async function handleAuditInit(flags: Flags, opts: OutputOptions): Promise<void> {
   const product = (getFlag(flags, "product") ?? "jira") as AuditProduct;
-  if (product !== "jira" && product !== "confluence") fail(opts, 1, ERROR_CODES.USAGE, "--product must be jira or confluence.");
+  if (!(product in AUDIT_RULE_SKELETONS)) fail(opts, 1, ERROR_CODES.USAGE, "--product must be jira, confluence or access.");
   const dir = join(process.cwd(), ".atlcli", "audit");
   const { mkdir } = await import("node:fs/promises");
   await mkdir(dir, { recursive: true });
   const { ATLCLI_SCRIPT_TYPES } = await runtime();
   const { TSCONFIG } = await import("./script.js");
-  const rule = product === "jira" ? "bug-without-component.ts" : "missing-owner-label.ts";
+  const rule = { jira: "bug-without-component.ts", confluence: "missing-owner-label.ts", access: "no-contractor-admins.ts" }[product];
   const written: string[] = [];
   const kept: string[] = [];
   for (const [name, content] of [["atlcli.d.ts", ATLCLI_SCRIPT_TYPES], ["tsconfig.json", TSCONFIG], [rule, AUDIT_RULE_SKELETONS[product]]] as const) {
@@ -452,7 +472,7 @@ export async function handleAuditInit(flags: Flags, opts: OutputOptions): Promis
     [
       `Wrote ${written.join(", ") || "nothing"} in ${dir}`,
       ...(kept.length ? [`Kept existing ${kept.join(", ")} (use --force to overwrite)`] : []),
-      `Rules in this directory run with every 'atlcli audit ${product === "jira" ? "jira" : "wiki"}' here; check with --list-rules.`,
+      `Rules in this directory run with every 'atlcli audit ${auditCommand(product)}' here; check with --list-rules.`,
     ].join("\n"),
     opts,
   );

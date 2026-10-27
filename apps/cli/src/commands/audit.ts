@@ -33,6 +33,11 @@ export async function handleAudit(
     case "jira":
       await handleAuditJira(args.slice(1), flags, opts);
       return;
+    case "access": {
+      const { handleAuditAccess } = await import("./audit-access.js");
+      await handleAuditAccess(args.slice(1), flags, opts);
+      return;
+    }
     case "init": {
       const { handleAuditInit } = await import("./audit-scripts.js");
       await handleAuditInit(flags, opts);
@@ -50,13 +55,15 @@ export function auditHelp(): string {
 Targets:
   wiki                  Audit Confluence wiki content (reads the sync database)
   jira                  Audit Jira issues: stuck or unassigned work, stale issues, hygiene gaps
+  access                Audit who can see and change what: anonymous access, inactive
+                        accounts, missing admins, page restrictions (Confluence and Jira)
   init                  Write a rule script skeleton and its types to ./.atlcli/audit/
-                        (--product jira|confluence, --force)
+                        (--product jira|confluence|access, --force)
 
 Rules are TypeScript scripts run read-only in the script sandbox. Built-ins can be
 printed (--print-rule <id>) and replaced by a script with the same id.
 
-Run 'atlcli audit wiki --help' or 'atlcli audit jira --help' for target options.
+Run 'atlcli audit <target> --help' for target options.
 
 Setup:
   1. Enable the feature:  atlcli flag set audit true --global
@@ -72,5 +79,6 @@ Examples:
   atlcli audit wiki --stale-high 12 --fix
   atlcli audit jira --project ATLCLI
   atlcli audit jira --board 123 --checks stuck-wip --json
+  atlcli audit access --space DOCSY --project ATLCLI
   atlcli audit init --product jira`;
 }

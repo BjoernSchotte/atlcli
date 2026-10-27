@@ -1,0 +1,18 @@
+// Spaces and projects with exactly one active administrator and no admin group.
+export const meta = {
+  audit: {
+    id: "admin/single-admin",
+    product: "access",
+    title: "Single administrator",
+    category: "admin",
+    profiles: { strict: "info" },
+  },
+};
+
+export default (resource, rule) => {
+  if (!resource.complete) return;
+  const admins = resource.grants.filter((g) => g.level === "admin" && g.principal.activeMembers !== 0 && g.principal.active !== false && g.principal.accountType !== "app");
+  if (admins.some((g) => g.principal.type !== "user")) return;
+  const users = new Set(admins.map((g) => g.principal.id));
+  if (users.size === 1) return rule.finding({ principal: admins[0].principal, detail: `${admins[0].principal.name} is the only active administrator.` });
+};

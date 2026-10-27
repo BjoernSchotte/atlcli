@@ -1,4 +1,17 @@
 /** The built-in audit rules, as scripts (`atlcli audit … --print-rule <id>` prints one). Report order. */
+import a_anonymousSpace from "./access/anonymous-space.script" with { type: "text" };
+import a_anonymousProject from "./access/anonymous-project.script" with { type: "text" };
+import a_allUsers from "./access/all-users.script" with { type: "text" };
+import a_inactiveUserGrant from "./access/inactive-user-grant.script" with { type: "text" };
+import a_emptyGroupGrant from "./access/empty-group-grant.script" with { type: "text" };
+import a_inactiveInRestriction from "./access/inactive-in-restriction.script" with { type: "text" };
+import a_noActiveAdmin from "./access/no-active-admin.script" with { type: "text" };
+import a_singleAdmin from "./access/single-admin.script" with { type: "text" };
+import a_externalAdmin from "./access/external-admin.script" with { type: "text" };
+import a_broadAdmin from "./access/broad-admin.script" with { type: "text" };
+import a_directUserGrants from "./access/direct-user-grants.script" with { type: "text" };
+import a_unmigratedAccess from "./access/unmigrated-access.script" with { type: "text" };
+import a_lockedOut from "./access/locked-out.script" with { type: "text" };
 import doneWithoutVersion from "./jira/done-without-version.script" with { type: "text" };
 import dueSoon from "./jira/due-soon.script" with { type: "text" };
 import flagged from "./jira/flagged.script" with { type: "text" };
@@ -55,4 +68,21 @@ export const BUILTIN_CONFLUENCE_AUDIT_RULES: readonly string[] = [
   c_highChurn,
   c_folders,
   c_unsynced,
+];
+
+/** Access rules, in report order. */
+export const BUILTIN_ACCESS_AUDIT_RULES: readonly string[] = [
+  a_anonymousSpace,
+  a_anonymousProject,
+  a_allUsers,
+  a_inactiveUserGrant,
+  a_emptyGroupGrant,
+  a_inactiveInRestriction,
+  a_noActiveAdmin,
+  a_singleAdmin,
+  a_externalAdmin,
+  a_broadAdmin,
+  a_directUserGrants,
+  a_unmigratedAccess,
+  a_lockedOut,
 ];

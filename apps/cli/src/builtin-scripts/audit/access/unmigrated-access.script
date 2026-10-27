@@ -1,0 +1,18 @@
+// During Confluence's move to space roles: spaces whose people still hold
+// permissions outside any role ("custom access").
+export const meta = {
+  audit: {
+    id: "hygiene/unmigrated-access",
+    product: "access",
+    title: "Access outside space roles",
+    category: "hygiene",
+    items: "spaces",
+    profiles: { strict: "info" },
+  },
+};
+
+export default (space, rule) => {
+  if (space.mode !== "ROLES_TRANSITION") return;
+  const custom = space.grants.filter((g) => (g.principal.type === "user" || g.principal.type === "group") && !g.role);
+  if (custom.length) return rule.finding({ detail: `${custom.length} user(s) or group(s) hold access without a space role.` });
+};
