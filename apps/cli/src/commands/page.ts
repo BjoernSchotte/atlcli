@@ -1052,6 +1052,9 @@ async function handleComments(args: string[], flags: Record<string, string | boo
     case "resolve":
       await handleCommentsResolve(flags, opts);
       return;
+    case "reopen":
+      await handleCommentsReopen(flags, opts);
+      return;
     case "delete":
       await handleCommentsDelete(flags, opts);
       return;
@@ -1245,13 +1248,29 @@ async function handleCommentsAddInline(args: string[], flags: Record<string, str
   output(`Created inline comment ${comment.id} on "${selection}"`, opts);
 }
 
+/**
+ * Comment type for `comments resolve`. Only inline comments have a resolved
+ * state in Confluence, so inline is the default and footer is a usage error.
+ */
+export function resolveCommentType(value: string | undefined): { type: "inline" } | { error: string } {
+  if (value === undefined || value === "" || value === "inline") return { type: "inline" };
+  if (value === "footer") {
+    return { error: "Footer comments cannot be resolved in Confluence; only inline comments have a resolved state." };
+  }
+  return { error: `--type must be "inline" (got "${value}").` };
+}
+
 async function handleCommentsResolve(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const commentId = getFlag(flags, "comment");
-  const type = (getFlag(flags, "type") || "footer") as "footer" | "inline";
+  const parsed = resolveCommentType(getFlag(flags, "type"));
 
   if (!commentId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--comment <id> is required.");
   }
+  if ("error" in parsed) {
+    fail(opts, 1, ERROR_CODES.USAGE, parsed.error);
+  }
+  const { type } = parsed;
 
   const client = await getClient(flags, opts);
   await client.resolveComment(commentId, type);
@@ -1262,6 +1281,28 @@ async function handleCommentsResolve(flags: Record<string, string | boolean | st
   }
 
   output(`Resolved ${type} comment ${commentId}`, opts);
+}
+
+async function handleCommentsReopen(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  const commentId = getFlag(flags, "comment");
+  const parsed = resolveCommentType(getFlag(flags, "type"));
+
+  if (!commentId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--comment <id> is required.");
+  }
+  if ("error" in parsed) {
+    fail(opts, 1, ERROR_CODES.USAGE, parsed.error);
+  }
+
+  const client = await getClient(flags, opts);
+  await client.reopenComment(commentId);
+
+  if (opts.json) {
+    output({ schemaVersion: "1", reopened: commentId, type: parsed.type }, opts);
+    return;
+  }
+
+  output(`Reopened inline comment ${commentId}`, opts);
 }
 
 async function handleCommentsDelete(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -1869,12 +1910,14 @@ Commands:
   add --id <id> <text>                   Add a footer comment
   reply --id <id> --parent <cid> <text>  Reply to a comment
   add-inline --id <id> --selection <s>   Add inline comment on text
-  resolve --comment <id> [--type <t>]    Mark comment as resolved
+  resolve --comment <id>                 Mark an inline comment as resolved
+  reopen --comment <id>                  Reopen a resolved inline comment
   delete --comment <id> --confirm        Delete a comment
 
 Options:
   --file <path>        Read comment text from file (supports markdown)
-  --type <t>           Comment type: footer or inline (default: footer)
+  --type <t>           Comment type for delete: footer or inline (default: footer).
+                       resolve and reopen only work on inline comments.
   --match-index <n>    For inline: which occurrence of selection (default: 0)
 
 Examples:
@@ -1884,6 +1927,7 @@ Examples:
   atlcli wiki page comments reply --id 12345 --parent 67890 "Thanks!"
   atlcli wiki page comments add-inline --id 12345 --selection "important text" "Please clarify this"
   atlcli wiki page comments resolve --comment 67890
+  atlcli wiki page comments reopen --comment 67890
   atlcli wiki page comments delete --comment 67890 --confirm
 `;
 }

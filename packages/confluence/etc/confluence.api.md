@@ -1202,6 +1202,8 @@ export declare class ConfluenceClient {
         parentCommentId?: string;
     }): Promise<InlineComment>;
     resolveComment(commentId: string, type: "footer" | "inline"): Promise<void>;
+    reopenComment(commentId: string): Promise<void>;
+    private setInlineCommentResolved;
     deleteComment(commentId: string, type: "footer" | "inline"): Promise<void>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
@@ -4736,6 +4738,8 @@ export declare class ConfluenceClient {
         parentCommentId?: string;
     }): Promise<InlineComment>;
     resolveComment(commentId: string, type: "footer" | "inline"): Promise<void>;
+    reopenComment(commentId: string): Promise<void>;
+    private setInlineCommentResolved;
     deleteComment(commentId: string, type: "footer" | "inline"): Promise<void>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
@@ -8270,6 +8274,8 @@ export declare class ConfluenceClient {
         parentCommentId?: string;
     }): Promise<InlineComment>;
     resolveComment(commentId: string, type: "footer" | "inline"): Promise<void>;
+    reopenComment(commentId: string): Promise<void>;
+    private setInlineCommentResolved;
     deleteComment(commentId: string, type: "footer" | "inline"): Promise<void>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
@@ -11498,6 +11504,8 @@ export declare class ConfluenceClient {
         parentCommentId?: string;
     }): Promise<InlineComment>;
     resolveComment(commentId: string, type: "footer" | "inline"): Promise<void>;
+    reopenComment(commentId: string): Promise<void>;
+    private setInlineCommentResolved;
     deleteComment(commentId: string, type: "footer" | "inline"): Promise<void>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
@@ -15404,6 +15412,8 @@ export declare class ConfluenceClient {
         parentCommentId?: string;
     }): Promise<InlineComment>;
     resolveComment(commentId: string, type: "footer" | "inline"): Promise<void>;
+    reopenComment(commentId: string): Promise<void>;
+    private setInlineCommentResolved;
     deleteComment(commentId: string, type: "footer" | "inline"): Promise<void>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
@@ -18130,6 +18140,8 @@ export declare class ConfluenceClient {
         parentCommentId?: string;
     }): Promise<InlineComment>;
     resolveComment(commentId: string, type: "footer" | "inline"): Promise<void>;
+    reopenComment(commentId: string): Promise<void>;
+    private setInlineCommentResolved;
     deleteComment(commentId: string, type: "footer" | "inline"): Promise<void>;
     getFolder(folderId: string): Promise<ConfluenceFolder>;
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
