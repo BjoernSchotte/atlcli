@@ -274,7 +274,7 @@ export async function loadWikiAuditSetup(profileName: string | undefined, rulesF
 // ============================================================================
 
 export interface SnapshotOptions {
-  /** What the active rules need: links, http, contributors, remote, folders. */
+  /** What the active rules need: links, http, contributors, remote, folders, restrictions. */
   needs: Set<string>;
   baseUrl?: string;
   spaceKey: string | null;
@@ -372,6 +372,20 @@ export async function buildPageSnapshots(adapter: SyncDbAdapter, o: SnapshotOpti
         externalLinks: [],
         contributors: [],
       });
+    }
+  }
+  // The sync database has no restriction data, so it is read live, 8 pages at a time.
+  if (o.needs.has("restrictions")) {
+    if (!o.client) partial.push("restrictions (no profile to read them)");
+    else {
+      for (let i = 0; i < pages.length; i += 8) {
+        await Promise.all(
+          pages.slice(i, i + 8).map(async (page) => {
+            const r = await o.client!.getContentRestrictions(page.id).catch(() => undefined);
+            if (r) page.restricted = [r.read, r.update].some((set) => set.accountIds.length > 0 || set.groupIds.length > 0);
+          }),
+        );
+      }
     }
   }
   return { pages, partial };
