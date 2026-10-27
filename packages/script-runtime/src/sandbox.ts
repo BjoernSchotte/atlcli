@@ -1,6 +1,7 @@
 import {
   newQuickJSAsyncWASMModuleFromVariant,
   newQuickJSWASMModuleFromVariant,
+  newVariant,
   shouldInterruptAfterDeadline,
   type QuickJSContext,
   type QuickJSDeferredPromise,
@@ -184,6 +185,7 @@ Object.defineProperty(globalThis, "atlcli", { value: freeze(root), writable: fal
 // Only the API both module kinds share is used (no asyncified host functions),
 // so sync and asyncify builds behave alike.
 let defaultModule: Promise<QuickJSWASMModule> | undefined;
+let defaultWasmBinary: (() => Promise<ArrayBuffer>) | undefined;
 const variantModules = new WeakMap<QuickJSVariant, Promise<QuickJSWASMModule>>();
 
 const fromVariant = (variant: QuickJSVariant): Promise<QuickJSWASMModule> =>
@@ -193,10 +195,13 @@ const fromVariant = (variant: QuickJSVariant): Promise<QuickJSWASMModule> =>
 
 function loadModule(variant?: QuickJSVariant): Promise<QuickJSWASMModule> {
   if (!variant) {
-    // The engine swap point. The CLI already ships this build's WASM (one
-    // `emscripten-module.wasm` beside the bundle; see apps/cli/build-assets.ts),
-    // and quickjs-ng has no single-file build, so sync and asyncify cannot both ship.
-    defaultModule ??= import("@jitl/quickjs-ng-wasmfile-release-asyncify").then((v) => fromVariant(v.default));
+    // The engine swap point. The CLI ships this build's WASM (beside its dist
+    // bundle, or embedded and handed over via setDefaultQuickJsWasmBinary; see
+    // apps/cli/src/quickjs-wasm.ts), and quickjs-ng has no single-file build,
+    // so sync and asyncify cannot both ship.
+    defaultModule ??= import("@jitl/quickjs-ng-wasmfile-release-asyncify").then((v) =>
+      fromVariant(defaultWasmBinary ? newVariant(v.default, { wasmBinary: defaultWasmBinary }) : v.default),
+    );
     return defaultModule;
   }
   let module = variantModules.get(variant);
@@ -205,6 +210,18 @@ function loadModule(variant?: QuickJSVariant): Promise<QuickJSWASMModule> {
     variantModules.set(variant, module);
   }
   return module;
+}
+
+/**
+ * Supplies the default build's WASM bytes instead of the file the loader reads
+ * beside the bundle. A compiled CLI binary embeds the WASM under its own path,
+ * so it must hand the bytes over (see apps/cli/src/quickjs-wasm.ts). Pass
+ * `undefined` to return to the loader's lookup. Runs with an explicit
+ * `variant` are unaffected.
+ */
+export function setDefaultQuickJsWasmBinary(load: (() => Promise<ArrayBuffer>) | undefined): void {
+  defaultWasmBinary = load;
+  defaultModule = undefined;
 }
 
 function forgetModule(variant?: QuickJSVariant): void {

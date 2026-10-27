@@ -45,3 +45,8 @@ declare module "@atlcli/import-pdf/wasm" {
   const path: string;
   export default path;
 }
+
+declare module "@jitl/quickjs-ng-wasmfile-release-asyncify/wasm" {
+  const path: string;
+  export default path;
+}

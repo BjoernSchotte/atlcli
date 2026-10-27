@@ -11,7 +11,7 @@ import { analyze, applyLiteral, hasJinjaSyntax, JinjaSyntaxError, type AnalysisW
 import { callGuest, DEFAULT_JINJA_LIMITS, JinjaError, type JinjaLimits } from "./sandbox.js";
 
 export * from "./analyze.js";
-export { DEFAULT_JINJA_LIMITS, initJinja, JinjaError, jinjaReady } from "./sandbox.js";
+export { DEFAULT_JINJA_LIMITS, initJinja, JinjaError, jinjaReady, setJinjaWasmBinary } from "./sandbox.js";
 export type { JinjaLimits } from "./sandbox.js";
 
 export type JinjaWarningCode = AnalysisWarning["code"] | "render-error";
