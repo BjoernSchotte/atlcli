@@ -255,4 +255,57 @@ export const JIRA_VERBS: Record<string, Verb> = {
     r.require("jira:read");
     return hostOp(r.port.jiraAttachments?.bind(r.port), "jira.attachments")(r.readable(key), { signal });
   }),
+  "jira.permissionSchemes": verb(z.tuple([]), async (r, [], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraPermissionSchemes?.bind(r.port), "jira.permissionSchemes")({ signal });
+  }),
+  "jira.projectPermissionScheme": verb(z.tuple([project]), async (r, [key], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraProjectPermissionScheme?.bind(r.port), "jira.projectPermissionScheme")(key, { signal });
+  }),
+  "jira.projectRoles": verb(z.tuple([project]), async (r, [key], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraProjectRoles?.bind(r.port), "jira.projectRoles")(key, { signal });
+  }),
+  "jira.groupMembers": verb(z.tuple([str]), async (r, [groupId], signal) => {
+    r.require("jira:read");
+    return hostOp(r.port.jiraGroupMembers?.bind(r.port), "jira.groupMembers")(groupId, { signal });
+  }),
+  /** `role`: id or name (case-insensitive). Skipped when the principal is not in the role. */
+  "jira.removeRoleActor": verb(
+    z.tuple([project, z.union([str, id]), z.strictObject({ type: z.enum(["user", "group"]), id: str })]),
+    async (r, [key, ref, who], signal) => {
+      r.require(`jira:write:${key}`);
+      const roles = await hostOp(r.port.jiraProjectRoles?.bind(r.port), "jira.removeRoleActor")(key, { signal });
+      const role =
+        roles.find((x) => String(x.id) === String(ref)) ?? roles.find((x) => typeof ref === "string" && x.name.toLowerCase() === ref.toLowerCase());
+      if (!role) throw new Error(`Project ${key} has no role ${JSON.stringify(ref)}`);
+      const title = `${role.name} ${who.type}:${who.id}`;
+      const object = `jira-role-actor:${key}\u0000${role.id}\u0000${who.type}:${who.id}`;
+      if (r.lastWrite(object) !== undefined || !role.actors.some((a) => a.type === who.type && a.id === who.id)) {
+        r.skipped.push({ verb: "jira.removeRoleActor", target: key, title, reason: "unchanged" });
+        return null;
+      }
+      await r.record("jira.removeRoleActor", { projectKey: key, roleId: role.id, role: role.name, principal: who }, object);
+      return null;
+    },
+  ),
+  /** Grants are scheme-wide, so this needs jira:write:*. Skipped when the grant is gone. */
+  "jira.deletePermissionGrant": verb(z.tuple([id, id]), async (r, [schemeId, grantId], signal) => {
+    r.require("jira:write:*");
+    const object = `jira-permission-grant:${schemeId}\u0000${grantId}`;
+    const schemes = await hostOp(r.port.jiraPermissionSchemes?.bind(r.port), "jira.deletePermissionGrant")({ signal });
+    const scheme = schemes.find((s) => s.id === schemeId);
+    const grant = scheme?.grants.find((g) => g.id === grantId);
+    if (!scheme || !grant || r.lastWrite(object) !== undefined) {
+      r.skipped.push({ verb: "jira.deletePermissionGrant", target: String(schemeId), title: String(grantId), reason: "unchanged" });
+      return null;
+    }
+    await r.record(
+      "jira.deletePermissionGrant",
+      { schemeId, grantId, scheme: scheme.name, permission: grant.permission, holder: grant.holder },
+      object,
+    );
+    return null;
+  }),
 };

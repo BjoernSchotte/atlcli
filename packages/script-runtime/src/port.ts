@@ -144,6 +144,14 @@ export interface ScriptPort {
   /** Active and inactive users matching `query` (name or email), as Jira finds them. */
   jiraUsers?(query: string, options: { signal?: AbortSignal }): Promise<JiraUserView[]>;
   jiraAttachments?(key: string, options: { signal?: AbortSignal }): Promise<JiraAttachmentListView[]>;
+  jiraPermissionSchemes?(options: { signal?: AbortSignal }): Promise<JiraPermissionSchemeView[]>;
+  jiraProjectPermissionScheme?(project: string, options: { signal?: AbortSignal }): Promise<{ id: number; name: string }>;
+  /** Roles with their actors; needs Administer Projects. */
+  jiraProjectRoles?(project: string, options: { signal?: AbortSignal }): Promise<JiraProjectRoleView[]>;
+  /** Every member, inactive ones included. */
+  jiraGroupMembers?(groupId: string, options: { signal?: AbortSignal }): Promise<JiraMemberView[]>;
+  jiraRemoveRoleActor?(project: string, roleId: number, principal: JiraActorRef): Promise<void>;
+  jiraDeletePermissionGrant?(schemeId: number, grantId: number): Promise<void>;
 
   /** Content properties by key. */
   confluenceProperties?(pageId: string, options: { signal?: AbortSignal }): Promise<Record<string, unknown>>;
@@ -160,6 +168,19 @@ export interface ScriptPort {
   }>;
   confluenceInlineComments?(pageId: string, options: { signal?: AbortSignal }): Promise<ConfluenceInlineCommentView[]>;
   confluenceCreateBlogPost?(input: { spaceKey: string; title: string; markdown: string }): Promise<{ id: string; version: number }>;
+  /** The v2 id of a space. */
+  confluenceSpaceId?(spaceKey: string, options: { signal?: AbortSignal }): Promise<string>;
+  confluenceSpacePermissions?(spaceKey: string, options: { signal?: AbortSignal }): Promise<ConfluenceSpacePermissionView[]>;
+  confluenceSpaceRoles?(options: { signal?: AbortSignal }): Promise<ConfluenceSpaceRolesView>;
+  /** Empty before the site has the role model. */
+  confluenceRoleAssignments?(spaceKey: string, options: { signal?: AbortSignal }): Promise<ConfluenceRoleAssignmentView[]>;
+  confluenceGroupMembers?(groupId: string, options: { signal?: AbortSignal }): Promise<ConfluenceUserDetailsView[]>;
+  /** Unknown ids are left out. */
+  confluenceUsers?(accountIds: string[], options: { signal?: AbortSignal }): Promise<ConfluenceUserDetailsView[]>;
+  /** Removes the principal's role assignment in the space (by space id). */
+  confluenceRemoveRoleAssignment?(spaceId: string, principal: ConfluencePrincipalRef): Promise<void>;
+  /** Removes one space permission record; one already gone counts as removed. */
+  confluenceRemoveSpacePermission?(spaceKey: string, permissionId: string): Promise<void>;
 
   /**
    * One HTTP request to an external service, redirects not followed (the
@@ -315,6 +336,68 @@ export interface JiraAttachmentListView {
 export interface ConfluenceRestrictionsView {
   read: { accountIds: string[]; groupIds: string[] };
   update: { accountIds: string[]; groupIds: string[] };
+}
+
+/** "access-class" covers ALL_LICENSED_USERS, ANONYMOUS and the like. */
+export interface ConfluencePrincipalRef {
+  type: "user" | "group" | "access-class";
+  id: string;
+}
+
+export interface ConfluenceSpacePermissionView {
+  id: string;
+  /** As the API names it: "user", "group" or "access-class". */
+  principal: { type: string; id: string };
+  /** e.g. "read", "administer". */
+  operation: string;
+  /** e.g. "space", "page", "comment". */
+  targetType: string;
+}
+
+export interface ConfluenceSpaceRolesView {
+  mode: "PRE_ROLES" | "ROLES_TRANSITION" | "ROLES";
+  roles: Array<{ id: string; name: string; type: string; permissions: string[] }>;
+}
+
+export interface ConfluenceRoleAssignmentView {
+  roleId: string;
+  principal: ConfluencePrincipalRef;
+}
+
+export interface ConfluenceUserDetailsView {
+  accountId: string;
+  displayName: string;
+  active: boolean;
+  status: "active" | "inactive" | "closed" | "unknown";
+  accountType: string;
+  external: boolean;
+  guest: boolean;
+}
+
+export interface JiraPermissionSchemeView {
+  id: number;
+  name: string;
+  grants: Array<{ id: number; permission: string; holder: { type: string; value?: string; parameter?: string; name?: string } }>;
+}
+
+export interface JiraActorRef {
+  type: "user" | "group";
+  /** Account id or group id. */
+  id: string;
+}
+
+export interface JiraProjectRoleView {
+  id: number;
+  name: string;
+  admin: boolean;
+  actors: Array<JiraActorRef & { name: string }>;
+}
+
+export interface JiraMemberView {
+  accountId: string;
+  displayName: string;
+  active: boolean;
+  accountType: string;
 }
 
 export interface ConfluenceVersionView {

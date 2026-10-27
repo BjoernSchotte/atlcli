@@ -104,3 +104,30 @@ test("httpFetch refuses private IP literals without a DNS lookup; sends bodies a
     server.stop(true);
   }
 });
+
+test("access methods map the clients' shapes and resolve each space id once", async () => {
+  const calls: unknown[][] = [];
+  const confluence = {
+    getSpace: async (key: string) => (calls.push(["getSpace", key]), { id: "7", key }),
+    getSpaceRoleMode: async () => "ROLES_TRANSITION",
+    getSpacePermissionsV2: async (id: string) => [{ id: "11", principal: { type: "user", id: "u1" }, operation: { key: "read", targetType: "space" } }],
+    getSpaceRoleAssignments: async () => [
+      { roleId: "r1", principal: { principalType: "ACCESS_CLASS", principalId: "all-licensed-users" } },
+      { roleId: "r2", principal: { principalType: "GROUP", principalId: "g1" } },
+    ],
+    getUsersDetails: async () => [{ accountId: "u1", displayName: "Ann", status: "inactive", accountType: "atlassian", external: true, guest: false }],
+    setSpaceRoleAssignments: async (...a: unknown[]) => void calls.push(["setSpaceRoleAssignments", ...a]),
+  };
+  const port = createCliScriptPort(unused, (() => confluence) as never, "https://example.atlassian.net", { profileName: "p", outDir: "/tmp" });
+  expect(await port.confluenceSpacePermissions!("DOCSY", {})).toEqual([{ id: "11", principal: { type: "user", id: "u1" }, operation: "read", targetType: "space" }]);
+  expect(await port.confluenceRoleAssignments!("DOCSY", {})).toEqual([
+    { roleId: "r1", principal: { type: "access-class", id: "all-licensed-users" } },
+    { roleId: "r2", principal: { type: "group", id: "g1" } },
+  ]);
+  expect((await port.confluenceUsers!(["u1"], {}))[0]).toMatchObject({ active: false, status: "inactive", external: true });
+  await port.confluenceRemoveRoleAssignment!("7", { type: "access-class", id: "all-licensed-users" });
+  expect(calls).toEqual([
+    ["getSpace", "DOCSY"],
+    ["setSpaceRoleAssignments", "7", [{ principal: { principalType: "ACCESS_CLASS", principalId: "all-licensed-users" } }]],
+  ]);
+});

@@ -375,6 +375,55 @@ interface ConfluenceRestrictions {
   update: { accountIds: string[]; groupIds: string[] };
 }
 
+/** "access-class" covers ALL_LICENSED_USERS, ANONYMOUS and the like. */
+interface ConfluencePrincipal {
+  type: "user" | "group" | "access-class";
+  id: string;
+}
+
+interface ConfluenceSpacePermission {
+  id: string;
+  /** As the API names it: "user", "group" or "access-class". */
+  principal: { type: string; id: string };
+  /** e.g. "read", "administer". */
+  operation: string;
+  /** e.g. "space", "page", "comment". */
+  targetType: string;
+}
+
+interface ConfluenceUserDetails {
+  accountId: string;
+  displayName: string;
+  active: boolean;
+  status: "active" | "inactive" | "closed" | "unknown";
+  /** "atlassian", "app" or "customer". */
+  accountType: string;
+  external: boolean;
+  guest: boolean;
+}
+
+interface JiraPermissionScheme {
+  id: number;
+  name: string;
+  /** \`holder.type\`: "projectRole", "group", "user", "anyone", "applicationRole", …; \`name\` when Jira names it. */
+  grants: Array<{ id: number; permission: string; holder: { type: string; value?: string; parameter?: string; name?: string } }>;
+}
+
+interface JiraProjectRole {
+  id: number;
+  name: string;
+  admin: boolean;
+  /** \`id\`: account id or group id. */
+  actors: Array<{ type: "user" | "group"; id: string; name: string }>;
+}
+
+interface JiraMember {
+  accountId: string;
+  displayName: string;
+  active: boolean;
+  accountType: string;
+}
+
 interface ConfluenceVersion {
   number: number;
   when?: IsoDate;
@@ -607,6 +656,16 @@ const atlcli: {
     /** Users matching a name or email. */
     users(query: string): Promise<JiraUserMatch[]>;
     attachments(key: string): Promise<JiraAttachmentInfo[]>;
+    permissionSchemes(): Promise<JiraPermissionScheme[]>;
+    projectPermissionScheme(project: string): Promise<{ id: number; name: string }>;
+    /** Roles with their actors; needs Administer Projects. */
+    projectRoles(project: string): Promise<JiraProjectRole[]>;
+    /** Every member of a group, inactive ones included. */
+    groupMembers(groupId: string): Promise<JiraMember[]>;
+    /** \`role\`: id or name. Skipped when the user or group is not in the role. Needs jira:write:<project>. */
+    removeRoleActor(project: string, role: string | number, principal: { type: "user" | "group"; id: string }): Promise<null>;
+    /** Deletes a grant from a permission scheme (from \`permissionSchemes\`); skipped when it is gone. Needs jira:write:*. */
+    deletePermissionGrant(schemeId: number, grantId: number): Promise<null>;
   };
   readonly confluence: {
     /** All pages matching \`cql\`, paged transparently. */
@@ -668,6 +727,20 @@ const atlcli: {
     inlineComments(pageId: string): Promise<ConfluenceInlineComment[]>;
     /** \`markdown\` is converted. Read it back with \`getPage\`. */
     createBlogPost(input: { space: string; title: string; markdown: string }): Promise<{ id: PlannedRef }>;
+    /** Every permission record of the space. */
+    spacePermissions(spaceKey: string): Promise<ConfluenceSpacePermission[]>;
+    /** The site's permission model and its space roles. */
+    spaceRoles(): Promise<{ mode: "PRE_ROLES" | "ROLES_TRANSITION" | "ROLES"; roles: Array<{ id: string; name: string; type: string; permissions: string[] }> }>;
+    /** Who holds which role in the space; empty before the role model. */
+    roleAssignments(spaceKey: string): Promise<Array<{ roleId: string; principal: ConfluencePrincipal }>>;
+    groupMembers(groupId: string): Promise<ConfluenceUserDetails[]>;
+    /** Up to 500 account ids; unknown ones are left out. */
+    users(accountIds: string[]): Promise<ConfluenceUserDetails[]>;
+    /**
+     * Removes the principal's role assignment and/or permission records in the
+     * space. Skipped when it has neither. Needs confluence:write:<space>.
+     */
+    removeSpaceAccess(spaceKey: string, principal: ConfluencePrincipal): Promise<null>;
   };
   /** External HTTP, https only (http for localhost). Every host needs "http:<host>" in meta.permissions. */
   readonly http: {
