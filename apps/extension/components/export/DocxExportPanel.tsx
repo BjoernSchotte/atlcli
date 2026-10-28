@@ -10,6 +10,7 @@
  * shape T5.2 then has to rewrite.
  */
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { LoadedPage } from "../../utils/read-path.js";
 import type {
   DocxExportPort,
@@ -47,6 +48,7 @@ export function DocxExportPanel({
   pageUrl,
   scopeRequest,
   gate = (run) => run(),
+  actionSlot,
 }: {
   port: DocxExportPort;
   store: DocxTemplateStore;
@@ -62,6 +64,12 @@ export function DocxExportPanel({
   scopeRequest?: ExportScopeRequest;
   /** Lets the screen interpose a confirmation (space scope) before starting. */
   gate?: (run: () => void) => void;
+  /**
+   * When the screen provides a sticky action bar, the export button and its
+   * progress line render there (via portal); template management, errors and
+   * the report stay inline with the panel.
+   */
+  actionSlot?: HTMLElement | null;
 }): React.JSX.Element {
   const t = useT();
   const { docx, startDocx, setDocxError } = useExportRuns();
@@ -157,6 +165,54 @@ export function DocxExportPanel({
 
   const busy = uploading || docx.running;
 
+  const exportAction = template ? (
+    <div className="flex flex-col gap-1.5">
+      <Button
+        onClick={() => {
+          if (ready && !busy) {
+            gate(() =>
+              startDocx(port, {
+                page,
+                pageUrl,
+                template: {
+                  name: template.name,
+                  uploadedAt: template.uploadedAt,
+                  bytes: template.bytes,
+                  ...(template.recordKey ? { recordKey: template.recordKey } : {}),
+                  ...(template.sha256 ? { sha256: template.sha256 } : {}),
+                },
+                ...scopeRequest,
+              })
+            );
+          }
+        }}
+        disabled={busy || !ready}
+        data-testid="template-export"
+        title={ready ? t("docx.export") : t("docx.needsPage")}
+        className="w-full"
+      >
+        {docx.running ? t("docx.exporting") : t("docx.export")}
+      </Button>
+      {!ready && (
+        <span className="text-xs text-muted-foreground">{t("docx.needsPage")}</span>
+      )}
+      {docx.progress && docx.progress.total > 0 && (
+        <p className="m-0 text-xs text-muted-foreground" data-testid="docx-progress">
+          {t("export.progress", {
+            fetched: docx.progress.fetched,
+            total: docx.progress.total,
+            title: docx.progress.currentTitle ?? "",
+          })}
+        </p>
+      )}
+    </div>
+  ) : (
+    <Button disabled className="w-full" data-testid="template-export-disabled">
+      {t("docx.selectTemplate")}
+    </Button>
+  );
+  const placedAction = actionSlot ? createPortal(exportAction, actionSlot) : exportAction;
+
   return (
     <section data-testid="template-section" className="flex flex-col gap-2">
       <SectionHeading>{t("docx.title")}</SectionHeading>
@@ -188,9 +244,7 @@ export function DocxExportPanel({
             >
               {uploading ? t("docx.scanning") : t("docx.upload")}
             </Button>
-            <Button disabled className="w-full" data-testid="template-export-disabled">
-              {t("docx.selectTemplate")}
-            </Button>
+            {placedAction}
           </CardContent>
         </Card>
       ) : (
@@ -224,50 +278,7 @@ export function DocxExportPanel({
 
             <ScanView scan={template.scan} explainWordRendering />
 
-            <div className="mt-2.5 flex items-center gap-2">
-              <Button
-                onClick={() => {
-                  if (ready && !busy) {
-                    gate(() =>
-                      startDocx(port, {
-                        page,
-                        pageUrl,
-                        template: {
-                          name: template.name,
-                          uploadedAt: template.uploadedAt,
-                          bytes: template.bytes,
-                          ...(template.recordKey
-                            ? { recordKey: template.recordKey }
-                            : {}),
-                          ...(template.sha256
-                            ? { sha256: template.sha256 }
-                            : {}),
-                        },
-                        ...scopeRequest,
-                      })
-                    );
-                  }
-                }}
-                disabled={busy || !ready}
-                data-testid="template-export"
-                title={ready ? t("docx.export") : t("docx.needsPage")}
-              >
-                {docx.running ? t("docx.exporting") : t("docx.export")}
-              </Button>
-              {!ready && (
-                <span className="text-xs text-muted-foreground">{t("docx.needsPage")}</span>
-              )}
-            </div>
-
-            {docx.progress && docx.progress.total > 0 && (
-              <p className="m-0 mt-1.5 text-xs text-muted-foreground" data-testid="docx-progress">
-                {t("export.progress", {
-                  fetched: docx.progress.fetched,
-                  total: docx.progress.total,
-                  title: docx.progress.currentTitle ?? "",
-                })}
-              </p>
-            )}
+            <div className="mt-2.5">{placedAction}</div>
           </CardContent>
         </Card>
       )}

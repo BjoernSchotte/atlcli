@@ -50,7 +50,8 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  /* 6px: the sidebar redesign's denser, less rounded look (lg=6, md=4, sm=2). */
+  --radius: 0.375rem;
 
   --background: #ffffff;
   --foreground: #172b4d;

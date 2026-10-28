@@ -255,9 +255,15 @@ describe("the shipped registry", () => {
     expect(new Set(orders).size).toBe(orders.length);
   });
 
-  it("keeps Preview in the Publishing area's primary navigation", () => {
+  it("keeps Preview and Templates out of the tab bar but reachable (sidebar redesign, 2026-10)", () => {
+    // Preview lives inside the Export flow (plus the large-preview tab page);
+    // Templates opens from the Word panel. Both stay registered and
+    // navigable — `navigation: "hidden"` removes only the tab.
     expect(defaultScreens.find((screen) => screen.id === SCREEN_IDS.preview)?.navigation).toBe(
-      "primary"
+      "hidden"
+    );
+    expect(defaultScreens.find((screen) => screen.id === SCREEN_IDS.templates)?.navigation).toBe(
+      "hidden"
     );
     expect(defaultScreens.find((screen) => screen.id === SCREEN_IDS.export)?.navigation).toBe(
       "primary"

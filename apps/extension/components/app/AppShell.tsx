@@ -244,15 +244,15 @@ export function AppShell({
         }}
         onKeyDown={(event) => onTabKeyDown(event, index)}
         className={cn(
-          "screen-tab relative grid min-h-14 min-w-0 flex-1 place-items-center content-center gap-1",
-          "border-0 bg-transparent px-1.5 py-1.5 text-xs font-semibold text-muted-foreground",
+          "screen-tab relative flex min-h-9 min-w-0 flex-1 items-center justify-center gap-1.5",
+          "border-0 bg-transparent px-1.5 py-1 text-xs font-semibold text-muted-foreground",
           "transition-colors after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:rounded-t",
           "after:bg-transparent hover:bg-muted hover:text-foreground",
           "disabled:cursor-not-allowed disabled:opacity-45",
           isActive && "text-primary after:bg-primary"
         )}
       >
-        <Icon size={18} aria-hidden="true" />
+        <Icon size={14} aria-hidden="true" />
         <span className="publishing-nav-label max-w-full truncate">{label}</span>
       </button>
     );
@@ -310,20 +310,36 @@ export function AppShell({
     >
       {layout === "compact" && (
         <>
-          <header className="relative z-20 flex min-h-[62px] items-center gap-2 border-b bg-background px-3 py-2">
+          {/*
+            Two calm rows instead of one dense pill: a brand line, then a
+            full-width selector that *says* it switches the workspace — the old
+            combined pill read as a model picker.
+          */}
+          <header className="relative z-20 flex flex-col gap-1.5 border-b bg-background px-3 pb-2 pt-2.5">
             <span className="sr-only" data-testid="app-version">
               {t("app.version", { version })}
             </span>
-            <img
-              className="size-10 shrink-0 object-contain"
-              src="/kiteweave-icon.svg"
-              alt={t("brand.kiteweave")}
-              data-testid="kiteweave-brand"
-            />
+            <div className="flex items-center gap-2">
+              <img
+                className="size-6 shrink-0 object-contain"
+                src="/kiteweave-icon.svg"
+                alt={t("brand.kiteweave")}
+                data-testid="kiteweave-brand"
+              />
+              <strong aria-hidden="true" className="text-[13px] font-bold tracking-[0.01em]">
+                {t("brand.kiteweave")}
+              </strong>
+              <span className="ml-auto truncate text-[11px] text-muted-foreground">
+                {t("brand.browser")}
+              </span>
+            </div>
             <button
               ref={switcherRef}
               type="button"
-              className="grid min-h-11 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border-0 bg-transparent px-2 text-left hover:bg-muted"
+              className={cn(
+                "grid min-h-9 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md",
+                "border border-input bg-background px-2.5 text-left hover:bg-muted"
+              )}
               aria-label={t("nav.openProductAreas")}
               aria-haspopup="menu"
               aria-controls={menuId}
@@ -332,16 +348,14 @@ export function AppShell({
               onKeyDown={onSwitcherKeyDown}
               data-testid="area-menu-toggle"
             >
-              <span className="grid min-w-0 gap-px">
-                <strong className="truncate text-sm font-bold tracking-[-0.015em]">
-                  {t(activeWorkspaceDefinition.labelKey)}
-                </strong>
-                <span className="truncate text-xs font-medium text-muted-foreground">
-                  {t("brand.browser")}
-                </span>
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {t("nav.workspace")}
               </span>
+              <strong className="truncate text-[13px] font-semibold">
+                {t(activeWorkspaceDefinition.labelKey)}
+              </strong>
               <ChevronDown
-                size={17}
+                size={14}
                 className={cn("text-muted-foreground transition-transform", menuOpen && "rotate-180")}
                 aria-hidden="true"
               />
@@ -354,16 +368,13 @@ export function AppShell({
               role="menu"
               aria-label={t("nav.productAreas")}
               onKeyDown={onMenuKeyDown}
-              className="absolute inset-x-2.5 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-xl"
+              className="absolute inset-x-2.5 top-[calc(100%+4px)] z-30 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-xl"
               data-testid="area-menu"
             >
-              <div className="flex items-center justify-between gap-3 px-3.5 pb-2 pt-3">
-                <strong className="font-serif text-base font-semibold tracking-[-0.025em]">
+              <div className="flex items-center justify-between gap-3 px-3 pb-1.5 pt-2.5">
+                <strong className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
                   {t("area.choose")}
                 </strong>
-                <span className="text-xs font-bold uppercase tracking-[0.09em] text-muted-foreground">
-                  {t("brand.browser")}
-                </span>
               </div>
               <div className="grid gap-0.5 px-1.5 pb-2">
                 {ACTIVE_WORKSPACES.map((workspace, index) => {
@@ -389,24 +400,24 @@ export function AppShell({
                         closeMenu(true);
                       }}
                       className={cn(
-                        "grid min-h-[58px] w-full grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border-0 px-2 text-left",
+                        "grid min-h-12 w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5 rounded border-0 px-2 text-left",
                         isActive ? "bg-accent" : "bg-transparent hover:bg-muted",
                       )}
                     >
                       <span className={cn(
-                        "grid size-[34px] place-items-center rounded-lg border bg-background",
+                        "grid size-7 place-items-center rounded border bg-background",
                         isActive ? "border-primary/25 text-primary" : "text-muted-foreground",
                       )}>
-                        <Icon size={17} aria-hidden="true" />
+                        <Icon size={15} aria-hidden="true" />
                       </span>
                       <span className="grid min-w-0 gap-0.5">
-                        <strong className="text-[13px] font-bold">{t(workspace.labelKey)}</strong>
-                        <span className="truncate text-xs text-muted-foreground">
+                        <strong className="text-[13px] font-semibold">{t(workspace.labelKey)}</strong>
+                        <span className="truncate text-[11px] leading-tight text-muted-foreground">
                           {t(workspace.descriptionKey)}
                         </span>
                       </span>
                       {isActive && (
-                        <span className="rounded-full border border-primary/25 bg-background px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-primary">
+                        <span className="rounded border border-primary/25 bg-background px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
                           {t("nav.active")}
                         </span>
                       )}
@@ -431,18 +442,18 @@ export function AppShell({
                         setPlannedMessage(t("area.planned", { area: label }));
                         closeMenu(true);
                       }}
-                      className="grid min-h-[58px] w-full grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border-0 bg-transparent px-2 text-left hover:bg-muted"
+                      className="grid min-h-12 w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5 rounded border-0 bg-transparent px-2 text-left hover:bg-muted"
                     >
-                      <span className="grid size-[34px] place-items-center rounded-lg border bg-background text-muted-foreground">
-                        <Icon size={17} aria-hidden="true" />
+                      <span className="grid size-7 place-items-center rounded border bg-background text-muted-foreground">
+                        <Icon size={15} aria-hidden="true" />
                       </span>
                       <span className="grid min-w-0 gap-0.5">
-                        <strong className="text-[13px] font-bold">{label}</strong>
-                        <span className="truncate text-xs text-muted-foreground">
+                        <strong className="text-[13px] font-semibold">{label}</strong>
+                        <span className="truncate text-[11px] leading-tight text-muted-foreground">
                           {t(area.descriptionKey)}
                         </span>
                       </span>
-                      <span className="rounded-full border bg-background px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      <span className="rounded border bg-background px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                         {t("area.soon")}
                       </span>
                     </button>

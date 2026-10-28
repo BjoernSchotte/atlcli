@@ -137,14 +137,23 @@ export function ScopeSection({
 
   return (
     <section data-testid="scope-section" className="flex flex-col gap-2">
-      <div role="radiogroup" aria-label={t("scope.title")} className="grid grid-cols-3 gap-1.5">
+      {/*
+        A segmented control with full, untruncated labels; what the selected
+        scope *means* is one caption below, so 376 px never ellipsizes the
+        choice itself.
+      */}
+      <div
+        role="radiogroup"
+        aria-label={t("scope.title")}
+        className="flex overflow-hidden rounded-md border border-input bg-muted"
+      >
         {(["page", "tree", "space"] as const).map((kind) => {
           const unavailable = kind === "space" && !spaceAllowed;
           return (
             <label
               key={kind}
               className={cn(
-                "relative min-w-0",
+                "relative min-w-0 flex-1 border-r border-border last:border-r-0",
                 disabled || unavailable ? "cursor-not-allowed opacity-50" : "cursor-pointer"
               )}
             >
@@ -160,24 +169,23 @@ export function ScopeSection({
               />
               <span
                 className={cn(
-                  "grid min-h-[58px] min-w-0 content-center gap-1 rounded-lg border bg-card px-2 py-2",
-                  "text-left transition-colors peer-focus-visible:outline peer-focus-visible:outline-2",
-                  "peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
-                  "peer-checked:border-primary/45 peer-checked:bg-accent peer-checked:text-primary",
-                  !disabled && !unavailable && "hover:border-input hover:bg-muted"
+                  "grid min-h-9 place-items-center px-1 text-center text-xs font-medium text-muted-foreground",
+                  "transition-colors peer-focus-visible:outline peer-focus-visible:outline-2",
+                  "peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-ring",
+                  "peer-checked:bg-background peer-checked:font-semibold peer-checked:text-primary",
+                  "peer-checked:shadow-[inset_0_-2px_0_0_var(--primary)]",
+                  !disabled && !unavailable && "hover:text-foreground"
                 )}
               >
-                <strong className="truncate text-xs font-bold leading-tight">
-                  {t(KIND_LABEL_KEYS[kind])}
-                </strong>
-                <span className="truncate text-xs leading-tight text-muted-foreground">
-                  {t(KIND_DETAIL_KEYS[kind])}
-                </span>
+                {t(KIND_LABEL_KEYS[kind])}
               </span>
             </label>
           );
         })}
       </div>
+      <p className="m-0 text-xs text-muted-foreground" data-testid="scope-caption">
+        {t(KIND_DETAIL_KEYS[state.kind])}
+      </p>
       {!spaceAllowed && (
         <FieldHelp data-testid="scope-space-unavailable">
           {t("scope.kind.spaceUnavailable")}

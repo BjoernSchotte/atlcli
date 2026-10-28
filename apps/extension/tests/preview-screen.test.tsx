@@ -448,15 +448,18 @@ describe("PreviewScreen", () => {
     expect(find("preview-screen")).toBeDefined();
   });
 
-  it("compiles nothing until the user asks — the export click never pays for a preview", async () => {
+  it("previews live by default, debounced — the export click never waits for a compile", async () => {
     const runtime = runtimeFor(ready(), fakeViewer());
     await mount(loadedState(), runtime);
+    // Auto is ON by default (sidebar redesign, 2026-10): the draft keeps
+    // itself current. The compile is debounced and fully decoupled from the
+    // export path, so at mount nothing has compiled yet and an export never
+    // pays for a preview.
+    expect((find("preview-auto") as unknown as HTMLInputElement).checked).toBe(true);
     expect(runtime.compiles).toBe(0);
     expect(maybeFind("preview-empty")).not.toBeNull();
     expect(maybeFind("preview-empty-generate")).not.toBeNull();
     expect(maybeFind("preview-canvas")).toBeNull();
-    // The auto-update toggle is off by default, for the same reason.
-    expect((find("preview-auto") as unknown as HTMLInputElement).checked).toBe(false);
   });
 
   it("compiles and shows a page on demand", async () => {

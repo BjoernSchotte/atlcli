@@ -10,10 +10,12 @@
  * "which shell am I in" beyond layout, that is a defect in the Phase 0 screen
  * model and belongs there, not here.
  *
- * **Preview is opt-in.** Compiling starts only when the user asks — the
- * "Generate preview" button, or the "Update automatically" toggle which is
- * **off by default**. The common path (open the panel, click Export) therefore
- * never pays for a preview compile.
+ * **Preview is live by default.** The "Update automatically" toggle starts
+ * **on** (sidebar redesign, 2026-10): the draft recompiles shortly after a
+ * setting changes, so what the user reviews is always current. Export never
+ * waits for a preview — the two paths stay independent — and the toggle stays
+ * for users whose scopes make compiles heavy. Turning it off falls back to the
+ * explicit "Generate preview" button.
  *
  * **Honest scope label.** A tree/space preview is labelled "first N of M
  * chapters", never "pages": the compiled page count only exists after
@@ -317,7 +319,7 @@ export function PreviewScreen({
     resolvedFit: ResolvedPdfPreviewFit;
   } | null>(null);
 
-  const [auto, setAuto] = useState(false);
+  const [auto, setAuto] = useState(true);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const annotationLayerRef = useRef<HTMLDivElement | null>(null);
@@ -983,5 +985,8 @@ export const previewScreenDefinition: ScreenDefinition = {
   component: PreviewScreen,
   requirements: [{ kind: "loaded-page" }, { kind: "capability", capability: PREVIEW_CAPABILITY }],
   order: 15,
-  navigation: "primary",
+  // Not a tab anymore: the live preview sits inside the Export flow, and the
+  // large-preview tab page mounts this same component with its own shell
+  // (sidebar redesign, 2026-10).
+  navigation: "hidden",
 };

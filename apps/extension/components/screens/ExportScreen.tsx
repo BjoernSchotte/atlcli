@@ -2,8 +2,12 @@
  * The Export screen — one scope, two engines (spec 010 T5.1 / Architecture
  * point 7).
  *
- * Layout, top to bottom: the page summary, the **shared** `ScopeSection`, then
- * the PDF and Word panels. The scope lives here rather than in either panel so
+ * Layout, top to bottom: the page summary, the **shared** `ScopeSection`, the
+ * format switch, the per-engine settings, the live preview — and a **sticky
+ * action bar** at the bottom of the scroll container, so the primary export
+ * button is visible in every scroll position. The engine panels keep owning
+ * their export logic; they merely render their action block into the bar via
+ * a portal (`actionSlot`). The scope lives here rather than in either panel so
  * the two engines cannot disagree about what "the export" covers; the panels
  * receive the derived `ExportScope`/`LabelFilter` and hand them straight to
  * their port.
@@ -24,9 +28,11 @@
  * one — see `settings-schema.ts`.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, FileText, FileType2, Settings2 } from "lucide-react";
+import { FileText, FileType2, Settings2 } from "lucide-react";
 import type { ScreenProps } from "../../utils/screens/registry.js";
+import type { ScopeKind } from "../../utils/scope-state.js";
 import { useT } from "../../utils/i18n/context.js";
+import type { MessageKey } from "../../utils/i18n/messages.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../ui/utils.js";
 import { PageSummary } from "../export/PageSummary.js";
@@ -57,6 +63,12 @@ import {
  */
 export { PDF_BUILTIN_TEMPLATE_ID } from "../app/publishing-draft.js";
 
+const SCOPE_LABEL_KEYS: Record<ScopeKind, MessageKey> = {
+  page: "scope.kind.page",
+  tree: "scope.kind.tree",
+  space: "scope.kind.space",
+};
+
 export function ExportScreen(props: ScreenProps): React.JSX.Element {
   const draft = useOptionalPublishingDraft();
   if (draft) return <ExportScreenBody {...props} />;
@@ -71,8 +83,9 @@ function ExportScreenBody({ ports, page, retry, navigate }: ScreenProps): React.
   if (page.status !== "loaded") {
     return (
       <div className="flex flex-col gap-3" data-testid="publishing-studio">
-        <StudioHeading onOpenSettings={() => navigate(SETTINGS_SCREEN_ID)} />
-        <PageSummary state={page} onRetry={retry} />
+        <StudioContextRow onOpenSettings={() => navigate(SETTINGS_SCREEN_ID)}>
+          <PageSummary state={page} onRetry={retry} />
+        </StudioContextRow>
       </div>
     );
   }
@@ -105,6 +118,11 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
     onSettingsReset,
     pdfSettings,
   } = usePublishingDraft();
+
+  // The sticky action bar. The active engine panel renders its export block
+  // into this element through a portal, so the button logic stays with the
+  // panel while the button itself is always on screen.
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
 
   // ---- The space-export confirmation ---------------------------------------
 
@@ -184,12 +202,18 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
     return parts.join(" · ");
   }, [t, values.cover, values.orientation, values.outline, values.page]);
 
-  return (
-    <div className="flex flex-col gap-3" data-testid="publishing-studio">
-      <StudioHeading onOpenSettings={() => navigate(SETTINGS_SCREEN_ID)} />
-      <PageSummary state={page} onRetry={retry} />
+  const footerSummary =
+    format === "pdf"
+      ? `${t(SCOPE_LABEL_KEYS[scope.kind])} · ${pdfSettingsSummary}`
+      : `${t(SCOPE_LABEL_KEYS[scope.kind])} · Word`;
 
-      <StudioStep number="01" label={t("studio.step.scope")} complete>
+  return (
+    <div className="flex flex-col gap-4" data-testid="publishing-studio">
+      <StudioContextRow onOpenSettings={() => navigate(SETTINGS_SCREEN_ID)}>
+        <PageSummary state={page} onRetry={retry} />
+      </StudioContextRow>
+
+      <StudioGroup id="scope" label={t("studio.step.scope")}>
         <ScopeSection
           state={scope}
           dispatch={dispatchScope}
@@ -197,10 +221,14 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
           resolveMacros={resolveMacros}
           onResolveMacrosChange={setResolveMacros}
         />
-      </StudioStep>
+      </StudioGroup>
 
-      <StudioStep number="02" label={t("studio.step.format")} complete>
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("studio.format.label")}>
+      <StudioGroup id="format" label={t("studio.step.format")}>
+        <div
+          className="flex overflow-hidden rounded-md border border-input bg-muted"
+          role="radiogroup"
+          aria-label={t("studio.format.label")}
+        >
           {ports.pdf && (
             <FormatChoice
               active={format === "pdf"}
@@ -222,26 +250,16 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
             />
           )}
         </div>
-      </StudioStep>
-
-      {pending !== null && (
-        <SpaceExportConfirm
-          spaceKey={spaceKey ?? ""}
-          pageCount={pageCount}
-          counting={counting}
-          onConfirm={confirm}
-          onCancel={() => setPending(null)}
-        />
-      )}
+      </StudioGroup>
 
       {ports.pdf && (
         <div
           hidden={format !== "pdf"}
           style={format !== "pdf" ? { display: "none" } : undefined}
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-4"
         >
-          <StudioStep number="03" label={t("studio.step.design")}>
-            <p className="m-0 rounded-lg border bg-muted px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+          <StudioGroup id="design" label={t("studio.step.design")}>
+            <p className="m-0 rounded-md border bg-muted px-2.5 py-2 text-xs leading-relaxed text-muted-foreground">
               {t("pdf.builtIn")}
             </p>
             <div className="flex flex-col gap-1">
@@ -251,7 +269,7 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
               <select
                 id="pdf-image-quality"
                 data-testid="pdf-image-quality"
-                className="h-11 rounded-md border bg-background px-2.5 text-sm"
+                className="h-9 rounded-md border bg-background px-2.5 text-sm"
                 value={imageProfile}
                 onChange={(event) =>
                   setImageProfile(event.target.value as "original" | "standard" | "print")
@@ -267,7 +285,7 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
                   min={72}
                   max={1200}
                   data-testid="pdf-image-ppi"
-                  className="h-11 rounded-md border bg-background px-2.5 text-sm"
+                  className="h-9 rounded-md border bg-background px-2.5 text-sm"
                   placeholder={t("export.imageQuality.ppi")}
                   value={imagePpi ?? ""}
                   onChange={(event) => {
@@ -290,27 +308,26 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
               collapsible
               summary={pdfSettingsSummary}
             />
-          </StudioStep>
+          </StudioGroup>
 
           {ports.host.capabilities.includes("pdf-preview") && (
-            <StudioStep number="04" label={t("studio.step.review")}>
+            <StudioGroup id="review" label={t("studio.step.review")}>
               <div data-testid="studio-preview">
                 <PreviewScreen ports={ports} page={page} retry={retry} navigate={navigate} embedded />
               </div>
-            </StudioStep>
+            </StudioGroup>
           )}
 
-          <StudioStep number={ports.host.capabilities.includes("pdf-preview") ? "05" : "04"} label={t("studio.step.export")}>
-            <PdfExportPanel
-              port={ports.pdf}
-              page={loadedPage}
-              pageUrl={pageUrl}
-              scopeRequest={scopeRequest}
-              settings={pdfSettings}
-              gate={gate}
-              compact
-            />
-          </StudioStep>
+          <PdfExportPanel
+            port={ports.pdf}
+            page={loadedPage}
+            pageUrl={pageUrl}
+            scopeRequest={scopeRequest}
+            settings={pdfSettings}
+            gate={gate}
+            compact
+            actionSlot={format === "pdf" ? actionSlot : null}
+          />
         </div>
       )}
 
@@ -318,16 +335,16 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
         <div
           hidden={format !== "docx"}
           style={format !== "docx" ? { display: "none" } : undefined}
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-4"
         >
-          <StudioStep number="03" label={t("export.codeTheme")}>
+          <StudioGroup id="code-theme" label={t("export.codeTheme")}>
             <SettingsForm
               schema={CODE_THEME_SETTINGS}
               values={values}
               onChange={onSettingChange}
               idPrefix="docx-code-theme"
             />
-          </StudioStep>
+          </StudioGroup>
           <DocxExportPanel
             port={ports.docx}
             store={ports.docxTemplates}
@@ -335,6 +352,7 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
             pageUrl={pageUrl}
             scopeRequest={scopeRequest}
             gate={gate}
+            actionSlot={format === "docx" ? actionSlot : null}
           />
 
           {ports.templates && (
@@ -351,44 +369,53 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
           )}
         </div>
       )}
+
+      {/*
+        The sticky action bar. `-bottom-[18px]`/`-mb-[18px]` cancel the scroll
+        container's own padding so the bar sits flush with the shell edge, and
+        `sticky` keeps the primary action on screen in every scroll position —
+        the redesign's core promise: export without scrolling.
+      */}
+      <div
+        className={cn(
+          "sticky -bottom-[18px] z-10 -mx-4 -mb-[18px] mt-auto flex flex-col gap-2 border-t",
+          "bg-background px-4 py-2.5 shadow-[0_-6px_16px_-10px_rgb(0_0_0/0.25)]"
+        )}
+        data-testid="studio-footer"
+      >
+        {pending !== null && (
+          <SpaceExportConfirm
+            spaceKey={spaceKey ?? ""}
+            pageCount={pageCount}
+            counting={counting}
+            onConfirm={confirm}
+            onCancel={() => setPending(null)}
+          />
+        )}
+        <div ref={setActionSlot} className="flex flex-col gap-1.5" data-testid="studio-footer-action" />
+        <p className="m-0 truncate text-[11px] text-muted-foreground" data-testid="studio-footer-summary">
+          {footerSummary}
+        </p>
+      </div>
     </div>
   );
 }
 
-function StudioStep({
-  number,
+function StudioGroup({
+  id,
   label,
   children,
-  complete = false,
 }: {
-  number: string;
+  id: string;
   label: string;
   children: React.ReactNode;
-  complete?: boolean;
 }): React.JSX.Element {
-  const t = useT();
   return (
-    <section
-      className="relative grid grid-cols-[28px_minmax(0,1fr)] gap-2.5 pb-5 after:absolute after:bottom-0 after:left-[13px] after:top-7 after:w-px after:bg-border last:pb-0 last:after:hidden"
-      data-testid={`studio-step-${number}`}
-    >
-      <span
-        className={cn(
-          "relative z-10 grid size-7 place-items-center rounded-full border bg-background text-xs font-bold",
-          complete
-            ? "border-success/30 bg-success/10 text-success"
-            : "border-input text-muted-foreground"
-        )}
-        aria-label={complete ? t("studio.step.complete") : undefined}
-      >
-        {complete ? <Check size={14} aria-hidden="true" /> : number}
-      </span>
-      <div className="min-w-0 pt-0.5">
-        <h2 className="m-0 text-[13px] font-bold tracking-[-0.01em]">{label}</h2>
-        <div className="mt-2">
-          {children}
-        </div>
-      </div>
+    <section className="flex flex-col gap-2" data-testid={`studio-group-${id}`}>
+      <h2 className="m-0 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </h2>
+      {children}
     </section>
   );
 }
@@ -409,7 +436,11 @@ function FormatChoice({
   testId: string;
 }): React.JSX.Element {
   return (
-    <label className="relative min-w-0 cursor-pointer" data-testid={testId}>
+    <label
+      className="relative min-w-0 flex-1 cursor-pointer border-r border-border last:border-r-0"
+      data-testid={testId}
+      title={detail}
+    >
       <input
         type="radio"
         name="publishing-format"
@@ -420,38 +451,37 @@ function FormatChoice({
       />
       <span
         className={cn(
-          "grid min-h-[58px] content-center gap-1 rounded-lg border bg-card px-2.5 py-2 text-left",
+          "flex min-h-9 items-center justify-center gap-1.5 px-1 text-xs font-medium text-muted-foreground",
           "transition-colors peer-focus-visible:outline peer-focus-visible:outline-2",
-          "peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
-          "peer-checked:border-primary/45 peer-checked:bg-accent peer-checked:text-primary hover:border-input hover:bg-muted"
+          "peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-ring",
+          "peer-checked:bg-background peer-checked:font-semibold peer-checked:text-primary",
+          "peer-checked:shadow-[inset_0_-2px_0_0_var(--primary)]",
+          "hover:text-foreground [&>svg]:size-3.5"
         )}
       >
-        <span className="inline-flex items-center gap-1.5 text-xs font-bold [&>svg]:size-4">
-          {icon}
-          {title}
-        </span>
-        <span className="truncate text-xs leading-tight text-muted-foreground">{detail}</span>
+        {icon}
+        {title}
       </span>
     </label>
   );
 }
 
-function StudioHeading({
+/**
+ * The page-context card plus the one route into Publishing settings. The old
+ * serif studio headline is gone on purpose: the sidebar is a tool, and the tab
+ * bar already names the place.
+ */
+function StudioContextRow({
+  children,
   onOpenSettings,
 }: {
+  children: React.ReactNode;
   onOpenSettings: () => void;
 }): React.JSX.Element {
   const t = useT();
   return (
-    <div className="mb-1 flex items-start justify-between gap-4">
-      <div>
-        <span className="mb-1 block text-xs font-extrabold uppercase tracking-[0.13em] text-primary">
-          {t("studio.kicker")}
-        </span>
-        <h1 className="m-0 font-serif text-[26px] font-semibold leading-none tracking-[-0.04em]">
-          {t("studio.heading")}
-        </h1>
-      </div>
+    <div className="flex items-start gap-1.5">
+      <div className="min-w-0 flex-1">{children}</div>
       <Button
         size="icon"
         variant="ghost"
