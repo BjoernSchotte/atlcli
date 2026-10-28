@@ -98,1198 +98,66 @@ import {
 } from "../ui/field.js";
 import { cn } from "../ui/utils.js";
 
-export const RESEARCH_SCREEN_ID = "research";
-const MAX_RESEARCH_ACTIVITY_EVENTS = 500;
-const MICROS_PER_USD = 1_000_000;
-const MIN_RESEARCH_MODEL_COST_USD = 0.01;
-const MAX_RESEARCH_MODEL_COST_USD = 25;
-const MIN_RESEARCH_RUN_MINUTES = 1;
-const MAX_RESEARCH_RUN_MINUTES = 10;
 
-type ResearchInteractionMode = "chat" | "deep";
+import {
+  RESEARCH_SCREEN_ID,
+  MAX_RESEARCH_ACTIVITY_EVENTS,
+  MICROS_PER_USD,
+  MIN_RESEARCH_MODEL_COST_USD,
+  MAX_RESEARCH_MODEL_COST_USD,
+  MIN_RESEARCH_RUN_MINUTES,
+  MAX_RESEARCH_RUN_MINUTES,
+  RESEARCH_INTERACTION_MODE_POLICY,
+  appendTimelineEvent,
+  chatReasoningSummary,
+  clarificationAnswerKey,
+  clarificationDecisionKey,
+  scopeClarificationSelectionKey,
+  currentSite,
+  inferResearchScope,
+  modelCostMicrosFromUsdInput,
+  researchActivityMessage,
+  researchErrorCodeV1,
+  researchTimelineSteps,
+  runDurationMsFromMinutesInput,
+  splitScopeValues,
+  streamedChatAnswer,
+  timelineStepKind,
+  type PendingChatQuestionState,
+  type PendingScopeClarification,
+  type ResearchChatTurnPresentation,
+  type ResearchInteractionMode,
+  type ResearchSuggestionKind,
+  type ResearchTimelineEventV1,
+  type ScopePreflightRetry,
+} from "../research/model.js";
+import {
+  ActiveActivityDots,
+  ChatAnswer,
+  ChatMarkdown,
+  FormattedReport,
+  KiteActivityMark,
+  LegacyChatAnswer,
+  ResearchBriefClarificationNotice,
+  ResearchStreamingTurn,
+  SuggestionIcon,
+} from "../research/answer-presentation.js";
+import { ResearchComposer } from "../research/ResearchComposer.js";
+import { useOptionalAppSettings } from "../app/settings-context.js";
+import {
+  ResearchReviewCards,
+  ResearchScopeClarificationCards,
+} from "../research/review-cards.js";
 
-interface PendingChatQuestionState {
-  conversationId: string;
-  turnId: string;
-  question: ChatUserQuestionV1;
-  request?: ResearchRequestV1;
-  qualityPolicy?: ChatQualityPolicyV1;
-}
-
-const RESEARCH_INTERACTION_MODE_POLICY = {
-  chat: {
-    requestedEffort: "auto",
-    requestedPlanApproval: "automatic",
-    scopeExpansionMode: "ask",
-    requestedReconciliation: "off",
-  },
-  deep: {
-    requestedEffort: "deep",
-    requestedPlanApproval: "default",
-    scopeExpansionMode: "ask",
-    requestedReconciliation: "auto",
-  },
-} as const satisfies Record<ResearchInteractionMode, {
-  requestedEffort: ResearchRequestedEffortV1;
-  requestedPlanApproval: ResearchRequestedPlanApprovalV1;
-  scopeExpansionMode: ResearchScopeExpansionModeV1;
-  requestedReconciliation: ResearchRequestedReconciliationV1;
-}>;
-
-function modelCostMicrosFromUsdInput(value: string, invalidMessage: string): number {
-  const usd = Number(value);
-  const micros = Math.round(usd * MICROS_PER_USD);
-  if (
-    !Number.isFinite(usd)
-    || micros < MIN_RESEARCH_MODEL_COST_USD * MICROS_PER_USD
-    || micros > MAX_RESEARCH_MODEL_COST_USD * MICROS_PER_USD
-  ) {
-    throw new ResearchContractError("invalid-request", invalidMessage);
-  }
-  return micros;
-}
-
-function runDurationMsFromMinutesInput(value: string, invalidMessage: string): number {
-  const minutes = Number(value);
-  if (!Number.isSafeInteger(minutes) || minutes < MIN_RESEARCH_RUN_MINUTES || minutes > MAX_RESEARCH_RUN_MINUTES) {
-    throw new ResearchContractError("invalid-request", invalidMessage);
-  }
-  return minutes * 60_000;
-}
-
-function splitScopeValues(value: string): string[] {
-  return [...new Set(
-    value.split(/[\s,;]+/).map((entry) => entry.trim()).filter(Boolean),
-  )];
-}
-
-function researchErrorCodeV1(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  if ("code" in value && typeof value.code === "string") return value.code;
-  if (value instanceof Error) {
-    if (value.name === "AbortError" || /\b(?:abort(?:ed)?|cancel(?:led|ed)?)\b/iu.test(value.message)) {
-      return "cancelled";
-    }
-  }
-  return undefined;
-}
-
-type ResearchTimelineStepKind =
-  | "thinking"
-  | "planning"
-  | "analyzing"
-  | "confluence-search"
-  | "confluence-read"
-  | "confluence-section-read"
-  | "bound-read"
-  | "jira-search"
-  | "jira-read"
-  | "ranking"
-  | "relationships"
-  | "checking"
-  | "synthesizing";
-
-interface ResearchTimelineStep {
-  id: string;
-  kind: ResearchTimelineStepKind;
-  events: ResearchTimelineEventV1[];
-}
-
-type ResearchTimelineEventV1 = ResearchOneShotEventV1 | ChatPresentationStreamEventV1;
-
-function appendTimelineEvent(
-  current: readonly ResearchTimelineEventV1[],
-  event: ResearchTimelineEventV1,
-): ResearchTimelineEventV1[] {
-  const previous = current.at(-1);
-  if (event.kind === "chat-presentation" && event.status === "delta" &&
-    previous?.kind === "chat-presentation" && previous.status === "delta" &&
-    previous.channel === event.channel) {
-    return [
-      ...current.slice(0, -1),
-      {
-        ...event,
-        delta: `${previous.delta ?? ""}${event.delta ?? ""}`.slice(-12_000),
-      },
-    ].slice(-MAX_RESEARCH_ACTIVITY_EVENTS);
-  }
-  return [...current, event].slice(-MAX_RESEARCH_ACTIVITY_EVENTS);
-}
-
-type ResearchSuggestionKind = "summarize" | "connections" | "changes";
-
-interface ResearchChatTurnPresentation {
-  kind: ResearchSuggestionKind;
-  label: string;
-}
-
-function researchActivityMessage(
-  event: Extract<ResearchOneShotEventV1, { kind: "activity" }>,
-  t: ReturnType<typeof useT>,
-): string {
-  const semanticKey = `research.chat.activity.${event.code}.${event.status}`;
-  if ([
-    "strategy",
-    "direct-read",
-    "search",
-    "source-selection",
-    "child-work",
-    "critique",
-    "repair",
-    "synthesis",
-    "gap",
-    "hitl",
-    "steering",
-    "stop",
-    "continuation",
-    "completion",
-  ].includes(event.code)) {
-    return t(semanticKey as Parameters<typeof t>[0]);
-  }
-  if (event.code === "model-assessing") {
-    if (event.status === "started") return t("research.chat.activity.model-assessing.started");
-    if (event.status === "completed") return t("research.chat.activity.model-assessing.completed");
-    return t("research.chat.activity.model-assessing.failed");
-  }
-  if (event.code === "answer-drafting") {
-    return event.status === "started"
-      ? t("research.chat.activity.answer-drafting.started")
-      : event.status === "completed"
-        ? t("research.chat.activity.answer-draft-ready.completed")
-        : t("research.chat.activity.answer-drafting.failed");
-  }
-  if (event.code === "next-step-ready") {
-    return event.status === "completed"
-      ? t("research.chat.activity.next-step-ready.completed")
-      : t("research.chat.activity.model-assessing.failed");
-  }
-  if (event.code === "answer-draft-ready") {
-    return event.status === "completed"
-      ? t("research.chat.activity.answer-draft-ready.completed")
-      : t("research.chat.activity.model-assessing.failed");
-  }
-  if (event.code === "bounded-workflow-running") {
-    return event.status === "started"
-      ? t("research.chat.activity.bounded-workflow-running.started")
-      : event.status === "completed"
-        ? t("research.chat.activity.bounded-workflow-complete.completed")
-        : t("research.chat.activity.bounded-workflow-failed.failed");
-  }
-  if (event.code === "bounded-workflow-complete") {
-    return event.status === "completed"
-      ? t("research.chat.activity.bounded-workflow-complete.completed")
-      : t("research.chat.activity.bounded-workflow-failed.failed");
-  }
-  return t("research.chat.activity.bounded-workflow-failed.failed");
-}
-
-function researchActivityDetailMessages(
-  events: readonly ResearchTimelineEventV1[],
-  t: ReturnType<typeof useT>,
-): string[] {
-  const messages = events.flatMap((event): string[] => {
-    if (event.kind === "chat-presentation") return [];
-    if (event.kind === "capability") {
-      if (event.status === "failed") return [t("research.chat.detail.readFailed")];
-      if (event.status !== "completed") return [];
-      const count = String(event.itemCount ?? 0);
-      if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
-        if (event.itemLabels?.length) {
-          return event.itemLabels.map((label) => t("research.chat.detail.foundItem", { label }));
-        }
-        return [t("research.chat.detail.confluenceFound", { count })];
-      }
-      if (event.toolId === "wiki.page.get") {
-        return [t("research.chat.detail.confluenceRead")];
-      }
-      if (event.toolId === "atlassian.bound.read") {
-        if (event.itemLabels?.length) {
-          return event.itemLabels.map((label) => t("research.chat.detail.boundRead", { label }));
-        }
-        return [t("research.chat.detail.boundReadGeneric")];
-      }
-      if (event.toolId === "atlassian.bound.section.read") {
-        if (event.itemLabels?.length) {
-          return event.itemLabels.map((label) => t("research.chat.detail.sectionRead", { label }));
-        }
-        return [t("research.chat.detail.sectionReadGeneric")];
-      }
-      if (event.toolId === "jira.issue.search" || event.toolId === "jira.project.search") {
-        if (event.itemLabels?.length) {
-          return event.itemLabels.map((label) => t("research.chat.detail.foundItem", { label }));
-        }
-        return [t("research.chat.detail.jiraFound", { count })];
-      }
-      if (event.toolId === "jira.issue.get") {
-        return [t("research.chat.detail.jiraRead")];
-      }
-      if (event.toolId === "research.candidate.rank") {
-        if (event.itemLabels?.length) {
-          return event.itemLabels.map((label) => t("research.chat.detail.selectedItem", { label }));
-        }
-        return [t("research.chat.detail.selected", { count })];
-      }
-      return [];
-    }
-    if (event.kind === "retrieval" && event.detailReadCount > 0) {
-      return [t("research.chat.detail.sourcesRead", { count: String(event.detailReadCount) })];
-    }
-    if (event.kind === "reconciliation" && event.status === "completed") {
-      return [t("research.chat.detail.checked")];
-    }
-    if (event.kind === "steering") {
-      return [t("research.chat.detail.steeringApplied")];
-    }
-    if (event.kind === "activity") {
-      return [researchActivityMessage(event, t)];
-    }
-    return [];
-  });
-  return [...new Set(messages)];
-}
-
-function chatReasoningSummary(events: readonly ResearchTimelineEventV1[]): string {
-  return events
-    .filter((event): event is ChatPresentationStreamEventV1 =>
-      event.kind === "chat-presentation" &&
-      event.channel === "reasoning-summary" &&
-      event.status === "delta")
-    .map((event) => event.delta ?? "")
-    .join("")
-    .trim();
-}
-
-export function streamedChatAnswer(events: readonly ResearchTimelineEventV1[]): string {
-  let visible = "";
-  let replacementPending = false;
-  for (const event of events) {
-    if (event.kind !== "chat-presentation" || event.channel !== "answer-markdown") continue;
-    if (event.status === "reset") {
-      replacementPending = true;
-      continue;
-    }
-    if (event.status !== "delta") continue;
-    if (replacementPending) {
-      visible = event.delta ?? "";
-      replacementPending = false;
-    } else {
-      visible += event.delta ?? "";
-    }
-  }
-  return visible;
-}
-
-function timelineStepKind(event: ResearchTimelineEventV1): ResearchTimelineStepKind | null {
-  if (event.kind === "chat-presentation") return null;
-  if (event.kind === "phase") {
-    if (event.phase === "preparing") return "planning";
-    if (event.phase === "analyzing") return "analyzing";
-    if (event.phase === "checking") return "checking";
-    if (event.phase === "rendering") return "synthesizing";
-    return null;
-  }
-  if (event.kind === "brief" || event.kind === "plan") return "planning";
-  if (event.kind === "capability") {
-    if (event.toolId === "atlassian.bound.read") return "bound-read";
-    if (event.toolId === "atlassian.bound.section.read") return "confluence-section-read";
-    if (event.toolId === "wiki.search" || event.toolId === "wiki.space.search") {
-      return "confluence-search";
-    }
-    if (event.toolId === "wiki.page.get") return "confluence-read";
-    if (event.toolId === "jira.issue.search" || event.toolId === "jira.project.search") {
-      return "jira-search";
-    }
-    if (event.toolId === "jira.issue.get") return "jira-read";
-    if (event.toolId === "research.candidate.rank") return "ranking";
-    return "relationships";
-  }
-  if (event.kind === "subagent" || event.kind === "task") {
-    const roleId = event.roleId ?? "";
-    if (roleId.includes("synthesizer")) return "synthesizing";
-    if (roleId.includes("reconciler") || roleId.includes("critic")) return "checking";
-    if (roleId.includes("relationship") || roleId.includes("join")) return "relationships";
-    return null;
-  }
-  if (event.kind === "reconciliation" || event.kind === "reconciliation_disposition") {
-    return "checking";
-  }
-  // Retrieval summaries enrich the adjacent read/ranking step. Presenting
-  // them as validation created a misleading duplicate “checking” phase.
-  if (event.kind === "retrieval") return null;
-  if (event.kind === "artifact") return null;
-  if (event.kind === "activity") {
-    if (event.code === "strategy" || event.code === "steering" || event.code === "continuation") return "planning";
-    if (event.code === "model-assessing" || event.code === "child-work") return "analyzing";
-    if (event.code === "critique" || event.code === "repair" || event.code === "gap") return "checking";
-    if (event.code === "synthesis" || event.code === "answer-drafting" || event.code === "answer-draft-ready") return "synthesizing";
-    return null;
-  }
-  if (event.kind === "decision") {
-    if (event.decisionId === "direct-chat-agent-run") {
-      return event.status === "started" ? "planning" : null;
-    }
-    return event.reasonCode.includes("validat") ? "checking" : "planning";
-  }
-  return null;
-}
-
-/**
- * Compress the body-free operator stream into a chat-sized sequence. Repeated
- * counters, budgets and start/finish pairs remain inspectable on the step that
- * owns them; they are not presented as dozens of apparent conversation turns.
- */
-export function researchTimelineSteps(
-  events: readonly ResearchTimelineEventV1[],
-  running: boolean,
-): ResearchTimelineStep[] {
-  const steps: ResearchTimelineStep[] = [];
-  for (const event of events) {
-    const kind = timelineStepKind(event);
-    const current = steps.at(-1);
-    if (kind === null) {
-      if (current) current.events.push(event);
-      continue;
-    }
-    if (current?.kind === kind) {
-      current.events.push(event);
-      continue;
-    }
-    steps.push({ id: `research-step:${event.seq}`, kind, events: [event] });
-  }
-  if (running && steps.length === 0) {
-    steps.push({ id: "research-step:thinking", kind: "thinking", events: [] });
-  }
-  return steps;
-}
-
-function KiteActivityMark(): React.JSX.Element {
-  return (
-    <svg
-      className="kiteweave-agent-kite size-5 shrink-0 overflow-visible"
-      viewBox="0 0 48 54"
-      aria-hidden="true"
-      data-testid="research-active-kite"
-    >
-      <path className="fill-primary" d="M24 3 6 24l18 20V3Z" />
-      <path className="fill-success" d="m24 3 18 21-18 20V3Z" />
-      <path
-        className="fill-none stroke-background"
-        d="M6 24h36M24 44c5 3 1 6 5 8"
-        strokeLinecap="round"
-        strokeWidth="2"
-      />
-    </svg>
-  );
-}
-
-function ActiveActivityDots(): React.JSX.Element {
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-0.5"
-      aria-hidden="true"
-      data-testid="research-active-dots"
-    >
-      <span className="kiteweave-agent-dot size-1 rounded-full bg-current" />
-      <span className="kiteweave-agent-dot size-1 rounded-full bg-current [animation-delay:120ms]" />
-      <span className="kiteweave-agent-dot size-1 rounded-full bg-current [animation-delay:240ms]" />
-    </span>
-  );
-}
-
-function SuggestionIcon({ kind }: { kind: ResearchSuggestionKind }): React.JSX.Element {
-  if (kind === "summarize") return <FileText className="size-4" aria-hidden="true" />;
-  if (kind === "connections") return <Search className="size-4" aria-hidden="true" />;
-  return <MessageCircle className="size-4" aria-hidden="true" />;
-}
-
-export function inferResearchScope(input: {
-  siteOrigin: string;
-  /**
-   * The question is retained in this host-input shape for callers, but only
-   * the shared, catalog-backed preflight is allowed to derive a scope from it.
-   */
-  question: string;
-  jiraProjects: string;
-  confluenceSpaces: string;
-  activeSpaceKey?: string;
-  activeProjectKey?: string;
-  activeEntity?: {
-    product: "jira" | "confluence";
-    entityKind: "issue" | "page";
-    key: string;
-    name: string;
-  };
-}): {
-  jiraProjectKeys: string[];
-  confluenceSpaceKeys: string[];
-  scopeSeeds: ResearchScopeSeedV1[];
-} {
-  const manualProjects = splitScopeValues(input.jiraProjects).map((key) => key.toUpperCase());
-  const manualSpaces = splitScopeValues(input.confluenceSpaces);
-  const currentProjects = input.activeProjectKey ? [input.activeProjectKey.toUpperCase()] : [];
-  const currentSpaces = input.activeSpaceKey ? [input.activeSpaceKey] : [];
-  const jiraProjectKeys = manualProjects.length > 0
-    ? manualProjects
-    : currentProjects;
-  const confluenceSpaceKeys = manualSpaces.length > 0
-    ? manualSpaces
-    : currentSpaces;
-  const seeds = (
-    product: "jira" | "confluence",
-    manual: string[],
-    current: string[],
-  ): ResearchScopeSeedV1[] => [
-    ...manual.map((key) => createResearchKeyScopeSeedV1({
-      tenantOrigin: input.siteOrigin,
-      product,
-      key,
-      source: "ui_added",
-      authority: "locked",
-    })),
-    ...current.map((key) => createResearchKeyScopeSeedV1({
-      tenantOrigin: input.siteOrigin,
-      product,
-      key,
-      source: "current_context",
-      authority: "approved",
-    })),
-  ];
-  return {
-    jiraProjectKeys,
-    confluenceSpaceKeys,
-    scopeSeeds: [
-      ...seeds("jira", manualProjects, currentProjects),
-      ...seeds("confluence", manualSpaces, currentSpaces),
-      ...(input.activeEntity
-        ? [createResearchEntityScopeSeedV1({
-            tenantOrigin: input.siteOrigin,
-            ...input.activeEntity,
-            source: "current_context",
-            authority: "approved",
-          })]
-        : []),
-    ],
-  };
-}
-
-interface PendingScopeClarification {
-  request: ResearchRequestV1;
-  clarification: ResearchScopeClarificationRequiredV1;
-  candidateChoices: ResearchScopeCandidateV1[];
-  selectedCandidateId: string;
-}
-
-interface ScopePreflightRetry {
-  request: ResearchRequestV1;
-  selection?: ResearchScopeCandidateSelectionV1;
-  alreadyResolved?: boolean;
-  conversationId?: string;
-  qualityPolicy?: ChatQualityPolicyV1;
-  chatCheckpointResume?: {
-    turnId: string;
-    kind: "stream-interruption" | "steering";
-  };
-}
-
-export function ResearchBriefClarificationNotice({
-  clarification,
-}: {
-  clarification: ResearchBriefClarificationRequiredV1;
-}): React.JSX.Element {
-  const t = useT();
-  return (
-    <Alert tone="muted" role="status" data-testid="research-brief-clarification-required">
-      <AlertTitle>{t("research.briefClarification")}</AlertTitle>
-      <p className="m-0 mt-1">
-        {t("research.briefClarification.value", {
-          revision: String(clarification.briefRevision),
-        })}
-      </p>
-      {clarification.questions.length > 0 && (
-        <div className="mt-2">
-          <strong className="text-xs">{t("research.briefClarification.questions")}</strong>
-          <ul className="mb-0 mt-1 pl-5 text-xs">
-            {clarification.questions.map((question) => (
-              <li key={question.id}>{question.prompt}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {clarification.assumptionsRequiringDecision.length > 0 && (
-        <div className="mt-2">
-          <strong className="text-xs">{t("research.briefClarification.assumptions")}</strong>
-          <ul className="mb-0 mt-1 pl-5 text-xs">
-            {clarification.assumptionsRequiringDecision.map((assumption) => (
-              <li key={assumption.id}>{assumption.text}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </Alert>
-  );
-}
-
-function currentSite(page: ScreenProps["page"]): {
-  origin: string;
-  activeSpaceKey?: string;
-  activeProjectKey?: string;
-  contextLabel?: string;
-  contextProduct?: "Confluence" | "Jira";
-  activeEntity?: {
-    product: "jira" | "confluence";
-    entityKind: "issue" | "page";
-    key: string;
-    name: string;
-  };
-} | null {
-  const url =
-    page.status === "loaded" || page.status === "loading" || page.status === "error"
-      ? page.ref.url
-      : page.status === "unsupported"
-        ? page.url
-        : null;
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    const entity = page.status === "unsupported"
-      ? page.entity
-      : page.status === "loading" || page.status === "loaded" || page.status === "error"
-        ? page.ref.entity
-        : undefined;
-    const activeSpaceKey = entity?.product === "confluence" && "spaceKey" in entity
-      ? entity.spaceKey
-      : page.status === "loaded"
-        ? page.page.details.spaceKey
-        : undefined;
-    const activeProjectKey = entity?.product === "jira" ? entity.projectKey : undefined;
-    const contextLabel = page.status === "loaded"
-      ? page.page.details.title
-      : entity?.product === "jira" && entity.type === "issue"
-        ? entity.issueKey
-        : entity?.product === "jira"
-          ? entity.projectKey
-          : entity?.product === "confluence" && "spaceKey" in entity
-            ? entity.spaceKey
-            : undefined;
-    const activeEntity = page.status === "loaded"
-      ? {
-          product: "confluence" as const,
-          entityKind: "page" as const,
-          key: page.page.details.id,
-          name: page.page.details.title,
-        }
-      : entity?.product === "confluence" && entity.type === "page"
-        ? {
-            product: "confluence" as const,
-            entityKind: "page" as const,
-            key: entity.pageId,
-            name: contextLabel ?? entity.pageId,
-          }
-        : entity?.product === "jira" && entity.type === "issue"
-          ? {
-              product: "jira" as const,
-              entityKind: "issue" as const,
-              key: entity.issueKey,
-              name: contextLabel ?? entity.issueKey,
-            }
-          : undefined;
-    return {
-      origin: parsed.origin,
-      ...(activeSpaceKey ? { activeSpaceKey } : {}),
-      ...(activeProjectKey ? { activeProjectKey } : {}),
-      ...(contextLabel ? { contextLabel } : {}),
-      ...(activeEntity ? { activeEntity } : {}),
-      ...(entity?.product === "confluence"
-        ? { contextProduct: "Confluence" as const }
-        : entity?.product === "jira"
-          ? { contextProduct: "Jira" as const }
-          : {}),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function SourceLinks({
-  sourceIds,
-  report,
-}: {
-  sourceIds: readonly string[];
-  report: Pick<ResearchReport, "sources">;
-}): React.JSX.Element {
-  const sources = new Map(report.sources.map((source) => [source.id, source]));
-  return (
-    <span className="text-xs text-muted-foreground">
-      {sourceIds.map((sourceId, index) => {
-        const source = sources.get(sourceId);
-        if (!source) return null;
-        return (
-          <React.Fragment key={sourceId}>
-            {index > 0 ? ", " : ""}
-            <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
-              {source.title}
-            </a>
-          </React.Fragment>
-        );
-      })}
-    </span>
-  );
-}
-
-function V1FormattedReport({ report }: { report: Extract<ResearchReport, { schema: "atlcli.research-report/v1" }> }): React.JSX.Element {
-  const t = useT();
-  return (
-    <article className="flex flex-col gap-4 text-sm" data-testid="research-formatted-report">
-      <header>
-        <h2 className="m-0 font-serif text-xl font-semibold">{report.title}</h2>
-        <p className="mb-0 mt-1 text-xs text-muted-foreground">{report.question}</p>
-      </header>
-      <section>
-        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.summary")}</h3>
-        <p className="m-0 whitespace-pre-wrap">{report.executiveSummary}</p>
-      </section>
-      <section>
-        <h3 className="mb-2 mt-0 text-sm font-semibold">{t("research.findings")}</h3>
-        <ol className="m-0 flex flex-col gap-3 pl-5">
-          {report.findings.map((finding) => (
-            <li key={finding.id}>
-              <strong>{finding.summary}</strong>
-              {finding.detail && <p className="mb-1 mt-1 whitespace-pre-wrap">{finding.detail}</p>}
-              <SourceLinks sourceIds={finding.sourceIds} report={report} />
-            </li>
-          ))}
-        </ol>
-      </section>
-      <section>
-        <h3 className="mb-2 mt-0 text-sm font-semibold">{t("research.relationships")}</h3>
-        <ul className="m-0 flex flex-col gap-2 pl-5">
-          {report.relationships.map((relationship) => (
-            <li key={relationship.id}>
-              <span className="mr-1 rounded bg-muted px-1 py-0.5 text-xs font-semibold uppercase">
-                {relationship.classification}
-              </span>
-              <code>{relationship.jiraIssueKey}</code> ↔ <code>{relationship.confluenceContentId}</code>
-              <span>: {relationship.summary}</span>{" "}
-              <SourceLinks sourceIds={relationship.sourceIds} report={report} />
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section>
-        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.limitations")}</h3>
-        <ul className="m-0 pl-5">
-          {report.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
-        </ul>
-      </section>
-      <section>
-        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.sources")}</h3>
-        <ol className="m-0 pl-5">
-          {report.sources.map((source) => (
-            <li key={source.id}>
-              <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
-                {source.title}
-              </a>
-            </li>
-          ))}
-        </ol>
-      </section>
-    </article>
-  );
-}
-
-function V2FormattedReport({ report }: { report: Extract<ResearchReport, { schema: "atlcli.research-report/v2" }> }): React.JSX.Element {
-  const t = useT();
-  const claims = new Map(report.claims.map((claim) => [claim.id, claim]));
-  const reconciliation = report.reconciliation ?? [];
-  return (
-    <article className="flex flex-col gap-4 text-sm" data-testid="research-formatted-report">
-      <header>
-        <h2 className="m-0 font-serif text-xl font-semibold">{report.title}</h2>
-        <p className="mb-0 mt-1 text-xs text-muted-foreground">{report.question}</p>
-      </header>
-      <section>
-        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.summary")}</h3>
-        <ul className="m-0 flex flex-col gap-2 pl-5">
-          {report.executiveSummaryClaimIds.map((claimId) => {
-            const claim = claims.get(claimId);
-            return claim ? <li key={claim.id}>{claim.statement}</li> : null;
-          })}
-        </ul>
-      </section>
-      {report.sections.map((section) => (
-        <section key={section.id}>
-          <h3 className="mb-1 mt-0 text-sm font-semibold">{section.title}</h3>
-          <p className="mb-2 mt-0 text-xs text-muted-foreground">{section.question}</p>
-          <ol className="m-0 flex flex-col gap-3 pl-5">
-            {section.claimIds.map((claimId) => {
-              const claim = claims.get(claimId);
-              return claim ? (
-              <li key={claim.id}>
-                <strong>{claim.statement}</strong>
-                <span
-                  className="ml-2 rounded bg-muted px-1 py-0.5 text-xs text-muted-foreground"
-                  data-testid={`research-claim-freshness-${claim.id}`}
-                >
-                  {t("research.claim.freshness.current")}
-                </span>
-                <SourceLinks sourceIds={claim.sourceIds} report={report} />
-              </li>
-              ) : null;
-            })}
-          </ol>
-        </section>
-      ))}
-      {report.coverage.length > 0 && (
-        <section>
-          <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.coverage")}</h3>
-          <ul className="m-0 pl-5">
-            {report.coverage.map((entry) => (
-              <li key={entry.targetId}>
-                <code>{entry.targetId}</code>: {entry.status}; {entry.distinctSourceCount} {t(
-                  entry.distinctSourceCount === 1
-                    ? "research.coverage.distinctSource"
-                    : "research.coverage.distinctSources",
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {reconciliation.length > 0 && (
-        <section>
-          <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.reconciliation.outcomes")}</h3>
-          <ul className="m-0 pl-5">
-            {reconciliation.map((outcome) => (
-              <li key={outcome.defectId} data-testid={`research-reconciliation-${outcome.defectId}`}>
-                <code>{outcome.target.kind}: {outcome.target.id}</code>: {outcome.decision} ({outcome.reasonCode})
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <section>
-        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.limitations")}</h3>
-        <ul className="m-0 pl-5">
-          {report.limitations.length > 0
-            ? report.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)
-            : <li>{t("research.noneReported")}</li>}
-        </ul>
-      </section>
-      <section>
-        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.sources")}</h3>
-        <ol className="m-0 pl-5">
-          {report.sources.map((source) => (
-            <li key={source.id}>
-              <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
-                {source.title}
-              </a>
-            </li>
-          ))}
-        </ol>
-      </section>
-    </article>
-  );
-}
-
-function FormattedReport({ report }: { report: ResearchReport }): React.JSX.Element {
-  return report.schema === "atlcli.research-report/v2"
-    ? <V2FormattedReport report={report} />
-    : <V1FormattedReport report={report} />;
-}
-
-function safeChatMarkdownHref(href: string | undefined): string | undefined {
-  if (!href) return undefined;
-  try {
-    const parsed = new URL(href);
-    return parsed.protocol === "https:" ? parsed.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function ChatMarkdown({
-  markdown,
-  streaming = false,
-  currentCitationUrls = new Set<string>(),
-  currentContextLabel = "Current context",
-  onCurrentContextNavigate,
-}: {
-  markdown: string;
-  streaming?: boolean;
-  currentCitationUrls?: ReadonlySet<string>;
-  currentContextLabel?: string;
-  onCurrentContextNavigate?: (url: string) => void;
-}): React.JSX.Element {
-  return (
-    <div className="space-y-3 break-words" data-testid="research-chat-markdown">
-      <Streamdown
-        mode={streaming ? "streaming" : "static"}
-        controls={false}
-        components={{
-          h1: ({ children }) => <h2 className="mb-2 mt-4 text-lg font-semibold leading-6 first:mt-0">{children}</h2>,
-          h2: ({ children }) => <h3 className="mb-2 mt-4 text-base font-semibold leading-6 first:mt-0">{children}</h3>,
-          h3: ({ children }) => <h4 className="mb-1.5 mt-3 text-sm font-semibold leading-5 first:mt-0">{children}</h4>,
-          h4: ({ children }) => <h5 className="mb-1.5 mt-3 text-sm font-medium leading-5 first:mt-0">{children}</h5>,
-          p: ({ children }) => <p className="my-2 whitespace-pre-wrap first:mt-0 last:mb-0">{children}</p>,
-          ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
-          ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
-          li: ({ children }) => <li className="pl-0.5">{children}</li>,
-          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-          em: ({ children }) => <em className="italic">{children}</em>,
-          blockquote: ({ children }) => (
-            <blockquote className="my-3 border-l-2 border-border pl-3 text-muted-foreground">
-              {children}
-            </blockquote>
-          ),
-          code: ({ children, className }) => className
-            ? <code className={cn("block overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs", className)}>{children}</code>
-            : <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">{children}</code>,
-          pre: ({ children }) => <pre className="my-3 overflow-x-auto">{children}</pre>,
-          a: ({ children, href }) => {
-            const safeHref = safeChatMarkdownHref(href);
-            const isCurrentContext = safeHref !== undefined && currentCitationUrls.has(safeHref);
-            if (safeHref && isCurrentContext && new URL(safeHref).hash.length === 0) {
-              return (
-                <span
-                  className="whitespace-nowrap rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-                  data-current-context-citation="page"
-                >
-                  {currentContextLabel}
-                </span>
-              );
-            }
-            if (safeHref && isCurrentContext && onCurrentContextNavigate) {
-              return (
-                <button
-                  type="button"
-                  className="break-words text-left underline underline-offset-2"
-                  data-current-context-citation="section"
-                  onClick={() => onCurrentContextNavigate(safeHref)}
-                >
-                  {children}
-                </button>
-              );
-            }
-            return safeHref
-              ? (
-                <a
-                  className="break-all underline underline-offset-2"
-                  href={safeHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {children}
-                </a>
-              )
-              : <span>{children}</span>;
-          },
-          table: ({ children }) => <table className="my-3 w-full border-collapse text-xs">{children}</table>,
-          th: ({ children }) => <th className="border border-border bg-muted px-2 py-1 text-left font-semibold">{children}</th>,
-          td: ({ children }) => <td className="border border-border px-2 py-1 align-top">{children}</td>,
-          hr: () => <hr className="my-4 border-border" />,
-        }}
-      >
-        {markdown}
-      </Streamdown>
-    </div>
-  );
-}
-
-function ChatAnswer({
-  answer,
-  currentSourceId,
-  currentContextLabel,
-  onCurrentContextNavigate,
-}: {
-  answer: ChatAnswerV1;
-  currentSourceId?: string;
-  currentContextLabel: string;
-  onCurrentContextNavigate?: (url: string) => void;
-}): React.JSX.Element {
-  const t = useT();
-  const currentCitations = answer.citations.filter((source) => source.sourceId === currentSourceId);
-  const currentCitationUrls = new Set(
-    currentCitations.flatMap((source) => safeChatMarkdownHref(source.url) ?? []),
-  );
-  return (
-    <article className="space-y-3 text-sm leading-6" data-testid="research-chat-answer">
-      <ChatMarkdown
-        markdown={answer.messageMarkdown}
-        currentCitationUrls={currentCitationUrls}
-        currentContextLabel={currentContextLabel}
-        onCurrentContextNavigate={onCurrentContextNavigate}
-      />
-      {answer.citations.length > 0 && (
-        <details className="rounded-lg border border-border/70 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-            {t("research.chat.sources", { count: answer.citations.length })}
-          </summary>
-          <ol className="mb-0 mt-2 space-y-1 pl-5 text-xs">
-            {answer.citations.map((source) => {
-              const isCurrentContext = source.sourceId === currentSourceId;
-              const key = `${source.sourceId}#${source.section?.sectionId ?? "item"}`;
-              return (
-                <li key={key}>
-                  {isCurrentContext && !source.section
-                    ? <span className="text-muted-foreground">{currentContextLabel}</span>
-                    : isCurrentContext && onCurrentContextNavigate
-                      ? (
-                        <button
-                          type="button"
-                          className="text-left underline underline-offset-2"
-                          onClick={() => onCurrentContextNavigate(source.url)}
-                        >
-                          {source.title}
-                        </button>
-                      )
-                      : (
-                        <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
-                          {source.title}
-                        </a>
-                      )}
-                </li>
-              );
-            })}
-          </ol>
-        </details>
-      )}
-    </article>
-  );
-}
-
-/** Presenter-only compatibility for retained pre-C1 results; new Chat runs never create this shape. */
-function LegacyChatAnswer({ report }: { report: ResearchReport }): React.JSX.Element {
-  const t = useT();
-  const statements = report.schema === "atlcli.research-report/v2"
-    ? report.executiveSummaryClaimIds
-      .map((claimId) => report.claims.find((claim) => claim.id === claimId)?.statement)
-      .filter((statement): statement is string => Boolean(statement))
-    : report.findings.length > 0 || report.relationships.length > 0
-      ? [report.executiveSummary].filter(Boolean)
-      : [];
-  const fallback = report.limitations[0] ?? t("research.chat.answerUnavailable");
-  return (
-    <article className="space-y-3 text-sm leading-6" data-testid="research-chat-answer">
-      {(statements.length > 0 ? statements : [fallback]).map((statement) => (
-        <p className="m-0" key={statement}>{statement}</p>
-      ))}
-    </article>
-  );
-}
-
-function ResearchStreamingTurn({
-  activity,
-  progress,
-  running,
-  request,
-}: {
-  activity: readonly ResearchTimelineEventV1[];
-  progress: string;
-  running: boolean;
-  request?: ResearchRequestV1 | null;
-}): React.JSX.Element | null {
-  const t = useT();
-  const steps = researchTimelineSteps(activity, running);
-  const exactPage = request?.exactContextProducts?.includes("confluence")
-    ? request.scopeSeeds?.find((seed) =>
-      seed.binding.source === "current_context" &&
-      seed.binding.product === "confluence" &&
-      seed.binding.entityKind === "page",
-    )?.binding
-    : undefined;
-  const exactIssue = request?.exactContextProducts?.includes("jira")
-    ? request.scopeSeeds?.find((seed) =>
-      seed.binding.source === "current_context" &&
-      seed.binding.product === "jira" &&
-      seed.binding.entityKind === "issue",
-    )?.binding
-    : undefined;
-  const answerDraft = streamedChatAnswer(activity);
-  // Ranking validates the one host-bound entity reference internally, but it
-  // is not a user-visible discovery step when there is only one exact page.
-  // Showing it as "relevant results selected" suggested a broad search that
-  // never happened and duplicated the direct-context selection row.
-  const displaySteps = exactPage
-    ? steps.filter((step) => step.kind !== "ranking")
-    : steps;
-  const activeStepId = running ? displaySteps.at(-1)?.id : undefined;
-  const [activeSeconds, setActiveSeconds] = useState(0);
-  useEffect(() => {
-    setActiveSeconds(0);
-    if (!activeStepId) return;
-    const startedAt = Date.now();
-    const interval = globalThis.setInterval(() => {
-      setActiveSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1_000)));
-    }, 1_000);
-    return () => globalThis.clearInterval(interval);
-  }, [activeStepId]);
-  if (!running && activity.length === 0) return null;
-  const label = (kind: ResearchTimelineStepKind): string => {
-    switch (kind) {
-      case "thinking": return t("research.chat.phase.thinking");
-      case "planning": return t("research.chat.phase.planning");
-      case "analyzing": return t("research.chat.phase.analyzing");
-      case "confluence-search": return exactPage
-        ? t("research.chat.phase.confluenceContext")
-        : t("research.chat.phase.confluenceSearch");
-      case "confluence-read": return exactPage
-        ? t("research.chat.phase.confluenceContextRead", { name: exactPage.name })
-        : t("research.chat.phase.confluenceRead");
-      case "confluence-section-read": return t("research.chat.phase.confluenceSectionRead");
-      case "bound-read": return exactPage
-        ? t("research.chat.phase.confluenceContextRead", { name: exactPage.name })
-        : exactIssue
-          ? t("research.chat.phase.jiraContextRead", { name: exactIssue.name })
-          : t("research.chat.phase.boundRead");
-      case "jira-search": return t("research.chat.phase.jiraSearch");
-      case "jira-read": return t("research.chat.phase.jiraRead");
-      case "ranking": return t("research.chat.phase.ranking");
-      case "relationships": return t("research.chat.phase.relationships");
-      case "checking": return t("research.chat.phase.checking");
-      case "synthesizing": return t("research.chat.phase.synthesizing");
-    }
-  };
-  const description = (kind: ResearchTimelineStepKind): string => {
-    switch (kind) {
-      case "thinking": return t("research.chat.phase.thinking.description");
-      case "planning": return t("research.chat.phase.planning.description");
-      case "analyzing": return t("research.chat.phase.analyzing.description");
-      case "confluence-search": return exactPage
-        ? t("research.chat.phase.confluenceContext.description")
-        : t("research.chat.phase.confluenceSearch.description");
-      case "confluence-read": return t("research.chat.phase.confluenceRead.description");
-      case "confluence-section-read": return t("research.chat.phase.confluenceSectionRead.description");
-      case "bound-read": return exactPage
-        ? t("research.chat.phase.confluenceContextRead.description")
-        : exactIssue
-          ? t("research.chat.phase.jiraContextRead.description")
-          : t("research.chat.phase.boundRead.description");
-      case "jira-search": return t("research.chat.phase.jiraSearch.description");
-      case "jira-read": return t("research.chat.phase.jiraRead.description");
-      case "ranking": return t("research.chat.phase.ranking.description");
-      case "relationships": return t("research.chat.phase.relationships.description");
-      case "checking": return t("research.chat.phase.checking.description");
-      case "synthesizing": return t("research.chat.phase.synthesizing.description");
-    }
-  };
-  const activeDetail = (kind: ResearchTimelineStepKind): string =>
-    kind === "analyzing"
-      ? t("research.chat.phase.analyzing.active")
-      : t("research.chat.phase.active");
-  return (
-    <section
-      className="space-y-1 py-1 text-sm"
-      aria-live="polite"
-      data-testid="research-streaming-turn"
-    >
-      <div className="space-y-1" data-testid="research-activity">
-        {displaySteps.map((step, index) => {
-          const active = running && index === displaySteps.length - 1;
-          const details = exactPage && step.kind === "confluence-search"
-            ? [t("research.chat.detail.confluenceContextSelected")]
-            : exactPage && step.kind === "bound-read"
-              ? [t("research.chat.detail.boundRead", { label: exactPage.name })]
-              : researchActivityDetailMessages(step.events, t);
-          if (step.kind === "planning") {
-            details.push(exactPage
-              ? t("research.chat.detail.planExactContext", { name: exactPage.name })
-              : t("research.chat.detail.planScopedDiscovery"));
-          }
-          const reasoningSummary = chatReasoningSummary(step.events);
-          const activityLine = (
-            <span className={cn(
-              "flex min-h-9 items-start gap-2.5 px-2 py-1.5",
-              active ? "font-medium text-foreground" : "text-muted-foreground",
-            )}>
-              <span className="mt-0.5">
-                {active ? <KiteActivityMark /> : <span className="block size-5 shrink-0" aria-hidden="true" />}
-              </span>
-              <span className="min-w-0 flex-1 leading-5">
-                <span className="line-clamp-2 block">{label(step.kind)}</span>
-                {active && reasoningSummary && (
-                  <span
-                    className="mt-0.5 line-clamp-2 block text-xs font-normal leading-4 text-muted-foreground"
-                    data-testid="research-live-reasoning-summary"
-                  >
-                    {reasoningSummary}
-                  </span>
-                )}
-              </span>
-              {active && (
-                <span
-                  className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-normal tabular-nums text-muted-foreground"
-                  data-testid="research-active-progress"
-                >
-                  <span>{t("research.chat.phase.elapsed", { seconds: String(activeSeconds) })}</span>
-                  <ActiveActivityDots />
-                </span>
-              )}
-              <ChevronRight
-                className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
-                aria-hidden="true"
-              />
-              {active && (
-                <span className="sr-only" data-testid="research-active-label">
-                  {t("research.chat.phase.inProgress")}
-                </span>
-              )}
-            </span>
-          );
-          return (
-            <details
-              key={step.id}
-              className="group"
-              data-testid={`research-timeline-step-${index}`}
-            >
-              <summary
-                className="cursor-pointer list-none rounded-md marker:content-none hover:bg-muted/60"
-                aria-label={`${label(step.kind)}. ${t("research.chat.phase.showDetails")}`}
-              >
-                {activityLine}
-              </summary>
-              <div className="ml-9 mr-5 space-y-1 pb-2 text-xs leading-4 text-muted-foreground">
-                <p className="m-0">{description(step.kind)}</p>
-                {details.map((detail) => (
-                  <p className="m-0" data-testid="research-activity-outcome" key={detail}>
-                    {detail}
-                  </p>
-                ))}
-                {active && (
-                  <p className="m-0" data-testid="research-active-detail">
-                    {activeDetail(step.kind)} {t("research.chat.phase.elapsedLong", {
-                      seconds: String(activeSeconds),
-                    })}
-                  </p>
-                )}
-                {reasoningSummary && (
-                  <div
-                    className="mt-2 rounded-md bg-muted/60 px-2.5 py-2 text-xs leading-4 text-foreground"
-                    data-testid="research-reasoning-summary"
-                  >
-                    <p className="m-0 mb-1 font-medium text-muted-foreground">
-                      {t("research.chat.presentation.reasoningSummary")}
-                    </p>
-                    <p className="m-0 whitespace-pre-wrap">{reasoningSummary}</p>
-                  </div>
-                )}
-              </div>
-            </details>
-          );
-        })}
-      </div>
-      {running && answerDraft && (
-        <article
-          className="mt-3 py-1 text-sm leading-6"
-          aria-label={t("research.chat.presentation.answerDraft")}
-          data-testid="research-streaming-answer"
-        >
-          <ChatMarkdown markdown={answerDraft} streaming />
-        </article>
-      )}
-      {progress && <span className="sr-only">{progress}</span>}
-    </section>
-  );
-}
+// The tested public surface stays importable from this module after the
+// extraction (sidebar redesign, 2026-10).
+export {
+  RESEARCH_SCREEN_ID,
+  inferResearchScope,
+  researchTimelineSteps,
+  streamedChatAnswer,
+} from "../research/model.js";
+export { ChatMarkdown, ResearchBriefClarificationNotice } from "../research/answer-presentation.js";
 
 export function ResearchScreen({ ports, page, continuationId }: ScreenProps): React.JSX.Element {
   const t = useT();
@@ -1319,7 +187,6 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
   const [queuedTurnBeingEdited, setQueuedTurnBeingEdited] = useState<string | null>(null);
   const [queuedTurnDraft, setQueuedTurnDraft] = useState("");
   const [chatInteractionRevision, setChatInteractionRevision] = useState(0);
-  const [composerAddMenuOpen, setComposerAddMenuOpen] = useState(false);
   const [conversationMenuOpen, setConversationMenuOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<ResearchInteractionMode>("chat");
   const [chatThinkingMode, setChatThinkingMode] = useState<ChatThinkingModeV1>("auto");
@@ -1345,6 +212,40 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
     RESEARCH_INTERACTION_MODE_POLICY.chat.requestedReconciliation,
   );
   const [disclosed, setDisclosed] = useState(false);
+  // The disclosure is confirmed once and persisted (sidebar redesign,
+  // 2026-10). Without a SettingsProvider (minimal hosts, tests) the checkbox
+  // simply stays per-session, exactly as before.
+  const appSettings = useOptionalAppSettings();
+  const disclosureConfirmed = appSettings?.settings.aiDisclosureConfirmed === true;
+  // The compact status line replaces the checkbox only on the NEXT mount:
+  // confirming must never reshape the composer in the middle of an
+  // interaction (the checkbox simply stays checked for this mount). Captured
+  // once per mount, after the settings load has settled.
+  const [mountConfirmed, setMountConfirmed] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!appSettings?.loaded) return;
+    setMountConfirmed((current) => current ?? disclosureConfirmed);
+    if (disclosureConfirmed) setDisclosed(true);
+  }, [appSettings?.loaded, disclosureConfirmed]);
+  function confirmDisclosure(next: boolean): void {
+    setDisclosed(next);
+    if (next && appSettings) {
+      void appSettings.update({ aiDisclosureConfirmed: true }).catch(() => {
+        // Storage failure keeps the in-session consent; the next session asks again.
+      });
+    }
+  }
+  function resetDisclosure(): void {
+    setDisclosed(false);
+    // Withdrawing returns this mount to first-confirmation behaviour: the
+    // checkbox stays visible through a re-confirmation instead of swapping.
+    setMountConfirmed(false);
+    if (appSettings) {
+      void appSettings.update({ aiDisclosureConfirmed: false }).catch(() => {
+        // Withdrawal failed to persist; the composer still unchecks for this session.
+      });
+    }
+  }
   const [running, setRunning] = useState(false);
   const [pauseRequested, setPauseRequested] = useState(false);
   const [progress, setProgress] = useState("");
@@ -3008,20 +1909,6 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
     }
   }
 
-  function clarificationAnswerKey(
-    review: ResearchSessionClarificationReviewV1,
-    questionId: string,
-  ): string {
-    return `${review.sessionId}:${review.revision}:${questionId}`;
-  }
-
-  function clarificationDecisionKey(
-    review: ResearchSessionClarificationReviewV1,
-    assumptionId: string,
-  ): string {
-    return `${review.sessionId}:${review.revision}:${assumptionId}`;
-  }
-
   function applyClarificationOutcome(
     review: ResearchSessionClarificationReviewV1,
     outcome: Awaited<ReturnType<NonNullable<ResearchPort["resolveClarificationReview"]>>>,
@@ -3042,12 +1929,6 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
       ...current.filter((candidate) => candidate.sessionId !== outcome.session.sessionId),
     ]);
     setActionStatus(t("research.clarificationReview.resumable"));
-  }
-
-  function scopeClarificationSelectionKey(
-    review: ResearchSessionScopeClarificationReviewV1,
-  ): string {
-    return `${review.sessionId}:${review.revision}`;
   }
 
   function applyScopeClarificationOutcome(
@@ -3282,87 +2163,6 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
     setProgress("");
     setActionStatus("");
     setConversationMenuOpen(false);
-  }
-
-  /**
-   * CopilotKit owns the chat configuration contract. The host renders the
-   * compact composer shell itself because the full message-renderer barrel
-   * includes dynamic code renderers that are forbidden by MV3 CSP.
-   */
-  function ComposerAddMenuButton({
-    className: _className,
-    onAddFile: _onAddFile,
-    toolsMenu: _toolsMenu,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    onAddFile?: () => void;
-    toolsMenu?: unknown;
-  },
-  ): React.JSX.Element {
-    return (
-      <div className="relative">
-        {composerAddMenuOpen && (
-          <div
-            role="region"
-            aria-label={t("research.chat.addMenu.label")}
-            className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-lg border bg-popover p-3 text-sm text-muted-foreground shadow-lg"
-            data-testid="research-composer-add-menu"
-          >
-            <p className="m-0">{t("research.chat.addMenu.empty")}</p>
-          </div>
-        )}
-        <Button
-          {...props}
-          size="icon"
-          variant={composerAddMenuOpen ? "outline" : "ghost"}
-          className="size-9 rounded-md"
-          aria-label={t(
-            composerAddMenuOpen
-              ? "research.chat.addMenu.close"
-              : "research.chat.addMenu.open",
-          )}
-          aria-expanded={composerAddMenuOpen}
-          data-testid="research-composer-add-menu-toggle"
-          onClick={(event) => {
-            props.onClick?.(event);
-            if (!event.defaultPrevented) setComposerAddMenuOpen((open) => !open);
-          }}
-        >
-          {composerAddMenuOpen
-            ? <X className="size-4" aria-hidden="true" />
-            : <Plus className="size-4" aria-hidden="true" />}
-        </Button>
-      </div>
-    );
-  }
-
-  function ComposerSendButton({
-    className: _className,
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>): React.JSX.Element {
-    const submitLabel = interactionMode === "chat"
-      ? t("research.chat.send")
-      : t("research.run");
-    return (
-      <Button
-        {...props}
-        size="icon"
-        className={cn(
-          "size-9 shrink-0 rounded-lg text-primary-foreground disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
-          running
-            ? "bg-destructive hover:bg-destructive/90"
-            : "bg-primary hover:bg-primary/90",
-        )}
-        aria-label={running ? t("research.stop") : submitLabel}
-        title={running ? t("research.stop") : submitLabel}
-        data-testid="research-run"
-      >
-        {children ?? (running
-          ? <Square className="size-3.5 fill-current" aria-hidden="true" />
-          : <ArrowUp className="size-4" aria-hidden="true" />)}
-      </Button>
-    );
   }
 
   const hasConversation = chatTurns.length > 0 || running || Boolean(report) ||
@@ -3930,144 +2730,28 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
               </div>
             )}
           </div>
-          {includeCurrentContext && currentContextLabel ? (
-            <div
-              className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-muted px-3 py-2 text-xs"
-              data-testid="research-context-chips"
-            >
-              <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span className="shrink-0 font-medium text-muted-foreground">{t("research.chat.context")}</span>
-              <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={currentContextLabel}>
-                {currentContextLabel}
-              </span>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-8 shrink-0 rounded-lg text-muted-foreground"
-                aria-label={t("research.chat.context.remove")}
-                onClick={() => setIncludeCurrentContext(false)}
-                data-testid="research-current-context-remove"
-              >
-                <X aria-hidden="true" />
-              </Button>
-            </div>
-          ) : null}
-          <div
-            data-copilotkit="true"
-            className="w-full shrink-0"
-            data-testid="research-chat-composer"
-          >
-            <div
-              className="overflow-visible rounded-[22px] border border-input bg-card transition-colors focus-within:border-ring"
-              data-testid="research-chat-composer-shell"
-            >
-              <textarea
-                data-testid="copilot-chat-textarea"
-                value={question}
-                onChange={(event) => setQuestion(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-                  const value = event.currentTarget.value;
-                  if (event.metaKey && event.shiftKey) {
-                    event.preventDefault();
-                    setQuestion("");
-                    void submitImmediateSteering(value);
-                    return;
-                  }
-                  if (!event.shiftKey) {
-                    event.preventDefault();
-                    setQuestion("");
-                    void submitChatMessage(value);
-                  }
-                }}
-                placeholder={t("research.chat.placeholder")}
-                className="min-h-24 w-full resize-none border-0 bg-transparent px-4 pb-2 pt-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none"
-                aria-label={t("research.chat.placeholder")}
-              />
-              <div className="flex items-center gap-1.5 border-t border-border/70 px-2.5 py-2">
-                <ComposerAddMenuButton />
-                <div
-                  className="flex min-w-0 items-center rounded-lg bg-muted p-0.5"
-                  role="group"
-                  aria-label={t("research.chat.mode.label")}
-                >
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
-                      interactionMode === "chat"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    aria-pressed={interactionMode === "chat"}
-                    onClick={() => selectInteractionMode("chat")}
-                    data-testid="research-mode-chat"
-                  >
-                    <MessageCircle className="size-3.5" aria-hidden="true" />
-                    {t("research.chat.mode.chat")}
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
-                      interactionMode === "deep"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    aria-pressed={interactionMode === "deep"}
-                    onClick={() => selectInteractionMode("deep")}
-                    data-testid="research-mode-deep"
-                  >
-                    <Telescope className="size-3.5" aria-hidden="true" />
-                    {t("research.chat.mode.deepShort")}
-                  </button>
-                </div>
-                {interactionMode === "chat" && (
-                  <Select
-                    value={chatThinkingMode}
-                    onChange={(event) => selectChatThinkingMode(
-                      event.target.value as ChatThinkingModeV1,
-                    )}
-                    disabled={running}
-                    aria-label={t("research.chat.thinking.label")}
-                    title={t("research.chat.thinking.label")}
-                    className="h-7 w-[7.75rem] min-w-0 rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    data-testid="research-chat-thinking"
-                  >
-                    <option value="auto">{t("research.chat.thinking.auto")}</option>
-                    <option value="quick">{t("research.chat.thinking.quick")}</option>
-                    <option value="deep">{t("research.chat.thinking.deep")}</option>
-                  </Select>
-                )}
-                <div className="ml-auto">
-                  <ComposerSendButton
-                    disabled={running ? false : question.trim().length === 0}
-                    onClick={() => {
-                      if (running) {
-                        if (interactionMode === "chat" && chatPort) void chatPort.stop();
-                        else abortRef.current?.abort(new ResearchContractError("cancelled", t("research.stopped")));
-                        return;
-                      }
-                      const value = question;
-                      setQuestion("");
-                      void submitChatMessage(value);
-                    }}
-                  />
-                </div>
-              </div>
-              <label className="flex cursor-pointer items-start gap-2 border-t border-border/60 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="mt-px size-3.5 shrink-0 rounded border-input accent-primary"
-                  checked={disclosed}
-                  onChange={(event) => setDisclosed(event.target.checked)}
-                  disabled={running || Boolean(pendingChatQuestion)}
-                  data-testid="research-disclosure"
-                />
-                <span>{t("research.disclosure")}</span>
-              </label>
-            </div>
-          </div>
+          <ResearchComposer
+            question={question}
+            onQuestionChange={setQuestion}
+            onSubmit={(value) => void submitChatMessage(value)}
+            onSteer={(value) => void submitImmediateSteering(value)}
+            onStop={() => {
+              if (interactionMode === "chat" && chatPort) void chatPort.stop();
+              else abortRef.current?.abort(new ResearchContractError("cancelled", t("research.stopped")));
+            }}
+            running={running}
+            interactionMode={interactionMode}
+            onInteractionModeChange={selectInteractionMode}
+            chatThinkingMode={chatThinkingMode}
+            onChatThinkingModeChange={selectChatThinkingMode}
+            contextLabel={includeCurrentContext ? (currentContextLabel ?? null) : null}
+            onRemoveContext={() => setIncludeCurrentContext(false)}
+            disclosed={disclosed}
+            disclosureConfirmed={mountConfirmed === true}
+            disclosureLocked={running || Boolean(pendingChatQuestion)}
+            onDisclosedChange={confirmDisclosure}
+            onDisclosureReset={resetDisclosure}
+          />
           <p className="m-0 shrink-0 px-1 text-center text-[11px] text-muted-foreground">
             {running
               ? t("research.chat.composerHelp.running")
@@ -4296,388 +2980,31 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
         className="max-h-[45%] shrink-0 space-y-3 overflow-y-auto overscroll-contain px-0.5"
         data-testid="research-interruptions"
       >
-      {scopeReviews.length > 0 && (
-        <Card data-testid="research-scope-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.scopeReview.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {scopeReviews.flatMap((review, reviewIndex) => review.turn.expansionProposals
-              .filter((proposal) => proposal.status === "proposed")
-              .map((proposal, proposalIndex) => {
-                const candidate = review.turn.candidates.find(
-                  (entry) => entry.id === proposal.candidateId,
-                );
-                const actionId = `${review.sessionId}:${proposal.id}`;
-                const deciding = scopeReviewActionId === actionId;
-                return (
-                  <div
-                    key={proposal.id}
-                    className="rounded-md border p-2 text-xs"
-                    data-testid={`research-scope-review-${reviewIndex}-${proposalIndex}`}
-                  >
-                    <p className="m-0 font-medium">
-                      {candidate
-                        ? t("research.scopeReview.candidate", {
-                          product: candidate.product,
-                          scope: candidate.key ?? candidate.name,
-                        })
-                        : t("research.scopeReview.unknownCandidate")}
-                    </p>
-                    <p className="mb-0 mt-1 text-muted-foreground">
-                      {t("research.scopeReview.kind", { kind: proposal.expansionKind })}
-                    </p>
-                    <p className="mb-0 mt-1 text-muted-foreground">{proposal.reason}</p>
-                    <p className="mb-0 mt-1 text-muted-foreground">
-                      {t("research.scopeReview.revision", {
-                        brief: String(review.turn.briefRevision),
-                        graph: String(review.turn.graphRevision),
-                      })}
-                    </p>
-                    <div className="mt-2 flex gap-2">
-                      <Button
-                        size="sm"
-                        disabled={running || scopeReviewActionId !== null}
-                        data-testid={`research-scope-review-approve-${reviewIndex}-${proposalIndex}`}
-                        onClick={() => void decideScopeReview(review, proposal, "approve")}
-                      >
-                        {deciding ? t("research.scopeReview.deciding") : t("research.scopeReview.approve")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={running || scopeReviewActionId !== null}
-                        data-testid={`research-scope-review-reject-${reviewIndex}-${proposalIndex}`}
-                        onClick={() => void decideScopeReview(review, proposal, "reject")}
-                      >
-                        {t("research.scopeReview.reject")}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              }))}
-          </CardContent>
-        </Card>
-      )}
-
-      {scopePlanReviews.length > 0 && (
-        <Card data-testid="research-scope-plan-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.scopePlanReview.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {scopePlanReviews.flatMap((review, reviewIndex) => {
-              const scopeRevision = review.turn.scopeRevisions.find((revision) =>
-                revision.state === "proposed" &&
-                revision.proposedGraphRevision === review.turn.graphRevision,
-              );
-              if (!scopeRevision) return [];
-              const deciding = scopePlanReviewActionId === review.sessionId;
-              return [(
-                <div
-                  key={review.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-scope-plan-review-${reviewIndex}`}
-                >
-                  <p className="m-0 font-medium">
-                    {t("research.scopePlanReview.value", {
-                      brief: String(review.turn.briefRevision),
-                      graph: String(review.turn.graphRevision),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.scopePlanReview.scope", {
-                      scopes: review.turn.bindings
-                        .filter((binding) => binding.authority === "approved")
-                        .map((binding) => binding.key ?? binding.name)
-                        .join(", ") || "—",
-                    })}
-                  </p>
-                  {scopeRevision.planDiff?.addedRoleIds.length ? (
-                    <p className="mb-0 mt-1 text-muted-foreground">
-                      {t("research.scopePlanReview.roles", {
-                        roles: scopeRevision.planDiff.addedRoleIds.join(", "),
-                      })}
-                    </p>
-                  ) : null}
-                  {scopeRevision.planDiff?.addedCapabilityIds.length ? (
-                    <p className="mb-0 mt-1 text-muted-foreground">
-                      {t("research.scopePlanReview.capabilities", {
-                        capabilities: scopeRevision.planDiff.addedCapabilityIds.join(", "),
-                      })}
-                    </p>
-                  ) : null}
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.scopePlanReview.noRetrieval")}
-                  </p>
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    disabled={running || scopePlanReviewActionId !== null}
-                    data-testid={`research-scope-plan-review-approve-${reviewIndex}`}
-                    onClick={() => void approveScopePlanReview(review)}
-                  >
-                    {deciding
-                      ? t("research.scopePlanReview.deciding")
-                      : t("research.scopePlanReview.approve")}
-                  </Button>
-                </div>
-              )];
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {interactionMode === "deep" && clarificationReviews.length > 0 && (
-        <Card data-testid="research-clarification-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.clarificationReview.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {clarificationReviews.map((review, index) => {
-              const deciding = clarificationActionId === `${review.sessionId}:${review.revision}`;
-              const answersReady = review.stage !== "answer_required" || review.turn.questions.every(
-                (question) => (clarificationAnswers[clarificationAnswerKey(review, question.id)] ?? "").trim(),
-              );
-              const decisionsReady = review.stage !== "answer_required" || review.turn.assumptions.every(
-                (assumption) => {
-                  const decision = clarificationDecisions[clarificationDecisionKey(review, assumption.id)];
-                  return decision === "accepted" || decision === "rejected";
-                },
-              );
-              return (
-                <div
-                  key={review.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-clarification-review-${index}`}
-                >
-                  <p className="m-0 font-medium">
-                    {t("research.clarificationReview.value", {
-                      brief: String(review.turn.briefRevision),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.clarificationReview.scope", {
-                      jira: displayScopeKeys(review.turn.scope.jiraProjectKeys, "jira"),
-                      confluence: displayScopeKeys(review.turn.scope.confluenceSpaceKeys, "confluence"),
-                    })}
-                  </p>
-                  {review.stage === "answer_required" ? (
-                    <div className="mt-2 flex flex-col gap-3">
-                      {review.turn.questions.map((question) => {
-                        const key = clarificationAnswerKey(review, question.id);
-                        return (
-                          <div key={question.id} className="flex flex-col gap-1">
-                            <Label htmlFor={`research-clarification-answer-${index}-${question.id}`}>
-                              {question.prompt}
-                            </Label>
-                            <textarea
-                              id={`research-clarification-answer-${index}-${question.id}`}
-                              data-testid={`research-clarification-answer-${index}-${question.id}`}
-                              className="min-h-20 w-full resize-y rounded-md border bg-background px-2.5 py-2 text-sm text-foreground"
-                              value={clarificationAnswers[key] ?? ""}
-                              maxLength={2_000}
-                              disabled={running || deciding}
-                              onChange={(event) => setClarificationAnswers((current) => ({
-                                ...current,
-                                [key]: event.target.value,
-                              }))}
-                            />
-                          </div>
-                        );
-                      })}
-                      {review.turn.assumptions.map((assumption) => {
-                        const key = clarificationDecisionKey(review, assumption.id);
-                        return (
-                          <div key={assumption.id} className="flex flex-col gap-1">
-                            <Label htmlFor={`research-clarification-assumption-${index}-${assumption.id}`}>
-                              {assumption.text}
-                            </Label>
-                            <Select
-                              id={`research-clarification-assumption-${index}-${assumption.id}`}
-                              data-testid={`research-clarification-assumption-${index}-${assumption.id}`}
-                              value={clarificationDecisions[key] ?? ""}
-                              disabled={running || deciding}
-                              onChange={(event) => setClarificationDecisions((current) => ({
-                                ...current,
-                                [key]: event.target.value as "accepted" | "rejected" | "",
-                              }))}
-                            >
-                              <option value="">{t("research.clarificationReview.decisionPlaceholder")}</option>
-                              <option value="accepted">{t("research.clarificationReview.accept")}</option>
-                              <option value="rejected">{t("research.clarificationReview.reject")}</option>
-                            </Select>
-                          </div>
-                        );
-                      })}
-                      <p className="mb-0 text-muted-foreground">
-                        {t("research.clarificationReview.noRetrieval")}
-                      </p>
-                      <Button
-                        size="sm"
-                        disabled={running || deciding || !answersReady || !decisionsReady}
-                        data-testid={`research-clarification-resolve-${index}`}
-                        onClick={() => void resolveClarificationReview(review)}
-                      >
-                        {deciding
-                          ? t("research.clarificationReview.deciding")
-                          : t("research.clarificationReview.resolve")}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <p className="mb-0 text-muted-foreground">
-                        {t("research.clarificationReview.planRequired")}
-                      </p>
-                      <Button
-                        size="sm"
-                        disabled={running || deciding}
-                        data-testid={`research-clarification-continue-${index}`}
-                        onClick={() => void continueClarificationReview(review)}
-                      >
-                        {deciding
-                          ? t("research.clarificationReview.deciding")
-                          : t("research.clarificationReview.continue")}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {interactionMode === "deep" && planReviews.length > 0 && (
-        <Card data-testid="research-plan-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.planReview.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {planReviews.map((review, index) => {
-              const deciding = planReviewActionId === review.sessionId;
-              const timeWindow = review.turn.timeWindow;
-              const bindings = review.turn.scopeBindings?.map((binding) => [
-                `${binding.product}/${binding.entityKind}`,
-                binding.key ?? binding.name,
-                `(${binding.authority}, ${binding.source})`,
-              ].join(" ")).join(", ") ?? "—";
-              const coverageTargets = review.turn.coverageTargets?.map((target) =>
-                `${target.id} [${target.sourceClasses.join("/")}; ≥${target.minimumDistinctSources}]`,
-              ).join(", ") ?? "—";
-              const replanEnvelope = review.turn.replanEnvelope;
-              return (
-                <div
-                  key={review.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-plan-review-${index}`}
-                >
-                  <p className="m-0 font-medium">
-                    {t("research.planReview.value", {
-                      effort: review.turn.resolvedEffort,
-                      brief: String(review.turn.briefRevision),
-                      graph: String(review.turn.graphRevision),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.planReview.roles", {
-                      roles: review.turn.selectedRoleIds.join(", "),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.planReview.scope", {
-                      jira: displayScopeKeys(review.turn.scope.jiraProjectKeys, "jira"),
-                      confluence: displayScopeKeys(review.turn.scope.confluenceSpaceKeys, "confluence"),
-                    })}
-                  </p>
-                  {timeWindow && (
-                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-time-window-${index}`}>
-                      {t("research.planReview.timeWindow", {
-                        from: timeWindow.from ?? "—",
-                        to: timeWindow.to ?? "—",
-                      })}
-                    </p>
-                  )}
-                  {review.turn.scopeBindings && (
-                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-bindings-${index}`}>
-                      {t("research.planReview.bindings", { bindings })}
-                    </p>
-                  )}
-                  {review.turn.coverageTargets && (
-                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-coverage-${index}`}>
-                      {t("research.planReview.coverage", { targets: coverageTargets })}
-                    </p>
-                  )}
-                  {replanEnvelope && (
-                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-replan-envelope-${index}`}>
-                      {t("research.planReview.replanEnvelope", {
-                        roles: replanEnvelope.optionalRoleIds.join(", ") || "—",
-                        capabilities: replanEnvelope.allowedCapabilityIds.join(", ") || "—",
-                        parallel: String(replanEnvelope.maxParallelNodes),
-                        waves: String(replanEnvelope.maxResearchWaves),
-                        reconciliationWaves: String(replanEnvelope.maxReconciliationWaves),
-                      })}
-                    </p>
-                  )}
-                  <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-budget-${index}`}>
-                    {t("research.planReview.budget", {
-                      ptc: String(review.turn.budget.maxPtcCalls),
-                      http: String(review.turn.budget.maxHttpCalls),
-                      modelCalls: String(review.turn.budget.maxModelCalls ?? "—"),
-                      tokens: String(
-                        review.turn.budget.maxTotalModelInputTokens + review.turn.budget.maxTotalModelOutputTokens,
-                      ),
-                      cost: `$${(review.turn.budget.maxModelCostMicros / MICROS_PER_USD).toFixed(2)}`,
-                      minutes: String(Math.ceil(review.turn.budget.maxRunMs / 60_000)),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.planReview.noRetrieval")}
-                  </p>
-                  <Label className="mt-2 block" htmlFor={`research-plan-review-correction-${index}`}>
-                    {t("research.planReview.correction")}
-                  </Label>
-                  <textarea
-                    id={`research-plan-review-correction-${index}`}
-                    className="mt-1 w-full rounded-md border bg-background p-2 text-xs"
-                    rows={3}
-                    maxLength={2_000}
-                    disabled={running || planReviewActionId !== null}
-                    data-testid={`research-plan-review-correction-${index}`}
-                    placeholder={t("research.planReview.correctionPlaceholder")}
-                    value={planRevisionInstructions[review.sessionId] ?? ""}
-                    onChange={(event) => setPlanRevisionInstructions((current) => ({
-                      ...current,
-                      [review.sessionId]: event.target.value,
-                    }))}
-                  />
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      disabled={running || planReviewActionId !== null}
-                      data-testid={`research-plan-review-approve-${index}`}
-                      onClick={() => void approvePlanReview(review)}
-                    >
-                      {deciding ? t("research.planReview.deciding") : t("research.planReview.approve")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={running || planReviewActionId !== null ||
-                        !(planRevisionInstructions[review.sessionId]?.trim())}
-                      data-testid={`research-plan-review-revise-${index}`}
-                      onClick={() => void rejectPlanReview(review)}
-                    >
-                      {deciding ? t("research.planReview.deciding") : t("research.planReview.revise")}
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
+      <ResearchReviewCards
+        displayScopeKeys={displayScopeKeys}
+        interactionMode={interactionMode}
+        running={running}
+        scopeReviews={scopeReviews}
+        scopeReviewActionId={scopeReviewActionId}
+        decideScopeReview={decideScopeReview}
+        scopePlanReviews={scopePlanReviews}
+        scopePlanReviewActionId={scopePlanReviewActionId}
+        approveScopePlanReview={approveScopePlanReview}
+        clarificationReviews={clarificationReviews}
+        clarificationActionId={clarificationActionId}
+        clarificationAnswers={clarificationAnswers}
+        setClarificationAnswers={setClarificationAnswers}
+        clarificationDecisions={clarificationDecisions}
+        setClarificationDecisions={setClarificationDecisions}
+        resolveClarificationReview={resolveClarificationReview}
+        continueClarificationReview={continueClarificationReview}
+        planReviews={planReviews}
+        planReviewActionId={planReviewActionId}
+        planRevisionInstructions={planRevisionInstructions}
+        setPlanRevisionInstructions={setPlanRevisionInstructions}
+        approvePlanReview={approvePlanReview}
+        rejectPlanReview={rejectPlanReview}
+      />
       {actionStatus && !report && (
         <p
           role="status"
@@ -4708,92 +3035,16 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
         </Alert>
       )}
 
-      {scopeClarificationReviews.length > 0 && (
-        <Card data-testid="research-scope-clarification-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.scopeClarification")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {scopeClarificationReviews.map((review, index) => {
-              const actionId = scopeClarificationSelectionKey(review);
-              const deciding = scopeClarificationActionId === actionId;
-              const selectedCandidateId = scopeClarificationSelections[actionId] ?? "";
-              return (
-                <div
-                  key={review.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-scope-clarification-review-${index}`}
-                >
-                  <p className="m-0 text-muted-foreground">
-                    {t("research.scopeClarification.value", {
-                      reason: review.clarification.reason,
-                    })}
-                  </p>
-                  {review.stage === "choice_required" && review.clarification.candidates.length > 0 && (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <Label htmlFor={`research-scope-clarification-picker-${index}`}>
-                        {t("research.scopeClarification.choose")}
-                      </Label>
-                      <Select
-                        id={`research-scope-clarification-picker-${index}`}
-                        data-testid={`research-scope-clarification-picker-${index}`}
-                        value={selectedCandidateId}
-                        disabled={running || deciding}
-                        onChange={(event) => setScopeClarificationSelections((current) => ({
-                          ...current,
-                          [actionId]: event.target.value,
-                        }))}
-                      >
-                        <option value="">{t("research.scopeClarification.placeholder")}</option>
-                        {review.clarification.candidates.map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {candidate.product}: {candidate.name}
-                            {candidate.key ? ` (${candidate.key})` : ""}
-                            {candidate.status === "archived" ? " — archived" : ""}
-                          </option>
-                        ))}
-                      </Select>
-                      <Button
-                        size="sm"
-                        disabled={running || deciding || !selectedCandidateId}
-                        data-testid={`research-scope-clarification-resolve-${index}`}
-                        onClick={() => void resolveScopeClarificationReview(review)}
-                      >
-                        {deciding
-                          ? t("research.clarificationReview.deciding")
-                          : t("research.scopeClarification.continue")}
-                      </Button>
-                    </div>
-                  )}
-                  {review.stage !== "choice_required" && (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <p className="mb-0 text-muted-foreground">
-                        {t("research.clarificationReview.noRetrieval")}
-                      </p>
-                      <Button
-                        size="sm"
-                        disabled={running || deciding}
-                        data-testid={`research-scope-clarification-continue-${index}`}
-                        onClick={() => void continueScopeClarificationReview(review)}
-                      >
-                        {deciding
-                          ? t("research.clarificationReview.deciding")
-                          : t("research.scopeClarification.continue")}
-                      </Button>
-                    </div>
-                  )}
-                  <ul className="mb-0 mt-2 pl-5 text-muted-foreground">
-                    {review.clarification.rerunGuidance.map((guidance) => (
-                      <li key={guidance}>{guidance}</li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
+      <ResearchScopeClarificationCards
+        displayScopeKeys={displayScopeKeys}
+        running={running}
+        scopeClarificationReviews={scopeClarificationReviews}
+        scopeClarificationActionId={scopeClarificationActionId}
+        scopeClarificationSelections={scopeClarificationSelections}
+        setScopeClarificationSelections={setScopeClarificationSelections}
+        resolveScopeClarificationReview={resolveScopeClarificationReview}
+        continueScopeClarificationReview={continueScopeClarificationReview}
+      />
       {scopeClarification && (
         <Alert tone="muted" role="status" data-testid="research-scope-clarification-required">
           <AlertTitle>{t("research.scopeClarification")}</AlertTitle>

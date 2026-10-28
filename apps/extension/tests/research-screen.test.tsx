@@ -16,6 +16,8 @@ import {
   streamedChatAnswer,
 } from "../components/screens/ResearchScreen.js";
 import { I18nProvider } from "../utils/i18n/context.js";
+import { SettingsProvider } from "../components/app/settings-context.js";
+import { memorySettingsStore } from "../utils/ports/settings.js";
 import type {
   ChatAgentPortV1,
   ChatAnswerV1,
@@ -754,6 +756,58 @@ describe("portable Research screen", () => {
     expect(dom.find("research-chat-feedback-helpful").getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("persists the one-time LLM disclosure and offers a visible way back", async () => {
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async () => {
+        throw new Error("not needed for the disclosure flow");
+      },
+      run: async () => {
+        throw new Error("not needed for the disclosure flow");
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    const store = memorySettingsStore();
+    await dom.render(
+      <SettingsProvider store={store}>
+        <I18nProvider locale="en">
+          <ResearchScreen key="first-mount" {...screenProps(port)} />
+        </I18nProvider>
+      </SettingsProvider>,
+    );
+
+    // First mount: the explicit checkbox, no status line, nothing persisted.
+    expect(dom.maybeFind("research-disclosure-status")).toBeNull();
+    expect((dom.find("research-disclosure") as unknown as HTMLInputElement).checked).toBe(false);
+
+    // Confirming once persists the consent. The checkbox stays for THIS
+    // mount (no mid-interaction swap under the user's pointer).
+    await dom.toggle("research-disclosure");
+    expect((await store.load()).aiDisclosureConfirmed).toBe(true);
+    expect((dom.find("research-disclosure") as unknown as HTMLInputElement).checked).toBe(true);
+    expect(dom.maybeFind("research-disclosure-status")).toBeNull();
+
+    // The next mount starts at the compact status line instead.
+    await dom.render(
+      <SettingsProvider store={store}>
+        <I18nProvider locale="en">
+          <ResearchScreen key="second-mount" {...screenProps(port)} />
+        </I18nProvider>
+      </SettingsProvider>,
+    );
+    expect(dom.find("research-disclosure-status").textContent).toContain("confirmed once");
+    expect(dom.maybeFind("research-disclosure")).toBeNull();
+
+    // "Change" withdraws the stored confirmation and restores the checkbox.
+    await dom.click("research-disclosure-change");
+    expect((await store.load()).aiDisclosureConfirmed).toBe(false);
+    expect(dom.maybeFind("research-disclosure-status")).toBeNull();
+    expect((dom.find("research-disclosure") as unknown as HTMLInputElement).checked).toBe(false);
+  });
+
   it("renders the compact chat surface and opens an intentionally empty add menu", async () => {
     const port: ResearchPort = {
       hasApiKey: async () => true,
@@ -774,7 +828,9 @@ describe("portable Research screen", () => {
       </I18nProvider>,
     );
 
-    expect(dom.find("research-chat-composer-shell").className).toContain("rounded-[22px]");
+    // The redesigned composer is compact and square-ish (sidebar redesign,
+    // 2026-10): panel radius instead of the old 22 px pill.
+    expect(dom.find("research-chat-composer-shell").className).toContain("rounded-lg");
     expect(dom.find("research-chat-composer-shell").className).not.toContain("shadow");
     expect(dom.find("research-settings").className).toContain("hidden");
     expect(dom.find("research-disclosure").parentElement?.textContent).toContain("selected LLM provider");

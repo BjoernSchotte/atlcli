@@ -112,3 +112,12 @@ export function useAppSettings(): AppSettingsApi {
   }
   return context;
 }
+
+/**
+ * Settings when a provider is mounted, `null` otherwise. For screens that are
+ * also mounted bare (tests, minimal hosts) and merely *enhance* their
+ * behaviour with a persisted preference.
+ */
+export function useOptionalAppSettings(): AppSettingsApi | null {
+  return useContext(SettingsContext);
+}

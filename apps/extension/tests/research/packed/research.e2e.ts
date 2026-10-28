@@ -2451,7 +2451,16 @@ async function fillResearchForm(
   if (options.includeScope !== false) {
     await expect(page.getByTestId("research-context-chips")).toContainText("Packed research");
   }
-  await page.getByTestId("research-disclosure").check();
+  // The one-time disclosure (sidebar redesign, 2026-10): a mount that has
+  // never confirmed shows the checkbox (it stays for this mount after
+  // confirming, so check() works unchanged); a mount that starts confirmed
+  // shows the persisted status line instead.
+  const disclosure = page.getByTestId("research-disclosure");
+  if (await disclosure.count()) {
+    await disclosure.check();
+  } else {
+    await expect(page.getByTestId("research-disclosure-status")).toBeVisible();
+  }
 }
 
 interface PackedScopeResponse {
@@ -3682,6 +3691,28 @@ test.beforeAll(async () => {
 
 test.beforeEach(async ({}, testInfo) => {
   await browserEvidence.startTest(testInfo);
+  // The one-time LLM disclosure persists per profile (sidebar redesign,
+  // 2026-10). This suite shares one profile across all tests, and a consent
+  // carried over from an earlier test would let recovery flows auto-resume
+  // that test's durable sessions after panel remounts here — so each test
+  // starts unconsented, exactly as the suite's durable-state assertions
+  // assume. The live panel's React state is untouched; only the next panel
+  // mount reads the cleared record.
+  await page.evaluate(async () => {
+    const key = "app-settings-v1";
+    const record = (await chrome.storage.local.get(key))[key];
+    if (
+      record &&
+      typeof record === "object" &&
+      (record as Record<string, unknown>).aiDisclosureConfirmed === true
+    ) {
+      await chrome.storage.local.set({
+        [key]: { ...(record as Record<string, unknown>), aiDisclosureConfirmed: false },
+      });
+    }
+  }).catch(() => {
+    // The first test runs before the panel exists; nothing to clear yet.
+  });
 });
 
 test.afterEach(async ({}, testInfo) => {

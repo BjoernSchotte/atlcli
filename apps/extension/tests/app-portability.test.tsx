@@ -398,6 +398,7 @@ function makePorts(
       locale: null,
       lastWorkspace: "publishing",
       hideRovoEntrypoints: false,
+      aiDisclosureConfirmed: false,
     }),
     ...overrides,
   };
@@ -608,6 +609,7 @@ describe("the shell renders from the registry", () => {
       locale: null,
       lastWorkspace: "publishing",
       hideRovoEntrypoints: false,
+      aiDisclosureConfirmed: false,
     });
     await render(
       <ExportApp
@@ -630,6 +632,7 @@ describe("the shell renders from the registry", () => {
       locale: null,
       lastWorkspace: "ai",
       hideRovoEntrypoints: false,
+      aiDisclosureConfirmed: false,
     });
     await render(
       <ExportApp
@@ -678,6 +681,7 @@ describe("the shell renders from the registry", () => {
       locale: null,
       lastWorkspace: "publishing",
       hideRovoEntrypoints: false,
+      aiDisclosureConfirmed: false,
     });
     const cold: SurfaceNavigationRequestV1 = {
       id: "cold-research",
@@ -754,7 +758,7 @@ describe("the shell renders from the registry", () => {
 
     const { act } = await import("react");
     await act(async () => {
-      resolveSettings?.({ locale: null, lastWorkspace: "ai", hideRovoEntrypoints: false });
+      resolveSettings?.({ locale: null, lastWorkspace: "ai", hideRovoEntrypoints: false, aiDisclosureConfirmed: false });
     });
     await flush();
     expect(maybeFind("activity-screen")).not.toBeNull();
@@ -935,6 +939,7 @@ describe("i18n reaches the rendered app", () => {
       locale: "de",
       lastWorkspace: null,
       hideRovoEntrypoints: false,
+      aiDisclosureConfirmed: false,
     });
   });
 
@@ -964,6 +969,7 @@ describe("i18n reaches the rendered app", () => {
       locale: null,
       lastWorkspace: null,
       hideRovoEntrypoints: true,
+      aiDisclosureConfirmed: false,
     });
   });
 
@@ -983,6 +989,7 @@ describe("i18n reaches the rendered app", () => {
         locale: null,
         lastWorkspace: null,
         hideRovoEntrypoints: false,
+        aiDisclosureConfirmed: false,
       }),
       save: async () => {
         throw new Error("storage unavailable");
