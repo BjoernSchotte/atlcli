@@ -23,6 +23,8 @@ import {
 } from "../../utils/research/contracts.js";
 import type {
   ChatUserQuestionV1,
+  ResearchSessionClarificationReviewV1,
+  ResearchSessionScopeClarificationReviewV1,
   ResearchScopeCandidateSelectionV1,
   ResearchScopeCandidateV1,
   ResearchScopeClarificationRequiredV1,
@@ -566,3 +568,26 @@ export function currentSite(page: ScreenProps["page"]): {
   }
 }
 
+
+/** Draft-map key for a clarification question's free-text answer. */
+export function clarificationAnswerKey(
+  review: ResearchSessionClarificationReviewV1,
+  questionId: string,
+): string {
+  return `${review.sessionId}:${review.revision}:${questionId}`;
+}
+
+/** Draft-map key for a clarification assumption's accept/reject decision. */
+export function clarificationDecisionKey(
+  review: ResearchSessionClarificationReviewV1,
+  assumptionId: string,
+): string {
+  return `${review.sessionId}:${review.revision}:${assumptionId}`;
+}
+
+/** Draft-map key for a scope clarification's candidate selection. */
+export function scopeClarificationSelectionKey(
+  review: ResearchSessionScopeClarificationReviewV1,
+): string {
+  return `${review.sessionId}:${review.revision}`;
+}

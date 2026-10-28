@@ -110,6 +110,9 @@ import {
   RESEARCH_INTERACTION_MODE_POLICY,
   appendTimelineEvent,
   chatReasoningSummary,
+  clarificationAnswerKey,
+  clarificationDecisionKey,
+  scopeClarificationSelectionKey,
   currentSite,
   inferResearchScope,
   modelCostMicrosFromUsdInput,
@@ -141,6 +144,10 @@ import {
 } from "../research/answer-presentation.js";
 import { ResearchComposer } from "../research/ResearchComposer.js";
 import { useOptionalAppSettings } from "../app/settings-context.js";
+import {
+  ResearchReviewCards,
+  ResearchScopeClarificationCards,
+} from "../research/review-cards.js";
 
 // The tested public surface stays importable from this module after the
 // extraction (sidebar redesign, 2026-10).
@@ -1892,20 +1899,6 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
     }
   }
 
-  function clarificationAnswerKey(
-    review: ResearchSessionClarificationReviewV1,
-    questionId: string,
-  ): string {
-    return `${review.sessionId}:${review.revision}:${questionId}`;
-  }
-
-  function clarificationDecisionKey(
-    review: ResearchSessionClarificationReviewV1,
-    assumptionId: string,
-  ): string {
-    return `${review.sessionId}:${review.revision}:${assumptionId}`;
-  }
-
   function applyClarificationOutcome(
     review: ResearchSessionClarificationReviewV1,
     outcome: Awaited<ReturnType<NonNullable<ResearchPort["resolveClarificationReview"]>>>,
@@ -1926,12 +1919,6 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
       ...current.filter((candidate) => candidate.sessionId !== outcome.session.sessionId),
     ]);
     setActionStatus(t("research.clarificationReview.resumable"));
-  }
-
-  function scopeClarificationSelectionKey(
-    review: ResearchSessionScopeClarificationReviewV1,
-  ): string {
-    return `${review.sessionId}:${review.revision}`;
   }
 
   function applyScopeClarificationOutcome(
@@ -2983,388 +2970,31 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
         className="max-h-[45%] shrink-0 space-y-3 overflow-y-auto overscroll-contain px-0.5"
         data-testid="research-interruptions"
       >
-      {scopeReviews.length > 0 && (
-        <Card data-testid="research-scope-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.scopeReview.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {scopeReviews.flatMap((review, reviewIndex) => review.turn.expansionProposals
-              .filter((proposal) => proposal.status === "proposed")
-              .map((proposal, proposalIndex) => {
-                const candidate = review.turn.candidates.find(
-                  (entry) => entry.id === proposal.candidateId,
-                );
-                const actionId = `${review.sessionId}:${proposal.id}`;
-                const deciding = scopeReviewActionId === actionId;
-                return (
-                  <div
-                    key={proposal.id}
-                    className="rounded-md border p-2 text-xs"
-                    data-testid={`research-scope-review-${reviewIndex}-${proposalIndex}`}
-                  >
-                    <p className="m-0 font-medium">
-                      {candidate
-                        ? t("research.scopeReview.candidate", {
-                          product: candidate.product,
-                          scope: candidate.key ?? candidate.name,
-                        })
-                        : t("research.scopeReview.unknownCandidate")}
-                    </p>
-                    <p className="mb-0 mt-1 text-muted-foreground">
-                      {t("research.scopeReview.kind", { kind: proposal.expansionKind })}
-                    </p>
-                    <p className="mb-0 mt-1 text-muted-foreground">{proposal.reason}</p>
-                    <p className="mb-0 mt-1 text-muted-foreground">
-                      {t("research.scopeReview.revision", {
-                        brief: String(review.turn.briefRevision),
-                        graph: String(review.turn.graphRevision),
-                      })}
-                    </p>
-                    <div className="mt-2 flex gap-2">
-                      <Button
-                        size="sm"
-                        disabled={running || scopeReviewActionId !== null}
-                        data-testid={`research-scope-review-approve-${reviewIndex}-${proposalIndex}`}
-                        onClick={() => void decideScopeReview(review, proposal, "approve")}
-                      >
-                        {deciding ? t("research.scopeReview.deciding") : t("research.scopeReview.approve")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={running || scopeReviewActionId !== null}
-                        data-testid={`research-scope-review-reject-${reviewIndex}-${proposalIndex}`}
-                        onClick={() => void decideScopeReview(review, proposal, "reject")}
-                      >
-                        {t("research.scopeReview.reject")}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              }))}
-          </CardContent>
-        </Card>
-      )}
-
-      {scopePlanReviews.length > 0 && (
-        <Card data-testid="research-scope-plan-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.scopePlanReview.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {scopePlanReviews.flatMap((review, reviewIndex) => {
-              const scopeRevision = review.turn.scopeRevisions.find((revision) =>
-                revision.state === "proposed" &&
-                revision.proposedGraphRevision === review.turn.graphRevision,
-              );
-              if (!scopeRevision) return [];
-              const deciding = scopePlanReviewActionId === review.sessionId;
-              return [(
-                <div
-                  key={review.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-scope-plan-review-${reviewIndex}`}
-                >
-                  <p className="m-0 font-medium">
-                    {t("research.scopePlanReview.value", {
-                      brief: String(review.turn.briefRevision),
-                      graph: String(review.turn.graphRevision),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.scopePlanReview.scope", {
-                      scopes: review.turn.bindings
-                        .filter((binding) => binding.authority === "approved")
-                        .map((binding) => binding.key ?? binding.name)
-                        .join(", ") || "—",
-                    })}
-                  </p>
-                  {scopeRevision.planDiff?.addedRoleIds.length ? (
-                    <p className="mb-0 mt-1 text-muted-foreground">
-                      {t("research.scopePlanReview.roles", {
-                        roles: scopeRevision.planDiff.addedRoleIds.join(", "),
-                      })}
-                    </p>
-                  ) : null}
-                  {scopeRevision.planDiff?.addedCapabilityIds.length ? (
-                    <p className="mb-0 mt-1 text-muted-foreground">
-                      {t("research.scopePlanReview.capabilities", {
-                        capabilities: scopeRevision.planDiff.addedCapabilityIds.join(", "),
-                      })}
-                    </p>
-                  ) : null}
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.scopePlanReview.noRetrieval")}
-                  </p>
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    disabled={running || scopePlanReviewActionId !== null}
-                    data-testid={`research-scope-plan-review-approve-${reviewIndex}`}
-                    onClick={() => void approveScopePlanReview(review)}
-                  >
-                    {deciding
-                      ? t("research.scopePlanReview.deciding")
-                      : t("research.scopePlanReview.approve")}
-                  </Button>
-                </div>
-              )];
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {interactionMode === "deep" && clarificationReviews.length > 0 && (
-        <Card data-testid="research-clarification-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.clarificationReview.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {clarificationReviews.map((review, index) => {
-              const deciding = clarificationActionId === `${review.sessionId}:${review.revision}`;
-              const answersReady = review.stage !== "answer_required" || review.turn.questions.every(
-                (question) => (clarificationAnswers[clarificationAnswerKey(review, question.id)] ?? "").trim(),
-              );
-              const decisionsReady = review.stage !== "answer_required" || review.turn.assumptions.every(
-                (assumption) => {
-                  const decision = clarificationDecisions[clarificationDecisionKey(review, assumption.id)];
-                  return decision === "accepted" || decision === "rejected";
-                },
-              );
-              return (
-                <div
-                  key={review.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-clarification-review-${index}`}
-                >
-                  <p className="m-0 font-medium">
-                    {t("research.clarificationReview.value", {
-                      brief: String(review.turn.briefRevision),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.clarificationReview.scope", {
-                      jira: displayScopeKeys(review.turn.scope.jiraProjectKeys, "jira"),
-                      confluence: displayScopeKeys(review.turn.scope.confluenceSpaceKeys, "confluence"),
-                    })}
-                  </p>
-                  {review.stage === "answer_required" ? (
-                    <div className="mt-2 flex flex-col gap-3">
-                      {review.turn.questions.map((question) => {
-                        const key = clarificationAnswerKey(review, question.id);
-                        return (
-                          <div key={question.id} className="flex flex-col gap-1">
-                            <Label htmlFor={`research-clarification-answer-${index}-${question.id}`}>
-                              {question.prompt}
-                            </Label>
-                            <textarea
-                              id={`research-clarification-answer-${index}-${question.id}`}
-                              data-testid={`research-clarification-answer-${index}-${question.id}`}
-                              className="min-h-20 w-full resize-y rounded-md border bg-background px-2.5 py-2 text-sm text-foreground"
-                              value={clarificationAnswers[key] ?? ""}
-                              maxLength={2_000}
-                              disabled={running || deciding}
-                              onChange={(event) => setClarificationAnswers((current) => ({
-                                ...current,
-                                [key]: event.target.value,
-                              }))}
-                            />
-                          </div>
-                        );
-                      })}
-                      {review.turn.assumptions.map((assumption) => {
-                        const key = clarificationDecisionKey(review, assumption.id);
-                        return (
-                          <div key={assumption.id} className="flex flex-col gap-1">
-                            <Label htmlFor={`research-clarification-assumption-${index}-${assumption.id}`}>
-                              {assumption.text}
-                            </Label>
-                            <Select
-                              id={`research-clarification-assumption-${index}-${assumption.id}`}
-                              data-testid={`research-clarification-assumption-${index}-${assumption.id}`}
-                              value={clarificationDecisions[key] ?? ""}
-                              disabled={running || deciding}
-                              onChange={(event) => setClarificationDecisions((current) => ({
-                                ...current,
-                                [key]: event.target.value as "accepted" | "rejected" | "",
-                              }))}
-                            >
-                              <option value="">{t("research.clarificationReview.decisionPlaceholder")}</option>
-                              <option value="accepted">{t("research.clarificationReview.accept")}</option>
-                              <option value="rejected">{t("research.clarificationReview.reject")}</option>
-                            </Select>
-                          </div>
-                        );
-                      })}
-                      <p className="mb-0 text-muted-foreground">
-                        {t("research.clarificationReview.noRetrieval")}
-                      </p>
-                      <Button
-                        size="sm"
-                        disabled={running || deciding || !answersReady || !decisionsReady}
-                        data-testid={`research-clarification-resolve-${index}`}
-                        onClick={() => void resolveClarificationReview(review)}
-                      >
-                        {deciding
-                          ? t("research.clarificationReview.deciding")
-                          : t("research.clarificationReview.resolve")}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <p className="mb-0 text-muted-foreground">
-                        {t("research.clarificationReview.planRequired")}
-                      </p>
-                      <Button
-                        size="sm"
-                        disabled={running || deciding}
-                        data-testid={`research-clarification-continue-${index}`}
-                        onClick={() => void continueClarificationReview(review)}
-                      >
-                        {deciding
-                          ? t("research.clarificationReview.deciding")
-                          : t("research.clarificationReview.continue")}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {interactionMode === "deep" && planReviews.length > 0 && (
-        <Card data-testid="research-plan-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.planReview.title")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {planReviews.map((review, index) => {
-              const deciding = planReviewActionId === review.sessionId;
-              const timeWindow = review.turn.timeWindow;
-              const bindings = review.turn.scopeBindings?.map((binding) => [
-                `${binding.product}/${binding.entityKind}`,
-                binding.key ?? binding.name,
-                `(${binding.authority}, ${binding.source})`,
-              ].join(" ")).join(", ") ?? "—";
-              const coverageTargets = review.turn.coverageTargets?.map((target) =>
-                `${target.id} [${target.sourceClasses.join("/")}; ≥${target.minimumDistinctSources}]`,
-              ).join(", ") ?? "—";
-              const replanEnvelope = review.turn.replanEnvelope;
-              return (
-                <div
-                  key={review.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-plan-review-${index}`}
-                >
-                  <p className="m-0 font-medium">
-                    {t("research.planReview.value", {
-                      effort: review.turn.resolvedEffort,
-                      brief: String(review.turn.briefRevision),
-                      graph: String(review.turn.graphRevision),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.planReview.roles", {
-                      roles: review.turn.selectedRoleIds.join(", "),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.planReview.scope", {
-                      jira: displayScopeKeys(review.turn.scope.jiraProjectKeys, "jira"),
-                      confluence: displayScopeKeys(review.turn.scope.confluenceSpaceKeys, "confluence"),
-                    })}
-                  </p>
-                  {timeWindow && (
-                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-time-window-${index}`}>
-                      {t("research.planReview.timeWindow", {
-                        from: timeWindow.from ?? "—",
-                        to: timeWindow.to ?? "—",
-                      })}
-                    </p>
-                  )}
-                  {review.turn.scopeBindings && (
-                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-bindings-${index}`}>
-                      {t("research.planReview.bindings", { bindings })}
-                    </p>
-                  )}
-                  {review.turn.coverageTargets && (
-                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-coverage-${index}`}>
-                      {t("research.planReview.coverage", { targets: coverageTargets })}
-                    </p>
-                  )}
-                  {replanEnvelope && (
-                    <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-replan-envelope-${index}`}>
-                      {t("research.planReview.replanEnvelope", {
-                        roles: replanEnvelope.optionalRoleIds.join(", ") || "—",
-                        capabilities: replanEnvelope.allowedCapabilityIds.join(", ") || "—",
-                        parallel: String(replanEnvelope.maxParallelNodes),
-                        waves: String(replanEnvelope.maxResearchWaves),
-                        reconciliationWaves: String(replanEnvelope.maxReconciliationWaves),
-                      })}
-                    </p>
-                  )}
-                  <p className="mb-0 mt-1 text-muted-foreground" data-testid={`research-plan-review-budget-${index}`}>
-                    {t("research.planReview.budget", {
-                      ptc: String(review.turn.budget.maxPtcCalls),
-                      http: String(review.turn.budget.maxHttpCalls),
-                      modelCalls: String(review.turn.budget.maxModelCalls ?? "—"),
-                      tokens: String(
-                        review.turn.budget.maxTotalModelInputTokens + review.turn.budget.maxTotalModelOutputTokens,
-                      ),
-                      cost: `$${(review.turn.budget.maxModelCostMicros / MICROS_PER_USD).toFixed(2)}`,
-                      minutes: String(Math.ceil(review.turn.budget.maxRunMs / 60_000)),
-                    })}
-                  </p>
-                  <p className="mb-0 mt-1 text-muted-foreground">
-                    {t("research.planReview.noRetrieval")}
-                  </p>
-                  <Label className="mt-2 block" htmlFor={`research-plan-review-correction-${index}`}>
-                    {t("research.planReview.correction")}
-                  </Label>
-                  <textarea
-                    id={`research-plan-review-correction-${index}`}
-                    className="mt-1 w-full rounded-md border bg-background p-2 text-xs"
-                    rows={3}
-                    maxLength={2_000}
-                    disabled={running || planReviewActionId !== null}
-                    data-testid={`research-plan-review-correction-${index}`}
-                    placeholder={t("research.planReview.correctionPlaceholder")}
-                    value={planRevisionInstructions[review.sessionId] ?? ""}
-                    onChange={(event) => setPlanRevisionInstructions((current) => ({
-                      ...current,
-                      [review.sessionId]: event.target.value,
-                    }))}
-                  />
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      disabled={running || planReviewActionId !== null}
-                      data-testid={`research-plan-review-approve-${index}`}
-                      onClick={() => void approvePlanReview(review)}
-                    >
-                      {deciding ? t("research.planReview.deciding") : t("research.planReview.approve")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={running || planReviewActionId !== null ||
-                        !(planRevisionInstructions[review.sessionId]?.trim())}
-                      data-testid={`research-plan-review-revise-${index}`}
-                      onClick={() => void rejectPlanReview(review)}
-                    >
-                      {deciding ? t("research.planReview.deciding") : t("research.planReview.revise")}
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
+      <ResearchReviewCards
+        displayScopeKeys={displayScopeKeys}
+        interactionMode={interactionMode}
+        running={running}
+        scopeReviews={scopeReviews}
+        scopeReviewActionId={scopeReviewActionId}
+        decideScopeReview={decideScopeReview}
+        scopePlanReviews={scopePlanReviews}
+        scopePlanReviewActionId={scopePlanReviewActionId}
+        approveScopePlanReview={approveScopePlanReview}
+        clarificationReviews={clarificationReviews}
+        clarificationActionId={clarificationActionId}
+        clarificationAnswers={clarificationAnswers}
+        setClarificationAnswers={setClarificationAnswers}
+        clarificationDecisions={clarificationDecisions}
+        setClarificationDecisions={setClarificationDecisions}
+        resolveClarificationReview={resolveClarificationReview}
+        continueClarificationReview={continueClarificationReview}
+        planReviews={planReviews}
+        planReviewActionId={planReviewActionId}
+        planRevisionInstructions={planRevisionInstructions}
+        setPlanRevisionInstructions={setPlanRevisionInstructions}
+        approvePlanReview={approvePlanReview}
+        rejectPlanReview={rejectPlanReview}
+      />
       {actionStatus && !report && (
         <p
           role="status"
@@ -3395,92 +3025,16 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
         </Alert>
       )}
 
-      {scopeClarificationReviews.length > 0 && (
-        <Card data-testid="research-scope-clarification-reviews">
-          <CardHeader>
-            <CardTitle>{t("research.scopeClarification")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {scopeClarificationReviews.map((review, index) => {
-              const actionId = scopeClarificationSelectionKey(review);
-              const deciding = scopeClarificationActionId === actionId;
-              const selectedCandidateId = scopeClarificationSelections[actionId] ?? "";
-              return (
-                <div
-                  key={review.sessionId}
-                  className="rounded-md border p-2 text-xs"
-                  data-testid={`research-scope-clarification-review-${index}`}
-                >
-                  <p className="m-0 text-muted-foreground">
-                    {t("research.scopeClarification.value", {
-                      reason: review.clarification.reason,
-                    })}
-                  </p>
-                  {review.stage === "choice_required" && review.clarification.candidates.length > 0 && (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <Label htmlFor={`research-scope-clarification-picker-${index}`}>
-                        {t("research.scopeClarification.choose")}
-                      </Label>
-                      <Select
-                        id={`research-scope-clarification-picker-${index}`}
-                        data-testid={`research-scope-clarification-picker-${index}`}
-                        value={selectedCandidateId}
-                        disabled={running || deciding}
-                        onChange={(event) => setScopeClarificationSelections((current) => ({
-                          ...current,
-                          [actionId]: event.target.value,
-                        }))}
-                      >
-                        <option value="">{t("research.scopeClarification.placeholder")}</option>
-                        {review.clarification.candidates.map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {candidate.product}: {candidate.name}
-                            {candidate.key ? ` (${candidate.key})` : ""}
-                            {candidate.status === "archived" ? " — archived" : ""}
-                          </option>
-                        ))}
-                      </Select>
-                      <Button
-                        size="sm"
-                        disabled={running || deciding || !selectedCandidateId}
-                        data-testid={`research-scope-clarification-resolve-${index}`}
-                        onClick={() => void resolveScopeClarificationReview(review)}
-                      >
-                        {deciding
-                          ? t("research.clarificationReview.deciding")
-                          : t("research.scopeClarification.continue")}
-                      </Button>
-                    </div>
-                  )}
-                  {review.stage !== "choice_required" && (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <p className="mb-0 text-muted-foreground">
-                        {t("research.clarificationReview.noRetrieval")}
-                      </p>
-                      <Button
-                        size="sm"
-                        disabled={running || deciding}
-                        data-testid={`research-scope-clarification-continue-${index}`}
-                        onClick={() => void continueScopeClarificationReview(review)}
-                      >
-                        {deciding
-                          ? t("research.clarificationReview.deciding")
-                          : t("research.scopeClarification.continue")}
-                      </Button>
-                    </div>
-                  )}
-                  <ul className="mb-0 mt-2 pl-5 text-muted-foreground">
-                    {review.clarification.rerunGuidance.map((guidance) => (
-                      <li key={guidance}>{guidance}</li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
+      <ResearchScopeClarificationCards
+        displayScopeKeys={displayScopeKeys}
+        running={running}
+        scopeClarificationReviews={scopeClarificationReviews}
+        scopeClarificationActionId={scopeClarificationActionId}
+        scopeClarificationSelections={scopeClarificationSelections}
+        setScopeClarificationSelections={setScopeClarificationSelections}
+        resolveScopeClarificationReview={resolveScopeClarificationReview}
+        continueScopeClarificationReview={continueScopeClarificationReview}
+      />
       {scopeClarification && (
         <Alert tone="muted" role="status" data-testid="research-scope-clarification-required">
           <AlertTitle>{t("research.scopeClarification")}</AlertTitle>
