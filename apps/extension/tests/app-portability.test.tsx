@@ -655,9 +655,13 @@ describe("the shell renders from the registry", () => {
   it("renders one nav entry per visible screen and opens the requested one", async () => {
     await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
 
-    for (const id of ["export", "preview", "templates", "activity", "settings", "about"]) {
+    for (const id of ["export", "activity", "settings", "about"]) {
       expect(maybeFind(`nav-${id}`)).not.toBeNull();
     }
+    // Preview lives inside the Export flow and Templates opens from the Word
+    // panel (sidebar redesign, 2026-10): neither is a tab anymore.
+    expect(maybeFind("nav-preview")).toBeNull();
+    expect(maybeFind("nav-templates")).toBeNull();
     expect(maybeFind("screen-export")).not.toBeNull();
 
     await click("nav-about");
@@ -814,7 +818,7 @@ describe("the shell renders from the registry", () => {
     expect((find("scope-kind-tree") as unknown as HTMLInputElement).checked).toBe(true);
   });
 
-  it("keeps Preview both in the guided Create flow and as a primary workspace", async () => {
+  it("keeps the live preview inside the Export flow, with the action bar always present", async () => {
     await render(
       <ExportApp
         ports={makePorts(newRecorder(), {}, [
@@ -828,35 +832,42 @@ describe("the shell renders from the registry", () => {
     );
 
     expect(maybeFind("studio-preview")).not.toBeNull();
-    expect(find("studio-step-04").textContent).toContain("Review");
-    expect(find("studio-step-05").textContent).toContain("Export");
     expect(find("pdf-settings-summary").textContent).toContain("A4 · Portrait");
-    expect(maybeFind("nav-preview")).not.toBeNull();
+    // Preview is no longer a tab: the embedded draft plus the large-preview
+    // tab page cover both uses (sidebar redesign, 2026-10).
+    expect(maybeFind("nav-preview")).toBeNull();
+    // The export button lives in the sticky footer, on screen in every scroll
+    // position.
+    expect(find("studio-footer").contains(find("pdf-export"))).toBe(true);
+    expect(find("studio-footer-summary").textContent).toContain("A4");
   });
 
-  it("uses the compact editorial density of the sidebar mockup", async () => {
+  it("uses the compact professional density of the sidebar redesign", async () => {
     await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
 
-    const header = find("app-shell").querySelector("header");
-    expect(header?.className).toContain("min-h-[62px]");
-    expect(find("nav-export").className).toContain("min-h-14");
-    expect(find("format-pdf").textContent).toContain("Print-ready document");
-    expect(find("publishing-studio").textContent).toContain("Make this content travel.");
+    // Two calm header rows: a brand line and a labelled workspace selector.
+    expect(find("area-menu-toggle").textContent).toContain("Workspace");
+    expect(find("area-menu-toggle").textContent).toContain("Publishing");
+    expect(find("nav-export").className).toContain("min-h-9");
+    // The segmented format switch carries full, untruncated labels; the
+    // explanation moved to the tooltip.
+    expect(find("format-pdf").textContent).toContain("PDF");
+    expect(find("format-pdf").getAttribute("title")).toContain("Print-ready document");
+    // The serif marketing headline is gone: the sidebar is a tool.
+    expect(find("publishing-studio").textContent).not.toContain("Make this content travel.");
   });
 
-  it("keeps all four Publishing labels visible in the narrow sidebar", async () => {
+  it("keeps both Publishing tab labels visible in the narrow sidebar", async () => {
     await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
 
     expect(find("nav-export").textContent).toContain("Create");
-    expect(find("nav-preview").textContent).toContain("Preview");
-    expect(find("nav-templates").textContent).toContain("Templates");
     expect(find("nav-activity").textContent).toContain("History");
 
     const css = await Bun.file(new URL("../assets/globals.css", import.meta.url)).text();
     expect(css).not.toMatch(/publishing-nav-label\s*\{[^}]*display:\s*none/s);
   });
 
-  it("moves through available primary workspaces with the tab arrow-key contract", async () => {
+  it("keeps the tab arrow-key contract stable when Export is the only available tab", async () => {
     await render(
       <ExportApp
         ports={makePorts(newRecorder(), {}, [
@@ -869,9 +880,12 @@ describe("the shell renders from the registry", () => {
       />
     );
 
+    // Activity is visible but disabled without `durable-jobs`, and Preview and
+    // Templates are no longer tabs — so the roving selection wraps onto the
+    // one available tab instead of crashing or landing on a disabled one.
     await keyDown("nav-export", "ArrowRight");
-    expect(maybeFind("screen-preview")).not.toBeNull();
-    expect(find("nav-preview").getAttribute("aria-selected")).toBe("true");
+    expect(maybeFind("screen-export")).not.toBeNull();
+    expect(find("nav-export").getAttribute("aria-selected")).toBe("true");
   });
 
   it("keeps future product areas selectable but labels their status honestly", async () => {

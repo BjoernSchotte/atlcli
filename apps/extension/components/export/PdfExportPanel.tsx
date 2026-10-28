@@ -8,6 +8,7 @@
  * change). What is left is rendering.
  */
 import React from "react";
+import { createPortal } from "react-dom";
 import type { PdfTemplateSettings } from "@atlcli/pdf/browser";
 import type { LoadedPage } from "../../utils/read-path.js";
 import type { ExportScopeRequest, PdfExportPort } from "../../utils/ports/index.js";
@@ -38,6 +39,7 @@ export function PdfExportPanel({
   settings,
   gate = (run) => run(),
   compact = false,
+  actionSlot,
 }: {
   port: PdfExportPort;
   page: LoadedPage | null;
@@ -48,23 +50,21 @@ export function PdfExportPanel({
   settings?: PdfTemplateSettings;
   /** Lets the screen interpose a confirmation (space scope) before starting. */
   gate?: (run: () => void) => void;
-  /** Studio presentation: the surrounding numbered step owns the heading. */
+  /** Studio presentation: the surrounding group owns the heading. */
   compact?: boolean;
+  /**
+   * When the screen provides a sticky action bar, the export button and its
+   * progress line render there (via portal) so the primary action stays on
+   * screen; errors and the report stay inline with the panel.
+   */
+  actionSlot?: HTMLElement | null;
 }): React.JSX.Element {
   const t = useT();
   const { pdf, startPdf, cancelPdf } = useExportRuns();
   const ready = page !== null && pageUrl !== null;
 
-  return (
-    <section data-testid="pdf-section" className="flex flex-col gap-2">
-      {!compact && <SectionHeading>{t("pdf.title")}</SectionHeading>}
-      {/*
-        Stays true for v1: 007's Level-B custom-Typst render path does not
-        exist, so there is deliberately no PDF template upload control here —
-        only the settings form below, which tunes the built-in design.
-      */}
-      {!compact && <p className="m-0 text-xs text-muted-foreground">{t("pdf.builtIn")}</p>}
-
+  const action = (
+    <>
       <div className="flex items-center gap-2">
         <Button
           onClick={() => {
@@ -108,6 +108,20 @@ export function PdfExportPanel({
           })}
         </p>
       )}
+    </>
+  );
+
+  return (
+    <section data-testid="pdf-section" className="flex flex-col gap-2">
+      {!compact && <SectionHeading>{t("pdf.title")}</SectionHeading>}
+      {/*
+        Stays true for v1: 007's Level-B custom-Typst render path does not
+        exist, so there is deliberately no PDF template upload control here —
+        only the settings form below, which tunes the built-in design.
+      */}
+      {!compact && <p className="m-0 text-xs text-muted-foreground">{t("pdf.builtIn")}</p>}
+
+      {actionSlot ? createPortal(action, actionSlot) : action}
 
       {!ready && <p className="m-0 text-xs text-muted-foreground">{t("pdf.needsPage")}</p>}
 

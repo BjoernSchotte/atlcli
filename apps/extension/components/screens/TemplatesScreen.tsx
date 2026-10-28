@@ -13,11 +13,12 @@
  * active here is what `DocxTemplateStore.get()` resolves on the Export screen.
  */
 import React from "react";
-import { LayoutTemplate } from "lucide-react";
+import { ArrowLeft, LayoutTemplate } from "lucide-react";
 import type { ScreenDefinition, ScreenProps } from "../../utils/screens/registry.js";
 import type { HostCapability } from "../../utils/ports/index.js";
 import { useT } from "../../utils/i18n/context.js";
 import { Alert } from "../ui/alert.js";
+import { Button } from "../ui/button.js";
 import { TemplateLibraryPanel } from "../export/TemplateLibraryPanel.js";
 
 /** The capability a host must advertise to own a template library. */
@@ -25,7 +26,7 @@ export const TEMPLATE_LIBRARY_CAPABILITY: HostCapability = "template-library";
 
 export const TEMPLATES_SCREEN_ID = "templates";
 
-export function TemplatesScreen({ ports, page }: ScreenProps): React.JSX.Element {
+export function TemplatesScreen({ ports, page, navigate }: ScreenProps): React.JSX.Element {
   const t = useT();
   const spaceKey = page.status === "loaded" ? (page.page.details.spaceKey ?? null) : null;
 
@@ -41,7 +42,20 @@ export function TemplatesScreen({ ports, page }: ScreenProps): React.JSX.Element
   }
 
   return (
-    <div className="flex flex-col gap-4" data-testid="templates-screen">
+    <div className="flex flex-col gap-3" data-testid="templates-screen">
+      {/* Not a tab anymore: the library opens from the Word panel, so it needs
+          its own way back to the export. */}
+      <div>
+        <Button
+          size="sm"
+          variant="ghost"
+          data-testid="templates-back"
+          onClick={() => navigate("export")}
+        >
+          <ArrowLeft size={14} aria-hidden="true" />
+          {t("templates.backToExport")}
+        </Button>
+      </div>
       <TemplateLibraryPanel
         library={ports.templates}
         scanner={ports.docx}
@@ -59,5 +73,8 @@ export const templatesScreenDefinition: ScreenDefinition = {
   component: TemplatesScreen,
   requirements: [{ kind: "capability", capability: TEMPLATE_LIBRARY_CAPABILITY }],
   order: 20,
-  navigation: "primary",
+  // Reached from the Word panel ("Manage templates"), not from the tab bar:
+  // templates are Word-only, and a Vorlagen tab next to a PDF export led
+  // nowhere for the PDF case (sidebar redesign, 2026-10).
+  navigation: "hidden",
 };
