@@ -2451,7 +2451,14 @@ async function fillResearchForm(
   if (options.includeScope !== false) {
     await expect(page.getByTestId("research-context-chips")).toContainText("Packed research");
   }
-  await page.getByTestId("research-disclosure").check();
+  // Confirming the one-time disclosure swaps the checkbox for the persisted
+  // status line (sidebar redesign, 2026-10), so `check()` — which re-verifies
+  // the input after clicking — cannot be used. Click once and assert the
+  // confirmed state; a context whose storage already holds the confirmation
+  // starts at the status line and skips the click.
+  const disclosure = page.getByTestId("research-disclosure");
+  if (await disclosure.count()) await disclosure.click();
+  await expect(page.getByTestId("research-disclosure-status")).toBeVisible();
 }
 
 interface PackedScopeResponse {
