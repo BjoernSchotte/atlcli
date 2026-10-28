@@ -21,12 +21,20 @@ export interface AppSettings {
   lastWorkspace: AppWorkspace | null;
   /** Hide the two persistent Rovo entry points in the Confluence Cloud UI. */
   hideRovoEntrypoints: boolean;
+  /**
+   * The one-time Kiteweave AI disclosure ("selected content goes to the
+   * chosen LLM provider") was confirmed. Confirmed once, it stays confirmed
+   * until withdrawn from the composer's status line (sidebar redesign,
+   * 2026-10); it never auto-confirms — only an explicit user action writes it.
+   */
+  aiDisclosureConfirmed: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   locale: null,
   lastWorkspace: null,
   hideRovoEntrypoints: false,
+  aiDisclosureConfirmed: false,
 };
 
 /** Shared record key used by every Chrome extension context. */
@@ -50,12 +58,15 @@ export function normalizeSettings(value: unknown): AppSettings {
     locale?: unknown;
     lastWorkspace?: unknown;
     hideRovoEntrypoints?: unknown;
+    aiDisclosureConfirmed?: unknown;
   };
   return {
     locale: isLocale(candidate.locale) ? candidate.locale : null,
     lastWorkspace: isAppWorkspace(candidate.lastWorkspace) ? candidate.lastWorkspace : null,
     // Fail open: malformed or legacy records must never hide host UI.
     hideRovoEntrypoints: candidate.hideRovoEntrypoints === true,
+    // Fail closed: consent is only ever an explicit `true`.
+    aiDisclosureConfirmed: candidate.aiDisclosureConfirmed === true,
   };
 }
 

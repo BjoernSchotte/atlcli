@@ -11,6 +11,7 @@ describe("app settings", () => {
       locale: "de",
       lastWorkspace: null,
       hideRovoEntrypoints: false,
+      aiDisclosureConfirmed: false,
     });
   });
 
@@ -21,6 +22,7 @@ describe("app settings", () => {
       locale: "en",
       lastWorkspace: null,
       hideRovoEntrypoints: true,
+      aiDisclosureConfirmed: false,
     });
     expect(
       normalizeSettings({ locale: "en", hideRovoEntrypoints: "true" })
@@ -28,6 +30,7 @@ describe("app settings", () => {
       locale: "en",
       lastWorkspace: null,
       hideRovoEntrypoints: false,
+      aiDisclosureConfirmed: false,
     });
   });
 
@@ -40,11 +43,18 @@ describe("app settings", () => {
 
   it("persists the combined workspace and Rovo settings through the memory port", async () => {
     const store = memorySettingsStore();
-    await store.save({ locale: "de", lastWorkspace: "ai", hideRovoEntrypoints: true });
+    await store.save({ locale: "de", lastWorkspace: "ai", hideRovoEntrypoints: true, aiDisclosureConfirmed: true });
     expect(await store.load()).toEqual({
       locale: "de",
       lastWorkspace: "ai",
       hideRovoEntrypoints: true,
+      aiDisclosureConfirmed: true,
     });
+  });
+
+  it("accepts only an explicit boolean true for the one-time AI disclosure", () => {
+    expect(normalizeSettings({ aiDisclosureConfirmed: true }).aiDisclosureConfirmed).toBe(true);
+    expect(normalizeSettings({ aiDisclosureConfirmed: "true" }).aiDisclosureConfirmed).toBe(false);
+    expect(normalizeSettings({}).aiDisclosureConfirmed).toBe(false);
   });
 });

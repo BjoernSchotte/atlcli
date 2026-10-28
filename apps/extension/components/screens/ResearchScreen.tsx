@@ -139,6 +139,8 @@ import {
   ResearchStreamingTurn,
   SuggestionIcon,
 } from "../research/answer-presentation.js";
+import { ResearchComposer } from "../research/ResearchComposer.js";
+import { useOptionalAppSettings } from "../app/settings-context.js";
 
 // The tested public surface stays importable from this module after the
 // extraction (sidebar redesign, 2026-10).
@@ -178,7 +180,6 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
   const [queuedTurnBeingEdited, setQueuedTurnBeingEdited] = useState<string | null>(null);
   const [queuedTurnDraft, setQueuedTurnDraft] = useState("");
   const [chatInteractionRevision, setChatInteractionRevision] = useState(0);
-  const [composerAddMenuOpen, setComposerAddMenuOpen] = useState(false);
   const [conversationMenuOpen, setConversationMenuOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<ResearchInteractionMode>("chat");
   const [chatThinkingMode, setChatThinkingMode] = useState<ChatThinkingModeV1>("auto");
@@ -204,6 +205,30 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
     RESEARCH_INTERACTION_MODE_POLICY.chat.requestedReconciliation,
   );
   const [disclosed, setDisclosed] = useState(false);
+  // The disclosure is confirmed once and persisted (sidebar redesign,
+  // 2026-10). Without a SettingsProvider (minimal hosts, tests) the checkbox
+  // simply stays per-session, exactly as before.
+  const appSettings = useOptionalAppSettings();
+  const disclosureConfirmed = appSettings?.settings.aiDisclosureConfirmed === true;
+  useEffect(() => {
+    if (disclosureConfirmed) setDisclosed(true);
+  }, [disclosureConfirmed]);
+  function confirmDisclosure(next: boolean): void {
+    setDisclosed(next);
+    if (next && appSettings) {
+      void appSettings.update({ aiDisclosureConfirmed: true }).catch(() => {
+        // Storage failure keeps the in-session consent; the next session asks again.
+      });
+    }
+  }
+  function resetDisclosure(): void {
+    setDisclosed(false);
+    if (appSettings) {
+      void appSettings.update({ aiDisclosureConfirmed: false }).catch(() => {
+        // Withdrawal failed to persist; the composer still unchecks for this session.
+      });
+    }
+  }
   const [running, setRunning] = useState(false);
   const [pauseRequested, setPauseRequested] = useState(false);
   const [progress, setProgress] = useState("");
@@ -2143,87 +2168,6 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
     setConversationMenuOpen(false);
   }
 
-  /**
-   * CopilotKit owns the chat configuration contract. The host renders the
-   * compact composer shell itself because the full message-renderer barrel
-   * includes dynamic code renderers that are forbidden by MV3 CSP.
-   */
-  function ComposerAddMenuButton({
-    className: _className,
-    onAddFile: _onAddFile,
-    toolsMenu: _toolsMenu,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    onAddFile?: () => void;
-    toolsMenu?: unknown;
-  },
-  ): React.JSX.Element {
-    return (
-      <div className="relative">
-        {composerAddMenuOpen && (
-          <div
-            role="region"
-            aria-label={t("research.chat.addMenu.label")}
-            className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-lg border bg-popover p-3 text-sm text-muted-foreground shadow-lg"
-            data-testid="research-composer-add-menu"
-          >
-            <p className="m-0">{t("research.chat.addMenu.empty")}</p>
-          </div>
-        )}
-        <Button
-          {...props}
-          size="icon"
-          variant={composerAddMenuOpen ? "outline" : "ghost"}
-          className="size-9 rounded-md"
-          aria-label={t(
-            composerAddMenuOpen
-              ? "research.chat.addMenu.close"
-              : "research.chat.addMenu.open",
-          )}
-          aria-expanded={composerAddMenuOpen}
-          data-testid="research-composer-add-menu-toggle"
-          onClick={(event) => {
-            props.onClick?.(event);
-            if (!event.defaultPrevented) setComposerAddMenuOpen((open) => !open);
-          }}
-        >
-          {composerAddMenuOpen
-            ? <X className="size-4" aria-hidden="true" />
-            : <Plus className="size-4" aria-hidden="true" />}
-        </Button>
-      </div>
-    );
-  }
-
-  function ComposerSendButton({
-    className: _className,
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>): React.JSX.Element {
-    const submitLabel = interactionMode === "chat"
-      ? t("research.chat.send")
-      : t("research.run");
-    return (
-      <Button
-        {...props}
-        size="icon"
-        className={cn(
-          "size-9 shrink-0 rounded-lg text-primary-foreground disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
-          running
-            ? "bg-destructive hover:bg-destructive/90"
-            : "bg-primary hover:bg-primary/90",
-        )}
-        aria-label={running ? t("research.stop") : submitLabel}
-        title={running ? t("research.stop") : submitLabel}
-        data-testid="research-run"
-      >
-        {children ?? (running
-          ? <Square className="size-3.5 fill-current" aria-hidden="true" />
-          : <ArrowUp className="size-4" aria-hidden="true" />)}
-      </Button>
-    );
-  }
-
   const hasConversation = chatTurns.length > 0 || running || Boolean(report) ||
     Boolean(error) || Boolean(pendingChatQuestion);
   const pendingChatQuestionCanSubmit = (() => {
@@ -2789,144 +2733,28 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
               </div>
             )}
           </div>
-          {includeCurrentContext && currentContextLabel ? (
-            <div
-              className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-muted px-3 py-2 text-xs"
-              data-testid="research-context-chips"
-            >
-              <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span className="shrink-0 font-medium text-muted-foreground">{t("research.chat.context")}</span>
-              <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={currentContextLabel}>
-                {currentContextLabel}
-              </span>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-8 shrink-0 rounded-lg text-muted-foreground"
-                aria-label={t("research.chat.context.remove")}
-                onClick={() => setIncludeCurrentContext(false)}
-                data-testid="research-current-context-remove"
-              >
-                <X aria-hidden="true" />
-              </Button>
-            </div>
-          ) : null}
-          <div
-            data-copilotkit="true"
-            className="w-full shrink-0"
-            data-testid="research-chat-composer"
-          >
-            <div
-              className="overflow-visible rounded-[22px] border border-input bg-card transition-colors focus-within:border-ring"
-              data-testid="research-chat-composer-shell"
-            >
-              <textarea
-                data-testid="copilot-chat-textarea"
-                value={question}
-                onChange={(event) => setQuestion(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-                  const value = event.currentTarget.value;
-                  if (event.metaKey && event.shiftKey) {
-                    event.preventDefault();
-                    setQuestion("");
-                    void submitImmediateSteering(value);
-                    return;
-                  }
-                  if (!event.shiftKey) {
-                    event.preventDefault();
-                    setQuestion("");
-                    void submitChatMessage(value);
-                  }
-                }}
-                placeholder={t("research.chat.placeholder")}
-                className="min-h-24 w-full resize-none border-0 bg-transparent px-4 pb-2 pt-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground focus-visible:outline-none"
-                aria-label={t("research.chat.placeholder")}
-              />
-              <div className="flex items-center gap-1.5 border-t border-border/70 px-2.5 py-2">
-                <ComposerAddMenuButton />
-                <div
-                  className="flex min-w-0 items-center rounded-lg bg-muted p-0.5"
-                  role="group"
-                  aria-label={t("research.chat.mode.label")}
-                >
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
-                      interactionMode === "chat"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    aria-pressed={interactionMode === "chat"}
-                    onClick={() => selectInteractionMode("chat")}
-                    data-testid="research-mode-chat"
-                  >
-                    <MessageCircle className="size-3.5" aria-hidden="true" />
-                    {t("research.chat.mode.chat")}
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
-                      interactionMode === "deep"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    aria-pressed={interactionMode === "deep"}
-                    onClick={() => selectInteractionMode("deep")}
-                    data-testid="research-mode-deep"
-                  >
-                    <Telescope className="size-3.5" aria-hidden="true" />
-                    {t("research.chat.mode.deepShort")}
-                  </button>
-                </div>
-                {interactionMode === "chat" && (
-                  <Select
-                    value={chatThinkingMode}
-                    onChange={(event) => selectChatThinkingMode(
-                      event.target.value as ChatThinkingModeV1,
-                    )}
-                    disabled={running}
-                    aria-label={t("research.chat.thinking.label")}
-                    title={t("research.chat.thinking.label")}
-                    className="h-7 w-[7.75rem] min-w-0 rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    data-testid="research-chat-thinking"
-                  >
-                    <option value="auto">{t("research.chat.thinking.auto")}</option>
-                    <option value="quick">{t("research.chat.thinking.quick")}</option>
-                    <option value="deep">{t("research.chat.thinking.deep")}</option>
-                  </Select>
-                )}
-                <div className="ml-auto">
-                  <ComposerSendButton
-                    disabled={running ? false : question.trim().length === 0}
-                    onClick={() => {
-                      if (running) {
-                        if (interactionMode === "chat" && chatPort) void chatPort.stop();
-                        else abortRef.current?.abort(new ResearchContractError("cancelled", t("research.stopped")));
-                        return;
-                      }
-                      const value = question;
-                      setQuestion("");
-                      void submitChatMessage(value);
-                    }}
-                  />
-                </div>
-              </div>
-              <label className="flex cursor-pointer items-start gap-2 border-t border-border/60 px-3 py-2 text-[11px] leading-4 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="mt-px size-3.5 shrink-0 rounded border-input accent-primary"
-                  checked={disclosed}
-                  onChange={(event) => setDisclosed(event.target.checked)}
-                  disabled={running || Boolean(pendingChatQuestion)}
-                  data-testid="research-disclosure"
-                />
-                <span>{t("research.disclosure")}</span>
-              </label>
-            </div>
-          </div>
+          <ResearchComposer
+            question={question}
+            onQuestionChange={setQuestion}
+            onSubmit={(value) => void submitChatMessage(value)}
+            onSteer={(value) => void submitImmediateSteering(value)}
+            onStop={() => {
+              if (interactionMode === "chat" && chatPort) void chatPort.stop();
+              else abortRef.current?.abort(new ResearchContractError("cancelled", t("research.stopped")));
+            }}
+            running={running}
+            interactionMode={interactionMode}
+            onInteractionModeChange={selectInteractionMode}
+            chatThinkingMode={chatThinkingMode}
+            onChatThinkingModeChange={selectChatThinkingMode}
+            contextLabel={includeCurrentContext ? (currentContextLabel ?? null) : null}
+            onRemoveContext={() => setIncludeCurrentContext(false)}
+            disclosed={disclosed}
+            disclosureConfirmed={disclosureConfirmed}
+            disclosureLocked={running || Boolean(pendingChatQuestion)}
+            onDisclosedChange={confirmDisclosure}
+            onDisclosureReset={resetDisclosure}
+          />
           <p className="m-0 shrink-0 px-1 text-center text-[11px] text-muted-foreground">
             {running
               ? t("research.chat.composerHelp.running")
