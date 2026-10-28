@@ -774,18 +774,30 @@ describe("portable Research screen", () => {
     await dom.render(
       <SettingsProvider store={store}>
         <I18nProvider locale="en">
-          <ResearchScreen {...screenProps(port)} />
+          <ResearchScreen key="first-mount" {...screenProps(port)} />
         </I18nProvider>
       </SettingsProvider>,
     );
 
-    // First run: the explicit checkbox, no status line, nothing persisted.
+    // First mount: the explicit checkbox, no status line, nothing persisted.
     expect(dom.maybeFind("research-disclosure-status")).toBeNull();
     expect((dom.find("research-disclosure") as unknown as HTMLInputElement).checked).toBe(false);
 
-    // Confirming once persists the consent and swaps in the status line.
+    // Confirming once persists the consent. The checkbox stays for THIS
+    // mount (no mid-interaction swap under the user's pointer).
     await dom.toggle("research-disclosure");
     expect((await store.load()).aiDisclosureConfirmed).toBe(true);
+    expect((dom.find("research-disclosure") as unknown as HTMLInputElement).checked).toBe(true);
+    expect(dom.maybeFind("research-disclosure-status")).toBeNull();
+
+    // The next mount starts at the compact status line instead.
+    await dom.render(
+      <SettingsProvider store={store}>
+        <I18nProvider locale="en">
+          <ResearchScreen key="second-mount" {...screenProps(port)} />
+        </I18nProvider>
+      </SettingsProvider>,
+    );
     expect(dom.find("research-disclosure-status").textContent).toContain("confirmed once");
     expect(dom.maybeFind("research-disclosure")).toBeNull();
 

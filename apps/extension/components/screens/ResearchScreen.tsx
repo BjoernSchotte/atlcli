@@ -217,9 +217,16 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
   // simply stays per-session, exactly as before.
   const appSettings = useOptionalAppSettings();
   const disclosureConfirmed = appSettings?.settings.aiDisclosureConfirmed === true;
+  // The compact status line replaces the checkbox only on the NEXT mount:
+  // confirming must never reshape the composer in the middle of an
+  // interaction (the checkbox simply stays checked for this mount). Captured
+  // once per mount, after the settings load has settled.
+  const [mountConfirmed, setMountConfirmed] = useState<boolean | null>(null);
   useEffect(() => {
+    if (!appSettings?.loaded) return;
+    setMountConfirmed((current) => current ?? disclosureConfirmed);
     if (disclosureConfirmed) setDisclosed(true);
-  }, [disclosureConfirmed]);
+  }, [appSettings?.loaded, disclosureConfirmed]);
   function confirmDisclosure(next: boolean): void {
     setDisclosed(next);
     if (next && appSettings) {
@@ -230,6 +237,9 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
   }
   function resetDisclosure(): void {
     setDisclosed(false);
+    // Withdrawing returns this mount to first-confirmation behaviour: the
+    // checkbox stays visible through a re-confirmation instead of swapping.
+    setMountConfirmed(false);
     if (appSettings) {
       void appSettings.update({ aiDisclosureConfirmed: false }).catch(() => {
         // Withdrawal failed to persist; the composer still unchecks for this session.
@@ -2737,7 +2747,7 @@ export function ResearchScreen({ ports, page, continuationId }: ScreenProps): Re
             contextLabel={includeCurrentContext ? (currentContextLabel ?? null) : null}
             onRemoveContext={() => setIncludeCurrentContext(false)}
             disclosed={disclosed}
-            disclosureConfirmed={disclosureConfirmed}
+            disclosureConfirmed={mountConfirmed === true}
             disclosureLocked={running || Boolean(pendingChatQuestion)}
             onDisclosedChange={confirmDisclosure}
             onDisclosureReset={resetDisclosure}
