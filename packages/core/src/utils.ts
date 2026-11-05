@@ -29,12 +29,23 @@ const HTTP_ERROR_CODES: Record<number, string> = {
   429: ERROR_CODES.RATE_LIMIT,
 };
 
+/** A usage mistake found outside a command handler (e.g. by {@link parseArgs}); reported as `ATLCLI_ERR_USAGE`. */
+export class UsageError extends Error {
+  readonly code = ERROR_CODES.USAGE;
+  constructor(message: string) {
+    super(message);
+    this.name = "UsageError";
+  }
+}
+
 /**
- * An uncaught error as the `--json` error object: an API error's HTTP status
- * (its `status`, or "API error (403)" in the message) picks the code.
+ * An uncaught error as the `--json` error object: a {@link UsageError} is a
+ * usage error; otherwise an API error's HTTP status (its `status`, or
+ * "API error (403)" in the message) picks the code.
  */
 export function describeError(err: unknown): { code: string; message: string; details: Record<string, unknown> } {
   const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof UsageError) return { code: err.code, message, details: {} };
   const own = (err as { status?: unknown } | null)?.status;
   const status = typeof own === "number" ? own : Number(/API error \((\d{3})\)/.exec(message)?.[1]) || undefined;
   if (status === undefined) return { code: ERROR_CODES.API, message, details: {} };
@@ -86,6 +97,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
       const eq = body.indexOf("=");
       const key = (eq === -1 ? body : body.slice(0, eq)).trim();
       if (!key) continue;
+      // `"--profile mayflower"` as one argument (a quoted or unsplit shell variable) would be a flag
+      // nobody reads, so the command would silently fall back to its default.
+      if (/\s/.test(key)) {
+        const [name, ...value] = key.split(/\s+/);
+        throw new UsageError(
+          `Invalid flag "${token}": pass the flag and its value as separate arguments (--${name} ${value.join(" ")}).`
+        );
+      }
       if (eq !== -1) {
         addFlag(key, body.slice(eq + 1));
         continue;

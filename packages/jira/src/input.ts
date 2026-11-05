@@ -317,7 +317,7 @@ export function resolveColumns(columns: string[], fields: JiraField[] = []): str
     if (known) return known;
     const lower = column.toLowerCase();
     const match = fields.find((f) => f.id === column) ?? fields.find((f) => f.name.toLowerCase() === lower);
-    if (!match) throw new Error(`Unknown column "${column}". Use a field id or name (see \`jira field search\`).`);
+    if (!match) throw new Error(`Unknown field "${column}". Use a field id or name (see \`jira field search\`).`);
     return match.id;
   });
 }
@@ -392,7 +392,13 @@ export function changelogRows(entries: JiraChangelogEntry[]) {
 }
 
 /** `issue get` as text: fields, description, links, the last comments and, when expanded, the history. */
-export function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount = 3): string {
+/** `extraFields`: further `[label, field id]` rows (`issue get --fields`), shown after the standard rows. */
+export function renderIssueView(
+  issue: JiraIssue,
+  baseUrl: string,
+  commentCount = 3,
+  extraFields: Array<[string, string]> = []
+): string {
   const f = issue.fields;
   const day = (iso?: string) => (iso ? calendarDay(iso) : "");
   const links = (f.issuelinks ?? []).map((link) => {
@@ -416,6 +422,8 @@ export function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount 
     `${issue.key}  ${f.summary ?? ""}`,
     [
       ["Status", f.status?.name],
+      ["Resolution", f.resolution?.name ?? "Unresolved"],
+      ["Resolved", day(f.resolutiondate ?? undefined)],
       ["Type", f.issuetype?.name],
       ["Priority", f.priority?.name],
       ["Assignee", f.assignee?.displayName ?? "(unassigned)"],
@@ -428,6 +436,7 @@ export function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount 
       ["Created", day(f.created)],
       ["Updated", day(f.updated)],
       ["URL", `${baseUrl}/browse/${issue.key}`],
+      ...extraFields.map(([label, id]) => [label, issueCell(issue, id)] as [string, unknown]),
     ],
     [
       ["Description", readable(adfToMarkdown(f.description, { baseUrl }))],

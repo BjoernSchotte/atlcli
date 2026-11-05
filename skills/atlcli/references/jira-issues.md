@@ -46,6 +46,7 @@ description twice, as raw ADF in `description` and as Markdown in
   "issue": {
     "id": "10123", "key": "PROJ-101",
     "summary": "…", "status": "To Do", "statusCategory": "new",
+    "resolution": null, "resolutionDate": null,
     "type": "Improvement", "priority": "Medium",
     "assignee": "Alex Rivera", "assigneeId": "5b10a2844c20165700ede21g",
     "reporter": "…", "created": "…", "updated": "…", "labels": [], "parent": "PROJ-100",
@@ -58,8 +59,17 @@ description twice, as raw ADF in `description` and as Markdown in
 Read the description from `descriptionMarkdown` or `--format markdown`, not
 from the ADF.
 
-`--expand <fields>` (for example `changelog`, `renderedFields`) is passed to
-the Jira API, and with `--json` each expanded section appears as Jira sent it,
+`resolution` (name) and `resolutionDate` (ISO 8601) are always present, also in
+`jira search`, `my` and `filter run`; `null` means unresolved, not "not
+fetched". For fields the flattened issue leaves out, pass `--fields <ids or
+names>` (e.g. `--fields duedate,customfield_10016`): they appear under
+`issue.fields` as Jira sent them, `null` when empty. Field names are localized
+on non-English sites; `jira field search <text>` gives the ids.
+
+`--expand <sections>` (`changelog`, `renderedFields`, `names`, `schema`,
+`transitions`, `operations`, `editmeta`, `versionedRepresentations`) is passed
+to the Jira API, which silently ignores anything else; atlcli warns about such
+values on stderr (`--expand resolution` does nothing, use the fields above), and with `--json` each expanded section appears as Jira sent it,
 as a top-level key next to `issue`. The readable view shows only the changelog
 (as History), and `--format markdown` shows none; both name the hidden
 sections on stderr. `jira issue history` gives the changelog as flat rows.
@@ -86,6 +96,13 @@ the candidates, so use the email or account ID when a name is ambiguous.
 
 `--parent <key>` places the new issue under an epic or parent issue. There is
 no `--status` on `create`: creating and moving are two calls.
+
+The response has the same shape as `issue get`: the new issue sits under
+`issue`, so the key is `.issue.key`, not `.key`:
+
+```bash
+key=$(atlcli jira issue create --project PROJ --type Task --summary '…' --json | jq -r .issue.key)
+```
 
 Custom fields go through `--field`, which is repeatable and coerces its value:
 `null` becomes null, a numeric string becomes a number, valid JSON is parsed,

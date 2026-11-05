@@ -1895,6 +1895,12 @@ export interface UpdateState {
     installMethod: InstallMethod;
 }
 
+// export: UsageError
+export declare class UsageError extends Error {
+    readonly code: "ATLCLI_ERR_USAGE";
+    constructor(message: string);
+}
+
 // export: validateTemplate
 export declare function validateTemplate(template: Template): ValidationResult;
 
@@ -3927,6 +3933,12 @@ export interface UpdateState {
     latestVersion: string | null;
     currentVersion: string;
     installMethod: InstallMethod;
+}
+
+// export: UsageError
+export declare class UsageError extends Error {
+    readonly code: "ATLCLI_ERR_USAGE";
+    constructor(message: string);
 }
 
 // export: validateTemplate

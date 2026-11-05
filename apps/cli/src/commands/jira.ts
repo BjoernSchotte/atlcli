@@ -391,7 +391,8 @@ async function outputIssueList(
     output(json, opts);
     return;
   }
-  const columns = (getFlag(flags, "columns") ?? DEFAULT_COLUMNS.join(",")).split(",").map((c) => c.trim()).filter(Boolean);
+  // --fields adds its fields as columns after --columns.
+  const columns = [...listFlag(flags, "columns", DEFAULT_COLUMNS.join(",")), ...listFlag(flags, "fields")];
   let fieldIds: string[] = [];
   try {
     fieldIds = resolveColumns(columns, needsFieldList(columns) ? await client.getFields() : undefined);
@@ -802,7 +803,11 @@ async function handleIssueGet(
   if (format !== "text" && format !== "json" && format !== "markdown") {
     fail(opts, 1, ERROR_CODES.USAGE, "--format must be text, json or markdown.");
   }
+  const unknownExpands = unknownExpandValues(expand);
+  if (unknownExpands.length > 0) process.stderr.write(unknownExpandWarning(unknownExpands));
   const client = await getClient(flags, opts);
+  const fieldNames = listFlag(flags, "fields");
+  const fieldIds = await resolveExtraFields(client, fieldNames, opts);
   const issue = await client.getIssue(key, { expand });
   // What --expand added (changelog, renderedFields, names, transitions, …), as Jira sent it.
   const { id: _id, key: _key, self: _self, fields: _fields, expand: _expand, ...expanded } = issue as JiraIssue & { expand?: string };
@@ -810,14 +815,16 @@ async function handleIssueGet(
   if (format !== "json" && !opts.json) {
     // The text view shows the changelog as History; the markdown view stays description-only so it can be written back.
     const hidden = Object.keys(expanded).filter((name) => format === "markdown" || name !== "changelog");
+    if (format === "markdown" && fieldIds.length > 0) hidden.push("--fields");
     if (hidden.length > 0) process.stderr.write(`Note: ${hidden.join(", ")} only shown with --format json.\n`);
-    output(format === "markdown" ? formatIssueMarkdown(issue, client.siteUrl) : renderIssueView(issue, client.siteUrl), opts);
+    const extra = fieldNames.map((name, i) => [name, fieldIds[i]!] as [string, string]);
+    output(format === "markdown" ? formatIssueMarkdown(issue, client.siteUrl) : renderIssueView(issue, client.siteUrl, 3, extra), opts);
     return;
   }
   output(
     {
       schemaVersion: "1",
-      issue: { ...formatIssue(issue), descriptionMarkdown: adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl }) },
+      issue: { ...formatIssue(issue, fieldIds), descriptionMarkdown: adfToMarkdown(issue.fields.description, { baseUrl: client.siteUrl }) },
       ...expanded,
     },
     opts
@@ -1832,7 +1839,7 @@ function issueHelp(): string {
   return `atlcli jira issue <command>
 
 Commands:
-  get --key <key> [--expand <fields>] [--format json|markdown]
+  get --key <key> [--expand <sections>] [--fields <a,b>] [--format json|markdown]
   create --project <key> --type <name> --summary <text> [--description <md> | --description-file <path|-> | --edit] [--priority <name>] [--assignee <user>] [--labels <a,b,c>] [--parent <key>] [--field <id>=<value> ...]
   update --key <key> [--summary <text>] [--description <md> | --description-file <path|-> | --edit] [--priority <name>] [--assignee <user>|none] [--add-labels <a,b>] [--remove-labels <c,d>] [--field <id>=<value> ...]
   delete --key <key> --confirm [--delete-subtasks]
@@ -2177,7 +2184,7 @@ async function handleBoardBacklog(
     jql,
   });
 
-  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map(formatIssue), total: result.total }, flags, opts);
+  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map((issue) => formatIssue(issue)), total: result.total }, flags, opts);
 }
 
 async function handleBoardIssues(
@@ -2198,7 +2205,7 @@ async function handleBoardIssues(
     jql,
   });
 
-  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map(formatIssue), total: result.total }, flags, opts);
+  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map((issue) => formatIssue(issue)), total: result.total }, flags, opts);
 }
 
 function boardHelp(): string {
@@ -2417,7 +2424,7 @@ async function handleSprintIssues(
     jql,
   });
 
-  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map(formatIssue), total: result.total }, flags, opts);
+  await outputIssueList(client, result.issues, { schemaVersion: "1", issues: result.issues.map((issue) => formatIssue(issue)), total: result.total }, flags, opts);
 }
 
 async function handleSprintAdd(
@@ -4953,8 +4960,9 @@ async function handleFilterRun(
   }
   const client = await getClient(flags, opts);
   const { jql } = await client.getFilter(id);
-  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
-  await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
+  const fieldIds = await resolveExtraFields(client, listFlag(flags, "fields"), opts);
+  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts), searchFields(fieldIds));
+  await outputIssueList(client, result.issues, issueListJson(jql, result, fieldIds), flags, opts, result.hasMore);
 }
 
 async function handleFilterShare(
@@ -5108,8 +5116,9 @@ async function handleSearch(
     throw err;
   }
 
-  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
-  await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
+  const fieldIds = await resolveExtraFields(client, listFlag(flags, "fields"), opts);
+  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts), searchFields(fieldIds));
+  await outputIssueList(client, result.issues, issueListJson(jql, result, fieldIds), flags, opts, result.hasMore);
 }
 
 /** `--status` with localized names translated for JQL (one `/status` read, only when given). */
@@ -5119,11 +5128,11 @@ async function statusFlag(client: JiraClient, flags: Record<string, string | boo
 }
 
 /** The JSON of `search`, `my` and `filter run`. */
-function issueListJson(jql: string, result: { issues: JiraIssue[]; hasMore: boolean; nextPageToken?: string }) {
+function issueListJson(jql: string, result: { issues: JiraIssue[]; hasMore: boolean; nextPageToken?: string }, fieldIds: string[] = []) {
   return {
     schemaVersion: "1",
     jql,
-    issues: result.issues.map((issue) => formatIssue(issue)),
+    issues: result.issues.map((issue) => formatIssue(issue, fieldIds)),
     // `/search/jql` reports no total: this is the number returned.
     total: result.issues.length,
     hasMore: result.hasMore,
@@ -5158,20 +5167,26 @@ async function handleMy(
       type: getFlag(flags, "type"),
       all: hasFlag(flags, "all"),
     }) + " ORDER BY updated DESC";
-  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts));
-  await outputIssueList(client, result.issues, issueListJson(jql, result), flags, opts, result.hasMore);
+  const fieldIds = await resolveExtraFields(client, listFlag(flags, "fields"), opts);
+  const result = await fetchIssuePages(client, jql, searchLimit(flags, opts), searchFields(fieldIds));
+  await outputIssueList(client, result.issues, issueListJson(jql, result, fieldIds), flags, opts, result.hasMore);
 }
 
 // ============ Helpers ============
 
-function formatIssue(issue: JiraIssue): Record<string, unknown> {
+/** The flattened issue; `fieldIds` (`--fields`) adds those fields as Jira sent them, under `fields`. */
+function formatIssue(issue: JiraIssue, fieldIds: string[] = []): Record<string, unknown> {
   const f = issue.fields;
+  const raw = f as unknown as Record<string, unknown>;
   return {
     id: issue.id,
     key: issue.key,
     summary: f.summary,
     status: f.status?.name,
     statusCategory: f.status?.statusCategory?.key,
+    // Always present: null means unresolved, not "not fetched" (#369).
+    resolution: f.resolution?.name ?? null,
+    resolutionDate: f.resolutiondate ?? null,
     type: f.issuetype?.name,
     priority: f.priority?.name,
     assignee: f.assignee?.displayName,
@@ -5182,7 +5197,42 @@ function formatIssue(issue: JiraIssue): Record<string, unknown> {
     labels: f.labels,
     parent: f.parent?.key,
     description: issue.fields.description,
+    ...(fieldIds.length > 0 ? { fields: Object.fromEntries(fieldIds.map((id) => [id, raw[id] ?? null])) } : {}),
   };
+}
+
+/** A comma-separated flag as trimmed, non-empty items. */
+function listFlag(flags: Record<string, string | boolean | string[]>, name: string, fallback = ""): string[] {
+  return (getFlag(flags, name) ?? fallback).split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+/** `--fields` names or ids as field ids; the field list is read only when a name needs it. */
+async function resolveExtraFields(client: JiraClient, names: string[], opts: OutputOptions): Promise<string[]> {
+  if (names.length === 0) return [];
+  try {
+    return resolveColumns(names, needsFieldList(names) ? await client.getFields() : undefined);
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--fields: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Search fields: Jira's default set plus `--fields`, which may name fields outside it. */
+function searchFields(fieldIds: string[]): string[] | undefined {
+  return fieldIds.length > 0 ? ["*navigable", ...fieldIds] : undefined;
+}
+
+/** The sections Jira's issue endpoint can expand; it silently ignores anything else. */
+const ISSUE_EXPANDS = ["changelog", "renderedFields", "names", "schema", "transitions", "operations", "editmeta", "versionedRepresentations"];
+
+function unknownExpandValues(expand: string | undefined): string[] {
+  return (expand ?? "").split(",").map((v) => v.trim()).filter((v) => v && !ISSUE_EXPANDS.includes(v));
+}
+
+function unknownExpandWarning(values: string[]): string {
+  const hint = values.some((v) => /^resolution(date)?$/i.test(v))
+    ? "resolution and resolutionDate are always in the issue output"
+    : "use --fields for further fields";
+  return `Warning: Jira ignores unknown --expand value(s) ${values.join(", ")}; ${hint}. Known: ${ISSUE_EXPANDS.join(", ")}.\n`;
 }
 
 // ============ Export/Import Commands ============
@@ -7397,6 +7447,7 @@ Options:
 
 Issue lists (search, my, filter run, board/sprint/epic issues) print a table:
   --columns <a,b>    Field ids or names (default key,type,status,assignee,summary)
+  --fields <a,b>     Extra fields (ids or names): more columns; with --json, raw values under issue.fields
   --plain            Tab-separated; --delimiter <text> for another separator
   --csv              CSV (RFC 4180)
   --no-headers       Leave out the header row

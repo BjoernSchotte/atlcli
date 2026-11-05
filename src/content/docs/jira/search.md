@@ -153,6 +153,9 @@ PROJ-1  Task  To Do                  Update docs
 # Choose columns: field ids or field names, also custom fields
 atlcli jira search --project PROJ --columns key,status,"Story Points",summary
 
+# Extra fields: appended columns in the table, raw values under issues[].fields in JSON
+atlcli jira search --project PROJ --fields resolution,resolutiondate --json
+
 # Tab-separated for shell scripts, without the header row
 atlcli jira search --project PROJ --plain --no-headers | cut -f1
 
@@ -175,6 +178,7 @@ atlcli jira search --jql "..." --json
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--columns` | comma-separated list | `key,type,status,assignee,summary` | Columns: `key`, `id`, `type`, a field id (`duedate`, `customfield_10016`) or a field name (`"Story Points"`) |
+| `--fields` | comma-separated list | none | Extra field ids or names. The table appends them as columns; `--json` adds them per issue under `fields`, as Jira returns them. Also requests fields Jira's default set leaves out |
 | `--plain` | flag | off | Tab-separated, no padding |
 | `--delimiter` | text | tab | Separator for `--plain`; implies `--plain` |
 | `--csv` | flag | off | CSV with quoting |
@@ -188,7 +192,7 @@ Cells show names (status, users, options), join lists with commas, and render ri
 
 | Field | Meaning |
 |-------|---------|
-| `issues` | The returned issues |
+| `issues` | The returned issues, flattened (`key`, `summary`, `status`, `resolution`, `resolutionDate`, `type`, `assignee`, …). `resolution` and `resolutionDate` are `null` for unresolved issues |
 | `total` | Number of issues **returned**. Jira's search endpoint does not report a total match count. |
 | `hasMore` | `true` if Jira offered another page. Jira also does this when a page is exactly full, so a next page can be empty |
 | `nextPageToken` | Jira's token for the next page, when `hasMore` is `true` |
@@ -218,7 +222,7 @@ atlcli jira search --watching --plain --no-headers --columns key
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `"lee" matches several users` | The name fits more than one user | Use the email, the full display name or the account id |
-| `Unknown column "Points"` | No field has that id or name | `atlcli jira field search points` lists the exact names |
+| `Unknown field "Points"` | No field has that id or name (`--columns`, `--fields`); names are localized on non-English sites | `atlcli jira field search points` lists the exact names |
 | `--history` returns nothing | Jira records views from the browser, not from API calls | Open the issues in Jira first |
 | `--jql 'status = Fertig'` finds nothing, but the table shows "Fertig" | JQL matches the untranslated status name | Use `--status Fertig`, or the untranslated name (`status = Done`) |
 | `--status ~me` matches the wrong value | The shell expanded `~me` to a home directory | Quote it: `--status '~me'` |
