@@ -1,7 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { parseArgs } from "./utils.js";
+import { describeError, parseArgs, UsageError } from "./utils.js";
 
 describe("parseArgs", () => {
+  test("a flag and its value in one argument fail instead of being ignored (regression: silent default profile)", () => {
+    expect(() => parseArgs(["jira", "search", "--profile mayflower"])).toThrow(
+      'Invalid flag "--profile mayflower": pass the flag and its value as separate arguments (--profile mayflower).'
+    );
+    expect(() => parseArgs(["--jql project = AB"])).toThrow(UsageError);
+    // A value may contain spaces: only the flag name may not.
+    expect(parseArgs(["--jql=project = AB", "--summary", "a b"]).flags).toEqual({ jql: "project = AB", summary: "a b" });
+  });
+
+  test("describeError reports a UsageError as a usage error", () => {
+    expect(describeError(new UsageError("bad"))).toEqual({ code: "ATLCLI_ERR_USAGE", message: "bad", details: {} });
+  });
+
   test("a lone '-' after a long flag is its value (stdin), not a positional", () => {
     const parsed = parseArgs(["issue", "create", "--description-file", "-", "--json"]);
     expect(parsed.flags["description-file"]).toBe("-");

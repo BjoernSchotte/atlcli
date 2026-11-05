@@ -97,6 +97,13 @@ the candidates, so use the email or account ID when a name is ambiguous.
 `--parent <key>` places the new issue under an epic or parent issue. There is
 no `--status` on `create`: creating and moving are two calls.
 
+The response has the same shape as `issue get`: the new issue sits under
+`issue`, so the key is `.issue.key`, not `.key`:
+
+```bash
+key=$(atlcli jira issue create --project PROJ --type Task --summary '…' --json | jq -r .issue.key)
+```
+
 Custom fields go through `--field`, which is repeatable and coerces its value:
 `null` becomes null, a numeric string becomes a number, valid JSON is parsed,
 anything else stays a string:

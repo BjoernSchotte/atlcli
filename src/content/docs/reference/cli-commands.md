@@ -17,6 +17,8 @@ Quick reference for all atlcli commands.
 
 A command group without a subcommand (`atlcli wiki page`) prints its help and exits 0. An unknown subcommand (`atlcli wiki page lsit`) is a usage error with exit code 1.
 
+Pass each flag and its value as separate arguments. A single argument such as `"--profile work"` (for example an unsplit shell variable in zsh) is a usage error, `Invalid flag "--profile work"`, instead of being ignored. `--flag=value` remains a single argument and may contain spaces in its value.
+
 ## Authentication
 
 ```bash
