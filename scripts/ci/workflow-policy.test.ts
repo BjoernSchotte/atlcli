@@ -88,7 +88,7 @@ describe("CI workflow policy", () => {
   it("requires native release-helper mount proof on every supported Unix architecture", async () => {
     const nfs = await workflow("reusable-nfs.yml");
     for (const [os, target] of [["ubuntu-22.04", "linux-x64"], ["ubuntu-22.04-arm", "linux-arm64"],
-      ["macos-14", "darwin-arm64"], ["macos-15-intel", "darwin-x64"]]) {
+      ["macos-15", "darwin-arm64"], ["macos-15-intel", "darwin-x64"]]) {
       expect(nfs).toContain(`- os: ${os}\n            target: ${target}`);
     }
     expect(nfs).toContain("Verify native runner architecture");
@@ -142,7 +142,7 @@ describe("CI workflow policy", () => {
     expect(release).not.toContain("source_eligibility_artifact:");
 
     for (const [target, os] of [["linux-x64", "ubuntu-22.04"], ["linux-arm64", "ubuntu-22.04-arm"],
-      ["darwin-x64", "macos-15-intel"], ["darwin-arm64", "macos-14"], ["windows-x64", "ubuntu-latest"]]) {
+      ["darwin-x64", "macos-15-intel"], ["darwin-arm64", "macos-15"], ["windows-x64", "ubuntu-latest"]]) {
       expect(reusable).toContain(`- target: ${target}\n            os: ${os}`);
     }
     expect(reusable).toContain('runs-on: ${{ matrix.os }}');
@@ -1094,7 +1094,7 @@ describe("CI workflow policy", () => {
     expect(runRequiredGate(script, { ...prSkipped, NFS: "success" }).exitCode).not.toBe(0);
     expect(runRequiredGate(script, { EVENT_NAME: "push", DOCS: "skipped", RASTER_BROWSER: "skipped" }).exitCode).not.toBe(0);
     expect(runRequiredGate(script, { ...prSkipped, TEST: "failure" }).exitCode).not.toBe(0);
-    for (const os of ["ubuntu-22.04", "ubuntu-22.04-arm", "macos-14", "macos-15-intel"]) {
+    for (const os of ["ubuntu-22.04", "ubuntu-22.04-arm", "macos-15", "macos-15-intel"]) {
       expect(nfs).toContain(`- os: ${os}`);
     }
     expect(nfs).not.toContain("exclude:");

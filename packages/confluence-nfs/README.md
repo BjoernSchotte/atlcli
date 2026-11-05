@@ -47,7 +47,7 @@ Required NFS CI builds and kernel-mounts the release-mode helper on these runner
 | --- | --- |
 | Linux x64 GNU | ubuntu-22.04 |
 | Linux arm64 GNU | ubuntu-22.04-arm |
-| macOS arm64 | macos-14 |
+| macOS arm64 | macos-15 |
 | macOS x64 | macos-15-intel |
 
 Runner architecture is asserted before building. Successful jobs retain the
