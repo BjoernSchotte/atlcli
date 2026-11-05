@@ -2,6 +2,44 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.11.1] - 2026-11-05
+
+### Bug Fixes
+
+- **extension:** Defer the disclosure status swap; isolate consent per packed test ([4446bee](https://github.com/bjoernschotte/atlcli/commit/4446beef0ccbbf005a3d8d8aff3395be090e62c2))
+- **core:** Reject a flag and its value passed as one argument ([fa0c068](https://github.com/bjoernschotte/atlcli/commit/fa0c0683ad1a7b283413ffaa58e503fe57aea1a3))
+
+### Features
+
+- **extension:** Redesign sidebar shell and Publishing studio ([d8e6ed6](https://github.com/bjoernschotte/atlcli/commit/d8e6ed68bbcfb6815ca7115ee4deb655943ff51a))
+- **extension:** Redesign the Kiteweave AI composer, one-time LLM disclosure ([296b3b5](https://github.com/bjoernschotte/atlcli/commit/296b3b54fd968ab0c6ea01971f20fa4e3a49db76))
+- **jira:** Show resolution, add --fields, warn about unknown --expand values ([508415f](https://github.com/bjoernschotte/atlcli/commit/508415f54a63f5c4c83aaa2bd35db56439618c6b))
+
+### Miscellaneous
+
+- Run Playwright jobs on ubuntu-24.04 ([ee939ca](https://github.com/bjoernschotte/atlcli/commit/ee939cad33c708926d39badc95e43594ea76690a))
+- Move macOS arm64 jobs from retired macos-14 to macos-15 ([639258c](https://github.com/bjoernschotte/atlcli/commit/639258c8954e4e8bdce5c5baf5445a5084b342ec))
+
+### Refactoring
+
+- **extension:** Split ResearchScreen into model and presentation modules ([cbc0cfd](https://github.com/bjoernschotte/atlcli/commit/cbc0cfd4898995dffcd8950bbd3b0a8e0f01e16f))
+- **extension:** Extract research review cards into their own module ([fb8156f](https://github.com/bjoernschotte/atlcli/commit/fb8156f24aecf6b0e2e635920fe735531f734448))
+
+### Styling
+
+- **extension:** Drop trailing blank line at EOF ([4d99b6b](https://github.com/bjoernschotte/atlcli/commit/4d99b6b3a129515a381ceebd74d641667cc84f9d))
+
+### Testing
+
+- **extension:** Pin Preview/Templates as hidden navigation ([e20bb51](https://github.com/bjoernschotte/atlcli/commit/e20bb51f99f63943860098f0eedb0d4ef0e43701))
+- **extension:** Adapt packed research e2e to the one-time disclosure ([6729fb6](https://github.com/bjoernschotte/atlcli/commit/6729fb6db00e933ad90c6e973c3ebbfc3b50cd8a))
+
+### Thanks
+
+A big thank you to everyone who helped shape this release 🙏
+
+- [@mermshaus](https://github.com/mermshaus) — reported issue #369
+
 ## [2026.10.16] - 2026-10-27
 
 ### Bug Fixes
