@@ -41,6 +41,14 @@ const ISSUE = {
   },
 };
 
+/** A resolved issue, as Jira sends it (an unresolved one carries `resolution: null`). */
+const RESOLVED = {
+  ...ISSUE,
+  id: "3",
+  key: "AB-3",
+  fields: { ...ISSUE.fields, status: { name: "Done" }, resolution: { id: "1", name: "Won't Do" }, resolutiondate: "2026-10-02T09:00:00.000+0000" },
+};
+
 /** ISSUE as Jira returns it for `?expand=changelog,renderedFields` (plus the `expand` list Jira always sends). */
 const EXPANDED = {
   ...ISSUE,
@@ -97,6 +105,7 @@ beforeAll(async () => {
       if (path === "/rest/api/3/issue/AB-1/remotelink" && req.method === "POST") return Response.json({ id: 77, self: "" });
       if (path === "/rest/api/3/issue/AB-1/remotelink/77") return new Response(null, { status: 204 });
       if (path === "/rest/api/3/issue/NOPE-1") return Response.json({ errorMessages: ["Issue does not exist or you do not have permission to see it."], errors: {} }, { status: 404 });
+      if (path === "/rest/api/3/issue/AB-3") return Response.json(RESOLVED);
       if (path === "/rest/api/3/issue/AB-2") return Response.json({ ...ISSUE, id: "2", key: "AB-2" });
       if (path.startsWith("/rest/api/3/issue/") && url.searchParams.get("expand")) return Response.json(EXPANDED);
       if (path.startsWith("/rest/api/3/issue/")) return Response.json(ISSUE);
@@ -363,6 +372,53 @@ describe("errors, detail views, Data Center", () => {
     expect(md.stdout).not.toContain("In Progress");
     // The stub always answers with both sections.
     expect(md.stderr).toContain("Note: renderedFields, changelog only shown with --format json.");
+  });
+
+  test("issue get shows the resolution; null when unresolved, not missing (#369)", async () => {
+    const open = JSON.parse((await run(["issue", "get", "AB-1", "--json"])).stdout).issue;
+    expect(open.resolution).toBeNull();
+    expect(open.resolutionDate).toBeNull();
+    const done = JSON.parse((await run(["issue", "get", "AB-3", "--json"])).stdout).issue;
+    expect(done.resolution).toBe("Won't Do");
+    expect(done.resolutionDate).toBe("2026-10-02T09:00:00.000+0000");
+    expect((await run(["issue", "get", "AB-1"])).stdout).toContain("Resolution  Unresolved");
+    const text = (await run(["issue", "get", "AB-3"])).stdout;
+    expect(text).toContain("Resolution  Won't Do");
+    expect(text).toContain("Resolved    2026-10-02");
+  });
+
+  test("search JSON carries resolution and resolutionDate (#369)", async () => {
+    const [issue] = JSON.parse((await run(["search", "project = AB", "--json"])).stdout).issues;
+    expect(issue).toMatchObject({ resolution: null, resolutionDate: null });
+  });
+
+  test("issue get --fields adds raw fields by id or name; JSON and text view (#369)", async () => {
+    const out = JSON.parse((await run(["issue", "get", "AB-1", "--fields", "Story Points,duedate", "--json"])).stdout);
+    expect(out.issue.fields).toEqual({ customfield_10016: 3, duedate: null });
+    expect(JSON.parse((await run(["issue", "get", "AB-1", "--json"])).stdout).issue.fields).toBeUndefined();
+    expect((await run(["issue", "get", "AB-1", "--fields", "Story Points"])).stdout).toContain("Story Points  3");
+    const md = await run(["issue", "get", "AB-1", "--fields", "duedate", "--format", "markdown"]);
+    expect(md.stderr).toContain("Note: --fields only shown with --format json.");
+    const bad = await run(["issue", "get", "AB-1", "--fields", "nope", "--json"]);
+    expect(bad.exitCode).toBe(1);
+    expect(JSON.parse(bad.stdout).error.message).toContain('--fields: Unknown field "nope"');
+  });
+
+  test("search --fields requests the fields and adds them to JSON and table (#369)", async () => {
+    const json = JSON.parse((await run(["search", "project = AB", "--fields", "customfield_10016", "--json"])).stdout);
+    expect(requests.find((r) => r.path === "/rest/api/3/search/jql")?.body.fields).toEqual(["*navigable", "customfield_10016"]);
+    expect(json.issues[0].fields).toEqual({ customfield_10016: 3 });
+    const table = (await run(["search", "project = AB", "--columns", "key", "--fields", "customfield_10016", "--plain"])).stdout;
+    expect(table).toBe("key\tcustomfield_10016\nAB-1\t3\n");
+  });
+
+  test("issue get warns about unknown --expand values on stderr; stdout unchanged (#369)", async () => {
+    const warned = await run(["issue", "get", "AB-1", "--expand", "resolution", "--json"]);
+    expect(warned.exitCode).toBe(0);
+    expect(warned.stderr).toContain("Warning: Jira ignores unknown --expand value(s) resolution; resolution and resolutionDate are always in the issue output.");
+    expect(JSON.parse(warned.stdout).issue.key).toBe("AB-1");
+    expect((await run(["issue", "get", "AB-1", "--expand", "foo"])).stderr).toContain("use --fields for further fields");
+    expect((await run(["issue", "get", "AB-1", "--expand", "changelog, names", "--json"])).stderr).not.toContain("Warning");
   });
 
   test("Data Center: --lead fails clearly instead of being dropped (regression: silently ignored)", async () => {

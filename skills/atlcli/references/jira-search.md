@@ -39,8 +39,11 @@ assembled from convenience flags:
   "issues": [ … ], "total": 25, "hasMore": true, "nextPageToken": "…" }
 ```
 
-Issues come back flattened (`key`, `summary`, `status`, `type`, `assignee`,
-`labels`, `parent`, and so on), with `description` as the raw ADF document.
+Issues come back flattened (`key`, `summary`, `status`, `resolution`,
+`resolutionDate`, `type`, `assignee`, `labels`, `parent`, and so on), with
+`description` as the raw ADF document. `resolution` is `null` for unresolved
+issues. `--fields <ids or names>` adds further fields per issue under `fields`
+(raw, as Jira sent them) and, in the table, as extra columns.
 
 ### Result sets larger than `--limit`
 

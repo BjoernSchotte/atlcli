@@ -189,7 +189,7 @@ export interface JiraIssueFields {
   creator?: JiraUser;
   created?: string;
   updated?: string;
-  resolutiondate?: string;
+  resolutiondate?: string | null;
   resolution?: JiraResolution | null;
   duedate?: string | null;
   labels?: string[];

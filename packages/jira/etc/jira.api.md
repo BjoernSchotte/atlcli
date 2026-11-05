@@ -904,7 +904,7 @@ export interface JiraIssueFields {
     creator?: JiraUser;
     created?: string;
     updated?: string;
-    resolutiondate?: string;
+    resolutiondate?: string | null;
     resolution?: JiraResolution | null;
     duedate?: string | null;
     labels?: string[];
@@ -2684,7 +2684,7 @@ export interface JiraIssueFields {
     creator?: JiraUser;
     created?: string;
     updated?: string;
-    resolutiondate?: string;
+    resolutiondate?: string | null;
     resolution?: JiraResolution | null;
     duedate?: string | null;
     labels?: string[];
@@ -3387,7 +3387,10 @@ export declare function renderDetails(title: string, rows: Array<[
 export declare function renderFlowText(metrics: FlowMetricsV1, query: string): string;
 
 // export: renderIssueView
-export declare function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount?: number): string;
+export declare function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount?: number, extraFields?: Array<[
+    string,
+    string
+]>): string;
 
 // export: renderSparkline
 export declare function renderSparkline(values: number[]): string;
@@ -4702,7 +4705,7 @@ export interface JiraIssueFields {
     creator?: JiraUser;
     created?: string;
     updated?: string;
-    resolutiondate?: string;
+    resolutiondate?: string | null;
     resolution?: JiraResolution | null;
     duedate?: string | null;
     labels?: string[];
@@ -6482,7 +6485,7 @@ export interface JiraIssueFields {
     creator?: JiraUser;
     created?: string;
     updated?: string;
-    resolutiondate?: string;
+    resolutiondate?: string | null;
     resolution?: JiraResolution | null;
     duedate?: string | null;
     labels?: string[];
@@ -7185,7 +7188,10 @@ export declare function renderDetails(title: string, rows: Array<[
 export declare function renderFlowText(metrics: FlowMetricsV1, query: string): string;
 
 // export: renderIssueView
-export declare function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount?: number): string;
+export declare function renderIssueView(issue: JiraIssue, baseUrl: string, commentCount?: number, extraFields?: Array<[
+    string,
+    string
+]>): string;
 
 // export: renderSparkline
 export declare function renderSparkline(values: number[]): string;

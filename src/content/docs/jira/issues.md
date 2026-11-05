@@ -26,7 +26,8 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--key` | Issue key (required) |
-| `--expand` | Comma-separated Jira expands, e.g. `changelog`, `renderedFields`, `names`, `transitions`. JSON output puts each one next to `issue` as Jira returns it (`changelog`, `renderedFields`, …); the text view adds `changelog` as a **History** section; the markdown view stays description-only and notes the rest on stderr |
+| `--expand` | Comma-separated Jira expands: `changelog`, `renderedFields`, `names`, `schema`, `transitions`, `operations`, `editmeta`, `versionedRepresentations`. JSON output puts each one next to `issue` as Jira returns it (`changelog`, `renderedFields`, …); the text view adds `changelog` as a **History** section; the markdown view stays description-only and notes the rest on stderr. Jira ignores any other value, so atlcli warns about it on stderr; the output stays unchanged |
+| `--fields` | Comma-separated field ids or names (`duedate`, `customfield_10016`, `"Story Points"`). JSON output adds them under `issue.fields` as Jira returns them (`null` when empty); the text view adds one row per field |
 | `--format` | `text` (default): a readable view; `json`; or `markdown`: a YAML front block plus the description as markdown |
 
 Without `--json`, the issue prints as a readable view: fields, the description as markdown, links and the last three comments.
@@ -34,15 +35,16 @@ Without `--json`, the issue prints as a readable view: fields, the description a
 ```
 PROJ-123  Login fails on Safari
 
-Status    In Progress
-Type      Bug
-Priority  High
-Assignee  Ann Lee
-Reporter  Bob Stone
-Labels    mobile, urgent
-Created   2026-10-01
-Updated   2026-10-20
-URL       https://example.atlassian.net/browse/PROJ-123
+Status      In Progress
+Resolution  Unresolved
+Type        Bug
+Priority    High
+Assignee    Ann Lee
+Reporter    Bob Stone
+Labels      mobile, urgent
+Created     2026-10-01
+Updated     2026-10-20
+URL         https://example.atlassian.net/browse/PROJ-123
 
 Description
   Users report a 500 error on iOS Safari.
@@ -62,6 +64,9 @@ Content kept only for round trips (`<!--adf:…-->` markers) shows as `[…]` in
 ```bash
 # Get issue with changelog
 atlcli jira issue get --key PROJ-123 --expand changelog
+
+# Add fields the flattened issue leaves out (ids or names)
+atlcli jira issue get --key PROJ-123 --fields duedate,"Story Points" --json | jq .issue.fields
 
 # JSON output (includes descriptionMarkdown next to the raw ADF description)
 atlcli jira issue get --key PROJ-123 --json
@@ -567,6 +572,8 @@ atlcli jira issue get --key PROJ-123 --json
     "summary": "Fix login bug",
     "status": "In Progress",
     "statusCategory": "indeterminate",
+    "resolution": null,
+    "resolutionDate": null,
     "type": "Bug",
     "priority": "High",
     "assignee": "Alice Lee",
@@ -583,6 +590,15 @@ atlcli jira issue get --key PROJ-123 --json
 ```
 
 `description` is the raw value from Jira (ADF on Cloud, a string on Data Center); `descriptionMarkdown` is the same content as markdown.
+
+`resolution` (the resolution name) and `resolutionDate` (ISO 8601) are always present; `null` means the issue is unresolved. The same flattened issue appears in `search`, `my` and `filter run`. With `--fields`, an extra `fields` object holds the requested fields keyed by field id, as Jira sent them.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Warning: Jira ignores unknown --expand value(s) …` | The value is not an expandable section, e.g. `--expand resolution` | Resolution is always in the output; use `--fields` for other fields |
+| `--fields: Unknown field "…"` | No field has that id or name; names are localized on non-English sites (`Erledigt`, `Lösung`) | `atlcli jira field search <text>` lists ids and names |
 
 ## Errors
 

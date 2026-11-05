@@ -186,7 +186,7 @@ describe("issue table", () => {
     expect(needsFieldList(["Story Points"])).toBe(true);
     const fields = [{ id: "customfield_10016", name: "Story Points" }] as never;
     expect(resolveColumns(["key", "type", "Story Points"], fields)).toEqual(["key", "issuetype", "customfield_10016"]);
-    expect(() => resolveColumns(["nope"], fields)).toThrow('Unknown column "nope"');
+    expect(() => resolveColumns(["nope"], fields)).toThrow('Unknown field "nope"');
   });
 
   test("cells: names, joined arrays, numbers, empty", () => {
