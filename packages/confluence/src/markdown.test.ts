@@ -242,7 +242,9 @@ describe("storageToMarkdown", () => {
     expect(md).not.toContain("<colgroup");
     expect(md).not.toContain("<col");
     // Proper markdown table, emoticon in cell mapped to :name: convention.
+    // Column widths survive as a layout comment above the table.
     expect(md).toBe(
+      '<!--atlcli:table/v1 cols="226.0,226.0"-->\n\n' +
       "| **Next Steps** | **Status** |\n" +
       "| --- | --- |\n" +
       "| :warning: Careful |  |\n"

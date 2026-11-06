@@ -111,7 +111,10 @@ const md = new MarkdownIt({
   html: true,  // Allow HTML passthrough for macro placeholders
   linkify: true,
   breaks: false,
-  typographer: true,
+  // No smart quotes or (c)/--/... replacements: the Markdown is a sync copy of
+  // the page, so a push must write the characters exactly as written. English
+  // curly quotes are also wrong for most other languages.
+  typographer: false,
 })
   .use(taskLists, { label: true, labelAfter: false })
   .use(sub)  // ~subscript~
@@ -216,9 +219,12 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return `<!--ATLCLI_NESTED_${nested.length - 1}-->`;
   });
 
+  // Inline macros (status ... bg) use plain-text placeholders: an HTML comment
+  // at the start of a line opens a raw HTML block in markdown-it, which drops
+  // the line's hard break and leaves the macro outside its paragraph.
   // Handle inline status macros: {status:color}text{status}
   let processed = content.replace(STATUS_REGEX, (_, color, text) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const normalizedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
     const html = `<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">${escapeHtml(normalizedColor)}</ac:parameter><ac:parameter ac:name="title">${escapeHtml(text.trim())}</ac:parameter></ac:structured-macro>`;
     macros.push({ placeholder, html });
@@ -227,7 +233,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle anchor macros: {#anchor-name}
   processed = processed.replace(ANCHOR_REGEX, (_, anchorName) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const html = `<ac:structured-macro ac:name="anchor"><ac:parameter ac:name="">${escapeHtml(anchorName)}</ac:parameter></ac:structured-macro>`;
     macros.push({ placeholder, html });
     return placeholder;
@@ -245,7 +251,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
       );
     }
 
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     let html = `<ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">${escapeHtml(issueKey)}</ac:parameter>`;
     if (jiraOpts) {
       // Parse options - handle columns= specially since it can contain commas
@@ -273,7 +279,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle date macros: {date:2024-01-15}
   processed = processed.replace(DATE_REGEX, (_, dateValue) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const html = `<time datetime="${escapeHtml(dateValue)}" />`;
     macros.push({ placeholder, html });
     return placeholder;
@@ -283,7 +289,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
   processed = processed.replace(EMOTICON_REGEX, (match, name) => {
     const emoticonName = normalizeEmojiShortName(name);
     if (!emoticonName) return match;
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const html = `<ac:emoticon ac:name="${escapeHtml(emoticonName)}" />`;
     macros.push({ placeholder, html });
     return placeholder;
@@ -293,7 +299,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
   processed = processed.replace(MENTION_REGEX, (_, escapedName: string, id: string) => {
     // `\[` and `\]` let a name carry brackets ("Max Muster [extern]"); an empty name is unnamed.
     const displayName = escapedName.replace(/\\(.)/g, "$1") || id;
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const user = id.startsWith(USERKEY_MENTION_PREFIX)
       ? `ri:userkey="${escapeHtml(id.slice(USERKEY_MENTION_PREFIX.length))}"`
       : `ri:account-id="${escapeHtml(id)}"`;
@@ -306,7 +312,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle colored text: {color:red}text{color}
   processed = processed.replace(COLOR_REGEX, (_, color, text) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const normalizedColor = color.trim();
     // Render inner markdown and strip wrapping <p> tags for inline use
     const innerHtml = md.render(text.trim()).replace(/^<p>|<\/p>\n?$/g, '');
@@ -317,7 +323,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle background color: {bg:yellow}text{bg}
   processed = processed.replace(BG_COLOR_REGEX, (_, color, text) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const normalizedColor = color.trim();
     const innerHtml = md.render(text.trim()).replace(/^<p>|<\/p>\n?$/g, '');
     const html = `<span style="background-color: ${escapeHtml(normalizedColor)};">${innerHtml}</span>`;
@@ -1173,6 +1179,8 @@ ${md.render(trimmedContent).trim()}
   // Render markdown
   let result = md.render(processed);
 
+  result = restoreTableLayout(result);
+
   // Convert task lists to Confluence ac:task-list format
   // markdown-it-task-lists produces: <ul class="contains-task-list"><li class="task-list-item"><input type="checkbox" disabled> text</li></ul>
   result = convertTaskListsToConfluence(result);
@@ -1181,8 +1189,8 @@ ${md.render(trimmedContent).trim()}
   // earlier ones (a status inside an info body), so restore outermost first.
   // Function replacers keep `$&`-like text in raw macro XML literal.
   const restore = (placeholder: string, html: string) => {
-    // The placeholder might be wrapped in <p> tags
-    result = result.replace(`<p>${placeholder}</p>`, () => html);
+    // A block placeholder might be wrapped in <p> tags; inline ones stay in theirs.
+    if (!placeholder.startsWith("ATLCLIINLINE")) result = result.replace(`<p>${placeholder}</p>`, () => html);
     result = result.replace(placeholder, () => html);
   };
   for (const { placeholder, html } of [...macros].reverse()) restore(placeholder, html);
@@ -1262,6 +1270,57 @@ export function stripTableColumnMetadata(storage: string): string {
   storage = storage.replace(/<colgroup\b[^>]*>[\s\S]*?<\/colgroup>/gi, "");
   storage = storage.replace(/<col\b[^>]*\/?>/gi, "");
   return storage;
+}
+
+const TABLE_LAYOUT_COMMENT_REGEX = /<!--atlcli:table\/v1((?:\s+[\w:-]+="[^"]*")*)\s*-->/;
+
+/**
+ * Put a `<div data-atlcli-table>` before each table that has layout metadata:
+ * its attributes (`data-table-width`, `data-layout`, ...) and the `<col>`
+ * widths. storageToMarkdown writes it as an `<!--atlcli:table/v1 ...-->`
+ * comment above the Markdown table and markdownToStorage restores it.
+ */
+function markTableLayout(storage: string): string {
+  return storage.replace(
+    /<table\b([^>]*)>(\s*<colgroup\b[^>]*>([\s\S]*?)<\/colgroup>)?/gi,
+    (match, attrs: string, _colgroup, cols: string | undefined) => {
+      const kept = Array.from(attrs.matchAll(/([\w:-]+)="([^"]*)"/g))
+        .filter(([, name, value]) => !/(^|:)local-id$/.test(name) && !value.includes("--"))
+        .map(([, name, value]) => `${name}="${value}"`);
+      // Absent and "default" layout are the same in Confluence: no marker noise.
+      if (kept.length === 1 && kept[0] === 'data-layout="default"') kept.length = 0;
+      const widths = Array.from((cols ?? "").matchAll(/<col\b[^>]*>/gi), ([col]) =>
+        col.match(/width:\s*([\d.]+)px/i)?.[1] ?? "");
+      if (widths.some(Boolean)) kept.push(`cols="${widths.join(",")}"`);
+      if (kept.length === 0) return match;
+      return `<div data-atlcli-table="${escapeHtml(kept.join(" "))}">table</div>${match}`;
+    },
+  );
+}
+
+/**
+ * Restore the `<!--atlcli:table/v1 ...-->` layout comment onto the table
+ * markdown-it rendered right after it. Column widths only come back while the
+ * column count still matches. Comments not followed by a table are dropped.
+ */
+function restoreTableLayout(html: string): string {
+  return html.replace(
+    new RegExp(`${TABLE_LAYOUT_COMMENT_REGEX.source}\\s*(<table>)?`, "g"),
+    (_, attrs: string, table: string | undefined, offset: number) => {
+      if (!table) return "";
+      const firstRow = html.slice(offset).match(/<tr>([\s\S]*?)<\/tr>/)?.[1] ?? "";
+      const columns = (firstRow.match(/<t[hd]\b/g) ?? []).length;
+      let cols = "";
+      const tableAttrs = attrs.replace(/\s+cols="([^"]*)"/, (_m, widths: string) => {
+        const list = widths.split(",");
+        if (list.length === columns) {
+          cols = `<colgroup>${list.map((w) => w ? `<col style="width: ${w}px;" />` : "<col />").join("")}</colgroup>`;
+        }
+        return "";
+      });
+      return `<table${tableAttrs}>${cols}`;
+    },
+  );
 }
 
 /**
@@ -1490,11 +1549,6 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     },
   );
 
-  // Strip table <colgroup>/<col> column-sizing metadata emitted by the modern
-  // Confluence Cloud editor. See {@link stripTableColumnMetadata} for the full
-  // rationale (shared with the spec-004 export-block walker).
-  storage = stripTableColumnMetadata(storage);
-
   // Convert smart links with data-card-appearance (inline mode)
   // <a href="..." data-card-appearance="inline">text</a>
   storage = storage.replace(
@@ -1525,6 +1579,10 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   // ever run on one macro without nested macros: unknown macros are kept
   // whole first, then known macros convert innermost first.
   storage = preserveUnknownMacros(storage);
+  // Table layout (width, alignment, column widths) moves into a marker the
+  // Markdown keeps; then the colgroup goes, see {@link stripTableColumnMetadata}.
+  // Runs after unknown macros are kept raw, so their XML stays byte for byte.
+  storage = stripTableColumnMetadata(markTableLayout(storage));
   storage = mapLeafMacros(storage, (macro) => convertStorageElements(macro, options));
   return convertStorageElements(storage, options);
 }
@@ -2507,6 +2565,8 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       if (node.nodeName === "PRE" && node.firstChild?.nodeName === "CODE") {
         return renderCodeFence(node);
       }
+      const spacer = spacerParagraph(node);
+      if (spacer) return spacer;
       // A blank wrapper may contain a code fence rendered by a child.
       return (node as any).isBlock ? `\n\n${content}\n\n` : content;
     },
@@ -2534,6 +2594,19 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
 
       return `${prefix}${normalizedContent} |`;
     },
+  });
+
+  service.addRule("tableLayout", {
+    filter: (node) => node.nodeName === "DIV" && (node as any).hasAttribute?.("data-atlcli-table"),
+    // A comment inside a table cell would break the row; nested tables fall back.
+    replacement: (_content, node) => insideCellOrList(node)
+      ? ""
+      : `\n\n<!--atlcli:table/v1 ${(node as any).getAttribute("data-atlcli-table")}-->\n\n`,
+  });
+
+  service.addRule("spacerParagraph", {
+    filter: (node) => spacerParagraph(node) !== undefined,
+    replacement: (_content, node) => spacerParagraph(node)!,
   });
 
   // Handle inline status macro
@@ -3170,6 +3243,30 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
   // (the raw XML is preserved via CONFLUENCE_MACRO_REGEX). Rewrite those into a
   // managed preview block so the source/preview pair is visible to docs push.
   return renderDrawioPreviewBlocks(markdown).trim() + "\n";
+}
+
+function insideCellOrList(node: any): boolean {
+  for (let parent = node.parentNode; parent; parent = parent.parentNode) {
+    if (["TD", "TH", "LI"].includes(parent.nodeName)) return true;
+  }
+  return false;
+}
+
+/**
+ * Empty paragraphs (`<p><br /></p>`, `<p>&nbsp;</p>`) are vertical spacing in
+ * Confluence. Markdown has no empty paragraph, so keep them as raw HTML, which
+ * markdownToStorage passes through unchanged. Not in table cells or lists,
+ * where a raw HTML block would break the surrounding Markdown.
+ */
+function spacerParagraph(node: any): string | undefined {
+  if (node.nodeName !== "P" || insideCellOrList(node)) return undefined;
+  let inner = "";
+  for (const child of Array.from(node.childNodes as ArrayLike<any>)) {
+    if (child.nodeName === "BR") inner += "<br />";
+    else if (child.nodeType === 3 && /^[\s\u00a0]*$/.test(child.nodeValue)) inner += child.nodeValue.replace(/[^\u00a0]/g, "").replace(/\u00a0/g, "&nbsp;");
+    else return undefined;
+  }
+  return inner ? `\n\n<p>${inner}</p>\n\n` : undefined;
 }
 
 function renderDrawioPreviewBlocks(markdown: string): string {
