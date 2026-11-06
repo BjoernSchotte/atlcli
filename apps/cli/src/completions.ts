@@ -74,6 +74,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
     "validate",
   ],
   wiki: [
+    "blog",
     "docs",
     "mount",
     "my",
@@ -115,6 +116,7 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
       "update",
     ],
     space: ["create", "get", "list"],
+    blog: ["create", "delete", "get", "list", "update"],
     template: [
       "copy",
       "create",
@@ -258,7 +260,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   // wiki docs flags
   "wiki docs init": ["--ancestor", "--page-id", "--space"],
   "wiki docs pull": ["--auto-create", "--dry-run", "--label"],
-  "wiki docs push": ["--dry-run", "--force", "--validate"],
+  "wiki docs push": ["--force", "--validate"],
   "wiki docs sync": ["--dry-run", "--label"],
   "wiki docs watch": ["--interval"],
   "wiki docs check": ["--fix"],
@@ -305,6 +307,11 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "wiki page get": ["--format", "--id", "--markdown"],
   "wiki page create": ["--body", "--file", "--parent", "--space", "--template", "--title"],
   "wiki page update": ["--body", "--file", "--id", "--title"],
+  "wiki blog create": ["--body", "--restriction", "--space", "--title"],
+  "wiki blog update": ["--body", "--id", "--title"],
+  "wiki blog delete": ["--confirm", "--id"],
+  "wiki blog list": ["--limit", "--space"],
+  "wiki blog get": ["--id"],
   "wiki page delete": ["--cql", "--dry-run", "--id"],
   "wiki page archive": ["--cql", "--dry-run", "--id"],
   "wiki page move": ["--after", "--before", "--first", "--id", "--last", "--parent", "--position"],

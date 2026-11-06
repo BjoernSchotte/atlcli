@@ -83,7 +83,8 @@ atlcli wiki page create --space TEAM --title "Child Page" --body ./child.md --pa
 
 ## Update Page
 
-Update an existing page from a markdown file:
+Update an existing page (or blog post) from a markdown file. The content type
+is preserved, so this also works for blog posts:
 
 ```bash
 atlcli wiki page update --id 12345 --body ./updated-content.md
@@ -94,8 +95,8 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--id` | Page ID (required) |
-| `--body` | Markdown file with new content (required) |
-| `--title` | Change title |
+| `--body` | Markdown file with new content (required unless `--title` is given) |
+| `--title` | Change title (title-only update keeps the body) |
 
 ### Examples
 
@@ -555,6 +556,7 @@ atlcli wiki page delete --id 12345 --confirm
 ## Related Topics
 
 - [Sync](sync.md) - Bidirectional sync between local files and Confluence
+- [Blog Posts](blog-posts.md) - Create, update, and delete blog posts
 - [Folders](folders.md) - Organize pages with folders (Cloud only)
 - [Labels](labels.md) - Tag and filter pages with labels
 - [History](history.md) - View and restore page versions

@@ -1,5 +1,6 @@
 import { OutputOptions, output, hasFlag } from "@atlcli/core";
 import { handlePage } from "./page.js";
+import { handleBlog } from "./blog.js";
 import { handleSpace } from "./space.js";
 import { handleDocs } from "./docs.js";
 import { handleSearch, handleRecent, handleMy } from "./search.js";
@@ -28,6 +29,9 @@ export async function handleWiki(
   switch (sub) {
     case "page":
       await handlePage(rest, flags, opts);
+      return;
+    case "blog":
+      await handleBlog(rest, flags, opts);
       return;
     case "space":
       await handleSpace(rest, flags, opts);
@@ -81,6 +85,7 @@ Confluence wiki operations.
 
 Commands:
   page      Page operations (list, get, create, update, delete, move, copy)
+  blog      Blog post operations (list, get, create, update, delete)
   space     Space operations (list, get, create)
   docs      Local sync (init, pull, push, status, watch, sync)
   search    Search Confluence content with CQL
@@ -100,6 +105,7 @@ Options:
 
 Examples:
   atlcli wiki page list --space TEAM
+  atlcli wiki blog create --space TEAM --title "News" --body post.md --restriction private
   atlcli wiki space get --key DOCS
   atlcli wiki docs pull ./docs --space TEAM
   atlcli wiki search "API docs" --space DEV

@@ -249,7 +249,7 @@ export async function handleManifestBatch(
           await applyRestriction(
             client,
             id,
-            { schema: "atlcli.docx-destination-governance/1", restriction: { mode: "private" }, staging: { mode: "none" }, labels: [], contentProperties: [] },
+            { restriction: { mode: "private" } },
             me.accountId,
           );
         },

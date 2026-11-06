@@ -238,6 +238,8 @@ export type ConfluencePage = {
   spaceKey?: string;
   parentId?: string | null;
   ancestors?: { id: string; title: string }[];
+  /** Content type as reported by Confluence (`page`, `blogpost`, ...). */
+  type?: string;
 };
 
 export type ConfluenceUser = {
@@ -1309,6 +1311,7 @@ export class ConfluenceClient {
       spaceKey: data.space?.key,
       parentId,
       ancestors,
+      ...(typeof data.type === "string" ? { type: data.type } : {}),
     };
   }
 
@@ -2077,9 +2080,14 @@ export class ConfluenceClient {
     parentId?: string;
     /** Properties persisted in the initial content creation request. */
     properties?: Record<string, unknown>;
+    /** Content type; blog posts have no parent. Default `page`. */
+    type?: "page" | "blogpost";
+    /** `draft` creates an unpublished draft (see publishDraft). Default `current`. */
+    status?: "current" | "draft";
   }): Promise<ConfluencePage> {
     const body: any = {
-      type: "page",
+      type: params.type ?? "page",
+      ...(params.status ? { status: params.status } : {}),
       title: params.title,
       space: { key: params.spaceKey },
       body: {
@@ -2121,6 +2129,7 @@ export class ConfluenceClient {
       spaceKey: data.space?.key,
       parentId,
       ancestors,
+      ...(typeof data.type === "string" ? { type: data.type } : {}),
     };
   }
 
@@ -2368,12 +2377,14 @@ export class ConfluenceClient {
     title: string;
     storage: string;
     version: number;
+    /** Must match the existing content type (Confluence rejects a mismatch). Default `page`. */
+    type?: string;
   }): Promise<ConfluencePage> {
     const data = (await this.request(`/content/${params.id}`, {
       method: "PUT",
       body: {
         id: params.id,
-        type: "page",
+        type: params.type ?? "page",
         title: params.title,
         version: { number: params.version },
         body: {
@@ -2390,7 +2401,36 @@ export class ConfluenceClient {
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
       version: data.version?.number,
       spaceKey: data.space?.key,
+      ...(typeof data.type === "string" ? { type: data.type } : {}),
     };
+  }
+
+  /**
+   * Publish a draft created with `createPage({ status: "draft" })`. Confluence
+   * keeps restrictions set on the draft, so restrict-then-publish never exposes
+   * the content. The publish PUT requires the space key and version 1.
+   */
+  async publishDraft(params: {
+    id: string;
+    type: "page" | "blogpost";
+    spaceKey: string;
+    title: string;
+    storage: string;
+  }): Promise<ConfluencePage> {
+    const data = (await this.request(`/content/${params.id}`, {
+      method: "PUT",
+      query: { status: "draft" },
+      body: {
+        id: params.id,
+        type: params.type,
+        status: "current",
+        title: params.title,
+        space: { key: params.spaceKey },
+        version: { number: 1 },
+        body: { storage: { value: params.storage, representation: "storage" } },
+      },
+    })) as any;
+    return this.parsePageMetadata(data);
   }
 
   /**
