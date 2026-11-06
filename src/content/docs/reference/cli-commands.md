@@ -123,7 +123,7 @@ atlcli wiki docs pull <dir> --version <n>    # Pull specific version
 atlcli wiki docs pull <dir> --label <name>   # Pull pages with label
 atlcli wiki docs pull <dir> --force          # Overwrite local edits (markdown + attachments)
 atlcli wiki docs push <dir>                  # Push to Confluence
-atlcli wiki docs push <dir> --dry-run        # Preview changes
+atlcli wiki docs status <dir>                # Preview before push (push has no --dry-run)
 atlcli wiki docs push <dir> --force          # Force overwrite
 atlcli wiki docs push <dir> --legacy-editor  # Use legacy editor (v1)
 atlcli wiki docs sync <dir> --page-id <id>   # Start the bidirectional sync daemon

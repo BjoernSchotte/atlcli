@@ -1,11 +1,13 @@
 /**
  * Blog post support: `wiki blog create|delete|list`, `page update` / `docs push`
  * preserving the `blogpost` content type (Confluence 400s on a `page` PUT for a
- * blog post).
+ * blog post), and two `docs push` regressions (ignored --dry-run, relative
+ * workspace root auto-created as a folder).
  *
  * Runs the real CLI against a Bun HTTP stub with a sandboxed HOME.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -201,5 +203,27 @@ describe("blogListCql", () => {
   it("scopes to a space and escapes quotes", () => {
     expect(blogListCql(undefined)).toBe("type = blogpost");
     expect(blogListCql('~a"b')).toBe('space = "~a\\"b" AND type = blogpost');
+  });
+});
+
+describe("docs push regressions", () => {
+  it("rejects --dry-run instead of pushing for real", async () => {
+    const r = await runCli(["wiki", "docs", "push", ".", "--dry-run"]);
+    expect(r.exitCode).not.toBe(0);
+    expect(r.all).toMatch(/no --dry-run/);
+    expect(requests).toEqual([]);
+  });
+
+  it("push ./ws from outside does not auto-create the workspace root as a folder", async () => {
+    const ws = join(work, "ws");
+    await mkdir(ws);
+    const init = await runCli(["wiki", "docs", "init", ".", "--page-id", BLOG_ID, "--space", "DOCSY"], ws);
+    expect(init.exitCode, init.all).toBe(0);
+    await writeFile(join(ws, "post.md"), `---\natlcli:\n  id: "${BLOG_ID}"\n  title: "blogpost fixture"\n---\n\nBody\n`);
+    requests = [];
+    const r = await runCli(["wiki", "docs", "push", "./ws", "--force"]);
+    expect(r.all).not.toMatch(/Auto-created folder|Created folder/);
+    expect(existsSync(join(ws, "index.md"))).toBe(false);
+    expect(requests.some((q) => q.method === "POST")).toBe(false);
   });
 });

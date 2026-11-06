@@ -260,7 +260,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   // wiki docs flags
   "wiki docs init": ["--ancestor", "--page-id", "--space"],
   "wiki docs pull": ["--auto-create", "--dry-run", "--label"],
-  "wiki docs push": ["--dry-run", "--force", "--validate"],
+  "wiki docs push": ["--force", "--validate"],
   "wiki docs sync": ["--dry-run", "--label"],
   "wiki docs watch": ["--interval"],
   "wiki docs check": ["--fix"],

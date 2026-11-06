@@ -1800,6 +1800,10 @@ export async function validatePushTargets(
 async function handlePush(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const pathArg = args[0] ?? getFlag(flags, "dir") ?? ".";
   const pageIdFlag = getFlag(flags, "page-id");
+  // push writes immediately; an ignored --dry-run used to push (and create folders) for real.
+  if (hasFlag(flags, "dry-run")) {
+    fail(opts, 1, ERROR_CODES.USAGE, "docs push has no --dry-run. Preview with 'atlcli wiki docs status' or 'atlcli wiki docs sync --dry-run'.");
+  }
   const client = await getClient(flags, opts);
 
   // Determine if pushing single file, by page ID, or directory
@@ -1927,7 +1931,9 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
 
     // Scan all files to find directories that need folder index.md
     for (const filePath of files) {
-      let dir = dirname(filePath);
+      // Absolute: a relative path (`push ./ws` from outside) never equals the
+      // resolved root, so the root itself was auto-created as a folder.
+      let dir = resolve(dirname(filePath));
       const atlcliDirResolved = resolve(atlcliDir);
 
       while (dir !== atlcliDirResolved && dir !== "/" && dir !== ".") {
