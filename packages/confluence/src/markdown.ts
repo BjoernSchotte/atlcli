@@ -219,9 +219,12 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return `<!--ATLCLI_NESTED_${nested.length - 1}-->`;
   });
 
+  // Inline macros (status ... bg) use plain-text placeholders: an HTML comment
+  // at the start of a line opens a raw HTML block in markdown-it, which drops
+  // the line's hard break and leaves the macro outside its paragraph.
   // Handle inline status macros: {status:color}text{status}
   let processed = content.replace(STATUS_REGEX, (_, color, text) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const normalizedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
     const html = `<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">${escapeHtml(normalizedColor)}</ac:parameter><ac:parameter ac:name="title">${escapeHtml(text.trim())}</ac:parameter></ac:structured-macro>`;
     macros.push({ placeholder, html });
@@ -230,7 +233,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle anchor macros: {#anchor-name}
   processed = processed.replace(ANCHOR_REGEX, (_, anchorName) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const html = `<ac:structured-macro ac:name="anchor"><ac:parameter ac:name="">${escapeHtml(anchorName)}</ac:parameter></ac:structured-macro>`;
     macros.push({ placeholder, html });
     return placeholder;
@@ -248,7 +251,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
       );
     }
 
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     let html = `<ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">${escapeHtml(issueKey)}</ac:parameter>`;
     if (jiraOpts) {
       // Parse options - handle columns= specially since it can contain commas
@@ -276,7 +279,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle date macros: {date:2024-01-15}
   processed = processed.replace(DATE_REGEX, (_, dateValue) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const html = `<time datetime="${escapeHtml(dateValue)}" />`;
     macros.push({ placeholder, html });
     return placeholder;
@@ -286,7 +289,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
   processed = processed.replace(EMOTICON_REGEX, (match, name) => {
     const emoticonName = normalizeEmojiShortName(name);
     if (!emoticonName) return match;
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const html = `<ac:emoticon ac:name="${escapeHtml(emoticonName)}" />`;
     macros.push({ placeholder, html });
     return placeholder;
@@ -296,7 +299,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
   processed = processed.replace(MENTION_REGEX, (_, escapedName: string, id: string) => {
     // `\[` and `\]` let a name carry brackets ("Max Muster [extern]"); an empty name is unnamed.
     const displayName = escapedName.replace(/\\(.)/g, "$1") || id;
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const user = id.startsWith(USERKEY_MENTION_PREFIX)
       ? `ri:userkey="${escapeHtml(id.slice(USERKEY_MENTION_PREFIX.length))}"`
       : `ri:account-id="${escapeHtml(id)}"`;
@@ -309,7 +312,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle colored text: {color:red}text{color}
   processed = processed.replace(COLOR_REGEX, (_, color, text) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const normalizedColor = color.trim();
     // Render inner markdown and strip wrapping <p> tags for inline use
     const innerHtml = md.render(text.trim()).replace(/^<p>|<\/p>\n?$/g, '');
@@ -320,7 +323,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
   // Handle background color: {bg:yellow}text{bg}
   processed = processed.replace(BG_COLOR_REGEX, (_, color, text) => {
-    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
     const normalizedColor = color.trim();
     const innerHtml = md.render(text.trim()).replace(/^<p>|<\/p>\n?$/g, '');
     const html = `<span style="background-color: ${escapeHtml(normalizedColor)};">${innerHtml}</span>`;
@@ -1186,8 +1189,8 @@ ${md.render(trimmedContent).trim()}
   // earlier ones (a status inside an info body), so restore outermost first.
   // Function replacers keep `$&`-like text in raw macro XML literal.
   const restore = (placeholder: string, html: string) => {
-    // The placeholder might be wrapped in <p> tags
-    result = result.replace(`<p>${placeholder}</p>`, () => html);
+    // A block placeholder might be wrapped in <p> tags; inline ones stay in theirs.
+    if (!placeholder.startsWith("ATLCLIINLINE")) result = result.replace(`<p>${placeholder}</p>`, () => html);
     result = result.replace(placeholder, () => html);
   };
   for (const { placeholder, html } of [...macros].reverse()) restore(placeholder, html);

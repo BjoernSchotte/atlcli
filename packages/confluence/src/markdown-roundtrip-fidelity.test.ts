@@ -85,6 +85,16 @@ describe("pull -> push round-trip fidelity", () => {
     expect(roundTrip(`<p>a</p><p><br /><br /></p><p>b</p>`)).toBe(`<p>a</p>\n<p><br /><br /></p>\n<p>b</p>\n`);
   });
 
+  test("hard breaks before lines starting with inline syntax survive", () => {
+    const storage =
+      `<p>Example Corp<br /><span style="background-color: rgb(254,222,200);">Street 1</span><br />` +
+      `<span style="background-color: rgb(254,222,200);">12345 City</span></p>`;
+    expect(roundTrip(storage)).toBe(
+      `<p>Example Corp<br /><span style="background-color: rgb(254,222,200);">Street 1</span><br />` +
+      `<span style="background-color: rgb(254,222,200);">12345 City</span></p>\n`,
+    );
+  });
+
   test("a second pull of the pushed storage yields the same Markdown", () => {
     const md = storageToMarkdown(PAGE);
     expect(storageToMarkdown(markdownToStorage(md))).toBe(md);
