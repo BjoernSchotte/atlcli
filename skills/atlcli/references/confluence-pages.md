@@ -149,6 +149,7 @@ both (and `wiki docs push`) keep the existing content type and leave
 restrictions alone. `blog delete` refuses ids that are not blog posts and moves
 the post to the trash. Blog posts have no `--parent`.
 
+## Structure: parents, order, copies
 
 ```bash
 atlcli wiki page move --id 12345 --parent 67890 --json
