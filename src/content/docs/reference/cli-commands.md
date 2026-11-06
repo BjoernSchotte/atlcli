@@ -203,6 +203,7 @@ atlcli wiki page create --space <key> --title <title> --body <file>
 atlcli wiki page create --space <key> --title <title> --body <file> --parent <id>
 atlcli wiki page update --id <id> --body <file>
 atlcli wiki page update --id <id> --body <file> --title <title>
+atlcli wiki page update --id <id> --title <title>   # Title only; keeps type (page or blog post)
 atlcli wiki page delete --id <id> --confirm
 atlcli wiki page delete --cql <query> --dry-run  # Bulk delete preview
 atlcli wiki page delete --cql <query> --confirm  # Bulk delete
@@ -234,6 +235,17 @@ atlcli wiki page link-issue --id <id> --issue <key> --comment  # With comment
 atlcli wiki page issues --id <id>       # List linked Jira issues
 atlcli wiki page issues --id <id> --project <key>  # Filter by project
 atlcli wiki page unlink-issue --id <id> --issue <key>  # Remove link
+```
+
+### Blog Posts
+
+```bash
+atlcli wiki blog list [--space <key>] [--limit <n>]
+atlcli wiki blog get --id <id>
+atlcli wiki blog create --space <key> --title <title> --body <file>
+atlcli wiki blog create --space <key> --title <title> --body <file> --restriction private
+atlcli wiki blog update --id <id> [--body <file>] [--title <title>]
+atlcli wiki blog delete --id <id> --confirm
 ```
 
 ### Page History

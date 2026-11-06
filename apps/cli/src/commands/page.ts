@@ -387,17 +387,20 @@ export function parseVarFlags(flags: Record<string, string | boolean | string[]>
 async function handleUpdate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const bodyPath = getFlag(flags, "body");
-  if (!id || !bodyPath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--id and --body are required.");
+  const newTitle = getFlag(flags, "title");
+  if (!id || (!bodyPath && !newTitle)) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id and --body (or --title) are required.");
   }
   const client = await getClient(flags, opts);
-  const convOpts = await getConversionOptions(flags, opts);
   const current = await client.getPage(id);
-  const title = getFlag(flags, "title") ?? current.title;
-  const markdown = await readTextFile(bodyPath);
-  const storage = markdownToStorage(markdown, convOpts);
+  const title = newTitle ?? current.title;
+  // Title-only update keeps the current body.
+  const storage = bodyPath
+    ? markdownToStorage(await readTextFile(bodyPath), await getConversionOptions(flags, opts))
+    : current.storage;
   const version = (current.version ?? 1) + 1;
-  const page = await client.updatePage({ id, title, storage, version });
+  // Preserve the content type: Confluence rejects a blog post update sent as `page`.
+  const page = await client.updatePage({ id, title, storage, version, type: current.type });
   output({ schemaVersion: "1", page }, opts);
 }
 
@@ -2321,7 +2324,8 @@ Commands:
   get --id <id>
   list [--cql <query>] [--limit <n>] [--label <label>] [--space <key>]
   create --space <key> --title <title> (--body <file> | --template <name> [--var k=v ...])
-  update --id <id> --body <file> [--title <title>]
+  update --id <id> [--body <file>] [--title <title>]
+                                       Update body and/or title; keeps the content type (works for blog posts)
   move --id <id> --parent <parent-id>  Move page to new parent
   move <file> --before <target>        Move page before sibling
   move <file> --after <target>         Move page after sibling

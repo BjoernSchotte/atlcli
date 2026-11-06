@@ -2740,7 +2740,7 @@ async function pushFile(params: {
     current ??= await client.getPage(pageId);
     const title = frontmatter?.title || legacyMeta?.title || current.title;
     const version = (current.version ?? 1) + 1;
-    const page = await client.updatePage({ id: pageId, title, storage, version });
+    const page = await client.updatePage({ id: pageId, title, storage, version, type: current.type });
 
     // Update state if available
     if (atlcliDir && state) {
