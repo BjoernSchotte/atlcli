@@ -1,6 +1,6 @@
 ---
 name: confluence-pages
-description: Confluence page and space operations (read, create, update, move, label, comment, history, diff, tasks to Jira issues, CQL search).
+description: Confluence page, blog post and space operations (read, create, update, move, label, comment, history, diff, tasks to Jira issues, CQL search).
 metadata:
   tags: confluence, pages, spaces, cql, labels, comments, history, diff
 ---
@@ -15,6 +15,7 @@ Markdown, use [confluence-docs-sync.md](confluence-docs-sync.md) instead.
 - [Finding pages](#finding-pages)
 - [Reading a page](#reading-a-page)
 - [Creating and updating](#creating-and-updating)
+- [Blog posts](#blog-posts)
 - [Structure: parents, order, copies](#structure-parents-order-copies)
 - [Labels](#labels)
 - [Comments](#comments)
@@ -127,6 +128,26 @@ atlcli wiki page convert --id 12345 --to-legacy-editor --json
 ```
 
 Exactly one of the two flags is required.
+
+## Blog posts
+
+```bash
+atlcli wiki blog create --space '~jdoe' --title 'Notes' --body ./post.md --json
+atlcli wiki blog create --space TEAM --title 'Draft' --body ./post.md --restriction private --json
+atlcli wiki blog update --id 12345 --body ./post.md --title 'New title' --json
+atlcli wiki blog update --id 12345 --title 'New title' --json   # body unchanged
+atlcli wiki blog get --id 12345 --json
+atlcli wiki blog list --space TEAM --limit 10 --json
+atlcli wiki blog delete --id 12345 --confirm --json
+```
+
+Publishing a blog post is visible to the whole space and may notify watchers:
+do not create one in a shared space without being asked. `--restriction
+private` creates an unpublished draft, restricts view/edit to you, verifies it,
+then publishes the body, so nothing leaks. `blog update` equals `page update`;
+both (and `wiki docs push`) keep the existing content type and leave
+restrictions alone. `blog delete` refuses ids that are not blog posts and moves
+the post to the trash. Blog posts have no `--parent`.
 
 ## Structure: parents, order, copies
 

@@ -59,7 +59,7 @@ export async function preflightImportTitles(
 export async function applyRestriction(
   client: ConfluenceClient,
   pageId: string,
-  governance: DestinationGovernance,
+  governance: Pick<DestinationGovernance, "restriction">,
   importerAccountId: string,
 ): Promise<void> {
   const restriction = governance.restriction;

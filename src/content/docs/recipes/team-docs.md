@@ -88,14 +88,14 @@ atlcli wiki docs pull ./team-docs --force
 
 ### Git Pre-commit Hook
 
-Sync before committing:
+Validate before committing (`docs check` reads local files only and never pushes):
 
 ```bash
 #!/bin/bash
 # .git/hooks/pre-commit
-atlcli wiki docs push ./team-docs --dry-run
+atlcli wiki docs check ./team-docs --strict
 if [ $? -ne 0 ]; then
-  echo "Docs sync would fail. Check changes."
+  echo "Docs validation failed. Check changes."
   exit 1
 fi
 ```

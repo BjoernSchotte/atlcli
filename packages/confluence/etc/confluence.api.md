@@ -938,6 +938,8 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
         properties?: Record<string, unknown>;
+        type?: "page" | "blogpost";
+        status?: "current" | "draft";
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -1000,6 +1002,14 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         version: number;
+        type?: string;
+    }): Promise<ConfluencePage>;
+    publishDraft(params: {
+        id: string;
+        type: "page" | "blogpost";
+        spaceKey: string;
+        title: string;
+        storage: string;
     }): Promise<ConfluencePage>;
     movePage(pageId: string, newParentId: string): Promise<ConfluencePage>;
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
@@ -1327,6 +1337,7 @@ export type ConfluencePage = {
         id: string;
         title: string;
     }[];
+    type?: string;
 };
 
 // export: ConfluencePageAdf
@@ -4474,6 +4485,8 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
         properties?: Record<string, unknown>;
+        type?: "page" | "blogpost";
+        status?: "current" | "draft";
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -4536,6 +4549,14 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         version: number;
+        type?: string;
+    }): Promise<ConfluencePage>;
+    publishDraft(params: {
+        id: string;
+        type: "page" | "blogpost";
+        spaceKey: string;
+        title: string;
+        storage: string;
     }): Promise<ConfluencePage>;
     movePage(pageId: string, newParentId: string): Promise<ConfluencePage>;
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
@@ -4863,6 +4884,7 @@ export type ConfluencePage = {
         id: string;
         title: string;
     }[];
+    type?: string;
 };
 
 // export: ConfluencePageAdf
@@ -8010,6 +8032,8 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
         properties?: Record<string, unknown>;
+        type?: "page" | "blogpost";
+        status?: "current" | "draft";
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -8072,6 +8096,14 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         version: number;
+        type?: string;
+    }): Promise<ConfluencePage>;
+    publishDraft(params: {
+        id: string;
+        type: "page" | "blogpost";
+        spaceKey: string;
+        title: string;
+        storage: string;
     }): Promise<ConfluencePage>;
     movePage(pageId: string, newParentId: string): Promise<ConfluencePage>;
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
@@ -8399,6 +8431,7 @@ export type ConfluencePage = {
         id: string;
         title: string;
     }[];
+    type?: string;
 };
 
 // export: ConfluencePageAdf
@@ -11240,6 +11273,8 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
         properties?: Record<string, unknown>;
+        type?: "page" | "blogpost";
+        status?: "current" | "draft";
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -11302,6 +11337,14 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         version: number;
+        type?: string;
+    }): Promise<ConfluencePage>;
+    publishDraft(params: {
+        id: string;
+        type: "page" | "blogpost";
+        spaceKey: string;
+        title: string;
+        storage: string;
     }): Promise<ConfluencePage>;
     movePage(pageId: string, newParentId: string): Promise<ConfluencePage>;
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
@@ -11618,6 +11661,7 @@ export type ConfluencePage = {
         id: string;
         title: string;
     }[];
+    type?: string;
 };
 
 // export: ConfluencePageDetails
@@ -15148,6 +15192,8 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
         properties?: Record<string, unknown>;
+        type?: "page" | "blogpost";
+        status?: "current" | "draft";
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -15210,6 +15256,14 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         version: number;
+        type?: string;
+    }): Promise<ConfluencePage>;
+    publishDraft(params: {
+        id: string;
+        type: "page" | "blogpost";
+        spaceKey: string;
+        title: string;
+        storage: string;
     }): Promise<ConfluencePage>;
     movePage(pageId: string, newParentId: string): Promise<ConfluencePage>;
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
@@ -15537,6 +15591,7 @@ export type ConfluencePage = {
         id: string;
         title: string;
     }[];
+    type?: string;
 };
 
 // export: ConfluencePageAdf
@@ -17876,6 +17931,8 @@ export declare class ConfluenceClient {
         storage: string;
         parentId?: string;
         properties?: Record<string, unknown>;
+        type?: "page" | "blogpost";
+        status?: "current" | "draft";
     }): Promise<ConfluencePage>;
     setContentRestrictions(pageId: string, restrictions: {
         read?: {
@@ -17938,6 +17995,14 @@ export declare class ConfluenceClient {
         title: string;
         storage: string;
         version: number;
+        type?: string;
+    }): Promise<ConfluencePage>;
+    publishDraft(params: {
+        id: string;
+        type: "page" | "blogpost";
+        spaceKey: string;
+        title: string;
+        storage: string;
     }): Promise<ConfluencePage>;
     movePage(pageId: string, newParentId: string): Promise<ConfluencePage>;
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;

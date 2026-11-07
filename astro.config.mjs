@@ -42,6 +42,7 @@ export default defineConfig({
             { label: 'Sync', link: '/confluence/sync/' },
             { label: 'Virtual Filesystem', link: '/confluence/virtual-filesystem/' },
             { label: 'Pages', link: '/confluence/pages/' },
+            { label: 'Blog Posts', link: '/confluence/blog-posts/' },
             { label: 'Spaces', link: '/confluence/spaces/' },
             { label: 'Folders', link: '/confluence/folders/' },
             { label: 'Search', link: '/confluence/search/' },
