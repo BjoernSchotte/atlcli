@@ -273,6 +273,15 @@ A pulled file can contain syntax the sections above never ask you to write:
   (`[PROJ-101](…/browse/PROJ-101)`); the legacy `{jira:PROJ-101}` form is
   deprecated on push, do not write it.
 
+- A table with a custom width, alignment or column widths gets an
+  `<!--atlcli:table/v1 data-table-width="…" data-layout="…" cols="…"-->`
+  comment directly above it. Keep it above its table; column widths come back
+  only while the column count is unchanged.
+- Empty spacer paragraphs come down as `<p><br /></p>` lines. Keep them unless
+  the spacing should go.
+- Quotes are pushed exactly as typed: push no longer converts `"…"`/`'…'` to
+  typographic quotes.
+
 Authoring a `:::confluence` block by hand only works if you supply the storage
 XML inside a `<!--raw … -->` comment.
 

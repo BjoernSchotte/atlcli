@@ -448,6 +448,25 @@ Draw.io will move into the shared semantic sync model when Markdown, ADF and
 Storage writers are available.
 :::
 
+### Formatting that round-trips
+
+A pull followed by a push without Markdown edits keeps these constructs as they were on the page:
+
+- **Quotes and punctuation** are written exactly as typed. Push does not turn `"…"` or `'…'` into typographic quotes, and does not replace `--`, `...` or `(c)`. Type `„…“` or `«…»` yourself when you want them.
+- **Table layout** (table width, alignment and column widths) comes down as a comment directly above the Markdown table:
+
+  ```markdown
+  <!--atlcli:table/v1 data-table-width="1800" data-layout="align-start" cols="118.0,191.0,299.0"-->
+
+  | **Role** | **Name** | **Note** |
+  | --- | --- | --- |
+  ```
+
+  Edit the table freely. The column widths (`cols`) are restored while the number of columns stays the same; add or remove a column and push writes the table width and alignment without column widths, so Confluence sizes the columns. Delete the comment to drop the layout. Tables with the default layout and no column widths get no comment.
+- **Empty paragraphs** used as vertical spacing come down as `<p><br /></p>` (or `<p>&nbsp;</p>`) lines and are pushed back unchanged. Delete the line to remove the spacing. Empty paragraphs inside table cells and list items are not kept.
+
+Files pulled with an earlier atlcli version lack these markers: pull them again before editing if the page relies on table widths or spacing.
+
 ### Validation
 
 Pre-push validation checks for:
