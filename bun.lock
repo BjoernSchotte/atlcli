@@ -593,6 +593,7 @@
     },
   },
   "patchedDependencies": {
+    "@langchain/anthropic@1.6.1": "patches/@langchain%2Fanthropic@1.6.1.patch",
     "deepagents@1.16.3": "patches/deepagents@1.16.3.patch",
     "webdav-server@2.6.3": "patches/webdav-server@2.6.3.patch",
     "@langchain/quickjs@1.0.0": "patches/@langchain%2Fquickjs@1.0.0.patch",
