@@ -8,8 +8,6 @@ dist-docs
 .artifacts/
 /tmp/
 .bun
-site/
-.venv/
 .turbo
 spec/internal/
 .astro/

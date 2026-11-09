@@ -23,7 +23,6 @@
     "build": "turbo run build --summarize",
     "release": "bun scripts/release.ts",
     "build:cli": "bun run --cwd apps/cli build",
-    "lint": "echo 'no lint configured'",
     "test": "bun scripts/test-helpers/run-tests.ts",
     "typecheck": "turbo run typecheck typecheck:root --filter=// --filter=@atlcli/extension --filter=@atlcli/pdf-compiler-browser --filter=@atlcli/browser-export-harness --filter=@atlcli/tui --summarize",
     "typecheck:root": "bunx tsc --noEmit",

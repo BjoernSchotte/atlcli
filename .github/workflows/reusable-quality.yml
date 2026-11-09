@@ -365,7 +365,7 @@ jobs:
   # compatibility proof does not need to extend every merge-ready PR. Run it
   # as drift evidence and keep it blocking for release tags.
   publishing-platform-windows:
-    name: Astro Windows compatibility canary (Astro 7.1.6, Node 24)
+    name: Astro Windows compatibility canary (Astro 7.1.6, Node 26)
     if: inputs.run_astro_platform && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag')
     continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: windows-latest
@@ -421,7 +421,7 @@ jobs:
   # Keep it off pull requests and ordinary main pushes so it cannot lengthen
   # merge-ready feedback or make a merge depend on registry drift.
   publishing-platform-latest:
-    name: Astro platform canary (latest Astro 7, Node 24)
+    name: Astro platform canary (latest Astro 7, Node 26)
     if: inputs.run_astro_platform && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag')
     continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest

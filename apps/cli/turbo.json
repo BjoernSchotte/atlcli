@@ -8,6 +8,7 @@
         "$TURBO_DEFAULT$",
         "build.ts",
         "$TURBO_ROOT$/patches/**",
+        "$TURBO_ROOT$/plugins/**",
         "$TURBO_ROOT$/skills/**"
       ]
     }

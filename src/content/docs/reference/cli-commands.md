@@ -136,7 +136,6 @@ atlcli wiki docs diff <dir>                  # Show local vs remote diff (title 
 atlcli wiki docs resolve <dir>               # Resolve sync conflicts
 atlcli wiki docs check <dir>                 # Validate docs (includes folder checks)
 atlcli wiki docs check --dir <dir>           # Same, when running from elsewhere (exits 1 if nothing to validate)
-atlcli wiki docs preview <dir>               # Preview markdown rendering
 atlcli wiki docs convert <file> --to-new-editor    # Convert to v2 editor
 atlcli wiki docs convert <file> --to-legacy-editor # Convert to v1 editor
 atlcli wiki docs convert <dir> --to-new-editor --dry-run  # Preview bulk conversion

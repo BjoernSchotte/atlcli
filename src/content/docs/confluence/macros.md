@@ -822,7 +822,7 @@ Some complex macros render to placeholder text with a note:
 1. **Use standard markdown** when possible (tables, code blocks, lists)
 2. **Reserve macros** for Confluence-specific features (panels, toc, jira)
 3. **Test round-trips** for complex pages before relying on sync
-4. **Check preview** with `atlcli wiki docs preview` before pushing
+4. **Check the diff** with `atlcli wiki docs diff` before pushing
 
 ## Troubleshooting
 
