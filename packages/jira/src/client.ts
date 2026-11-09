@@ -346,6 +346,12 @@ export class JiraClient {
        * in with a one-line change.
        */
       signal?: AbortSignal;
+      /**
+       * Re-send after a 5xx. Defaults to true except for POST and PATCH: a
+       * non-idempotent request may already be applied when its response is
+       * lost. POSTs that only read (JQL search, changelog fetch) opt in.
+       */
+      retryServerErrors?: boolean;
     } = {}
   ): Promise<T> {
     const apiBase = options.apiBase ?? this.apiPath;
@@ -499,7 +505,8 @@ export class JiraClient {
         lastError = Object.assign(new Error(`Jira API error (${res.status}): ${message}`), { status: res.status });
 
         // Retry on server errors (5xx)
-        if (res.status >= 500 && attempt < this.maxRetries) {
+        const retryServerErrors = options.retryServerErrors ?? (method !== "POST" && method !== "PATCH");
+        if (res.status >= 500 && retryServerErrors && attempt < this.maxRetries) {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
           continue;
         }
@@ -1397,6 +1404,7 @@ export class JiraClient {
       total?: number;
     }>("/search/jql", {
       method: "POST",
+      retryServerErrors: true,
       body: {
         jql,
         maxResults: options.maxResults ?? 50,
@@ -1574,6 +1582,7 @@ export class JiraClient {
             nextPageToken?: string;
           }>("/changelog/bulkfetch", {
             method: "POST",
+            retryServerErrors: true,
             apiBase: "/rest/api/3",
             body: {
               issueIdsOrKeys: chunk.map((issue) => issue.key),
@@ -2563,52 +2572,46 @@ export class JiraClient {
       : new Blob([new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as unknown as BlobPart]);
     formData.append("file", blob, filename);
 
-    let lastError: Error | undefined;
+    // Only a rate-limited upload (429: not processed) is sent again. After any
+    // other failure, including a lost response, the attachment may already
+    // exist, and a second upload would duplicate it.
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
-      try {
-        const res = await fetch(url, this.applyFetchOptions({
-          method: "POST",
-          headers: {
-            Authorization: this.authHeader,
-            "X-Atlassian-Token": "no-check", // Required for attachment uploads
-          },
-          body: formData,
-        }));
+      const res = await fetch(url, this.applyFetchOptions({
+        method: "POST",
+        headers: {
+          Authorization: this.authHeader,
+          "X-Atlassian-Token": "no-check", // Required for attachment uploads
+        },
+        body: formData,
+      }));
 
-        if (res.status === 429) {
-          const delay =
-            parseRetryAfterMs(res.headers.get("Retry-After")) ??
-            this.baseDelayMs * Math.pow(2, attempt);
-          logger.api("rate-limited", { requestId, retryAfter: delay });
-          await this.sleep(delay);
-          continue;
-        }
-
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`Attachment upload failed (${res.status}): ${errorText}`);
-        }
-
-        const attachments = await res.json() as JiraAttachment[];
-
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: res.statusText,
-          durationMs: Date.now() - startTime,
-        });
-
-        return attachments;
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        if (attempt < this.maxRetries - 1) {
-          const delay = this.baseDelayMs * Math.pow(2, attempt);
-          await this.sleep(delay);
-        }
+      if (res.status === 429) {
+        const delay =
+          parseRetryAfterMs(res.headers.get("Retry-After")) ??
+          this.baseDelayMs * Math.pow(2, attempt);
+        logger.api("rate-limited", { requestId, retryAfter: delay });
+        await this.sleep(delay);
+        continue;
       }
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Attachment upload failed (${res.status}): ${errorText}`);
+      }
+
+      const attachments = await res.json() as JiraAttachment[];
+
+      logger.api("response", {
+        requestId,
+        status: res.status,
+        statusText: res.statusText,
+        durationMs: Date.now() - startTime,
+      });
+
+      return attachments;
     }
 
-    throw lastError ?? new Error("Attachment upload failed");
+    throw new Error("Attachment upload failed: still rate limited after retries");
   }
 
   // ============ Watcher Operations ============

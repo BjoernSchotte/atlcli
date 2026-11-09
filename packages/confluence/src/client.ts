@@ -1084,6 +1084,8 @@ export class ConfluenceClient {
       query?: Record<string, V2QueryValue>;
       body?: unknown;
       signal?: AbortSignal;
+      /** Non-idempotent mutations must not be re-sent after an ambiguous server error. */
+      retryServerErrors?: false;
       /** See {@link request}; body endpoints must use `"meta-only"`. */
       logBody?: false | "meta-only" | true;
     } = {}
@@ -1199,7 +1201,7 @@ export class ConfluenceClient {
           requestId,
         );
 
-        if (res.status >= 500 && attempt < this.maxRetries) {
+        if (res.status >= 500 && options.retryServerErrors !== false && attempt < this.maxRetries) {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
           continue;
         }
@@ -2194,6 +2196,7 @@ export class ConfluenceClient {
   ): Promise<{ id: string; key: string; version: number }> {
     const data = (await this.requestV2(`/pages/${pageId}/properties`, {
       method: "POST",
+      retryServerErrors: false,
       body: { key, value },
       logBody: "meta-only",
     })) as any;
@@ -2313,6 +2316,7 @@ export class ConfluenceClient {
   }): Promise<ConfluencePage> {
     const data = (await this.requestV2(`/pages`, {
       method: "POST",
+      retryServerErrors: false,
       body: {
         spaceId: params.spaceId,
         status: "current",
@@ -2737,7 +2741,11 @@ export class ConfluenceClient {
     const current = await this.getPage(pageId);
     // A content PUT with status "archived" is accepted and ignored by Cloud;
     // archiving is its own (asynchronous) operation.
-    await this.request(`/content/archive`, { method: "POST", body: { pages: [{ id: pageId }] } });
+    await this.request(`/content/archive`, {
+      method: "POST",
+      body: { pages: [{ id: pageId }] },
+      retryServerErrors: false,
+    });
     return { id: current.id, title: current.title, url: current.url, version: current.version, spaceKey: current.spaceKey };
   }
 
@@ -2803,6 +2811,7 @@ export class ConfluenceClient {
   }): Promise<ConfluenceSpace> {
     const data = (await this.request("/space", {
       method: "POST",
+      retryServerErrors: false,
       body: {
         key: params.key,
         name: params.name,
@@ -2929,10 +2938,11 @@ export class ConfluenceClient {
       ...(options.body !== undefined ? { body: options.body } : {}),
       signal: options.signal,
       logBody: "meta-only" as const,
+      retryServerErrors: false as const,
     };
     const result = path.startsWith("/api/v2/")
       ? await this.requestV2(path.slice("/api/v2".length), request)
-      : await this.request(path.slice("/rest/api".length), { ...request, retryServerErrors: false });
+      : await this.request(path.slice("/rest/api".length), request);
     return result ?? null;
   }
 
@@ -4034,7 +4044,8 @@ export class ConfluenceClient {
         const message = typeof data === "string" ? data : JSON.stringify(data);
         lastError = new Error(`Webhook API error (${res.status}): ${message}`);
 
-        if (res.status >= 500 && attempt < this.maxRetries) {
+        // A webhook registration may already be applied when its response is lost.
+        if (res.status >= 500 && options.method !== "POST" && attempt < this.maxRetries) {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
           continue;
         }
@@ -4695,6 +4706,7 @@ export class ConfluenceClient {
 
     const data = (await this.requestV2("/footer-comments", {
       method: "POST",
+      retryServerErrors: false,
       body: requestBody,
     })) as any;
 
@@ -4746,6 +4758,7 @@ export class ConfluenceClient {
 
     const data = (await this.requestV2("/inline-comments", {
       method: "POST",
+      retryServerErrors: false,
       body: requestBody,
     })) as any;
 
@@ -4987,6 +5000,7 @@ export class ConfluenceClient {
 
     const data = (await this.requestV2("/folders", {
       method: "POST",
+      retryServerErrors: false,
       body,
     })) as any;
 
@@ -5369,6 +5383,7 @@ export class ConfluenceClient {
   ): Promise<void> {
     await this.requestV2(`/spaces/${encodeURIComponent(spaceId)}/role-assignments`, {
       method: "POST",
+      retryServerErrors: false,
       body: entries.map((e) => ({ principal: e.principal, ...(e.roleId !== undefined ? { roleId: e.roleId } : {}) })),
       logBody: "meta-only",
     });
@@ -5515,6 +5530,7 @@ export class ConfluenceClient {
       if (error instanceof Error && error.message.includes("404")) {
         await this.request(`/content/${pageId}/property/editor`, {
           method: "POST",
+          retryServerErrors: false,
           body: { key: "editor", value: version },
         });
       } else {

@@ -56,65 +56,26 @@ export function parseTimeToSeconds(
     return (hours * 60 + minutes) * 60;
   }
 
-  // Handle decimal hours (e.g., "1.5h", "2.25h")
-  const decimalMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*h(?:ours?)?$/);
-  if (decimalMatch) {
-    const hours = parseFloat(decimalMatch[1]);
-    return Math.round(hours * 3600);
+  // Everything else is a run of <number><unit> tokens ("1w 2d 3h 4m", "1.5h",
+  // "1 hour 30 minutes"), optionally joined by "," or "and". The whole input
+  // must be consumed: leftovers are an error, never silently skipped.
+  const hour = 3600;
+  const day = config.hoursPerDay * hour;
+  const unitSeconds: Record<string, number> = { w: config.daysPerWeek * day, d: day, h: hour, m: 60 };
+  const token = /(\d+(?:\.\d+)?)\s*(weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m)(?![a-z])\s*(?:(?:,|and\b)\s*)?/y;
+  let total = 0;
+  let pos = 0;
+  while (pos < trimmed.length) {
+    token.lastIndex = pos;
+    const match = token.exec(trimmed);
+    if (!match) {
+      pos = -1;
+      break;
+    }
+    total += parseFloat(match[1]!) * unitSeconds[match[2]![0]!]!;
+    pos = token.lastIndex;
   }
-
-  // Handle minutes only (e.g., "90m", "45 minutes")
-  const minutesOnlyMatch = trimmed.match(/^(\d+)\s*(?:m|min|mins|minutes?)$/);
-  if (minutesOnlyMatch) {
-    return parseInt(minutesOnlyMatch[1], 10) * 60;
-  }
-
-  // Handle Jira-style format: 1w 2d 3h 4m
-  let totalSeconds = 0;
-  let matched = false;
-
-  // Weeks
-  const weeksMatch = trimmed.match(/(\d+)\s*w(?:eeks?)?/);
-  if (weeksMatch) {
-    totalSeconds += parseInt(weeksMatch[1], 10) * config.daysPerWeek * config.hoursPerDay * 3600;
-    matched = true;
-  }
-
-  // Days
-  const daysMatch = trimmed.match(/(\d+)\s*d(?:ays?)?/);
-  if (daysMatch) {
-    totalSeconds += parseInt(daysMatch[1], 10) * config.hoursPerDay * 3600;
-    matched = true;
-  }
-
-  // Hours (non-decimal in combined format)
-  const hoursMatch = trimmed.match(/(\d+)\s*h(?:ours?)?(?!\d*\.)/);
-  if (hoursMatch) {
-    totalSeconds += parseInt(hoursMatch[1], 10) * 3600;
-    matched = true;
-  }
-
-  // Minutes
-  const minsMatch = trimmed.match(/(\d+)\s*m(?:in(?:ute)?s?)?(?![a-z])/);
-  if (minsMatch) {
-    totalSeconds += parseInt(minsMatch[1], 10) * 60;
-    matched = true;
-  }
-
-  if (matched && totalSeconds > 0) {
-    return totalSeconds;
-  }
-
-  // Try parsing verbose format: "1 hour 30 minutes", "2 hours"
-  const verboseHours = trimmed.match(/(\d+)\s*hours?/);
-  const verboseMins = trimmed.match(/(\d+)\s*minutes?/);
-
-  if (verboseHours || verboseMins) {
-    let secs = 0;
-    if (verboseHours) secs += parseInt(verboseHours[1], 10) * 3600;
-    if (verboseMins) secs += parseInt(verboseMins[1], 10) * 60;
-    if (secs > 0) return secs;
-  }
+  if (pos > 0) return Math.round(total);
 
   throw new Error(
     `Invalid time format: "${input}". ` +

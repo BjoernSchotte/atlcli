@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { homedir, tmpdir, platform, arch } from "node:os";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import { findChecksum, requireChecksum, verifyAssetChecksum } from "./update-checksum.js";
 import { swapBinary } from "./update-swap.js";
 import {
   getCurrentVersion,
@@ -357,16 +358,7 @@ export async function checkForUpdates(options: {
         headers: { "User-Agent": "atlcli" },
       });
       if (response.ok) {
-        const text = await response.text();
-        // Parse checksums.txt format: "hash  filename"
-        const lines = text.split("\n");
-        for (const line of lines) {
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 2 && parts[1] === assetName) {
-            checksum = parts[0];
-            break;
-          }
-        }
+        checksum = findChecksum(await response.text(), assetName);
       }
     } catch {
       // Ignore checksum fetch errors
@@ -401,15 +393,6 @@ async function downloadFile(url: string, destPath: string): Promise<void> {
 
   const fileStream = createWriteStream(destPath);
   await pipeline(Readable.fromWeb(response.body as any), fileStream);
-}
-
-/**
- * Verify SHA256 checksum of a file.
- */
-async function verifyChecksum(filePath: string, expectedChecksum: string): Promise<boolean> {
-  const content = await readFile(filePath);
-  const hash = createHash("sha256").update(content).digest("hex");
-  return hash === expectedChecksum;
 }
 
 /**
@@ -469,24 +452,17 @@ export async function installUpdate(version?: string): Promise<string> {
 
   // Find and parse checksums
   const checksumsAsset = release.assets.find((a) => a.name === "checksums.txt");
-  let expectedChecksum: string | null = null;
+  let checksumsText: string | null = null;
 
   if (checksumsAsset) {
     const response = await fetch(checksumsAsset.browser_download_url, {
       headers: { "User-Agent": "atlcli" },
     });
-    if (response.ok) {
-      const text = await response.text();
-      const lines = text.split("\n");
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length >= 2 && parts[1] === assetName) {
-          expectedChecksum = parts[0];
-          break;
-        }
-      }
-    }
+    if (response.ok) checksumsText = await response.text();
   }
+
+  // Fail closed before downloading anything: an unverifiable update is not installed.
+  requireChecksum(checksumsText, assetName);
 
   // Create temp directory for download
   const { mkdtemp } = await import("node:fs/promises");
@@ -497,13 +473,9 @@ export async function installUpdate(version?: string): Promise<string> {
     // Download the release
     await downloadFile(asset.browser_download_url, tarPath);
 
-    // Verify checksum if available
-    if (expectedChecksum) {
-      const valid = await verifyChecksum(tarPath, expectedChecksum);
-      if (!valid) {
-        throw new Error("Checksum verification failed. Download may be corrupted.");
-      }
-    }
+    // Verify checksum
+    const digest = createHash("sha256").update(await readFile(tarPath)).digest("hex");
+    verifyAssetChecksum(checksumsText, assetName, digest);
 
     // Prepare installation paths
     const binDir = join(homedir(), ".atlcli", "bin");
