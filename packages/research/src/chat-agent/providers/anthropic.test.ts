@@ -384,11 +384,18 @@ describe("Anthropic Chat model binding", () => {
           message.reasoning,
           (async () => {
             for await (const event of message) {
-              if (event.event !== "content-block-delta" ||
-                event.delta.type !== "block-delta" ||
-                event.delta.fields.type !== "tool_call_chunk" ||
-                typeof event.delta.fields.args !== "string") continue;
-              argumentSnapshots.push(event.delta.fields.args);
+              if (event.event !== "content-block-delta") continue;
+              // @langchain/core >= 1.3 appends `tool-call-delta` slices;
+              // older producers sent replacing `block-delta` snapshots.
+              if (event.delta.type === "tool-call-delta") {
+                argumentSnapshots.push((argumentSnapshots.at(-1) ?? "") + event.delta.args);
+              } else if (
+                event.delta.type === "block-delta" &&
+                event.delta.fields.type === "tool_call_chunk" &&
+                typeof event.delta.fields.args === "string"
+              ) {
+                argumentSnapshots.push(event.delta.fields.args);
+              }
             }
           })(),
         ]);
@@ -400,6 +407,7 @@ describe("Anthropic Chat model binding", () => {
     expect(requestBody?.tool_choice).toEqual({ type: "any" });
     expect(requestBody?.output_config).toBeUndefined();
     expect(reasoning).toBe("Matching the answer to the evidence.");
+    expect(argumentSnapshots).toHaveLength(2);
     expect(argumentSnapshots.at(-1)).toBe(structuredJson);
     expect(result.structuredResponse).toEqual(structuredAnswer);
   });

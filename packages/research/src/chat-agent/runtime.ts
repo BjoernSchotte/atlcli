@@ -1666,10 +1666,16 @@ export function createKiteweaveChatAgent(
               event.delta.fields.type === "tool_call_chunk" &&
               typeof event.delta.fields.args === "string"
             ) {
-              // LangChain standardizes tool-call argument deltas as a running
-              // JSON snapshot. Replacing instead of appending avoids duplicate
-              // prefixes while still projecting complete string units.
+              // Legacy producers send running JSON snapshots, which replace.
               state.structuredText = event.delta.fields.args;
+              emitProjectedSubagentAnswer(state);
+            }
+            if (
+              event.delta.type === "tool-call-delta" &&
+              profileId === "chat-synthesizer"
+            ) {
+              // @langchain/core >= 1.3 sends appended argument slices.
+              state.structuredText += event.delta.args;
               emitProjectedSubagentAnswer(state);
             }
             return;
@@ -2409,15 +2415,25 @@ export function createKiteweaveChatAgent(
                 const name = typeof fields.name === "string"
                   ? fields.name
                   : toolNames.get(index);
+                // @langchain/core >= 1.3 streams tool-call args as appended
+                // `tool-call-delta` slices; older producers send `block-delta`
+                // snapshots that replace. A block uses one form, never both.
+                const slice = delta.type === "tool-call-delta" &&
+                    typeof delta.args === "string"
+                  ? delta.args
+                  : undefined;
+                const snapshot = delta.type === "block-delta" &&
+                    fields.type === "tool_call_chunk" &&
+                    typeof fields.args === "string"
+                  ? fields.args
+                  : undefined;
                 if (!isChatAnswerDraftToolNameV2(name) ||
-                  fields.type !== "tool_call_chunk" ||
-                  typeof fields.args !== "string") continue;
+                  (slice === undefined && snapshot === undefined)) continue;
                 if (!activeAnswerIndexes.has(index)) {
                   activeAnswerIndexes.add(index);
                   beginAnswerGeneration();
                 }
-                // LangGraph publishes the accumulated JSON argument snapshot.
-                structuredAnswerText = fields.args;
+                structuredAnswerText = snapshot ?? structuredAnswerText + slice;
                 emitProjectedAnswer();
                 continue;
               }

@@ -2540,7 +2540,7 @@ describe("separate Chat root", () => {
     expect(chatRecursionLimitV1(10_000)).toBe(56);
   });
 
-  function runtimeHarness() {
+  function runtimeHarness(argsForm: "snapshot" | "slice" = "snapshot") {
     let chatRoots = 0;
     let researchRoots = 0;
     const chatRuntime = {
@@ -2572,22 +2572,25 @@ describe("separate Chat root", () => {
                       args: "",
                     },
                   };
-                  yield {
-                    event: "content-block-delta",
-                    index: 0,
-                    delta: {
-                      type: "block-delta",
-                      fields: { type: "tool_call_chunk", args: firstSnapshot },
-                    },
-                  };
-                  yield {
-                    event: "content-block-delta",
-                    index: 0,
-                    delta: {
-                      type: "block-delta",
-                      fields: { type: "tool_call_chunk", args: finalSnapshot },
-                    },
-                  };
+                  // @langchain/core >= 1.3 streams appended `tool-call-delta`
+                  // slices; older producers send replacing snapshots.
+                  for (const args of [firstSnapshot, finalSnapshot]) {
+                    yield {
+                      event: "content-block-delta",
+                      index: 0,
+                      delta: argsForm === "slice"
+                        ? {
+                            type: "tool-call-delta",
+                            args: args === firstSnapshot
+                              ? firstSnapshot
+                              : finalSnapshot.slice(firstSnapshot.length),
+                          }
+                        : {
+                            type: "block-delta",
+                            fields: { type: "tool_call_chunk", args },
+                          },
+                    };
+                  }
                   yield {
                     event: "content-block-finish",
                     index: 0,
@@ -2753,8 +2756,8 @@ describe("separate Chat root", () => {
     });
   });
 
-  test("withholds reasoning without a provider grant while still streaming the structured answer", async () => {
-    const harness = runtimeHarness();
+  for (const argsForm of ["snapshot", "slice"] as const) test(`withholds reasoning without a provider grant while still streaming the structured answer (${argsForm} args)`, async () => {
+    const harness = runtimeHarness(argsForm);
     const chat = createKiteweaveChatAgent(harness.chatRuntime);
     const presentation: ChatPresentationStreamEventV1[] = [];
     await chat.runChatAgent({
