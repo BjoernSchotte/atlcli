@@ -178,6 +178,56 @@ describe("wiki import (preview mode, offline)", () => {
     }
   });
 
+  it("rejects governance flags in batch mode instead of publishing without them", async () => {
+    const batchDir = join(dir, "governed");
+    mkdirSync(batchDir);
+    writeFileSync(join(batchDir, "one.docx"), buildDocxFixture({ body: p(r("One"), { style: "Heading1" }) }));
+    writeFileSync(join(batchDir, "two.docx"), buildDocxFixture({ body: p(r("Two"), { style: "Heading1" }) }));
+
+    // Any request would be a publish the user did not ask for: fail it loudly.
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((() => {
+      throw new Error("no network in this test");
+    }) as never);
+    const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`);
+    }) as never);
+    const cases: Array<[string, Record<string, string | string[]>]> = [
+      ["--restriction", { restriction: "private" }],
+      ["--viewer", { viewer: ["account:1"] }],
+      ["--editor", { editor: ["account:1"] }],
+      ["--staging-parent", { "staging-parent": "Drafts" }],
+      ["--label", { label: ["migrated"] }],
+      ["--content-property", { "content-property": ["atlcli.import.batch=w1"] }],
+      ["--title-conflict", { "title-conflict": "rename" }],
+      ["--update-page", { "update-page": "12345" }],
+      ["--expect-version", { "expect-version": "3" }],
+    ];
+    try {
+      for (const [flag, extra] of cases) {
+        for (const confirm of [false, true]) {
+          stdout.length = 0;
+          const run = handleWikiImport([batchDir], { space: "DOCSY", json: true, ...(confirm ? { confirm: true } : {}), ...extra }, { json: true });
+          await expect(run).rejects.toThrow("exit 1");
+          const error = JSON.parse(stdout.join("")).error;
+          expect(error.code).toBe("ATLCLI_ERR_VALIDATION");
+          expect(error.message).toContain(`${flag} is not supported for batch imports yet`);
+        }
+      }
+      // A manifest batch takes its destination from the manifest, not from flags.
+      for (const confirm of [false, true]) {
+        stdout.length = 0;
+        const manifest = join(dir, "batch.yaml"); // rejected before it is even read
+        const run = handleWikiImport([], { manifest, restriction: "private", json: true, ...(confirm ? { confirm: true } : {}) }, { json: true });
+        await expect(run).rejects.toThrow("exit 1");
+        expect(JSON.parse(stdout.join("")).error.message).toContain("--restriction is not supported for batch imports yet");
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      exitSpy.mockRestore();
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("shows governance in the preview and stays fully offline", async () => {
     const file = join(dir, "gov.docx");
     writeFileSync(file, buildDocxFixture({ body: p(r("Doc"), { style: "Heading1" }) }));

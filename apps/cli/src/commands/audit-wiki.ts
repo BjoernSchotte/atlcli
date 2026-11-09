@@ -450,7 +450,8 @@ export async function handleAuditWiki(args: string[], flags: Flags, opts: Output
   }
   // The parser reads `--no-external <path>` as a value; take the path back.
   const noExternal = flags["no-external"];
-  const pathFromNoExternal = typeof noExternal === "string" && noExternal.startsWith("/") ? noExternal : undefined;
+  // Any value is that path: the flag takes none, and `./docs` used to be dropped (only "/…" was taken back).
+  const pathFromNoExternal = typeof noExternal === "string" ? noExternal : undefined;
   if (pathFromNoExternal) flags["no-external"] = true;
   const dir = args[0] ?? pathFromNoExternal ?? getFlag(flags, "dir") ?? ".";
   const atlcliDir = findAtlcliDir(dir);

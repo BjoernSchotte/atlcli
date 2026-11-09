@@ -316,6 +316,7 @@ async function processJob(job: ScriptJob, source: string, port: ScriptPort, flag
       const issue = issues.get(item.id);
       let outcome: Outcome;
       if (!issue) outcome = { ...item, status: "gone", error: "issue no longer exists or is not visible" };
+      else if ("unreadable" in issue) outcome = { ...item, status: "error", error: `could not read the issue: ${issue.unreadable}` };
       else outcome = await runItem(rt, job, js, modules, port, issue, memo, opts, outputs);
       if (outcome.operations) {
         for (const op of outcome.operations) {
@@ -460,9 +461,18 @@ async function applyPlannedJob(job: ScriptJob, port: ScriptPort, flags: Flags, o
   report(job, tally, new Map(), [], await countOutcomes(job), opts);
 }
 
-/** Fetches a batch by id; ids the search does not return are read one by one (gone when unreadable). */
-async function fetchBatch(port: ScriptPort, batch: Array<{ id: string; key: string }>, fields: string[]): Promise<Map<string, JiraIssueView>> {
-  const found = new Map<string, JiraIssueView>();
+/**
+ * Fetches a batch by id; ids the search does not return are read one by one.
+ * Only a 404 on that read leaves an id out (gone). Any other failure (401,
+ * 429, 5xx, network) is kept as `unreadable`, so the issue is retried on
+ * resume and counts toward --max-failures instead of passing as finished.
+ */
+async function fetchBatch(
+  port: ScriptPort,
+  batch: Array<{ id: string; key: string }>,
+  fields: string[],
+): Promise<Map<string, JiraIssueView | { unreadable: string }>> {
+  const found = new Map<string, JiraIssueView | { unreadable: string }>();
   try {
     const page = await port.jiraSearch(`id in (${batch.map((i) => i.id).join(", ")})`, { fields, maxResults: batch.length });
     for (const issue of page.issues) found.set(issue.id, issue);
@@ -474,7 +484,10 @@ async function fetchBatch(port: ScriptPort, batch: Array<{ id: string; key: stri
     try {
       const issue = await port.jiraGetIssue(item.id, { fields });
       found.set(item.id, issue);
-    } catch {}
+    } catch (error) {
+      if ((error as { status?: number }).status === 404) continue;
+      found.set(item.id, { unreadable: error instanceof Error ? error.message : String(error) });
+    }
   }
   return found;
 }

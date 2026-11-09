@@ -1521,29 +1521,28 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
         const pagePath = resolvedPaths.get(detail.id) ?? pathMap.get(detail.id)?.relativePath;
         if (!pagePath) continue;
 
+        // writeState above already stored the sync fields: fresh ones for a
+        // page written in this run, the untouched old base for a page skipped
+        // because of local modifications. Recomputing them from the remote
+        // here marked skipped pages as synced at the remote version, and the
+        // next push overwrote the remote edit without a conflict.
+        const synced = state.pages[detail.id];
+        if (!synced) continue;
+
         const pageRecord = createPageRecord({
           pageId: detail.id,
           path: pagePath,
           title: detail.title,
           spaceKey: detail.spaceKey,
-          version: detail.version,
-          lastSyncedAt: new Date().toISOString(),
-          localHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, conversionOptions),
-            basename(pagePath, ".md")
-          ))),
-          remoteHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, conversionOptions),
-            basename(pagePath, ".md")
-          ))),
-          baseHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, conversionOptions),
-            basename(pagePath, ".md")
-          ))),
-          syncState: "synced",
+          version: synced.version,
+          lastSyncedAt: synced.lastSyncedAt,
+          localHash: synced.localHash,
+          remoteHash: synced.remoteHash,
+          baseHash: synced.baseHash,
+          syncState: synced.syncState,
           parentId: detail.parentId,
           ancestors: detail.ancestors.map((a) => a.id),
-          hasAttachments: false, // Updated later if attachments exist
+          hasAttachments: synced.hasAttachments ?? false,
           createdBy: detail.createdBy?.accountId ?? null,
           createdAt: detail.created ?? new Date().toISOString(),
           lastModifiedBy: detail.modifiedBy?.accountId ?? null,

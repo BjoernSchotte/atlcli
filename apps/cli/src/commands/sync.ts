@@ -1,7 +1,7 @@
 import { readdir, writeFile, unlink, readFile } from "node:fs/promises";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { FSWatcher, watch, existsSync } from "node:fs";
-import { join, basename, extname, dirname, relative } from "node:path";
+import { join, basename, extname, dirname, resolve } from "node:path";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -54,6 +54,7 @@ import {
   // Scope
   parseScope,
   // Ignore
+  getRelativePath,
   loadIgnorePatterns,
   shouldIgnore,
   // Attachments
@@ -142,7 +143,10 @@ export async function handleSync(
   let resolvedSpaceKey: string | undefined;
 
   // Get directory path first to check for config
-  const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
+  // Resolved once: `join("./docs", "a.md")` normalizes to "docs/a.md", which no
+  // longer starts with "./docs/", so relative paths computed against the raw
+  // argument came out as "docs/a.md" and state pointed at docs/docs/a.md.
+  const dir = resolve(args[0] ?? getFlag(flags, "dir") ?? ".");
 
   if (parsedScope) {
     // Use scope from flags
@@ -604,13 +608,7 @@ class SyncEngine {
 
   /** Get relative path from absolute path */
   private getRelativePath(filePath: string): string {
-    if (filePath.startsWith(this.opts.dir + "/")) {
-      return filePath.slice(this.opts.dir.length + 1);
-    }
-    if (filePath.startsWith(this.opts.dir)) {
-      return filePath.slice(this.opts.dir.length);
-    }
-    return filePath;
+    return getRelativePath(this.opts.dir, filePath);
   }
 
   /** Start the sync daemon */
@@ -755,7 +753,7 @@ class SyncEngine {
 
         // Skip ignored files
         if (this.ignore) {
-          const relativePath = filePath.replace(this.opts.dir + "/", "");
+          const relativePath = this.getRelativePath(filePath);
           if (shouldIgnore(this.ignore, relativePath)) return;
         }
 
@@ -1874,7 +1872,7 @@ class SyncEngine {
 
         // Check if path should be ignored
         if (this.ignore) {
-          const relativePath = relative(this.opts.dir, fullPath);
+          const relativePath = this.getRelativePath(fullPath);
           if (shouldIgnore(this.ignore, relativePath)) {
             continue;
           }
@@ -1924,7 +1922,7 @@ class SyncEngine {
 
         // Skip ignored directories
         if (this.ignore) {
-          const relativePath = fullPath.replace(this.opts.dir + "/", "");
+          const relativePath = this.getRelativePath(fullPath);
           if (shouldIgnore(this.ignore, relativePath)) continue;
         }
 

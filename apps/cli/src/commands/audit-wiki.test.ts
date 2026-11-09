@@ -91,9 +91,9 @@ afterAll(async () => {
   if (home) await rm(home, { recursive: true, force: true });
 });
 
-async function runCli(args: string[]) {
+async function runCli(args: string[], cwd = docs) {
   const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "audit", "wiki", ...args], {
-    cwd: docs,
+    cwd,
     env: { ...process.env, HOME: home, USERPROFILE: home, FLAG_AUDIT: "true", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
     stdout: "pipe",
     stderr: "pipe",
@@ -101,8 +101,8 @@ async function runCli(args: string[]) {
   const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { stdout, stderr, exitCode };
 }
-const json = async (args: string[]) => {
-  const r = await runCli([...args, "--json"]);
+const json = async (args: string[], cwd?: string) => {
+  const r = await runCli([...args, "--json"], cwd);
   try {
     return { ...r, report: JSON.parse(r.stdout) };
   } catch {
@@ -124,6 +124,14 @@ describe("audit wiki", () => {
     expect(report.findings[0].assignee).toBe("Ann");
     expect(report.quiet).toEqual({ "people/single-contributor": 1, "content/restricted": 1, "content/draft": 1 });
     expect((await runCli(["--fail-on", "never"])).exitCode).toBe(0);
+  });
+
+  test("a relative directory works from the parent, also when the parser hands it to --no-external", async () => {
+    const expected = (await json(["--fail-on", "never"])).report.findings;
+    for (const args of [["./docs"], ["--dir", "./docs"], ["--no-external", "./docs"], ["--no-external", docs]]) {
+      const { report } = await json([...args, "--fail-on", "never"], home);
+      expect(report.findings, args.join(" ")).toEqual(expected);
+    }
   });
 
   test("the older check flags pick the rules and list everything they find", async () => {

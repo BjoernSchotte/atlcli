@@ -6,7 +6,7 @@ import {
 } from "@atlcli/code-highlight/registry";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -822,37 +822,8 @@ async function resolveTemplatePath(templateRef: string, profileName?: string): P
     return resolve(templateRef);
   }
 
-  // Check if it has a Word extension
-  const hasExtension = templateRef.endsWith(".docx") || templateRef.endsWith(".docm");
-
-  // Extensions to try - if already has extension, use it; otherwise try both
-  const extensions = hasExtension ? [""] : [".docx", ".docm"];
-
-  // Check project templates directory first (highest priority)
-  for (const ext of extensions) {
-    const projectPath = join(process.cwd(), ".atlcli", "templates", "confluence", `${templateRef}${ext}`);
-    if (existsSync(projectPath)) {
-      return projectPath;
-    }
-  }
-
-  // Check profile templates directory (if profile is set)
-  if (profileName) {
-    for (const ext of extensions) {
-      const profilePath = join(homedir(), ".atlcli", "profiles", profileName, "templates", "confluence", `${templateRef}${ext}`);
-      if (existsSync(profilePath)) {
-        return profilePath;
-      }
-    }
-  }
-
-  // Check global templates directory
-  for (const ext of extensions) {
-    const globalPath = join(homedir(), ".atlcli", "templates", "confluence", `${templateRef}${ext}`);
-    if (existsSync(globalPath)) {
-      return globalPath;
-    }
-  }
+  const stored = findStoredTemplate(templateRef, getTemplateDirectories(profileName));
+  if (stored) return stored;
 
   // Return original path (will fail later with proper error message)
   return resolve(templateRef);
@@ -880,6 +851,24 @@ function getTemplateDirectories(profileName?: string): { level: string; path: st
 
   return dirs;
 }
+
+/**
+ * The stored template `name` refers to: project, then profile, then global.
+ * A name without a Word extension matches `<name>.docx` or `<name>.docm`.
+ * Only looks inside `dirs`, never at the working directory.
+ */
+function findStoredTemplate(name: string, dirs: { path: string }[]): string | undefined {
+  const extensions = name.endsWith(".docx") || name.endsWith(".docm") ? [""] : [".docx", ".docm"];
+  for (const { path: dir } of dirs) {
+    for (const ext of extensions) {
+      const candidate = join(dir, `${name}${ext}`);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
+const TEMPLATE_LEVELS = ["global", "profile", "project"] as const;
 
 /**
  * List available export templates.
@@ -930,10 +919,18 @@ export async function saveTemplate(
 ): Promise<void> {
   const name = args[0];
   const filePath = getFlag(flags, "file");
-  const level = (getFlag(flags, "level") ?? "global") as "global" | "profile" | "project";
+  const level = (getFlag(flags, "level") ?? "global") as (typeof TEMPLATE_LEVELS)[number];
+  if (!TEMPLATE_LEVELS.includes(level)) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Unknown --level "${level}". Expected one of: ${TEMPLATE_LEVELS.join(", ")}.`);
+  }
 
   if (!name) {
     fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+  }
+
+  // The name becomes a file name in the store; a path would write outside it.
+  if (basename(name) !== name || name === "." || name === "..") {
+    fail(opts, 1, ERROR_CODES.USAGE, `Invalid template name "${name}": use a plain name without a path.`);
   }
 
   if (!filePath) {
@@ -1002,9 +999,11 @@ export async function deleteTemplate(
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
 
-  // Find the template
-  const templatePath = await resolveTemplatePath(name, profile?.name);
-  if (!existsSync(templatePath)) {
+  // Only a stored template can be deleted: resolving the name like --template
+  // does would unlink a file of that name in the working directory instead.
+  // A name with a path in it could leave the store, so it is never one.
+  const templatePath = basename(name) === name ? findStoredTemplate(name, getTemplateDirectories(profile?.name)) : undefined;
+  if (!templatePath) {
     fail(opts, 1, ERROR_CODES.USAGE, `Template not found: ${name}`);
   }
 

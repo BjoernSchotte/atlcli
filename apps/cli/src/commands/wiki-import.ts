@@ -279,6 +279,7 @@ export async function handleWikiImport(
 
   const manifestPath = getFlag(flags, "manifest");
   if (manifestPath) {
+    rejectUnsupportedBatchFlags(flags, opts);
     await handleManifestBatch(manifestPath, flags, opts);
     return;
   }
@@ -873,6 +874,42 @@ interface BatchItemResult {
  * conflicts into skips, which makes an interrupted batch safely re-runnable
  * without duplicating verified content.
  */
+/**
+ * Flags the single-file import honours and neither batch path does (a
+ * manifest takes its destination from the manifest). `--title-conflict fail`
+ * is what a batch does anyway.
+ */
+export function unsupportedBatchFlags(flags: Record<string, string | boolean | string[]>): string[] {
+  const unsupported = [
+    "restriction",
+    "viewer",
+    "editor",
+    "staging-parent",
+    "label",
+    "content-property",
+    "update-page",
+    "expect-version",
+  ].filter((name) => flags[name] !== undefined);
+  if (flags["title-conflict"] !== undefined && getFlag(flags, "title-conflict") !== "fail") unsupported.push("title-conflict");
+  return unsupported.map((name) => `--${name}`);
+}
+
+/**
+ * Fails closed before anything is read or published: a batch that dropped the
+ * restriction the user asked for would expose every page of it.
+ */
+function rejectUnsupportedBatchFlags(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): void {
+  const unsupported = unsupportedBatchFlags(flags);
+  if (unsupported.length === 0) return;
+  fail(
+    opts,
+    1,
+    ERROR_CODES.VALIDATION,
+    `${unsupported.map((flag) => `${flag} is not supported for batch imports yet`).join("; ")}. Import the files one at a time to use ${unsupported.length === 1 ? "it" : "them"}.`,
+    { flags: unsupported },
+  );
+}
+
 async function handleBatchImport(
   files: BatchSource[],
   flags: Record<string, string | boolean | string[]>,
@@ -881,6 +918,7 @@ async function handleBatchImport(
   if (getFlag(flags, "title")) {
     fail(opts, 1, ERROR_CODES.VALIDATION, "--title cannot be used in batch mode (titles come from each document).", {});
   }
+  rejectUnsupportedBatchFlags(flags, opts);
   const confirm = hasFlag(flags, "confirm");
   const skipExisting = hasFlag(flags, "skip-existing");
   const splitFlag = getFlag(flags, "split");
@@ -1908,6 +1946,10 @@ Options:
   --staging-parent <t>    Create a private import-owned parent titled <t>
   --label <name>          Repeatable; applied and verified on the root page
   --content-property k=v  Repeatable; atlcli.* namespaced page metadata
+                          (--update-page, --restriction, --viewer, --editor,
+                          --staging-parent, --label, --content-property and
+                          --title-conflict rename are single-file only; a batch
+                          or --manifest import rejects them)
   --map-style <s>=<t>     Repeatable; map a Word style (id or name) to
                           paragraph|heading-1..6|blockquote|code
   --revisions <mode>      accept|reject tracked changes (default accept)

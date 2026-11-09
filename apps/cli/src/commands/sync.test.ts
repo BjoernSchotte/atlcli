@@ -28,9 +28,9 @@ describe("sync command", () => {
       const syncSource = readFileSync(syncPath, "utf-8");
 
       // Find the line that sets the default directory
-      // Expected: const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
+      // Expected: const dir = resolve(args[0] ?? getFlag(flags, "dir") ?? ".");
       const dirDefaultMatch = syncSource.match(
-        /const\s+dir\s*=\s*args\[0\]\s*\?\?\s*getFlag\(flags,\s*["']dir["']\)\s*\?\?\s*["']([^"']+)["']/
+        /const\s+dir\s*=\s*resolve\(args\[0\]\s*\?\?\s*getFlag\(flags,\s*["']dir["']\)\s*\?\?\s*["']([^"']+)["']/
       );
 
       expect(dirDefaultMatch).not.toBeNull();

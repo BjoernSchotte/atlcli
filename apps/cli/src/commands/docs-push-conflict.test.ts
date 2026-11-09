@@ -3,10 +3,11 @@
  * after the last pull. Real CLI against a Bun HTTP server standing in for
  * Confluence (data-center shape); sandboxed HOME.
  */
-import { afterAll, beforeAll, beforeEach, expect, it, setDefaultTimeout } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Spawns the CLI; loaded CI runners need more than Bun's 5 s per test.
@@ -77,9 +78,9 @@ afterAll(async () => {
   if (tree) await rm(tree, { recursive: true, force: true });
 });
 
-async function runCli(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+async function runCli(args: string[], cwd = tree): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, ...args], {
-    cwd: tree,
+    cwd,
     env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "stub-token", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
     stdout: "pipe",
     stderr: "pipe",
@@ -114,6 +115,23 @@ it("refuses to push a locally edited file over a remote edit", async () => {
   expect(push.exitCode).toBe(1);
   const error = JSON.parse(push.stdout).error;
   expect(error.details.conflicts).toEqual([{ file: expect.stringContaining(`${SLUG}.md`), pageId: PAGE_ID, baseVersion: 2, remoteVersion: 3 }]);
+  expect(puts).toEqual([]);
+  expect(storage).toBe("<p>Colleague edit.</p>");
+}, 90_000);
+
+it("a pull that skips a locally edited file keeps the old base, so push still sees the conflict", async () => {
+  remoteEdit();
+  await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
+  const pull = await runCli(["wiki", "docs", "pull", "--skip-user-check", "--json"]);
+  expect(pull.exitCode, `${pull.stdout}${pull.stderr}`).toBe(0);
+  expect(JSON.parse(pull.stdout).results).toMatchObject({ pulled: 0, skipped: 1 });
+  expect(await readFile(file(), "utf8")).toContain("My edit.");
+
+  const push = await runCli(["wiki", "docs", "push", "--json"]);
+  expect(push.exitCode, push.stdout).toBe(1);
+  expect(JSON.parse(push.stdout).error.details.conflicts).toEqual([
+    { file: expect.stringContaining(`${SLUG}.md`), pageId: PAGE_ID, baseVersion: 2, remoteVersion: 3 },
+  ]);
   expect(puts).toEqual([]);
   expect(storage).toBe("<p>Colleague edit.</p>");
 }, 90_000);
@@ -188,11 +206,10 @@ it("--accept merged closes a conflict whose markers were removed by hand (#275)"
   expect(JSON.parse(resolve.stdout)).toMatchObject({ resolved: true, accept: "merged" });
 }, 90_000);
 
-it("docs sync does not overwrite a local edit when it starts (initial sync)", async () => {
-  remoteEdit();
-  await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
-  const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "wiki", "docs", "sync", ".", "--poll-interval", "60000"], {
-    cwd: tree,
+/** Starts `docs sync <dir>` in `cwd`, waits for the initial sync, stops the daemon and returns its stdout. */
+async function initialSync(dir: string, cwd: string): Promise<string> {
+  const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "wiki", "docs", "sync", dir, "--poll-interval", "60000"], {
+    cwd,
     env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "stub-token", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
     stdout: "pipe",
     stderr: "pipe",
@@ -207,6 +224,13 @@ it("docs sync does not overwrite a local edit when it starts (initial sync)", as
   proc.kill();
   await proc.exited;
   expect(out, out).toContain("Initial sync complete");
+  return out;
+}
+
+it("docs sync does not overwrite a local edit when it starts (initial sync)", async () => {
+  remoteEdit();
+  await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
+  await initialSync(".", tree);
   // Merged or marked as a conflict, but the local edit survives, and so does the frontmatter
   // that ties the file to its page.
   const after = await readFile(file(), "utf8");
@@ -214,3 +238,94 @@ it("docs sync does not overwrite a local edit when it starts (initial sync)", as
   expect(after).toMatch(/^---\n[\s\S]*id: "?80001"?[\s\S]*\n---\n/);
   expect(puts).toEqual([]);
 }, 90_000);
+
+it("docs sync ./dir (the form in its own help) keeps state paths relative to that directory", async () => {
+  remoteEdit();
+  const out = await initialSync(`./${basename(tree)}`, dirname(tree));
+  // The remote edit lands in the tracked file, not in a second copy or an ENOENT.
+  expect(await readFile(file(), "utf8"), out).toContain("Colleague edit.");
+  expect(existsSync(join(tree, basename(tree)))).toBe(false);
+  const { readState } = await import("@atlcli/confluence/internal");
+  const state = await readState(tree);
+  expect(state.pathIndex).toEqual({ [`${SLUG}.md`]: PAGE_ID });
+  expect(state.pages[PAGE_ID]).toMatchObject({ path: `${SLUG}.md`, version: 3 });
+}, 90_000);
+
+// The other docs subcommands with a `./dir` argument from the parent directory:
+// the same invocation that broke `docs sync` (state paths doubled the directory).
+describe("docs subcommands given ./dir from the parent directory", () => {
+  const rel = () => `./${basename(tree)}`;
+  const parent = () => dirname(tree);
+  const storedPaths = async () => {
+    const { readState } = await import("@atlcli/confluence/internal");
+    return (await readState(tree)).pathIndex;
+  };
+
+  it("status reports the edited file relative to the workspace", async () => {
+    await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
+    const out = await runCli(["wiki", "docs", "status", rel(), "--json"], parent());
+    expect(out.exitCode, out.stdout + out.stderr).toBe(0);
+    expect(JSON.parse(out.stdout).modified).toEqual([{ file: `${SLUG}.md`, type: "local changes" }]);
+  });
+
+  it("push updates the page and keeps the state path", async () => {
+    await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
+    const out = await runCli(["wiki", "docs", "push", rel(), "--json"], parent());
+    expect(out.exitCode, out.stdout + out.stderr).toBe(0);
+    expect(puts).toEqual([3]);
+    expect(await storedPaths()).toEqual({ [`${SLUG}.md`]: PAGE_ID });
+    expect(existsSync(join(tree, "index.md"))).toBe(false);
+  });
+
+  it("check validates the workspace files", async () => {
+    const out = await runCli(["wiki", "docs", "check", rel(), "--json"], parent());
+    expect(out.exitCode, out.stdout + out.stderr).toBe(0);
+    expect(JSON.parse(out.stdout)).toMatchObject({ passed: true, filesChecked: 1 });
+  });
+
+  it("convert --dry-run finds the tracked page", async () => {
+    const out = await runCli(["wiki", "docs", "convert", rel(), "--to-new-editor", "--dry-run", "--confirm", "--json"], parent());
+    expect(out.exitCode, out.stdout + out.stderr).toBe(0);
+    expect(JSON.parse(out.stdout).results).toEqual([expect.objectContaining({ pageId: PAGE_ID, path: `${SLUG}.md`, status: "would-convert" })]);
+  });
+
+  it("init creates the workspace in the named directory, and pull fills it", async () => {
+    const fresh = `${rel()}-fresh`;
+    try {
+      const init = await runCli(["wiki", "docs", "init", fresh, "--page-id", PAGE_ID, "--space", "DOCSY", "--json"], parent());
+      expect(init.exitCode, init.stdout + init.stderr).toBe(0);
+      expect(existsSync(join(`${tree}-fresh`, ".atlcli", "config.json"))).toBe(true);
+      const pull = await runCli(["wiki", "docs", "pull", fresh, "--skip-user-check", "--json"], parent());
+      expect(pull.exitCode, pull.stdout + pull.stderr).toBe(0);
+      expect(existsSync(join(`${tree}-fresh`, `${SLUG}.md`))).toBe(true);
+    } finally {
+      await rm(`${tree}-fresh`, { recursive: true, force: true });
+    }
+  });
+
+  it("watch pushes an edit and keeps the state path", async () => {
+    const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "wiki", "docs", "watch", rel(), "--debounce", "100", "--json"], {
+      cwd: parent(),
+      env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "stub-token", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    let out = "";
+    const reader = proc.stdout.getReader();
+    const read = async (until: string) => {
+      const deadline = Date.now() + 30_000;
+      while (!out.includes(until) && Date.now() < deadline) {
+        const chunk = await Promise.race([reader.read(), Bun.sleep(500).then(() => undefined)]);
+        if (chunk?.value) out += new TextDecoder().decode(chunk.value);
+      }
+    };
+    await read('"watching"');
+    await Bun.sleep(500); // the watchers are created right after the status line
+    await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
+    await read('"result"');
+    proc.kill();
+    await proc.exited;
+    expect(puts).toEqual([3]);
+    expect(await storedPaths()).toEqual({ [`${SLUG}.md`]: PAGE_ID });
+  });
+});
