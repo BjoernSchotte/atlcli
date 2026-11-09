@@ -40,8 +40,20 @@ test("Renovate extracts the release Bun pin and groups all runtime sources", () 
   const version = new RegExp(manager.matchStrings[0]!).exec(workflow)?.groups?.currentValue;
   const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   expect(`bun@${version}`).toBe(manifest.packageManager);
-  const rule = config.packageRules.at(-1)!;
+  const rule = config.packageRules.find((rule) => rule.groupName === "Bun runtime")!;
   expect(rule.matchPackageNames).toEqual(expect.arrayContaining(["bun", "oven-sh/bun"]));
   expect(rule.groupName).toBe("Bun runtime");
   expect(rule.dependencyDashboardApproval).toBe(true);
+});
+
+test("Homebrew/actions keeps its four-part tag in the pin comment", () => {
+  const manager = config.customManagers.find((manager) => manager.depNameTemplate === "Homebrew/actions")!;
+  expect(manager.versioningTemplate).toBe("loose");
+  const workflow = readFileSync(new URL("../.github/workflows/reusable-nfs.yml", import.meta.url), "utf8");
+  const match = new RegExp(manager.matchStrings[0]!).exec(workflow)?.groups;
+  expect(match?.currentDigest).toMatch(/^[a-f0-9]{40}$/);
+  expect(match?.currentValue).toMatch(/^\d{4}\.\d{2}\.\d{2}\.\d+$/);
+  const disabled = config.packageRules.find((rule) => rule.matchPackageNames?.includes("Homebrew/actions"))!;
+  expect(disabled.matchManagers).toEqual(["github-actions"]);
+  expect(disabled.enabled).toBe(false);
 });
