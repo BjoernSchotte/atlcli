@@ -23,23 +23,20 @@ import {
   BUILTIN_PDF_TEMPLATE_MANIFEST,
   runPdfExport,
   validatePdfOutput,
-  type PdfAssetResolver,
   type PdfExportReport,
   type TemplateManifest,
 } from "@atlcli/pdf/browser";
 import { MANUSCRIPT_BLOCKS, MANUSCRIPT_FILENAME, MANUSCRIPT_METADATA } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes, sha256Hex } from "./digest.js";
-import { deterministicClock } from "./pdf-run.js";
+import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const compiler = new HarnessPdfWorkerClient();
 
-const noAssets: PdfAssetResolver = {
-  async resolve(): Promise<never> {
-    throw new Error("The Manuscript conformance fixture has no external assets.");
-  },
-};
+const noAssets = failingPdfAssets(
+  "The Manuscript conformance fixture has no external assets.",
+);
 
 async function compileWith(
   templateManifest?: TemplateManifest,

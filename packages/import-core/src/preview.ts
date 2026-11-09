@@ -1,7 +1,8 @@
 import { sha256Hex } from "@atlcli/core";
 import type { ImportBlock, ImportDocumentV2, ImportRun } from "./model.js";
 import { documentToAdf } from "./adf.js";
-import { assessEditability, type EditabilityAssessment } from "./assess.js";
+import type { EditabilityAssessment } from "./assess.js";
+import { assessEncodedAdf } from "./assess-adf.js";
 
 export interface ImportTarget {
   spaceKey: string;
@@ -59,13 +60,15 @@ export async function buildImportPreview(document: ImportDocumentV2, target: Imp
     byteLength: asset.bytes.byteLength,
     sha256: await sha256Hex(asset.bytes),
   })));
-  const adfDigest = await sha256Hex(new TextEncoder().encode(JSON.stringify(documentToAdf(document))));
+  const adf = documentToAdf(document);
+  const adfBytes = new TextEncoder().encode(JSON.stringify(adf));
+  const adfDigest = await sha256Hex(adfBytes);
   return {
     target,
     counts,
     outline,
     assets,
-    editability: assessEditability(document.blocks),
+    editability: assessEncodedAdf(adf, adfBytes.byteLength),
     issues: document.issues,
     adfDigest,
   };

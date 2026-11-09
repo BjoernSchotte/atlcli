@@ -19,7 +19,6 @@ import {
   type ContentPropertyRecord,
   type PageFilter,
   type SyncDbExport,
-  type SimilarityResult,
   type InaccessibleReason,
   type SqliteAdapterConfig,
 } from "./types.js";
@@ -213,14 +212,14 @@ export class SqliteAdapter implements SyncDbAdapter {
   // ============ Pages ============
 
   async getPage(pageId: string): Promise<PageRecord | null> {
-    const db = this.ensureDb();
+    this.ensureDb();
     const stmt = this.statements.get("getPage")!;
     const row = stmt.get(pageId) as RawPageRow | null;
     return row ? this.rowToPageRecord(row) : null;
   }
 
   async getPageByPath(path: string): Promise<PageRecord | null> {
-    const db = this.ensureDb();
+    this.ensureDb();
     const stmt = this.statements.get("getPageByPath")!;
     const row = stmt.get(path) as RawPageRow | null;
     return row ? this.rowToPageRecord(row) : null;

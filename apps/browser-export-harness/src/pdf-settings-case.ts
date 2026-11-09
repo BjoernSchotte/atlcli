@@ -14,7 +14,6 @@
 import {
   runPdfExport,
   validatePdfOutput,
-  type PdfAssetResolver,
   type PdfExportReport,
   type PdfTemplateSettings,
   type PdfTemplateRuntimeV1,
@@ -34,17 +33,15 @@ import {
 } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes, sha256Hex } from "./digest.js";
-import { deterministicClock } from "./pdf-run.js";
+import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 import { buildPdfV4RuntimeFixture } from "./pdf-v4-runtime-fixture.js";
 
 const compiler = new HarnessPdfWorkerClient();
 
-const noAssets: PdfAssetResolver = {
-  async resolve(): Promise<never> {
-    throw new Error("The deterministic PDF settings fixture has no external assets.");
-  },
-};
+const noAssets = failingPdfAssets(
+  "The deterministic PDF settings fixture has no external assets.",
+);
 
 async function compileWith(
   settings: PdfTemplateSettings,

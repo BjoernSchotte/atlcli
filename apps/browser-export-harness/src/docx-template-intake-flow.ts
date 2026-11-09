@@ -30,7 +30,6 @@ import {
   runPdfExport,
   validatePdfOutput,
   type ExportBlock,
-  type PdfAssetResolver,
   type PdfCompilePort,
   type PdfOutputInspection,
   type ValidatedPdfTemplatePackV1,
@@ -60,7 +59,7 @@ import {
 import { packTemplate } from "@atlcli/template-pack";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes, sha256Hex as sha256 } from "./digest.js";
-import { deterministicClock } from "./pdf-run.js";
+import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
 
 const PROJECT_ID = "browser:docx-template-intake";
 const IMPORTER_VERSION = "atlcli.pdf-template-import/1";
@@ -77,11 +76,9 @@ const BASELINE_DESIGN =
     Record<string, unknown>
   >;
 
-const noAssets: PdfAssetResolver = {
-  async resolve(): Promise<never> {
-    throw new Error("The template-intake conformance export has no document assets.");
-  },
-};
+const noAssets = failingPdfAssets(
+  "The template-intake conformance export has no document assets.",
+);
 
 const FINAL_BLOCKS: readonly ExportBlock[] = [
   {

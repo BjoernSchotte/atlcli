@@ -1,6 +1,7 @@
+import { assetFilePath } from "./asset-file-path.js";
 import pdfiumWasm from "@atlcli/import-pdf/wasm" with { type: "file" };
 import { createTableTransformerProposer } from "../table-model.js";
-import { basename, isAbsolute, resolve } from "node:path";
+import { basename } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import {
   ERROR_CODES,
@@ -88,9 +89,6 @@ const VALUE_FLAGS = [
   "staging-parent",
 ] as const;
 
-function assetFilePath(imported: string): string {
-  return isAbsolute(imported) ? imported : resolve(import.meta.dir, imported);
-}
 
 async function readStdin(): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];

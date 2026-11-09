@@ -30,9 +30,7 @@ import { SqliteAdapter } from "./sqlite-adapter.js";
 import { JsonAdapter } from "./json-adapter.js";
 import {
   needsMigration,
-  hasLegacyStateJson,
   migrateFromStateJson,
-  type MigrationResult,
 } from "./migrate-state-json.js";
 
 // Re-export types (excluding SyncState which is already exported from atlcli-dir)

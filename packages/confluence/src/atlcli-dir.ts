@@ -11,7 +11,7 @@
 import { join, dirname, relative, resolve, sep } from "path";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile, unlink } from "fs/promises";
-import { createSyncDb, hasSyncDb } from "./sync-db/index.js";
+import { createSyncDb } from "./sync-db/index.js";
 import type { SyncDbAdapter, PageRecord, AttachmentRecord, LinkRecord } from "./sync-db/types.js";
 import { extractLinksFromStorage } from "./link-extractor-storage.js";
 import { extractLinksFromMarkdown, type MarkdownLinkWithResolution } from "./link-extractor-markdown.js";

@@ -20,6 +20,7 @@
  * note) — but the underlying error is surfaced via the optional `onError` sink
  * so a packaging regression is debuggable instead of silently swallowed.
  */
+import { assetFilePath } from "./asset-file-path.js";
 import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm" with { type: "file" };
 import interRegular from "@atlcli/docx/fonts/Inter-Regular.ttf" with { type: "file" };
 import interMedium from "@atlcli/docx/fonts/Inter-Medium.ttf" with { type: "file" };
@@ -29,21 +30,7 @@ import interItalic from "@atlcli/docx/fonts/Inter-Italic.ttf" with { type: "file
 import monoRegular from "@atlcli/docx/fonts/JetBrainsMono-Regular.ttf" with { type: "file" };
 import monoBold from "@atlcli/docx/fonts/JetBrainsMono-Bold.ttf" with { type: "file" };
 import { readFile } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
 import type { SvgRasterizer } from "@atlcli/docx";
-
-/**
- * Resolve a `with { type: "file" }` import path to something `readFile` can open
- * from any CWD. In source runs and `bun build --compile` binaries the path is
- * already absolute (a `node_modules` path or a `$bunfs` path). In a plain
- * `bun build --target bun` dist bundle the import yields a path RELATIVE to the
- * emitted bundle directory; anchoring relative paths to `import.meta.dir` (the
- * bundle's own directory) makes all three modes work. Shared shape with
- * `export-pdf-assets.ts` `assetFilePath` (spec 008 T3.1).
- */
-export function assetFilePath(imported: string): string {
-  return isAbsolute(imported) ? imported : resolve(import.meta.dir, imported);
-}
 
 /**
  * Build the resvg-backed {@link SvgRasterizer} from the embedded assets, or

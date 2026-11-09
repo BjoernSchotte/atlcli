@@ -1,3 +1,4 @@
+import { deepFreeze } from "./deep-freeze.js";
 import {
   ACTION_GROUP_IDS,
   type ActionAvailabilityV1,
@@ -59,16 +60,6 @@ interface DeclaredAction {
   moduleIndex: number;
   actionIndex: number;
   declarationIndex: number;
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object" && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value as Record<string, unknown>)) {
-      deepFreeze(child);
-    }
-  }
-  return value;
 }
 
 function occurrenceMap<T>(

@@ -12790,7 +12790,6 @@ export declare function isUserCacheExpired(user: UserRecord | null, ttlMs?: numb
 
 // export: JsonAdapter
 export declare class JsonAdapter implements SyncDbAdapter {
-    private readonly config;
     private readonly filePath;
     private storage;
     private dirty;

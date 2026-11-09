@@ -26,7 +26,7 @@
  * - When a leaf page gains children, transform {slug}.md → {slug}/index.md
  */
 
-import { join, dirname, basename, extname, relative, resolve } from "path";
+import { join, dirname, basename, extname, resolve } from "path";
 import { mkdir, rename, rmdir, readdir } from "fs/promises";
 import { existsSync } from "fs";
 import { slugifyTitle } from "./atlcli-dir.js";

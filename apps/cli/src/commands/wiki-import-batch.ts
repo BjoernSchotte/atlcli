@@ -43,7 +43,6 @@ import {
   splitDocument,
   validateBatchState,
   type BatchStateItemV1,
-  type DocxBatchManifestV1,
   type DocxBatchStateV1,
   type SplitResult,
   type ImportedDocument,

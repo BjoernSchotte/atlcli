@@ -1565,8 +1565,6 @@ async function handleImport(
   }
 
   // Build storages object
-  const config = await loadConfig();
-  const activeProfile = getActiveProfile(config);
   const docsDir = await findAtlcliDir(process.cwd());
 
   const storages = {

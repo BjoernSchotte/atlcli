@@ -22,6 +22,7 @@
  * Unlike the mermaid rasterizer, a load failure here is a HARD error: PDF export
  * cannot degrade to a "diagram-as-code" fallback, so the loader throws.
  */
+import { assetFilePath } from "./asset-file-path.js";
 import typstWasm from "@atlcli/pdf-compiler-browser/wasm" with { type: "file" };
 import sourceSansRegular from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf" with { type: "file" };
 import sourceSansItalic from "@atlcli/pdf/fonts/SourceSans3-It.ttf" with { type: "file" };
@@ -37,7 +38,6 @@ import notoSymbolsRegular from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf" 
 import notoEmojiRegular from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf" with { type: "file" };
 import notoArabicRegular from "@atlcli/pdf/fonts/NotoSansArabic-Regular.ttf" with { type: "file" };
 import { readFile } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
 import type { PdfCompilePort } from "@atlcli/pdf";
 import type { BrowserPdfCompilerFontSourceV1 } from "@atlcli/pdf-compiler-browser";
@@ -52,9 +52,6 @@ import type { BrowserPdfCompilerFontSourceV1 } from "@atlcli/pdf-compiler-browse
  * paths to `import.meta.dir` (the bundle's own directory) makes all three modes
  * work without a browser-only `import.meta.resolve` round-trip.
  */
-function assetFilePath(imported: string): string {
-  return isAbsolute(imported) ? imported : resolve(import.meta.dir, imported);
-}
 
 /**
  * The font file paths in the CANONICAL manifest order (`PDF_RUNTIME_ASSETS`).
