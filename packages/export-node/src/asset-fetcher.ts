@@ -146,8 +146,14 @@ export function tokenAssetFetcher(client: AssetClient, cache: Pick<AssetByteCach
     if (ref.pageId && ref.filename) {
       let listing = listings.get(ref.pageId);
       if (!listing) {
-        listing = client.listAttachments(ref.pageId);
-        listings.set(ref.pageId, listing);
+        const attempt = client.listAttachments(ref.pageId);
+        const pageId = ref.pageId;
+        listing = attempt;
+        listings.set(pageId, attempt);
+        // One transient failure (a 429) must not fail every later attachment.
+        attempt.catch(() => {
+          if (listings.get(pageId) === attempt) listings.delete(pageId);
+        });
       }
       const attachment = (await listing).find((a) => a.filename === ref.filename);
       if (!attachment) throw new Error(`attachment "${ref.filename}" not found on page ${ref.pageId}`);

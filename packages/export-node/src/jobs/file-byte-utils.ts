@@ -49,6 +49,14 @@ export async function readJsonFiles<T>(directory: string): Promise<Array<{ path:
   return Promise.all(names.filter((name) => name.endsWith(".json")).map(async (name) => ({ path: join(directory, name), value: JSON.parse(await readFile(join(directory, name), "utf8")) as T })));
 }
 
+/** Read one JSON file whose path is computable; `undefined` when it does not exist. */
+export async function readJsonFile<T>(path: string): Promise<T | undefined> {
+  try { return JSON.parse(await readFile(path, "utf8")) as T; } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 export async function* readFileChunks(path: string, signal?: AbortSignal): AsyncIterable<Uint8Array> {
   throwIfAborted(signal);
   const stream = createReadStream(path);

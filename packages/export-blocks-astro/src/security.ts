@@ -12,7 +12,8 @@ export function safeExportBlockColorV1(value: unknown): string | undefined {
 export function safeExportBlockHrefV1(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const href = value.replace(/[\u0000-\u001f\u007f]/gu, "");
-  if (!href || href.startsWith("//")) return undefined;
+  // Browsers treat `\` like `/`, so `/\evil.test` is protocol-relative too.
+  if (!href || href.startsWith("//") || href.includes("\\")) return undefined;
   if (href.startsWith("#") || href.startsWith("/") || href.startsWith("./") || href.startsWith("../")) return href;
   try {
     const protocol = new URL(href).protocol;
@@ -24,7 +25,7 @@ export function safeExportBlockHrefV1(value: unknown): string | undefined {
 
 /** Publication assets must already be verified, local, content-addressed files. */
 export function safeExportBlockAssetSrcV1(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.startsWith("//")) return undefined;
+  if (typeof value !== "string" || value.startsWith("//") || value.includes("\\")) return undefined;
   return value.startsWith("/") || value.startsWith("./") ? value : undefined;
 }
 

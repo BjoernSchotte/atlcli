@@ -226,6 +226,42 @@ describe("JPEG decode", () => {
     expect(meanAbsError(rgb(decoded.pixels), rgb(reference.pixels))).toBeLessThan(14);
   });
 
+  /** 32x8 grayscale baseline JPEG, DRI=1: four flat MCUs, one per restart interval. */
+  function restartJpeg(scan: number[]): Uint8Array {
+    return Uint8Array.from([
+      0xff, 0xd8,
+      0xff, 0xdb, 0x00, 0x43, 0x00, ...new Array<number>(64).fill(8), // DQT: all 8
+      0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x08, 0x00, 0x20, 0x01, 0x01, 0x11, 0x00, // SOF0 32x8
+      // DC table: two 2-bit codes — 00 → category 0, 01 → category 6.
+      0xff, 0xc4, 0x00, 0x15, 0x00, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x06,
+      // AC table: the single 1-bit code 0 → EOB.
+      0xff, 0xc4, 0x00, 0x14, 0x10, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x00,
+      0xff, 0xdd, 0x00, 0x04, 0x00, 0x01, // DRI: restart every MCU
+      0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00, // SOS
+      ...scan,
+      0xff, 0xd9,
+    ]);
+  }
+
+  it("consumes restart markers that sit exactly on an interval boundary (DRI)", () => {
+    // Each MCU is 9 bits (DC 01 + 6 magnitude bits, EOB 0) padded to two bytes,
+    // so every interval ends on a byte boundary with RSTn still in the stream.
+    // DC values 40, -40, 50, -50 with quant 8 → flat blocks of 128 + DC.
+    const decoded = decodeJpegRaster(restartJpeg([
+      0x68, 0x7f, 0xff, 0xd0,
+      0x57, 0x7f, 0xff, 0xd1,
+      0x72, 0x7f, 0xff, 0xd2,
+      0x4d, 0x7f,
+    ]))!;
+    expect(decoded).not.toBeNull();
+    expect([0, 8, 16, 24].map((x) => decoded.pixels[x * 4])).toEqual([168, 88, 178, 78]);
+    expect(decoded.pixels[(7 * 32 + 31) * 4]).toBe(78);
+  });
+
+  it("returns null when a restart marker is missing instead of decoding shifted data", () => {
+    expect(decodeJpegRaster(restartJpeg([0x68, 0x7f, 0x57, 0x7f, 0x72, 0x7f, 0x4d, 0x7f]))).toBeNull();
+  });
+
   it("returns null for progressive frames instead of guessing", () => {
     const encoded = encodeJpeg(rgb(gradientRgba(16, 16)), 16, 16, 90);
     const progressive = Uint8Array.from(encoded);

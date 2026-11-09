@@ -725,6 +725,41 @@ describe("PDF alt-text audit", () => {
     ).rejects.toThrow("asset checkpoint quota exceeded");
   });
 
+  it("does not downgrade a durable asset-pipeline failure on an INLINE image either", async () => {
+    await expect(
+      preparePdfDocument(
+        [{
+          type: "paragraph",
+          content: [{
+            type: "media",
+            media: { mediaType: "image", id: "inline-1", filename: "inline.png" },
+            source: { kind: "attachment", filename: "inline.png" },
+            alt: "Inline",
+          }],
+        }],
+        {
+          resolve: async () => {
+            throw new AssetPipelineError("asset checkpoint quota exceeded");
+          },
+        },
+      ),
+    ).rejects.toThrow("asset checkpoint quota exceeded");
+  });
+
+  it("counts assets inside an unresolved macro body in the progress total", async () => {
+    const events: Array<{ done: number; total: number | null }> = [];
+    await preparePdfDocument(
+      [{ type: "unknown", macroName: "acme", body: [image("A", "a.png"), image("B", "b.png")] }],
+      ok,
+      { onProgress: (event) => { if (event.phase === "assets") events.push({ done: event.done, total: event.total }); } },
+    );
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events) {
+      expect(event.total).toBe(2);
+      expect(event.done).toBeLessThanOrEqual(2);
+    }
+  });
+
   it("reports a block path that locates the image inside nested containers", async () => {
     const blocks: ExportBlock[] = [
       { type: "paragraph", content: [{ type: "text", text: "intro" }] },

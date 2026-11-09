@@ -10,7 +10,7 @@ import {
 } from "@atlcli/export-jobs";
 import { ensurePrivateDirectory, writeDurableAtomic } from "./atomic-fs.js";
 import { FileExportLock } from "./file-lock.js";
-import { logicalDigest, readFileChunks, readJsonFiles, streamToDurableTemp } from "./file-byte-utils.js";
+import { logicalDigest, readFileChunks, readJsonFile, readJsonFiles, streamToDurableTemp } from "./file-byte-utils.js";
 
 interface ArtifactMarkerV1 { schema: "atlcli.file-artifact/1"; state: "staged" | "committed"; metadata: StagedArtifactV1; }
 interface ClosedV1 { schema: "atlcli.file-artifact-closed/1"; jobId: string; leaseEpoch?: number; at: number; }
@@ -78,6 +78,6 @@ export class FileExportArtifactStore implements ExportArtifactStore {
       return structuredClone(intent.artifact);
     } finally { await lease.release(); }
   }
-  async #find(ref: string): Promise<ArtifactMarkerV1 | undefined> { return (await readJsonFiles<ArtifactMarkerV1>(this.#objectsDir)).map((e) => e.value).find((m) => m.metadata.ref === ref); }
+  async #find(ref: string): Promise<ArtifactMarkerV1 | undefined> { const marker = await readJsonFile<ArtifactMarkerV1>(this.#markerPath(ref)); return marker?.metadata.ref === ref ? marker : undefined; }
   async #closed(jobId: string, epoch: number): Promise<boolean> { return (await readJsonFiles<ClosedV1>(this.#closedDir)).some((e) => e.value.jobId === jobId && (e.value.leaseEpoch === undefined || e.value.leaseEpoch === epoch)); }
 }

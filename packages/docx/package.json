@@ -88,7 +88,6 @@
   "dependencies": {
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
-    "@atlcli/core": "workspace:*",
     "@atlcli/diagram": "workspace:*",
     "@atlcli/export-blocks": "workspace:*",
     "@atlcli/export-charts-tanstack": "workspace:*",

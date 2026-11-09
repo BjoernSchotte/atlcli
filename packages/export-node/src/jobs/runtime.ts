@@ -154,6 +154,14 @@ export interface RunClaimedFileExportJobOptionsV1 extends Omit<CreateFileExportE
   executor: ExportJobExecutor<ExportJobRequestV1>;
 }
 
+/**
+ * Snapshot validation rejects an empty/whitespace error message and one over
+ * 16,384 characters; an unpersistable failure would leave the job `running`.
+ */
+function durableMessage(raw: string, fallback: string): string {
+  return (raw.trim() || fallback).slice(0, 16_384);
+}
+
 function durableExecutorFailure(
   error: unknown,
   stage: ExportJobSnapshotV1["stage"],
@@ -174,10 +182,10 @@ function durableExecutorFailure(
     ) {
       return {
         code: error.code,
-        message:
-          error instanceof Error
-            ? error.message
-            : "The Confluence export source could not be resolved.",
+        message: durableMessage(
+          error instanceof Error ? error.message : "",
+          "The Confluence export source could not be resolved.",
+        ),
         category: sourceFailureKind === "authentication" ? "auth" : "source",
         retryable: sourceFailureKind === "unknown",
         ...(stage ? { stage } : {}),
@@ -187,7 +195,7 @@ function durableExecutorFailure(
   }
   return {
     code: "executor.failed",
-    message: error instanceof Error ? error.message : String(error),
+    message: durableMessage(error instanceof Error ? error.message : String(error), "Export executor failed."),
     category: "unknown",
     retryable: false,
     ...(stage ? { stage } : {}),

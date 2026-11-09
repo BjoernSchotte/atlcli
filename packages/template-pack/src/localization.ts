@@ -213,10 +213,10 @@ export function validateLocalization(
     locales[locale] = validateBundle(raw, `${path}.locales.${locale}`);
   }
 
-  if (!locales[fallbackLocale]) {
+  if (!Object.hasOwn(locales, fallbackLocale)) {
     fail(`${path}.fallbackLocale`, `no "${fallbackLocale}" entry in locales`);
   }
-  if (!locales[defaultLocale]) {
+  if (!Object.hasOwn(locales, defaultLocale)) {
     fail(`${path}.defaultLocale`, `no "${defaultLocale}" entry in locales`);
   }
 
@@ -326,5 +326,7 @@ export function localeChain(
   push(base || undefined);
   push(localization.defaultLocale);
   push(localization.fallbackLocale);
-  return order.map((locale) => localization.locales[locale]).filter((b): b is LocaleBundle => Boolean(b));
+  return order
+    .filter((locale) => Object.hasOwn(localization.locales, locale))
+    .map((locale) => localization.locales[locale]!);
 }

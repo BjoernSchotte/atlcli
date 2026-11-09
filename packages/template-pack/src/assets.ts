@@ -307,7 +307,7 @@ function validateReferences(
       `assets.${key}`
     );
     const descriptor = id(reference.descriptor, `assets.${key}.descriptor`);
-    if (!descriptors[descriptor]) {
+    if (!Object.hasOwn(descriptors, descriptor)) {
       fail(`assets.${key}.descriptor`, `references unknown descriptor "${descriptor}"`);
     }
     const decorative = boolean(reference.decorative, `assets.${key}.decorative`);
@@ -438,7 +438,7 @@ function validateDecorations(
         fail(`${path}.layer`, "is not recognized");
       }
       const asset = id(decoration.asset, `${path}.asset`);
-      if (!assets[asset]) fail(`${path}.asset`, `references unknown asset "${asset}"`);
+      if (!Object.hasOwn(assets, asset)) fail(`${path}.asset`, `references unknown asset "${asset}"`);
       const decorative = boolean(decoration.decorative, `${path}.decorative`);
       const alt = altFor(decoration, decorative, path);
       return {

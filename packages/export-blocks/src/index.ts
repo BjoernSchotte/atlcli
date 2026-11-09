@@ -1407,7 +1407,7 @@ export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
  * older grep expressions) after the spec 010 unification.
  */
 export function canonicalExportNoteCode(code: string): ExportNoteCode | undefined {
-  if (code in RETIRED_EXPORT_NOTE_CODES) {
+  if (Object.hasOwn(RETIRED_EXPORT_NOTE_CODES, code)) {
     return RETIRED_EXPORT_NOTE_CODES[code as RetiredExportNoteCode];
   }
   return (EXPORT_NOTE_CODES as readonly string[]).includes(code)

@@ -25,9 +25,28 @@ import {
   wordDocument,
 } from "./visual-test-support.js";
 import {
+  W_TRANSITIONAL,
+  buildDocx,
   officeRelationshipType,
   relationshipsXml,
 } from "./test-support.js";
+
+test("run-level character spacing does not wipe a style's paragraph spacing", async () => {
+  const design = await resolveDocxTemplateDesign(
+    buildDocx({
+      "word/styles.xml":
+        `<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="${W_TRANSITIONAL}">` +
+        `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/>` +
+        `<w:pPr><w:spacing w:before="240" w:after="120" w:line="276"/></w:pPr>` +
+        `<w:rPr><w:spacing w:val="20"/></w:rPr></w:style></w:styles>`,
+    })
+  );
+  expect(design.styles.styles[0]?.properties).toMatchObject({
+    spacingBeforeTwips: 240,
+    spacingAfterTwips: 120,
+    lineTwips: 276,
+  });
+});
 
 describe("visual role suggestions and review safety", () => {
   test("suggests repeated small header graphics as logos with concrete reasons", async () => {
@@ -249,6 +268,36 @@ describe("independent visual oracle", () => {
         ({ sourceUse }) => sourceUse.alternateContent?.branch
       )
     ).toEqual(["choice.0", "fallback.0"]);
+  });
+
+  test("two top-level AlternateContent groups in one part stay two scenes", async () => {
+    const group = (id: string): string =>
+      `<w:p><w:r><mc:AlternateContent><mc:Choice Requires="a">${inlineDrawing(id)}</mc:Choice></mc:AlternateContent></w:r></w:p>`;
+    const result = await analyzeDocxVisualAssets(
+      visualDocx({
+        document: `<?xml version="1.0" encoding="UTF-8"?><w:document ${DRAWING_NAMESPACES}><w:body>${group("rFirst")}${group("rSecond")}</w:body></w:document>`,
+        documentRelationships: imageRelationships([
+          { id: "rFirst", target: "media/first.png" },
+          { id: "rSecond", target: "media/second.png" },
+        ]),
+        entries: {
+          "word/media/first.png": png(200, 100),
+          "word/media/second.png": png(100, 200),
+        },
+      }),
+      {
+        capabilities: TEST_VISUAL_CAPABILITIES,
+        assetStore: new TrackingAssetStore(),
+        sections: await singleSection(),
+      }
+    );
+
+    expect(result.analysis.scenes).toHaveLength(2);
+    const groupIds = result.analysis.scenes.map(
+      (scene) => scene.representations[0]?.sourceUse.alternateContent?.groupId
+    );
+    expect(new Set(groupIds).size).toBe(2);
+    expect(groupIds[0]).toMatch(/\.0$/);
   });
 
   test("crop, relationship, branch, and section mutations each identify exactly their responsible oracle field", () => {

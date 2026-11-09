@@ -313,8 +313,13 @@ export function attachmentLookupFromClient(
       try {
         let listing = listings.get(pageId);
         if (!listing) {
-          listing = client.listAttachments(pageId, { signal });
-          listings.set(pageId, listing);
+          const attempt = client.listAttachments(pageId, { signal });
+          listing = attempt;
+          listings.set(pageId, attempt);
+          // One transient failure (a 429) must not fail every later lookup.
+          attempt.catch(() => {
+            if (listings.get(pageId) === attempt) listings.delete(pageId);
+          });
         }
         const found = (await listing).find((a) => a.filename === filename);
         if (!found) return undefined;

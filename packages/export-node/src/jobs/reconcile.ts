@@ -57,8 +57,9 @@ export async function* watchFileExportJobEvents(
     const snapshot = await jobs.get(jobId); if (!snapshot) return;
     if (["succeeded", "failed", "cancelled", "interrupted"].includes(snapshot.state) && page.events.length === 0) return;
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, pollMs);
-      options.signal?.addEventListener("abort", () => { clearTimeout(timer); reject(options.signal?.reason ?? new DOMException("Aborted", "AbortError")); }, { once: true });
+      const onAbort = (): void => { clearTimeout(timer); reject(options.signal?.reason ?? new DOMException("Aborted", "AbortError")); };
+      const timer = setTimeout(() => { options.signal?.removeEventListener("abort", onAbort); resolve(); }, pollMs);
+      options.signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
 }

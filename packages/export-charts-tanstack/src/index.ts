@@ -455,10 +455,10 @@ function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
 function pieLabel(chart: ChartModelV1, row: PieRow, total: number): string {
   const percent = `${Math.round((row.value / total) * 100)}%`;
   const format = chart.pie?.sectionLabelFormat ?? "%0%";
-  return format
-    .replaceAll("%0%", row.label)
-    .replaceAll("%1%", String(row.value))
-    .replaceAll("%2%", percent);
+  // One pass with a function replacer: source text is neither re-substituted
+  // nor interpreted as a `$&`/`$'` replacement pattern.
+  const values = [row.label, String(row.value), percent];
+  return format.replace(/%([012])%/g, (_match, index: string) => values[Number(index)]!);
 }
 
 function pieDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {

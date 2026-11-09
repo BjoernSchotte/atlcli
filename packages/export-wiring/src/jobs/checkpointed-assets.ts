@@ -259,7 +259,7 @@ function createCheckpointedAssetCacheV1<
   const byReference = new Map<string, CachedAssetV1>();
   const byContent = new Map<string, CachedAssetV1>();
   const inFlight = new Map<string, Promise<Result>>();
-  let initialized = false;
+  let recovery: Promise<void> | undefined;
   let latestRef = context.checkpointRef;
   let checkpointSequence = 0;
   let commitTail = Promise.resolve();
@@ -286,9 +286,11 @@ function createCheckpointedAssetCacheV1<
     return validatePayload(parsed, context, requestKey);
   };
 
-  const recover = async (signal: AbortSignal): Promise<void> => {
-    if (initialized) return;
-    initialized = true;
+  // Memoized as a promise (not a flag): concurrent callers on a resumed job
+  // must wait for the walk instead of seeing a still-empty map.
+  const recover = (signal: AbortSignal): Promise<void> =>
+    (recovery ??= recoverOnce(signal));
+  const recoverOnce = async (signal: AbortSignal): Promise<void> => {
     if (!latestRef?.startsWith(CHECKPOINT_PREFIX)) return;
     const seen = new Set<string>();
     let cursor: string | undefined = latestRef;

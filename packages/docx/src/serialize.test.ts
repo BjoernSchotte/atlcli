@@ -23,7 +23,7 @@ import {
   plainCodeHighlight,
   type CodeHighlightRuntime,
 } from "@atlcli/code-highlight/contract";
-import { dataTable, parseStyleNames, resolveCaptionLang, statusBadgeRun } from "./ooxml.js";
+import { dataTable, internalHyperlink, parseStyleNames, resolveCaptionLang, statusBadgeRun } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 import { collectDocxCodeHighlightUsage } from "./code-highlighting.js";
 
@@ -2775,5 +2775,58 @@ describe("statusBadgeRun", () => {
     expect(statusBadgeRun("Done", "green")).toContain('w:fill="E3FCEF"');
     expect(statusBadgeRun("Custom", "#00b8d9")).toContain('w:fill="00B8D9"');
     expect(statusBadgeRun("Odd", "teal")).toContain('w:fill="DFE1E6"');
+  });
+});
+
+describe("audit regressions", () => {
+  it("escapes double quotes in hyperlink tooltip and anchor attributes", () => {
+    const xml = internalHyperlink('a"b', "<w:r/>", 'say "hi" & more');
+    expect(xml).toContain('w:anchor="a&quot;b"');
+    expect(xml).toContain('w:tooltip="say &quot;hi&quot; &amp; more"');
+  });
+
+  it("serializes layout columns in document order (caption numbers, embed order)", async () => {
+    const figure = (filename: string): ExportBlock => ({
+      type: "image",
+      source: { kind: "attachment", filename },
+      caption: { kind: "figure", content: [{ type: "text", text: filename }] },
+    });
+    const order: string[] = [];
+    const images: ImageEmbedSeam = {
+      embed: async (block) => {
+        const name = block.source.kind === "attachment" ? block.source.filename : "?";
+        order.push(name);
+        // The first column is the slow one: a parallel walk lets column 2 overtake.
+        if (name === "a1.png") await new Promise((resolve) => setTimeout(resolve, 20));
+        return { ok: true, xml: `<w:p><w:r><w:t>${name}</w:t></w:r></w:p>` };
+      },
+    };
+    const { xml } = await serializeBlocks(
+      [{
+        type: "layout",
+        columns: [
+          { width: 50, content: [figure("a1.png"), figure("a2.png")] },
+          { width: 50, content: [figure("b1.png")] },
+        ],
+      }],
+      { styleNames: noStyles, images, captionLang: "en" },
+    );
+    expect(order).toEqual(["a1.png", "a2.png", "b1.png"]);
+    expect(seqCachedResults(xml)).toEqual([["Figure", "1"], ["Figure", "2"], ["Figure", "3"]]);
+  });
+
+  it("expands a self-closing <w:p/> instead of leaving a loose <w:pPr> behind it", async () => {
+    const table = (content: ExportBlock[]): ExportBlock => ({
+      type: "table",
+      rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content }] }],
+    });
+    // A cell ending in a nested table gets a terminal `<w:p/>` (cellBodyXml).
+    const { xml } = await serializeBlocks(
+      [{ type: "blockquote", content: [table([table([])])] }],
+      { styleNames: noStyles },
+    );
+    expect(xml).not.toContain("<w:p/>");
+    expect(xml).not.toMatch(/<\/w:pPr><\/w:tc>/);
+    expect(xml).toMatch(/<\/w:tbl><w:p><w:pPr>((?!<w:p\b).)*<\/w:pPr><\/w:p><\/w:tc>/);
   });
 });

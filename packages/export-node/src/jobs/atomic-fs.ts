@@ -80,11 +80,12 @@ export async function openDurableTemp(
     handle,
     async commit(finalTarget) {
       if (consumed) throw new Error("Durable temp file was already consumed.");
-      consumed = true;
       await handle.sync();
       await close();
       if (options.privateDirectory !== false) await ensurePrivateDirectory(dirname(finalTarget));
       await rename(path, finalTarget);
+      // Only now: a failed sync/rename must leave discard() able to clean up.
+      consumed = true;
       await syncDirectory(dirname(finalTarget));
     },
     async discard() {

@@ -108,6 +108,13 @@ describe("PdfBytesHandle", () => {
       expect(urls.live()).toEqual([]);
     });
 
+    it("falls back to the PDF mime type for an untyped Blob", () => {
+      // `Blob.type` is "" (never undefined) when unset.
+      expect(pdfBytesFromBlob(new Blob([new Uint8Array([1])])).mimeType).toBe("application/pdf");
+      expect(pdfBytesFromBlob(new Blob([new Uint8Array([1])], { type: "application/x-test" })).mimeType)
+        .toBe("application/x-test");
+    });
+
     it("revokes rather than hands out a URL minted across a release", async () => {
       const urls = trackObjectUrls();
       // A blob that resolves on a later turn, so `release()` can land inside the

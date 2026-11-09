@@ -9,7 +9,7 @@ import {
 } from "@atlcli/export-jobs";
 import { ensurePrivateDirectory, writeDurableAtomic } from "./atomic-fs.js";
 import { FileExportLock } from "./file-lock.js";
-import { dataPathFor, logicalDigest, readFileChunks, readJsonFiles, streamToDurableTemp } from "./file-byte-utils.js";
+import { dataPathFor, logicalDigest, readFileChunks, readJsonFile, readJsonFiles, streamToDurableTemp } from "./file-byte-utils.js";
 
 interface SpoolMarkerV1 extends SpoolObjectV1 { schema: "atlcli.file-spool-object/1"; }
 interface ClosedMarkerV1 { schema: "atlcli.file-byte-closed/1"; jobId: string; leaseEpoch?: number; closedAt: number; preserve: SpoolRefV1[]; }
@@ -78,8 +78,10 @@ export class FileExportSpoolStore implements ExportSpoolStore {
   }
   async stat(ref: SpoolRefV1): Promise<SpoolObjectV1 | undefined> {
     validateRef(ref);
-    const marker = (await readJsonFiles<SpoolMarkerV1>(this.#objectsDir)).map((e) => e.value).find((m) => sameRef(m.ref, ref));
-    return marker ? publicObject(marker) : undefined;
+    // The marker path is a digest of the ref: read it directly instead of
+    // parsing every marker in the directory.
+    const marker = await readJsonFile<SpoolMarkerV1>(this.#markerPath(ref));
+    return marker && sameRef(marker.ref, ref) ? publicObject(marker) : undefined;
   }
   /** Snapshot refs already committed for one epoch so recovery can close it without losing checkpoints. */
   async listNamespaceRefs(jobId: string, leaseEpoch: number): Promise<SpoolRefV1[]> {
@@ -109,7 +111,8 @@ export class FileExportSpoolStore implements ExportSpoolStore {
     } finally { await lease.release(); }
   }
   async #closed(ref: SpoolRefV1): Promise<boolean> {
-    const jobs = await readJsonFiles<ClosedMarkerV1>(this.#closedJobsDir); if (jobs.some((e) => e.value.jobId === ref.jobId)) return true;
-    const epochs = await readJsonFiles<ClosedMarkerV1>(this.#closedEpochsDir); return epochs.some((e) => e.value.jobId === ref.jobId && e.value.leaseEpoch === ref.leaseEpoch);
+    if ((await readJsonFile<ClosedMarkerV1>(this.#jobClosedPath(ref.jobId)))?.jobId === ref.jobId) return true;
+    const epoch = await readJsonFile<ClosedMarkerV1>(this.#epochClosedPath(ref.jobId, ref.leaseEpoch));
+    return epoch?.jobId === ref.jobId && epoch.leaseEpoch === ref.leaseEpoch;
   }
 }

@@ -766,6 +766,9 @@ function parseVisualPart(
   };
   const parser = new SaxesParser({ xmlns: true });
   const alternates: MutableAlternate[] = [];
+  // Running per-part counter: `alternates` is a stack that is popped, so its
+  // length would hand every top-level group the same `.0` id.
+  let alternateOrdinal = 0;
   const branches: MutableBranch[] = [];
   const prefixStack: Record<string, string>[] = [{}];
   let depth = 0;
@@ -832,7 +835,7 @@ function parseVisualPart(
     if (tag.uri === MCE_URI && tag.local === "AlternateContent") {
       alternates.push({
         depth,
-        groupId: `alternate.${partOrdinal}.${alternates.length}`,
+        groupId: `alternate.${partOrdinal}.${alternateOrdinal++}`,
         choiceSelected: false,
         choiceOrdinal: 0,
         fallbackOrdinal: 0,

@@ -1750,6 +1750,10 @@ describe("exportDocx — spec 003 review fixes", () => {
     const bodySect = doc.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>(?=<\/w:body>)/)?.[0] ?? "";
     expect(bodySect).toContain('w:orient="landscape"');
     expect(doc).toContain("final wide");
+    // Regression: the merge must not swallow the region's OPENING sectPr
+    // paragraph (dangling </w:pPr></w:p>) — the part stays well-formed.
+    assertBalancedXml(doc);
+    expect(doc.match(/<w:sectPr\b/g)).toHaveLength(2);
   });
 
   it("exportControls: passthrough keeps scroll-ignore content (--keep-ignored)", async () => {
@@ -1915,6 +1919,26 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
       expect(part).not.toContain("$scroll.");
       assertBalancedXml(part);
     }
+  });
+
+  it("lists in an included page share the export's numbering allocator", async () => {
+    const list = (label: string) => `<ol><li><p>${label}</p></li></ol>`;
+    const page = includePage("Listy", list("included item"));
+    const { getIncludedPage } = resolver({ Listy: page });
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(Listy)"),
+      }),
+      details: { ...details, storage: list("body item") },
+      template,
+      deps: { ...deps, getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    const numbering = readPart(bytes, "word/numbering.xml");
+    const used = [...doc.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1]!);
+    // Two separate lists → two distinct ids, both defined in numbering.xml.
+    expect(new Set(used).size).toBe(2);
+    for (const id of used) expect(numbering).toContain(`<w:num w:numId="${id}"`);
   });
 
   it("uses the selected non-default theme for code discovered only in an include", async () => {
