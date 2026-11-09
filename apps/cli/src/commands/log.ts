@@ -192,6 +192,25 @@ export async function handleLog(
   }
 }
 
+function parseLimit(flags: Record<string, string | boolean | string[]>, opts: OutputOptions, fallback: number): number {
+  const raw = getFlag(flags, "limit");
+  if (raw === undefined) return fallback;
+  if (!/^[1-9]\d*$/.test(raw)) fail(opts, 1, ERROR_CODES.USAGE, `--limit expects a positive integer, got "${raw}"`);
+  return Number(raw);
+}
+
+/** The last `limit` entries across `files` (newest file first), oldest first. */
+export async function tailEntries(files: string[], limit: number, level?: LogLevel): Promise<LogEntry[]> {
+  let entries: LogEntry[] = [];
+  for (const file of files) {
+    const older: LogEntry[] = [];
+    for await (const entry of streamLogs([file], { level })) older.push(entry);
+    entries = [...older, ...entries];
+    if (entries.length >= limit) break;
+  }
+  return entries.slice(-limit);
+}
+
 async function handleList(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
@@ -200,7 +219,7 @@ async function handleList(
   const untilStr = getFlag(flags, "until");
   const level = getFlag(flags, "level") as LogLevel | undefined;
   const type = getFlag(flags, "type");
-  const limit = parseInt(getFlag(flags, "limit") || "100", 10);
+  const limit = parseLimit(flags, opts, 100);
   const globalOnly = hasFlag(flags, "global");
   const projectOnly = hasFlag(flags, "project");
 
@@ -253,7 +272,7 @@ async function handleTail(
   const follow = hasFlag(flags, "follow") || hasFlag(flags, "f");
   const level = getFlag(flags, "level") as LogLevel | undefined;
   const projectOnly = hasFlag(flags, "project");
-  const limit = parseInt(getFlag(flags, "limit") || "20", 10);
+  const limit = parseLimit(flags, opts, 20);
 
   const logsDir = projectOnly ? getProjectLogsDir(process.cwd()) : getGlobalLogsDir();
   const files = getLogFiles(logsDir);
@@ -263,13 +282,8 @@ async function handleTail(
     return;
   }
 
-  // Show last N entries
-  const entries: LogEntry[] = [];
-  for await (const entry of streamLogs(files, { level, limit })) {
-    entries.push(entry);
-  }
-
-  for (const entry of entries.reverse()) {
+  // Show last N entries, oldest first
+  for (const entry of await tailEntries(files, limit, level)) {
     output(formatEntry(entry), opts);
   }
 

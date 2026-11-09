@@ -82,7 +82,7 @@ async function handleLoginWithMode(
 ): Promise<void> {
   const { interactive, forceTokenPrompt } = mode;
   if (flags.oauth) {
-    fail(opts, 1, ERROR_CODES.AUTH, "OAuth login is not implemented yet. Use --api-token or --bearer.");
+    fail(opts, 1, ERROR_CODES.AUTH, "OAuth login is not implemented yet. Use --token or --bearer.");
   }
 
   const useBearer = hasFlag(flags, "bearer");

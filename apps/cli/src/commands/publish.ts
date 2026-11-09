@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import {
   ERROR_CODES,
   getActiveProfile,
+  getCurrentVersion,
   getFlag,
   hasFlag,
   loadConfig,
@@ -548,7 +549,7 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
     const result = await materializeNodePublicationBundleV1({
       workspaceDirectory: state.workspaceDirectory,
       refreshPlan,
-      createdBy: { name: "atlcli", version: "0.17.2" },
+      createdBy: { name: "atlcli", version: getCurrentVersion() },
       sourcePolicyDigest: await digestPublicationJsonV1(state.project.sourcePolicy),
       chartPolicy: createPublicationChartRenderPolicyV1(state.project),
       rootIds: planned.snapshot.rootIds,

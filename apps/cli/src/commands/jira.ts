@@ -12,17 +12,13 @@ import {
   DEFAULT_COLUMNS,
   type TableFormat,
   type UserRef,
-  buildSearchJql,
   editInEditor,
   issueCell,
   renderDetails,
   changelogRows,
   renderIssueView,
-  jqlBefore,
   jqlIn,
-  jqlSince,
   jqlStatusNames,
-  splitNegation,
   needsFieldList,
   parseReplacements,
   renderTable,
@@ -76,12 +72,10 @@ import {
   SprintMetrics,
   BulkOperationSummary,
   ExportData,
-  ImportResult,
   JiraWebhookServer,
   JiraWebhookPayload,
   formatWebhookEvent,
   parseTimeToSeconds,
-  secondsToJiraFormat,
   secondsToHuman,
   roundTime,
   parseRoundingInterval,
@@ -109,17 +103,11 @@ import {
   writeExportFile,
   parseImportFile,
   importIssues,
-  listTemplates,
-  loadTemplate,
-  saveTemplate,
-  deleteTemplate,
-  templateExists,
   issueToTemplate,
   templateToCreateInput,
   getTemplateFieldNames,
   JiraTemplate,
   type JiraTemplateFields,
-  CreateRemoteLinkInput,
   // Hierarchical template storage
   JiraTemplateFilter,
   JiraTemplateSummary,
@@ -247,9 +235,6 @@ type ClientWithDefaults = {
   client: JiraClient;
   defaults: { project?: string; space?: string; board?: number };
 };
-
-
-export { pageAgile };
 
 /** The board's `count` most recently closed sprints, oldest first. */
 async function recentClosedSprints(client: JiraClient, boardId: number, count: number) {
@@ -410,16 +395,6 @@ async function outputIssueList(
   output(renderTable(columns, rows, format, !hasFlag(flags, "no-headers")), opts);
 }
 
-/**
- * Terminal handler for a subcommand this dispatcher does not know.
- *
- * An unknown subcommand used to print the help text and exit 0, which is how
- * issue #8 stayed invisible for so long: `jira issue attachments PROJ-123` —
- * documented, never implemented — looked like a successful no-op in a script
- * instead of an error. A bare `jira issue` is still help-with-exit-0; a typo or
- * a missing command now fails with a usage error. In `--json` mode the error
- * object is the only thing written, so stdout stays single-document.
- */
 // ============ Me ============
 
 async function handleMe(
@@ -2789,6 +2764,12 @@ function formatWorklog(worklog: JiraWorklog): Record<string, unknown> {
 
 // ============ Worklog Report ============
 
+/** YYYY-MM-DD in local time; `toISOString()` shifts local midnight to the previous day east of UTC. */
+export function localDay(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 async function handleWorklogReport(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
@@ -2813,8 +2794,8 @@ async function handleWorklogReport(
   sinceDate.setHours(0, 0, 0, 0);
   untilDate.setHours(23, 59, 59, 999);
 
-  const sinceDateStr = sinceDate.toISOString().split("T")[0];
-  const untilDateStr = untilDate.toISOString().split("T")[0];
+  const sinceDateStr = localDay(sinceDate);
+  const untilDateStr = localDay(untilDate);
 
   // Determine user - default to "me" (currentUser())
   const userInput = getFlag(flags, "user") ?? "me";
@@ -4450,7 +4431,7 @@ async function handleBulkLabel(
   const [action, ...labelArgs] = args;
 
   if (action !== "add" && action !== "remove") {
-    output(bulkLabelHelp(), opts);
+    unknownSubcommand(action, bulkLabelHelp(), opts);
     return;
   }
 

@@ -76,6 +76,8 @@ const SUBCOMMANDS: Record<string, string[]> = {
   wiki: [
     "blog",
     "docs",
+    "export",
+    "import",
     "mount",
     "my",
     "page",
@@ -252,7 +254,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
 
   // auth flags
   "auth init": ["--email", "--profile", "--site", "--token"],
-  "auth login": ["--email", "--profile", "--site", "--token"],
+  "auth login": ["--bearer", "--ca-file", "--deployment", "--email", "--insecure", "--profile", "--site", "--token", "--username"],
 
   // doctor flags
   doctor: ["--fix"],
@@ -297,6 +299,8 @@ const COMMAND_FLAGS: Record<string, string[]> = {
     "--port",
     "--profile",
     "--space",
+    "--sync-writes",
+    "--transport",
   ],
   "wiki unmount": ["--cache-dir", "--json", "--profile"],
   "wiki vfs cache": ["--cache-dir", "--json", "--profile"],
@@ -617,12 +621,12 @@ const COMMAND_FLAGS: Record<string, string[]> = {
 
   // log flags
   "log list": ["--global", "--level", "--limit", "--project", "--since", "--type", "--until"],
-  "log tail": ["--follow", "--global", "--level", "--lines", "--project", "--type"],
+  "log tail": ["--follow", "--level", "--limit", "--project"],
   "log show": ["--global", "--id", "--project"],
-  "log clear": ["--all", "--before", "--global", "--project"],
+  "log clear": ["--before", "--confirm", "--global", "--project"],
 
   // plugin flags
-  "plugin install": ["--global", "--local"],
+  "plugin install": [],
   "plugin remove": [],
   "plugin enable": [],
   "plugin disable": [],

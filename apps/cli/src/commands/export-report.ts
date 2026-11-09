@@ -65,8 +65,6 @@ export const EXPORT_EXIT = {
   CANCELLED: 130,
 } as const;
 
-export type ExportExitCode = (typeof EXPORT_EXIT)[keyof typeof EXPORT_EXIT];
-
 /**
  * How bad an {@link Issue} is. Three values, mirroring the two engine note
  * levels (`info | warning`) plus the `error` reserved for classified throws:

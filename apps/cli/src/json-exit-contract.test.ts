@@ -76,6 +76,7 @@ describe("failures exit 1 with one JSON error document", () => {
     [["config", "unset", "profiles.stub.auth"], "ATLCLI_ERR_USAGE"],
     [["jira", "import", "--file", "export.json"], "ATLCLI_ERR_USAGE"],
     [["jira", "export", "-o", "x.json"], "ATLCLI_ERR_USAGE"],
+    [["jira", "bulk", "label", "ad", "--jql", "project = PROJ"], "ATLCLI_ERR_USAGE"],
     [["jira", "issue", "get", "--key", "PROJ-404"], "ATLCLI_ERR_NOT_FOUND"],
     [["jira", "field", "options", "customfield_10050"], "ATLCLI_ERR_FORBIDDEN"],
   ])("%p → %s", async (args, code) => {

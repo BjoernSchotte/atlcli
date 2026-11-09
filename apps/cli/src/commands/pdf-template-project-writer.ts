@@ -12,7 +12,6 @@ import {
   mkdir,
   open,
   readFile,
-  readdir,
   rename,
   rm,
   unlink,
@@ -983,12 +982,6 @@ export async function copyAcceptedTemplateProjectAssets(
     written.push(relative);
   }
   return Object.freeze(written);
-}
-
-export async function listTemplateProjectRootEntries(
-  projectRoot: string
-): Promise<readonly string[]> {
-  return Object.freeze((await readdir(projectRoot)).sort());
 }
 
 /**

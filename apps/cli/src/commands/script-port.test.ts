@@ -51,6 +51,15 @@ test("files stay below the output directory, also through links", async () => {
   expect((await port.fileList!("deep/dir")).map((f) => f.name)).toEqual(["a.txt"]);
 });
 
+test("parallel state writes to one store keep every key", async () => {
+  const home = await tempDir();
+  const stateDir = join(home, ".atlcli", "state");
+  const port = createCliScriptPort(unused, unused, "https://example.atlassian.net", { profileName: "p", outDir: home, stateDir });
+  const keys = Array.from({ length: 40 }, (_, i) => `k${i}`);
+  await Promise.all(keys.map((key) => port.stateSet!("job", key, key)));
+  expect(Object.keys(JSON.parse(await readFile(join(stateDir, "job.json"), "utf8"))).sort()).toEqual([...keys].sort());
+});
+
 test("state persists per store as JSON and deletes keys", async () => {
   const home = await tempDir();
   {

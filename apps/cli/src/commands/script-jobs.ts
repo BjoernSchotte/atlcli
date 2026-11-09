@@ -125,6 +125,7 @@ export async function runEach(
     fail(opts, 1, ERROR_CODES.USAGE, error instanceof Error ? error.message : String(error));
   }
   const { limits, maxWrites } = parseLimits(flags, opts);
+  parseMaxItems(flags, opts);
   const modules = "path" in origin ? await loadImports(origin.path, source, opts) : {};
   const { profile, port, outputs } = await connect(flags, opts);
   const name = meta.name ?? scriptName(origin);
@@ -178,6 +179,7 @@ export async function resumeCommand(args: string[], flags: Flags, opts: OutputOp
     await writeFile(file(job, "modules.json"), JSON.stringify(modules), "utf8");
   }
   job.concurrency = parseConcurrency(flags, opts, job.concurrency);
+  parseMaxItems(flags, opts);
   const maxFailures = getFlag(flags, "max-failures");
   if (maxFailures !== undefined) job.maxFailures = parseMaxFailures(maxFailures, opts);
   const { profile, port, outputs } = await connect({ ...flags, profile: job.target.profile }, opts);
@@ -294,8 +296,7 @@ async function processJob(job: ScriptJob, source: string, port: ScriptPort, flag
   const out = job.mode === "plan" ? "plans.jsonl" : "results.jsonl";
   const finished = await finishedIds(job, out);
   const items = (await readItems(job)).filter((item) => !finished.has(item.id));
-  const maxItems = getFlag(flags, "max-items");
-  const todo = maxItems && /^[1-9]\d*$/.test(maxItems) ? items.slice(0, Number(maxItems)) : items;
+  const todo = items.slice(0, parseMaxItems(flags, opts));
   const threshold = failureLimit(job.maxFailures, todo.length);
   const memo = new Map<string, Promise<unknown>>();
   const tally: Tally = {};
@@ -624,6 +625,14 @@ async function finishedIds(job: ScriptJob, name: "plans.jsonl" | "results.jsonl"
 }
 
 // ============ Flags ============
+
+/** `--max-items`: a positive integer, or undefined (no cap) when absent. */
+function parseMaxItems(flags: Flags, opts: OutputOptions): number | undefined {
+  const raw = getFlag(flags, "max-items");
+  if (raw === undefined) return undefined;
+  if (!/^[1-9]\d*$/.test(raw)) fail(opts, 1, ERROR_CODES.USAGE, `--max-items expects a positive integer, got "${raw}"`);
+  return Number(raw);
+}
 
 function parseMaxFailures(raw: string, opts: OutputOptions): string {
   if (!/^([1-9]\d*|([1-9]\d?|100)%)$/.test(raw)) fail(opts, 1, ERROR_CODES.USAGE, `--max-failures expects a count or a percentage like 10%, got "${raw}"`);

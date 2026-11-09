@@ -57,6 +57,9 @@ const CASES: Array<[string[], string]> = [
   [["completion", "zsh", "--help"], "completion"],
   [["audit", "jira", "--help"], "Usage: atlcli audit jira"],
   [["audit", "wiki", "--help"], "Usage: atlcli audit wiki"],
+  [["audit", "access", "--help"], "Usage: atlcli audit access"],
+  [["script", "--help"], "Usage: atlcli script <command>"],
+  [["script", "run", "x.ts", "--help"], "Usage: atlcli script <command>"],
   [["wiki", "my", "--help"], "atlcli wiki my"],
   [["wiki", "recent", "--days", "3", "--help"], "atlcli wiki recent"],
 ];

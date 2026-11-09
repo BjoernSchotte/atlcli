@@ -7,7 +7,7 @@
  * atlcli config unset <key>             - Remove a value
  */
 
-import { ERROR_CODES, OutputOptions, fail, output, loadConfig, saveConfig, hasFlag } from "@atlcli/core";
+import { ERROR_CODES, OutputOptions, fail, output, loadConfig, saveConfig } from "@atlcli/core";
 import { unknownSubcommand } from "./unknown-subcommand.js";
 
 export async function handleConfig(

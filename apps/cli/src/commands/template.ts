@@ -27,8 +27,6 @@ import {
   TemplateEngine,
   parseTemplate,
   serializeTemplate,
-  validateTemplate,
-  getBuiltinVariables,
   // Import/export
   exportToDirectory,
   exportSingleTemplate,

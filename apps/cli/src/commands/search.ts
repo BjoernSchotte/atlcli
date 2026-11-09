@@ -178,7 +178,7 @@ export function buildCql(query: string, flags: Record<string, string | boolean |
  * - Date: "2024-01-15"
  * - Keywords: "today", "yesterday", "thisWeek", "thisMonth"
  */
-function parseDateExpression(expr: string): string {
+export function parseDateExpression(expr: string): string {
   const trimmed = expr.trim().toLowerCase();
 
   // Keywords
@@ -199,7 +199,8 @@ function parseDateExpression(expr: string): string {
   const relMatch = expr.match(/^(\d+)([dwm])$/i);
   if (relMatch) {
     const [, num, unit] = relMatch;
-    const cqlUnit = unit.toLowerCase() === "w" ? "w" : unit.toLowerCase();
+    // CQL: lowercase m is minutes, months are uppercase M.
+    const cqlUnit = unit.toLowerCase() === "m" ? "M" : unit.toLowerCase();
     return `now("-${num}${cqlUnit}")`;
   }
 

@@ -6,7 +6,7 @@
  * atlcli completion __complete <args> - Internal: get completions for args
  */
 
-import { output, hasFlag } from "@atlcli/core";
+import { output } from "@atlcli/core";
 import type { OutputOptions } from "@atlcli/core";
 import {
   getCompletions,

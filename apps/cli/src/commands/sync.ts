@@ -1,7 +1,7 @@
-import { readdir, writeFile, unlink, readFile, mkdir } from "node:fs/promises";
+import { readdir, writeFile, unlink, readFile } from "node:fs/promises";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { FSWatcher, watch, existsSync } from "node:fs";
-import { join, basename, extname, dirname } from "node:path";
+import { join, basename, extname, dirname, relative } from "node:path";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -337,6 +337,10 @@ class SyncEngine {
   async initialSync(): Promise<void> {
     this.emit({ type: "status", message: "Starting initial sync..." });
 
+    // Load ignore patterns before the first scan, so ignored files are neither
+    // auto-created nor part of a --dry-run plan.
+    this.ignore = (await loadIgnorePatterns(this.opts.dir)).ignore;
+
     // Auto-initialize .atlcli/ if not present in target directory
     // Note: We check the target dir specifically, NOT walking up the tree,
     // to avoid finding the global ~/.atlcli/ config directory
@@ -611,10 +615,6 @@ class SyncEngine {
 
   /** Start the sync daemon */
   async start(): Promise<void> {
-    // Load ignore patterns
-    const ignoreResult = await loadIgnorePatterns(this.opts.dir);
-    this.ignore = ignoreResult.ignore;
-
     // Create lockfile to signal sync daemon is running
     // This is used by plugin-git to skip auto-push when sync is active
     await this.createLockFile();
@@ -1874,7 +1874,7 @@ class SyncEngine {
 
         // Check if path should be ignored
         if (this.ignore) {
-          const relativePath = fullPath.replace(this.opts.dir + "/", "");
+          const relativePath = relative(this.opts.dir, fullPath);
           if (shouldIgnore(this.ignore, relativePath)) {
             continue;
           }

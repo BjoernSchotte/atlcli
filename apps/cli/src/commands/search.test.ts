@@ -1,42 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { buildCql as realBuildCql } from "./search.js";
-
-// Since the functions are not exported, we'll test the CQL building logic
-// by importing and testing a mock module that exposes the internal functions
-
-// For now, let's test the date expression parsing and CQL building
-// by reimplementing the logic for testing purposes
-
-function parseDateExpression(expr: string): string {
-  const trimmed = expr.trim().toLowerCase();
-
-  if (trimmed === "today") {
-    return "startOfDay()";
-  }
-  if (trimmed === "yesterday") {
-    return 'startOfDay("-1d")';
-  }
-  if (trimmed === "thisweek" || trimmed === "this-week") {
-    return "startOfWeek()";
-  }
-  if (trimmed === "thismonth" || trimmed === "this-month") {
-    return "startOfMonth()";
-  }
-
-  const relMatch = expr.match(/^(\d+)([dwm])$/i);
-  if (relMatch) {
-    const [, num, unit] = relMatch;
-    const cqlUnit = unit.toLowerCase() === "w" ? "w" : unit.toLowerCase();
-    return `now("-${num}${cqlUnit}")`;
-  }
-
-  const dateMatch = expr.match(/^\d{4}-\d{2}-\d{2}$/);
-  if (dateMatch) {
-    return `"${expr}"`;
-  }
-
-  return expr;
-}
+import { buildCql as realBuildCql, parseDateExpression } from "./search.js";
 
 function escapeQuotes(str: string): string {
   return str.replace(/"/g, '\\"');
@@ -154,8 +117,8 @@ describe("Search CQL Builder", () => {
     });
 
     test("relative months (1m)", () => {
-      expect(parseDateExpression("1m")).toBe('now("-1m")');
-      expect(parseDateExpression("3m")).toBe('now("-3m")');
+      expect(parseDateExpression("1m")).toBe('now("-1M")');
+      expect(parseDateExpression("3m")).toBe('now("-3M")');
     });
 
     test("ISO date string", () => {

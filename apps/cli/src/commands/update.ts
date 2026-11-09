@@ -11,9 +11,7 @@ import {
   hasFlag,
   checkForUpdates,
   installUpdate,
-  loadUpdateState,
   saveUpdateState,
-  getCurrentVersion,
   detectInstallMethod,
 } from "@atlcli/core";
 import type { OutputOptions } from "@atlcli/core";
@@ -207,23 +205,20 @@ export async function handleUpdate(
     output(`Successfully updated to ${installedVersion}`, opts);
     output("Restart your shell or run a new command to use the updated version.", opts);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-
-    if (opts.json) {
-      output(
-        {
-          schemaVersion: "1",
-          success: false,
-          error: message,
-        },
-        opts
-      );
-      return;
-    }
-
-    output(`Update failed: ${message}`, opts);
-    process.exit(1);
+    reportUpdateFailure(err instanceof Error ? err.message : String(err), opts);
   }
+}
+
+/** A failed update exits 1 in both output modes; --json keeps its one document. */
+export function reportUpdateFailure(message: string, opts: OutputOptions): void {
+  if (opts.json) {
+    output({ schemaVersion: "1", success: false, error: message }, opts);
+    process.exitCode = 1;
+    return;
+  }
+
+  output(`Update failed: ${message}`, opts);
+  process.exit(1);
 }
 
 function updateHelp(): string {

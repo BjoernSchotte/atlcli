@@ -197,6 +197,18 @@ describe("wiki docs sync --dry-run leaves the working directory untouched", () =
     expect(existsSync(join(dir, ".atlcli"))).toBe(false);
   }, 60_000);
 
+  it("leaves files matched by .atlcliignore out of the plan", async () => {
+    // Ignore patterns used to load in `start()`, after the initial scan (and
+    // never under --dry-run), so ignored files were planned and auto-created.
+    const dir = await makeLegacyFixture("ignored-file");
+    await writeFile(join(dir, ".atlcliignore"), "legacy.md\n");
+
+    const { stdout, stderr, exitCode } = await runSyncCli([dir, "--page-id", PAGE_ID, "--dry-run"]);
+
+    expect(exitCode, `stderr:\n${stderr}`).toBe(0);
+    expect(stdout).not.toContain("Would migrate: legacy.md");
+  }, 60_000);
+
   it("does not create the target directory", async () => {
     const dir = join(root, "never-created");
     expect(existsSync(dir)).toBe(false);

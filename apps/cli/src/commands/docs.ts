@@ -1,4 +1,4 @@
-import { readdir, writeFile, readFile, mkdir, stat, unlink, rename, rm } from "node:fs/promises";
+import { readdir, writeFile, readFile, mkdir, unlink, rename } from "node:fs/promises";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { FSWatcher, watch, existsSync } from "node:fs";
 import { join, basename, extname, dirname, relative, resolve, sep } from "node:path";
@@ -16,7 +16,6 @@ import {
   readTextFile,
   resolveDeploymentType,
   resolveDefaults,
-  slugify,
   writeTextFile,
   // New template system
   GlobalTemplateStorage,
@@ -38,7 +37,6 @@ import {
   replaceAttachmentPaths,
   extractAttachmentRefs,
   updateDrawioAttachmentVersions,
-  isImageFile,
   // Local storage
   findAtlcliDir,
   getAtlcliPath,
@@ -48,13 +46,8 @@ import {
   readState,
   writeState,
   updatePageState,
-  getPageByPath,
   getPageById,
-  computeSyncState as computeSyncStateFromHashes,
-  readBaseContent,
   writeBaseContent,
-  slugifyTitle,
-  generateUniqueFilename,
   getRelativePath,
   AtlcliConfig,
   AtlcliState,
@@ -64,11 +57,9 @@ import {
   getAttachmentsDirName,
   updateAttachmentState,
   removeAttachmentState,
-  getPageAttachments,
   writeAttachmentBase,
   deleteAttachmentBase,
   computeAttachmentSyncState,
-  AttachmentState,
   AttachmentInfo,
   LARGE_FILE_THRESHOLD,
   formatFileSize,
@@ -76,11 +67,9 @@ import {
   // Frontmatter
   parseFrontmatter,
   addFrontmatter,
-  stripFrontmatter,
   extractTitleFromMarkdown,
   AtlcliFrontmatter,
   // Hierarchy
-  computeFilePath,
   buildPathMap,
   moveFile,
   hasPageMoved,
@@ -96,7 +85,6 @@ import {
   // Config v2
   initAtlcliDirV2,
   getConfigScope,
-  isConfigV2,
   ConfigScope,
   // Diff
   generateDiff,
@@ -105,11 +93,9 @@ import {
   // Ignore
   loadIgnorePatterns,
   shouldIgnore,
-  IgnoreResult,
   // Comments
   getCommentsFilePath,
   writeCommentsFile,
-  PageComments,
   // Validation
   validateFile,
   validateDirectory,
@@ -135,14 +121,13 @@ import {
   // Editor version tracking
   setPageEditorVersion,
   getAllEditorVersions,
-  type EditorVersion,
 } from "@atlcli/confluence/internal";
 import type { Ignore } from "@atlcli/confluence/internal";
 import { readAttachmentFile, resolveAttachmentFile } from "./docs-attachments.js";
-import { handleSync, syncHelp } from "./sync.js";
+import { handleSync } from "./sync.js";
 import { unknownSubcommand } from "./unknown-subcommand.js";
 import { checkTemplateRender } from "./template-render-check.js";
-import { parseVarAssignments } from "./template-flags.js";
+import { parseVarFlags } from "./page.js";
 
 /** Sync state for bidirectional sync tracking */
 export type SyncState = "synced" | "local-modified" | "remote-modified" | "conflict";
@@ -1528,7 +1513,6 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     await writeState(atlcliDir, state);
 
     // Populate sync.db after all content has been written.
-    const { createSyncDb } = await import("@atlcli/confluence/internal");
     const adapter = await createSyncDb(getAtlcliPath(atlcliDir), { autoMigrate: false });
     try {
       // Upsert all pages to sync.db (populates last_modified for stale detection)
@@ -2169,7 +2153,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
 
   if (templateName) {
     // Create template resolver
-    const activeProfile = getActiveProfile(globalConfig);
+    const activeProfile = getActiveProfile(globalConfig, getFlag(flags, "profile"));
 
     const global = new GlobalTemplateStorage();
     const profile = activeProfile?.name ? new ProfileTemplateStorage(activeProfile.name) : undefined;
@@ -2928,96 +2912,10 @@ async function writeMeta(path: string, meta: EnhancedMeta | LegacyMeta): Promise
 }
 
 /**
- * Reads base content from .base file (used for three-way merge).
- */
-export async function readBase(mdPath: string): Promise<string | null> {
-  try {
-    return await readTextFile(`${mdPath}.base`);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Writes base content to .base file.
- */
-export async function writeBase(mdPath: string, content: string): Promise<void> {
-  await writeTextFile(`${mdPath}.base`, content);
-}
-
-/**
  * Checks if metadata is in enhanced format (has sync fields).
  */
 function isEnhancedMeta(meta: EnhancedMeta | LegacyMeta | null): meta is EnhancedMeta {
   return meta !== null && "syncState" in meta && "localHash" in meta;
-}
-
-/**
- * Creates enhanced metadata from current state.
- */
-export function createEnhancedMeta(params: {
-  id: string;
-  title: string;
-  spaceKey: string;
-  version: number;
-  localContent: string;
-  remoteContent: string;
-}): EnhancedMeta {
-  const normalizedLocal = normalizeMarkdown(params.localContent);
-  const normalizedRemote = normalizeMarkdown(params.remoteContent);
-  const localHash = hashContent(normalizedLocal);
-  const remoteHash = hashContent(normalizedRemote);
-
-  return {
-    id: params.id,
-    title: params.title,
-    spaceKey: params.spaceKey,
-    version: params.version,
-    lastSyncedAt: new Date().toISOString(),
-    localHash,
-    remoteHash,
-    baseHash: remoteHash, // Base is remote at sync time
-    syncState: "synced",
-  };
-}
-
-/**
- * Computes the current sync state based on local and remote hashes.
- */
-export function computeSyncState(params: {
-  localContent: string;
-  meta: EnhancedMeta;
-  remoteVersion?: number;
-  remoteContent?: string;
-}): SyncState {
-  const { localContent, meta, remoteVersion, remoteContent } = params;
-
-  const normalizedLocal = normalizeMarkdown(localContent);
-  const currentLocalHash = hashContent(normalizedLocal);
-
-  // Check if local has changed since last sync
-  const localChanged = currentLocalHash !== meta.localHash;
-
-  // Check if remote has changed (by version or content hash)
-  let remoteChanged = false;
-  if (remoteVersion !== undefined && remoteVersion > meta.version) {
-    remoteChanged = true;
-  } else if (remoteContent !== undefined) {
-    const normalizedRemote = normalizeMarkdown(remoteContent);
-    const currentRemoteHash = hashContent(normalizedRemote);
-    remoteChanged = currentRemoteHash !== meta.remoteHash;
-  }
-
-  if (localChanged && remoteChanged) {
-    return "conflict";
-  }
-  if (localChanged) {
-    return "local-modified";
-  }
-  if (remoteChanged) {
-    return "remote-modified";
-  }
-  return "synced";
 }
 
 async function collectMarkdownFiles(
@@ -3083,22 +2981,6 @@ async function collectDirs(dir: string): Promise<string[]> {
   }
 
   return results;
-}
-
-function parseVarFlags(flags: Record<string, string | boolean | string[]>): Record<string, unknown> {
-  const vars: Record<string, unknown> = {};
-
-  // Check for --var.name=value format
-  for (const [key, value] of Object.entries(flags)) {
-    if (key.startsWith("var.") && typeof value === "string") {
-      vars[key.slice(4)] = value;
-    }
-  }
-
-  // --var key=value, repeatable; JSON values and a.b=v nesting as everywhere else.
-  const varFlag = flags["var"];
-  const varValues = Array.isArray(varFlag) ? varFlag : typeof varFlag === "string" ? [varFlag] : [];
-  return { ...vars, ...parseVarAssignments(varValues.filter((v) => v.indexOf("=") > 0)) };
 }
 
 function titleFromFilename(path: string): string {
