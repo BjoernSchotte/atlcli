@@ -45,7 +45,6 @@ export async function summarizeDigestV1(input: {
     new ChatAnthropic({
       model: ANTHROPIC_CHAT_MODEL_ID,
       apiKey,
-      temperature: 0,
       maxTokens: 800,
       maxRetries: 1,
       streaming: false,

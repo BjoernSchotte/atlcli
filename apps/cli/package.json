@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "@atlcli/export-fixtures": "workspace:*",
-    "@langchain/core": "1.2.3",
+    "@langchain/core": "1.3.5",
     "ajv": "^8.20.0"
   }
 }

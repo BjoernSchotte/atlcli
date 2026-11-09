@@ -118,6 +118,9 @@ export default defineConfig({
           if (source === "langsmith/experimental/sandbox") {
             return researchBrowserModule("langsmith-sandbox-browser-stub");
           }
+          if (source === "langsmith/traceable") {
+            return researchBrowserModule("langsmith-traceable-browser-stub");
+          }
 
           // Streamdown's public barrel eagerly retains lazy Mermaid and Shiki
           // chunks even when callers override `code` and disable controls.
@@ -170,6 +173,10 @@ export default defineConfig({
         {
           find: "langsmith/experimental/sandbox",
           replacement: researchBrowserModule("langsmith-sandbox-browser-stub"),
+        },
+        {
+          find: "langsmith/traceable",
+          replacement: researchBrowserModule("langsmith-traceable-browser-stub"),
         },
         {
           find: "json-schema-to-typescript",

@@ -221,6 +221,26 @@ describe("Anthropic Chat model binding", () => {
     });
   });
 
+  it("never sends temperature, which anthropic-version 2026-10-21 rejects", () => {
+    const binding = createAnthropicChatModelBindingV1({
+      credential: "synthetic-key",
+      maxOutputTokens: 1_024,
+      qualityPolicy: chatQualityPolicyV1("deep"),
+    });
+    for (const model of [
+      createAnthropicChatModelBindingV1({
+        credential: "synthetic-key",
+        maxOutputTokens: 1_024,
+        qualityPolicy: chatQualityPolicyV1("quick"),
+      }).model,
+      binding.model,
+      binding.modelForPreference?.("fast"),
+      binding.modelForFinalization?.(),
+    ]) {
+      expect((model as ChatAnthropic).invocationParams({}).temperature).toBeUndefined();
+    }
+  });
+
   it("gives finalize-only synthesis a bounded non-thinking output corridor", () => {
     const binding = createAnthropicChatModelBindingV1({
       credential: "synthetic-key",
@@ -384,11 +404,18 @@ describe("Anthropic Chat model binding", () => {
           message.reasoning,
           (async () => {
             for await (const event of message) {
-              if (event.event !== "content-block-delta" ||
-                event.delta.type !== "block-delta" ||
-                event.delta.fields.type !== "tool_call_chunk" ||
-                typeof event.delta.fields.args !== "string") continue;
-              argumentSnapshots.push(event.delta.fields.args);
+              if (event.event !== "content-block-delta") continue;
+              // @langchain/core >= 1.3 appends `tool-call-delta` slices;
+              // older producers sent replacing `block-delta` snapshots.
+              if (event.delta.type === "tool-call-delta") {
+                argumentSnapshots.push((argumentSnapshots.at(-1) ?? "") + event.delta.args);
+              } else if (
+                event.delta.type === "block-delta" &&
+                event.delta.fields.type === "tool_call_chunk" &&
+                typeof event.delta.fields.args === "string"
+              ) {
+                argumentSnapshots.push(event.delta.fields.args);
+              }
             }
           })(),
         ]);
@@ -400,6 +427,7 @@ describe("Anthropic Chat model binding", () => {
     expect(requestBody?.tool_choice).toEqual({ type: "any" });
     expect(requestBody?.output_config).toBeUndefined();
     expect(reasoning).toBe("Matching the answer to the evidence.");
+    expect(argumentSnapshots).toHaveLength(2);
     expect(argumentSnapshots.at(-1)).toBe(structuredJson);
     expect(result.structuredResponse).toEqual(structuredAnswer);
   });

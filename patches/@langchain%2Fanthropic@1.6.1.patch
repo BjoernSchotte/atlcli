@@ -1,0 +1,26 @@
+diff --git a/dist/tools/webSearch.d.cts b/dist/tools/webSearch.d.cts
+index cd7e3a363b1e72091b6b23987504af05887f05e6..73d8d6c0e9cd28a5de44e87553fb0383fb5d7e8a 100644
+--- a/dist/tools/webSearch.d.cts
++++ b/dist/tools/webSearch.d.cts
+@@ -26,7 +26,7 @@ export interface WebSearch20250305Options {
+    * Parameters for the user's location. Used to provide more relevant search
+    * results.
+    */
+-  userLocation?: Anthropic$1.Beta.BetaWebSearchTool20250305.UserLocation;
++  userLocation?: Anthropic$1.Beta.BetaUserLocation;
+   /**
+    * If true, tool will not be included in initial system prompt. Only loaded when
+    * returned via tool_reference from tool search.
+diff --git a/dist/tools/webSearch.d.ts b/dist/tools/webSearch.d.ts
+index 07ab200af996e9a3a8a6ac204c9178717ab50cf1..16562d4262d260204b529815dc28d58548bd3247 100644
+--- a/dist/tools/webSearch.d.ts
++++ b/dist/tools/webSearch.d.ts
+@@ -26,7 +26,7 @@ export interface WebSearch20250305Options {
+    * Parameters for the user's location. Used to provide more relevant search
+    * results.
+    */
+-  userLocation?: Anthropic$1.Beta.BetaWebSearchTool20250305.UserLocation;
++  userLocation?: Anthropic$1.Beta.BetaUserLocation;
+   /**
+    * If true, tool will not be included in initial system prompt. Only loaded when
+    * returned via tool_reference from tool search.

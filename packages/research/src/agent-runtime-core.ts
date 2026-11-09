@@ -3024,9 +3024,7 @@ function createAnthropicModel(
     maxTokens,
     maxRetries: 0,
     streaming: false,
-    ...(controls?.adaptiveThinking
-      ? { thinking: { type: "adaptive" as const } }
-      : { temperature: 0 }),
+    ...(controls?.adaptiveThinking ? { thinking: { type: "adaptive" as const } } : {}),
     ...(controls?.effort ? { outputConfig: { effort: controls.effort } } : {}),
   });
 }

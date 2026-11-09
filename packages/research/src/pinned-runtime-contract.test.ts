@@ -18,7 +18,7 @@ import { z } from "zod/v4";
 import type { ResearchAgentRuntimeBindings } from "./agent-runtime-core.js";
 
 const DEEPAGENTS_INTEGRITY =
-  "sha512-XAqdzNeI/yvm0XNhVBFG5CytnLJ4WziYWbBwrtAzMPub9S2tnLBXiwRpaqieNm/BDvA6IcI4j70ioXwJEb4jvQ==";
+  "sha512-uc/lDqaLbBbhmvuVrbtKjxDc55FVcMWbepQt6WGGtM3Q/fgzrGag6XXcKIWwF5pXmhEBc/CqgRaT232BuEakwA==";
 const QUICKJS_INTEGRITY =
   "sha512-QdNWVK8Ydi3+knzO6FfX/2WRoPd5ClJIuyGxNwvGiSUmPshQA1XQ9tXvWIQmZ2VLuxpkM2GqEeGWYq/KENJIpA==";
 
@@ -74,22 +74,22 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
     const deepagentsPackage = await packageJsonFor("deepagents/node");
     const quickjsPackage = await packageJsonFor("@langchain/quickjs");
 
-    expect(researchPackage.dependencies?.deepagents).toBe("1.12.1");
+    expect(researchPackage.dependencies?.deepagents).toBe("1.16.3");
     expect(researchPackage.dependencies?.["@langchain/quickjs"]).toBe("1.0.0");
-    expect(rootPackage.overrides?.deepagents).toBe("1.12.1");
-    expect(rootPackage.patchedDependencies?.["deepagents@1.12.1"]).toBe(
-      "patches/deepagents@1.12.1.patch",
+    expect(rootPackage.overrides?.deepagents).toBe("1.16.3");
+    expect(rootPackage.patchedDependencies?.["deepagents@1.16.3"]).toBe(
+      "patches/deepagents@1.16.3.patch",
     );
     expect(rootPackage.patchedDependencies?.["@langchain/quickjs@1.0.0"]).toBe(
       "patches/@langchain%2Fquickjs@1.0.0.patch",
     );
-    expect(deepagentsPackage.version).toBe("1.12.1");
+    expect(deepagentsPackage.version).toBe("1.16.3");
     expect(quickjsPackage.version).toBe("1.0.0");
     expect(lockfile).not.toContain("pkg.pr.new");
-    expect(lockfile).toContain('"deepagents": ["deepagents@1.12.1"');
+    expect(lockfile).toContain('"deepagents": ["deepagents@1.16.3"');
     expect(lockfile).toContain(DEEPAGENTS_INTEGRITY);
     expect(lockfile).toContain(
-      '"deepagents@1.12.1": "patches/deepagents@1.12.1.patch"',
+      '"deepagents@1.16.3": "patches/deepagents@1.16.3.patch"',
     );
     expect(lockfile).toContain(
       '"@langchain/quickjs@1.0.0": "patches/@langchain%2Fquickjs@1.0.0.patch"',
@@ -100,7 +100,7 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
 
   test("keeps the upstream browser config-forwarding fix pinned locally", async () => {
     const deepagentsPatch = await Bun.file(
-      new URL("../../../patches/deepagents@1.12.1.patch", import.meta.url),
+      new URL("../../../patches/deepagents@1.16.3.patch", import.meta.url),
     ).text();
     const quickjsPatch = await Bun.file(
       new URL(
@@ -153,13 +153,20 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
       );
       const names = middlewareNames(agent);
 
+      // deepagents 1.16 adds parentNotifierMiddleware (head; a no-op unless
+      // the run was started by start_async_task, which we never use) and
+      // UnsupportedContentMiddleware (tail; scrubs multimodal blocks the
+      // model profile rejects), and moves SkillsMiddleware into the tail.
+      // Neither added entry owns a tool or a name we replace.
       expect(names).toEqual([
-        "SkillsMiddleware",
+        "parentNotifierMiddleware",
         "FilesystemMiddleware",
         "subAgentMiddleware",
         "SummarizationMiddleware",
         "patchToolCallsMiddleware",
+        "SkillsMiddleware",
         "MemoryMiddleware",
+        "UnsupportedContentMiddleware",
       ]);
       expect(new Set(names).size).toBe(names.length);
       expect(agent.options.middleware[2]).toBe(replacement);
@@ -231,11 +238,17 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
     const taskTool = middleware.tools?.find((candidate) => candidate.name === "task");
     if (!taskTool) throw new Error("Pinned subagent middleware did not expose task.");
 
+    // deepagents 1.16 reads the graph task input (fork-recursion guard)
+    // before the registry check, so the tool needs the Pregel scratchpad a
+    // real ToolNode call carries; production always forwards that config.
     await expect(
-      taskTool.invoke({
-        description: "Try an unregistered profile.",
-        subagent_type: "late-reader",
-      }),
+      taskTool.invoke(
+        {
+          description: "Try an unregistered profile.",
+          subagent_type: "late-reader",
+        },
+        { configurable: { __pregel_scratchpad: { currentTaskInput: { messages: [] } } } },
+      ),
     ).rejects.toThrow("the only allowed types are `reader`");
   });
 
