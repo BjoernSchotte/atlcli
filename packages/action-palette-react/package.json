@@ -44,7 +44,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "axe-core": "^4.13.0",
-    "happy-dom": "^20.0.2",
+    "happy-dom": "^21.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   }

@@ -85,7 +85,7 @@
     "@wxt-dev/module-react": "^1.2.2",
     "deepagents": "1.12.1",
     "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.0.2",
+    "happy-dom": "^21.0.0",
     "langchain": "1.5.4",
     "langsmith": "0.7.17",
     "pica": "10.0.3",
