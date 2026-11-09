@@ -90,7 +90,11 @@ export type PreparedPdfCaption = Omit<Caption, "content"> & {
 };
 
 export type PreparedPdfBlock =
-  | Exclude<ExportBlock, { type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart" }>
+  | Exclude<ExportBlock, { type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart" | "divider" }>
+  | (Omit<Extract<ExportBlock, { type: "divider" }>, "label"> & {
+      /** Prepared `bodiedRule` label (a prepared paragraph or heading). */
+      label?: Extract<PreparedPdfBlock, { type: "paragraph" | "heading" }>;
+    })
   | (Omit<Extract<ExportBlock, { type: "heading" }>, "content"> & {
       content: PreparedPdfInlineNode[];
     })

@@ -122,8 +122,10 @@ function visitBlock(
       if (block.body) visitChildren(block.body, `${path}.body`, nestedAncestors, visitor);
       block.extensionFrames?.forEach((frame, index) => visitChildren(frame.content, `${path}.extensionFrames[${index}].content`, nestedAncestors, visitor));
       return;
-    case "smartCard":
     case "divider":
+      if (block.label) visitBlock(block.label, `${path}.label`, nestedAncestors, visitor);
+      return;
+    case "smartCard":
     case "pageBreak":
     case "anchor":
       return;

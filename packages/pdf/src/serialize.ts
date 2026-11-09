@@ -204,7 +204,7 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
         case "diagram":
           return block.alt ?? "Diagram";
         case "divider":
-          return "";
+          return block.label ? inlinePlainText(block.label.content) : "";
         case "unknown":
           return block.extensionFrames
             ? block.extensionFrames
@@ -1180,6 +1180,26 @@ function applyBlockPresentation(
   return presented;
 }
 
+/**
+ * Typst stroke for a divider. A plain rule keeps the design token's 1pt line;
+ * Stage-0 styling maps color, weight (1..3, in points), and dash style.
+ */
+function dividerStroke(
+  block: Extract<PreparedPdfBlock, { type: "divider" }>,
+  tokenColor: string,
+): string {
+  const paint = block.color
+    ? `rgb(${typstString(safeColor(block.color, tokenColor))})`
+    : `rgb(${typstString(tokenColor)})`;
+  if (!block.style && block.weight === undefined && !block.color) return paint;
+  // ponytail: Typst has no hand-drawn stroke, so `sketch` draws solid.
+  const dash = block.style === "dashed" || block.style === "dotted" ? `, dash: "${block.style}"` : "";
+  const fill = block.style === "fade"
+    ? `gradient.linear(${paint}.transparentize(100%), ${paint}, ${paint}.transparentize(100%))`
+    : paint;
+  return `(paint: ${fill}, thickness: ${block.weight ?? 1}pt${dash})`;
+}
+
 /** Match DOCX's Shiki normalization: canonical RGB, dropping an alpha byte. */
 function shikiRgb(value: string, fallback: string): string {
   const raw = value.startsWith("#") ? value : `#${value}`;
@@ -1864,9 +1884,28 @@ function serializeBlock(
         : `#${figureBody}`);
       break;
     }
-    case "divider":
-      value = `#line(length: 100%, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}))`;
+    case "divider": {
+      const line = `line(length: 100%, stroke: ${dividerStroke(block, writer.catalogDesign.tokens.colors.tableStroke)})`;
+      if (!block.label) {
+        value = `#${line}`;
+        break;
+      }
+      // bodiedRule: the label sits on the rule, which fills the remaining width.
+      // The label/line gap reuses the callout glyph-to-text gap token.
+      const { alignment } = block.label.presentation ?? {};
+      const label = serializeBlock(
+        { ...block.label, presentation: { ...block.label.presentation, alignment: undefined } },
+        writer,
+        `${path}.label`,
+        context,
+      );
+      const cells = alignment === "center"
+        ? ["1fr", "auto", "1fr"]
+        : alignment === "end" ? ["1fr", "auto"] : ["auto", "1fr"];
+      const content = cells.map((cell) => (cell === "auto" ? `[${label}]` : line));
+      value = `#grid(columns: (${cells.join(", ")}), column-gutter: ${writer.catalogDesign.tokens.layout.calloutIconGap}, align: horizon, ${content.join(", ")})`;
       break;
+    }
     case "unknown": {
       // Placeholder floor (spec 004): render a visible placeholder line, then
       // the preserved body/plainBody, instead of silently omitting content.

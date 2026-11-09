@@ -425,6 +425,9 @@ export interface ListItem {
  * target-neutral: serializers decide the physical indent and how logical
  * `end` alignment maps into their own writing-direction model.
  */
+/** Line style of a styled divider (ADF Stage-0 `rule`/`bodiedRule` `style`). */
+export type DividerLineStyle = "solid" | "dashed" | "dotted" | "sketch" | "fade";
+
 export interface BlockPresentation {
   alignment?: "center" | "end";
   indentation?: 1 | 2 | 3 | 4 | 5 | 6;
@@ -950,7 +953,25 @@ export type ExportBlock =
       link?: ExportLink;
     }
   | { type: "blockquote"; content: ExportBlock[] }
-  | { type: "divider" }
+  | {
+      /**
+       * A horizontal rule. The optional styling comes from the experimental
+       * ADF Stage-0 `rule` attrs / `bodiedRule`; a plain rule has none.
+       */
+      type: "divider";
+      /** Lowercase `#rrggbb`. */
+      color?: string;
+      style?: DividerLineStyle;
+      /** Relative line weight, 1 through 3 (ADF `weight`). */
+      weight?: number;
+      /**
+       * ADF `bodiedRule` label: one paragraph or heading drawn on the rule.
+       * Its `presentation.alignment` carries the rule's label alignment.
+       */
+      label?: Extract<ExportBlock, { type: "paragraph" | "heading" }>;
+      /** Stable ADF editor identity, retained as non-visual metadata. */
+      localId?: string;
+    }
   /** A hard page break (`scroll-pagebreak`). Engines render nothing until T1.3/T1.5. */
   | { type: "pageBreak" }
   /**

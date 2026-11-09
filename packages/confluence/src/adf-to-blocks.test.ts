@@ -869,6 +869,45 @@ describe("adfToBlocks", () => {
     }));
   });
 
+  it("decodes Stage-0 styled rules and bodiedRule labels into styled dividers", () => {
+    const result = adfToBlocks(doc([
+      { type: "rule" },
+      { type: "rule", attrs: { localId: "r1", color: "#FF5630", style: "dashed", weight: 2 } },
+      {
+        type: "bodiedRule",
+        attrs: { localId: "br1", alignment: "center", style: "fade" },
+        content: [{ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Part two" }] }],
+      },
+      {
+        type: "bodiedRule",
+        attrs: { localId: "br2", alignment: "start", color: "#00B8D9" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Aside" }] }],
+      },
+    ]));
+    expect(result.blocks).toEqual([
+      { type: "divider" },
+      { type: "divider", color: "#ff5630", style: "dashed", weight: 2, localId: "r1" },
+      {
+        type: "divider",
+        style: "fade",
+        localId: "br1",
+        label: {
+          type: "heading",
+          level: 2,
+          content: [{ type: "text", text: "Part two" }],
+          presentation: { alignment: "center" },
+        },
+      },
+      {
+        type: "divider",
+        color: "#00b8d9",
+        localId: "br2",
+        label: { type: "paragraph", content: [{ type: "text", text: "Aside" }] },
+      },
+    ]);
+    expect(result.notes).toEqual([]);
+  });
+
   it("decodes a custom #RRGGBB status color allowed by ADF schema 57.x", () => {
     const result = adfToBlocks(doc([{
       type: "paragraph",

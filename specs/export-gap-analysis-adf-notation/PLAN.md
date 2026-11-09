@@ -1674,10 +1674,48 @@ In `stage-0.json`, `extensionFrame` content now also references
 `rule_with_attrs_node` (a `rule` with color/style/weight) and the new
 `bodiedRule` node. Those are experimental Stage-0 nodes that the official ADF
 structure index does not list, and Stage-0 also allows them at the root and in
-panels or cells, where the stable contract does not. So they stay outside the
-supported contract: the validator keeps rejecting them in every position,
-including inside `extensionFrame`. The pinned Stage-0 hash records the reviewed
-definitions.
+panels or cells, where the stable contract does not. That review first kept
+them outside the supported contract.
+
+Styled rule / `bodiedRule` follow-on recorded on 2026-11-09 reverses that
+decision for reading and export. Live probes showed Confluence Cloud accepts a
+styled `rule` but stores it as a plain `{"type":"rule"}` / `<hr />`, rejects
+`bodiedRule` with HTTP 400 (ADF to Storage conversion), and Jira Cloud rejects
+both in issue descriptions. So there is no new write syntax and no Markdown to
+ADF emission; the scope is tolerant reading and faithful rendering of ADF that
+arrives from other producers:
+
+- Pin: `bodiedRule` joins `extensionFrame` and `multiBodiedExtension` as a
+  pinned Stage-0 node type (coverage `native`), and `rule_with_attrs_node` is
+  pinned as an extra Stage-0 definition, so `check:adf-pinned` drift-checks
+  both exact definitions. The 43-node stable inventory is unchanged.
+- Validator: `rule` accepts `color` (`#RRGGBB`), `style`
+  (`solid|dashed|dotted|sketch|fade`), and `weight` (number 1..3) and rejects
+  other values. `bodiedRule` requires a non-empty `localId`, accepts only
+  `alignment` (`start|center|end`), `color`, `style`, and `weight`, takes no
+  marks, and holds exactly one unmarked paragraph or heading. It is accepted
+  only in the Stage-0 parents: `doc`, `layoutColumn`, `bodiedExtension`,
+  `expand`, `tableCell`/`tableHeader`, `nestedExpand`, `panel`,
+  `bodiedSyncBlock`, and `extensionFrame`. Unknown keys on a plain `rule`
+  remain a diagnostic, as for every stable node.
+- Model: `divider` gains optional `color` (lowercase `#rrggbb`), `style`,
+  `weight`, `localId`, and `label` (one paragraph or heading block). The
+  `bodiedRule` alignment is carried as the label's `presentation.alignment`.
+  The model validator and visitor walk the label.
+- DOCX: the rule is the existing paragraph bottom border with mapped style
+  (`dashed`, `dotted`, `sketch` as Word's `wave`, `fade` as `single` because
+  OOXML borders have no gradient), `w:sz` = 6 × weight, and the custom color.
+  A label is its own paragraph (heading style and outline level kept, alignment
+  as `w:jc`) that carries the styled border.
+- PDF: the Typst stroke maps color, weight (1..3 pt), `dashed`/`dotted`, and
+  `fade` as a transparent-to-color-to-transparent linear gradient; `sketch`
+  draws solid. A label is a grid cell between rule cells ordered by alignment.
+- Astro: styled `<hr>` with CSS variables; a label renders between two rules,
+  one hidden for start/end alignment.
+- Jira Markdown: a styled rule reads as `---`; `bodiedRule` reads as its label
+  between two `---` lines instead of an un-writable `<!--adf:-->` marker.
+
+A plain `rule` renders exactly as before in every target.
 
 The bounded validator enforces root/parent placement, exact attributes, marks,
 and child families. The neutral model retains ordered frame boundaries,

@@ -1778,8 +1778,18 @@ export interface DiagramEmbedSeam {
     prefetch?(block: CodeBlock): void;
 }
 
+// export: dividerBorderPPr
+export declare function dividerBorderPPr(rule?: DividerRuleStyle): string;
+
 // export: dividerParagraph
-export declare function dividerParagraph(): string;
+export declare function dividerParagraph(rule?: DividerRuleStyle): string;
+
+// export: DividerRuleStyle
+export interface DividerRuleStyle {
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+}
 
 // export: documentPartNames
 export declare function documentPartNames(zip: PizZip): string[];

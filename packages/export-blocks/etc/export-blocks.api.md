@@ -280,6 +280,9 @@ export declare function createPageLinkResolver(pages: readonly PageLinkCandidate
 // export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
 export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
 
+// export: DividerLineStyle
+export type DividerLineStyle = "solid" | "dashed" | "dotted" | "sketch" | "fade";
+
 // export: EmojiSemantics
 export interface EmojiSemantics {
     shortName: string;
@@ -532,6 +535,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {

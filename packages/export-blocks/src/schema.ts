@@ -379,6 +379,19 @@ function block(value: unknown, path: string): void {
       blockArray(node.content, `${path}.content`);
       return;
     case "divider":
+      keys(node, path, ["type", "color", "style", "weight", "label", "localId"]);
+      optional(node, "color", path, string);
+      if (node.style !== undefined) oneOf(node.style, `${path}.style`, ["solid", "dashed", "dotted", "sketch", "fade"]);
+      optional(node, "weight", path, finiteNumber);
+      optional(node, "localId", path, string);
+      if (node.label !== undefined) {
+        const label = record(node.label, `${path}.label`);
+        if (label.type !== "paragraph" && label.type !== "heading") {
+          fail(`${path}.label.type`, "expected a paragraph or heading label");
+        }
+        block(label, `${path}.label`);
+      }
+      return;
     case "pageBreak":
       keys(node, path, ["type"]);
       return;

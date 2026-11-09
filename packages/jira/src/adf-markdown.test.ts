@@ -74,6 +74,31 @@ describe("markdown → ADF → markdown", () => {
     expect(roundtrip("| A | B |\n| --- | --- |\n| 1 | 2 |")).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |");
   });
 
+  test("reads Stage-0 styled rules and bodiedRule as plain Markdown rules", () => {
+    const adf = doc(
+      { type: "paragraph", content: [{ type: "text", text: "above" }] },
+      { type: "rule", attrs: { color: "#FF5630", style: "dashed", weight: 2 } },
+      {
+        type: "bodiedRule",
+        attrs: { localId: "br1", alignment: "center" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Label" }] }],
+      },
+      {
+        type: "bodiedRule",
+        attrs: { localId: "br2" },
+        content: [{ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Part" }] }],
+      },
+    );
+    expect(() => validateAdf(adf)).not.toThrow();
+    const markdown = adfToMarkdown(adf);
+    expect(markdown).toBe("above\n\n---\n\n---\n\nLabel\n\n---\n\n---\n\n### Part\n\n---");
+    expect(markdown).not.toContain("<!--adf:");
+    // Writing it back yields only nodes Jira Cloud accepts.
+    const written = JSON.stringify(markdownToAdf(markdown, { baseUrl: BASE }));
+    expect(written).not.toContain("bodiedRule");
+    expect(written).not.toContain('"style"');
+  });
+
   test("every converted document passes validateAdf", () => {
     for (const [, markdown] of cases) {
       const adf = markdownToAdf(markdown, { baseUrl: BASE });

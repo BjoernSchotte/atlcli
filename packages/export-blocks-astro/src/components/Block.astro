@@ -28,7 +28,14 @@ const assetVariants = asset?.srcset?.flatMap((variant) => {
 }) ?? [];
 const assetSizes = typeof asset?.sizes === "string" && asset.sizes.length <= 200 ? asset.sizes : undefined;
 const assetDownload = safeExportBlockAssetSrcV1(asset?.downloadHref);
-const calloutIcon = kind === "callout" ? resolveCalloutIcon(block) : undefined;
+// Stage-0 rule styling as CSS variables only; the color is re-checked as #rrggbb.
+const ruleStyle = block.type === "divider"
+  ? [
+      /^#[0-9a-f]{6}$/i.test(block.color ?? "") ? `--atlcli-rule-color:${block.color}` : undefined,
+      typeof block.weight === "number" && block.weight >= 1 && block.weight <= 3 ? `--atlcli-rule-weight:${block.weight}px` : undefined,
+    ].filter(Boolean).join(";") || undefined
+  : undefined;
+const calloutIcon =kind === "callout" ? resolveCalloutIcon(block) : undefined;
 function overrideSlotForKind(value: ExportBlock["type"]): AstroExportBlockOverrideSlotV1 | undefined {
   switch (value) {
     case "heading": case "paragraph": case "callout": case "expand": case "list":
@@ -66,7 +73,9 @@ const headingId = kind === "heading" ? (blockPath === undefined ? block.explicit
 </> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}{block.caption && <Caption caption={block.caption} locale={context.locale} context={context} />}</figure>}
 {kind === "mediaFallback" && <aside data-atlcli-block="media-fallback">{mediaFallbackDisplayText(block)}</aside>}
 {kind === "blockquote" && <blockquote data-atlcli-block="blockquote"><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></blockquote>}
-{kind === "divider" && <hr data-atlcli-block="divider" />}
+{block.type === "divider" && (block.label
+  ? <div data-atlcli-block="divider" data-atlcli-rule-label data-align={block.label.presentation?.alignment ?? "start"} data-style={block.style} style={ruleStyle}><hr /><ExportDocument blocks={[{ ...block.label, presentation: { ...block.label.presentation, alignment: undefined } }]} path={blockPath === undefined ? undefined : `${blockPath}.label`} context={context} overrides={overrides} /><hr /></div>
+  : <hr data-atlcli-block="divider" data-style={block.style} style={ruleStyle} />)}
 {kind === "pageBreak" && <hr data-atlcli-block="page-break" />}
 {kind === "orientation" && <section data-atlcli-block="orientation" data-landscape={String(block.landscape)}><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></section>}
 {kind === "anchor" && <span id={block.name} data-atlcli-block="anchor"></span>}

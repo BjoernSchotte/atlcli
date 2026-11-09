@@ -2830,3 +2830,45 @@ describe("audit regressions", () => {
     expect(xml).toMatch(/<\/w:tbl><w:p><w:pPr>((?!<w:p\b).)*<\/w:pPr><\/w:p><\/w:tc>/);
   });
 });
+
+describe("divider — ADF Stage-0 styled rule and bodiedRule", () => {
+  it("keeps the plain rule unchanged and maps color, dash style, and weight", async () => {
+    const { xml } = await serializeBlocks([
+      { type: "divider" },
+      { type: "divider", color: "#ff5630", style: "dashed", weight: 2 },
+      { type: "divider", style: "dotted", weight: 3 },
+      { type: "divider", style: "sketch" },
+      { type: "divider", style: "fade", weight: 1.5 },
+    ], { styleNames: noStyles });
+    const borders = [...xml.matchAll(/<w:bottom [^>]*\/>/g)].map((match) => match[0]);
+    expect(borders).toEqual([
+      '<w:bottom w:val="single" w:sz="6" w:space="1" w:color="BBBBBB"/>',
+      '<w:bottom w:val="dashed" w:sz="12" w:space="1" w:color="FF5630"/>',
+      '<w:bottom w:val="dotted" w:sz="18" w:space="1" w:color="BBBBBB"/>',
+      '<w:bottom w:val="wave" w:sz="6" w:space="1" w:color="BBBBBB"/>',
+      '<w:bottom w:val="single" w:sz="9" w:space="1" w:color="BBBBBB"/>',
+    ]);
+  });
+
+  it("draws a bodiedRule label as its own aligned paragraph carrying the styled rule", async () => {
+    const { xml } = await serializeBlocks([{
+      type: "divider",
+      color: "#00b8d9",
+      style: "dotted",
+      label: { type: "paragraph", content: [{ type: "text", text: "Section" }], presentation: { alignment: "center" } },
+    }], { styleNames: noStyles });
+    expect(xml).toContain(
+      '<w:p><w:pPr><w:pBdr><w:bottom w:val="dotted" w:sz="6" w:space="1" w:color="00B8D9"/></w:pBdr><w:jc w:val="center"/></w:pPr>',
+    );
+    expect(xml).toContain("Section");
+    expect(xml.match(/<w:p>/g)).toHaveLength(1);
+  });
+
+  it("keeps a heading label's style and outline level", async () => {
+    const { xml } = await serializeBlocks([{
+      type: "divider",
+      label: { type: "heading", level: 2, content: [{ type: "text", text: "Part" }] },
+    }], { styleNames: noStyles });
+    expect(xml).toMatch(/<w:pStyle w:val="[^"]+"\/><w:pBdr><w:bottom w:val="single" w:sz="6"[^>]*\/><\/w:pBdr>.*<w:outlineLvl/);
+  });
+});

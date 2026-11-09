@@ -28,6 +28,8 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
     "anchor", "unknown",
   ]) expect(html).toContain(`data-atlcli-block=\"${kind}\"`);
   expect(html).toContain('src="/assets/diagram.svg"');
+  expect(html).toContain('<hr data-atlcli-block="divider" data-style="dashed" style="--atlcli-rule-color:#ff5630;--atlcli-rule-weight:2px">');
+  expect(html).toMatch(/<div data-atlcli-block="divider" data-atlcli-rule-label data-align="center" data-style="dotted"><hr>[\s\S]*Rule label[\s\S]*<hr><\/div>/);
   expect(html).toContain('data-atlcli-image-mode="astro-responsive"');
   expect(html).toContain('srcset="/assets/diagram.svg 320w, /assets/diagram.svg 960w"');
   expect(html).toContain('sizes="(max-width: 60rem) 100vw, 60rem"');

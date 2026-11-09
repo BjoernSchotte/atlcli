@@ -177,6 +177,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {
@@ -1084,8 +1091,14 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart" | "divider";
 }> | (Omit<Extract<ExportBlock, {
+    type: "divider";
+}>, "label"> & {
+    label?: Extract<PreparedPdfBlock, {
+        type: "paragraph" | "heading";
+    }>;
+}) | (Omit<Extract<ExportBlock, {
     type: "heading";
 }>, "content"> & {
     content: PreparedPdfInlineNode[];
@@ -1745,6 +1758,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {
@@ -2652,8 +2672,14 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart" | "divider";
 }> | (Omit<Extract<ExportBlock, {
+    type: "divider";
+}>, "label"> & {
+    label?: Extract<PreparedPdfBlock, {
+        type: "paragraph" | "heading";
+    }>;
+}) | (Omit<Extract<ExportBlock, {
     type: "heading";
 }>, "content"> & {
     content: PreparedPdfInlineNode[];
@@ -3313,6 +3339,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {
@@ -4220,8 +4253,14 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart";
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" | "chart" | "divider";
 }> | (Omit<Extract<ExportBlock, {
+    type: "divider";
+}>, "label"> & {
+    label?: Extract<PreparedPdfBlock, {
+        type: "paragraph" | "heading";
+    }>;
+}) | (Omit<Extract<ExportBlock, {
     type: "heading";
 }>, "content"> & {
     content: PreparedPdfInlineNode[];

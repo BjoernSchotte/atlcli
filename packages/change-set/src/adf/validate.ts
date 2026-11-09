@@ -36,6 +36,7 @@ const nodeAttributeKeys: Readonly<Record<string, ReadonlySet<string>>> = Object.
   blockTaskItem: new Set(["localId", "state"]),
   blockquote: new Set(["localId"]),
   bodiedExtension: new Set(["extensionKey", "extensionType", "layout", "localId", "parameters", "text"]),
+  bodiedRule: new Set(["alignment", "color", "localId", "style", "weight"]),
   bodiedSyncBlock: new Set(["localId", "resourceId"]),
   bulletList: new Set(["localId"]),
   caption: new Set(["localId"]),
@@ -64,7 +65,8 @@ const nodeAttributeKeys: Readonly<Record<string, ReadonlySet<string>>> = Object.
   panel: new Set(["localId", "panelColor", "panelIcon", "panelIconId", "panelIconText", "panelType"]),
   paragraph: new Set(["localId"]),
   placeholder: new Set(["localId", "text"]),
-  rule: new Set(["localId"]),
+  // Stage-0 `rule_with_attrs_node` adds color/style/weight to the stable rule.
+  rule: new Set(["color", "localId", "style", "weight"]),
   status: new Set(["color", "localId", "style", "text"]),
   syncBlock: new Set(["localId", "resourceId"]),
   // `__autoSize` is the editor's column auto-sizing hint; exports size columns themselves.
@@ -156,6 +158,7 @@ const bodiedSyncBlockChildTypes = new Set([
   "orderedList",
   "panel",
   "rule",
+  "bodiedRule",
   "table",
   "taskList",
 ]);
@@ -167,6 +170,7 @@ const extensionFrameChildTypes = new Set([
   "orderedList",
   "bulletList",
   "rule",
+  "bodiedRule",
   "heading",
   "codeBlock",
   "mediaGroup",
@@ -179,6 +183,53 @@ const extensionFrameChildTypes = new Set([
   "blockCard",
   "embedCard",
 ]);
+
+/** Pinned Stage-0 parents whose content references `bodiedRule_node`. */
+const bodiedRuleParentTypes = new Set([
+  "doc",
+  "layoutColumn",
+  "bodiedExtension",
+  "expand",
+  "tableCell",
+  "tableHeader",
+  "nestedExpand",
+  "panel",
+  "bodiedSyncBlock",
+  "extensionFrame",
+]);
+const ruleStyles = new Set(["solid", "dashed", "dotted", "sketch", "fade"]);
+
+/** Stage-0 `rule_with_attrs_node` / `bodiedRule_node` color, style, and weight. */
+function validateRuleStyleAttributes(
+  type: string,
+  attrs: Record<string, unknown> | undefined,
+  path: string,
+): void {
+  const color = attrs?.color;
+  if (color !== undefined && (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color))) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      `ADF ${type} color must be #RRGGBB when present.`,
+      `${path}.attrs.color`,
+    );
+  }
+  const style = attrs?.style;
+  if (style !== undefined && (typeof style !== "string" || !ruleStyles.has(style))) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      `ADF ${type} style must be solid, dashed, dotted, sketch, or fade when present.`,
+      `${path}.attrs.style`,
+    );
+  }
+  const weight = attrs?.weight;
+  if (weight !== undefined && (typeof weight !== "number" || weight < 1 || weight > 3)) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      `ADF ${type} weight must be a number from 1 through 3 when present.`,
+      `${path}.attrs.weight`,
+    );
+  }
+}
 
 function assertSmartCardLayout(
   attrs: Record<string, unknown> | undefined,
@@ -611,6 +662,63 @@ function validateKnownNodeShape(
     }
     assertStringAttribute(attrs, "localId", path, false);
     assertStringAttribute(attrs, "style", path, false);
+  }
+  if (type === "rule") {
+    assertStringAttribute(attrs, "localId", path, false);
+    validateRuleStyleAttributes(type, attrs, path);
+  }
+  if (type === "bodiedRule") {
+    if (parentType === undefined || !bodiedRuleParentTypes.has(parentType)) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF bodiedRule is not allowed in this parent by the pinned Stage-0 contract.",
+        path,
+      );
+    }
+    if (node.marks !== undefined || node.text !== undefined || node.version !== undefined) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF bodiedRule accepts only type, attrs, and content.",
+        path,
+      );
+    }
+    const extra = Object.keys(attrs ?? {}).find((key) => !nodeAttributeKeys.bodiedRule!.has(key));
+    if (extra !== undefined) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        `ADF bodiedRule does not accept attribute ${extra}.`,
+        `${path}.attrs.${extra}`,
+      );
+    }
+    assertStringAttribute(attrs, "localId", path);
+    if ((attrs?.localId as string).length === 0) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF bodiedRule localId must be non-empty.",
+        `${path}.attrs.localId`,
+      );
+    }
+    const alignment = attrs?.alignment;
+    if (alignment !== undefined && alignment !== "start" && alignment !== "center" && alignment !== "end") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF bodiedRule alignment must be start, center, or end when present.",
+        `${path}.attrs.alignment`,
+      );
+    }
+    validateRuleStyleAttributes(type, attrs, path);
+    const label = Array.isArray(node.content) && node.content.length === 1 ? node.content[0] : undefined;
+    if (
+      !isPlainObject(label) ||
+      (label.type !== "paragraph" && label.type !== "heading") ||
+      (label.marks !== undefined && (!Array.isArray(label.marks) || label.marks.length > 0))
+    ) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF bodiedRule content must be exactly one unmarked paragraph or heading.",
+        `${path}.content`,
+      );
+    }
   }
   if (type === "inlineCard") validateInlineCardAttributes(attrs, path);
   if (type === "blockCard") validateBlockCardAttributes(attrs, path);
