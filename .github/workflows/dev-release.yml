@@ -491,8 +491,7 @@ jobs:
     if: >-
       needs.publication-decision.outputs.decision == 'create' &&
       (github.event_name == 'schedule' || inputs.dry_run == false)
-    # Playwright 1.55 has no Chromium for ubuntu-latest (26.04); unpin after a Playwright bump.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     # GitHub exposes draft releases only to repository writers. The exact-SHA
     # script is read-only and receives the token only for the download step.
     permissions:
@@ -814,7 +813,7 @@ jobs:
       needs.publication-decision.outputs.decision == 'create' &&
       (github.event_name == 'schedule' || inputs.dry_run == false) &&
       (github.event_name == 'schedule' || inputs.publish_homebrew)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     environment: dev-release
     permissions:
       contents: read

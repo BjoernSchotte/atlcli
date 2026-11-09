@@ -246,8 +246,7 @@ jobs:
   bundle:
     name: Assemble and consume exact release bundle
     needs: [build-cli, smoke-windows, build-extension]
-    # Playwright 1.55 has no Chromium for ubuntu-latest (26.04); unpin after a Playwright bump.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       bundle_artifact: ${{ steps.contract.outputs.name }}
     steps:

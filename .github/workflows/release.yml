@@ -227,8 +227,7 @@ jobs:
   verify-downloaded-draft:
     name: Download and consume stable draft assets
     needs: [resolve, create-draft]
-    # Playwright 1.55 has no Chromium for ubuntu-latest (26.04); unpin after a Playwright bump.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       # GitHub draft downloads require a repository-writer token.
       contents: write
