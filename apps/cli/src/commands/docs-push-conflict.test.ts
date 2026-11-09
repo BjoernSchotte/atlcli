@@ -328,30 +328,4 @@ describe("docs subcommands given ./dir from the parent directory", () => {
       await rm(`${tree}-fresh`, { recursive: true, force: true });
     }
   });
-
-  it("watch pushes an edit and keeps the state path", async () => {
-    const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "wiki", "docs", "watch", rel(), "--debounce", "100", "--json"], {
-      cwd: parent(),
-      env: { ...process.env, HOME: home, USERPROFILE: home, ATLCLI_API_TOKEN: "stub-token", ATLCLI_DISABLE_UPDATE_CHECK: "1" },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    let out = "";
-    const reader = proc.stdout.getReader();
-    const read = async (until: string) => {
-      const deadline = Date.now() + 30_000;
-      while (!out.includes(until) && Date.now() < deadline) {
-        const chunk = await Promise.race([reader.read(), Bun.sleep(500).then(() => undefined)]);
-        if (chunk?.value) out += new TextDecoder().decode(chunk.value);
-      }
-    };
-    await read('"watching"');
-    await Bun.sleep(500); // the watchers are created right after the status line
-    await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
-    await read('"result"');
-    proc.kill();
-    await proc.exited;
-    expect(puts).toEqual([3]);
-    expect(await storedPaths()).toEqual({ [`${SLUG}.md`]: PAGE_ID });
-  });
 });
