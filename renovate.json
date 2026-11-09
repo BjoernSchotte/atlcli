@@ -28,6 +28,17 @@
       "packageNameTemplate": "oven-sh/bun",
       "extractVersionTemplate": "^bun-v(?<version>.*)$",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Homebrew/actions tags are YYYY.MM.DD.N; the github-actions manager reads at most three version parts from the pin comment and then fails the digest lookup.",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "uses: Homebrew/actions/[\\w-]+@(?<currentDigest>[a-f0-9]{40}) # (?<currentValue>\\d{4}\\.\\d{2}\\.\\d{2}\\.\\d+)"
+      ],
+      "depNameTemplate": "Homebrew/actions",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "loose"
     }
   ],
   "packageRules": [
@@ -88,6 +99,12 @@
       "matchPackageNames": ["bun", "oven-sh/bun"],
       "groupName": "Bun runtime",
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Updated by the Homebrew/actions custom regex manager instead.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["Homebrew/actions"],
+      "enabled": false
     }
   ]
 }
