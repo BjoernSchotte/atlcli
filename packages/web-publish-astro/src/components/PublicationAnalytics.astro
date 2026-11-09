@@ -1,5 +1,5 @@
 ---
-import { createPlausibleAnalyticsCspV1, createPlausibleAnalyticsPrivacyDeclarationV1, createPlausibleAnalyticsRuntimeV1, normalizePlausibleAnalyticsConfigV1 } from "../analytics.js";
+import { createPublicationAnalyticsCspV1, createPublicationAnalyticsPrivacyDeclarationV1, createPlausibleAnalyticsRuntimeV1, normalizePlausibleAnalyticsConfigV1 } from "../analytics.js";
 
 interface Props {
   endpoint: string;
@@ -9,9 +9,9 @@ interface Props {
 
 const config = normalizePlausibleAnalyticsConfigV1(Astro.props);
 const runtime = createPlausibleAnalyticsRuntimeV1(config);
-const privacy = createPlausibleAnalyticsPrivacyDeclarationV1();
+const privacy = createPublicationAnalyticsPrivacyDeclarationV1();
 ---
 
-<meta name="atlcli:analytics-csp" content={createPlausibleAnalyticsCspV1(config)} />
+<meta name="atlcli:analytics-csp" content={createPublicationAnalyticsCspV1(config)} />
 <meta name="atlcli:analytics-privacy" content={JSON.stringify(privacy)} />
-<script is:inline data-atlcli-analytics={config.provider}>{runtime}</script>
+<script is:inline data-atlcli-analytics={config.provider} set:html={runtime} />

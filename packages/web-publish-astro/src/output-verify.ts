@@ -203,7 +203,6 @@ function assertManifestReferences(
     }
   }
   const searchRecords = [...records.values()].filter((entry) => entry.path.startsWith("pagefind/")).sort((left, right) => left.path.localeCompare(right.path));
-  const seoRecords = [...records.values()].filter((entry) => /(?:^|\/)(?:sitemap[^/]*\.xml|robots\.txt|[^/]+\.xml)$/u.test(entry.path)).sort((left, right) => left.path.localeCompare(right.path));
   if (manifest.search.files.length !== searchRecords.length || manifest.search.digest === "") fail("invalid Pagefind inventory declaration");
   if (manifest.seo.digest === "") fail("invalid SEO inventory declaration");
   if (manifest.verification.checkedPages !== manifest.pages.length || manifest.verification.checkedAssets !== manifest.assets.length) {
@@ -242,7 +241,9 @@ export async function verifyAstroStaticPublicationOutputV1(
   assertManifestReferences(manifest, records);
   const searchRecords = [...records.values()].filter((entry) => entry.path.startsWith("pagefind/")).sort((left, right) => left.path.localeCompare(right.path));
   if (await digestPublicationJsonV1(searchRecords) !== manifest.search.digest) fail("Pagefind digest mismatch");
-  const seoRecords = [...records.values()].filter((entry) => /(?:^|\/)(?:sitemap[^/]*\.xml|robots\.txt|[^/]+\.xml)$/u.test(entry.path)).sort((left, right) => left.path.localeCompare(right.path));
+  // The manifest digests SEO artifacts in inventory order; `records` keeps
+  // that order, so do not re-sort (a locale sort disagrees on case and `_`).
+  const seoRecords = [...records.values()].filter((entry) => /(?:^|\/)(?:sitemap[^/]*\.xml|robots\.txt|[^/]+\.xml)$/u.test(entry.path));
   if (await digestPublicationJsonV1(seoRecords) !== manifest.seo.digest) fail("SEO artifact digest mismatch");
   const pageIds = new Set(manifest.pages.map((entry) => entry.sourceId));
   if (manifest.search.indexedSourceIds.length !== pageIds.size || manifest.search.indexedSourceIds.some((sourceId) => !pageIds.has(sourceId))) {

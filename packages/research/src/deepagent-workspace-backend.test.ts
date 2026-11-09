@@ -63,6 +63,22 @@ describe("DeepAgents durable research workspace backend", () => {
     });
   });
 
+  test("matches the single-character glob wildcard and keeps replacement text literal", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    await workspace.writeFile("/workspace/scratch/a1.md", "price: OLD and OLD\n");
+    await workspace.writeFile("/workspace/scratch/a10.md", "other\n");
+    const backend = new ResearchDeepAgentWorkspaceBackendV1(workspace);
+
+    await expect(backend.glob("/scratch/a?.md", "/scratch")).resolves.toMatchObject({
+      files: [{ path: "/scratch/a1.md" }],
+    });
+
+    await backend.edit("/scratch/a1.md", "OLD", "$& $$ $1", false);
+    await expect(workspace.readFile("/workspace/scratch/a1.md")).resolves.toBe("price: $& $$ $1 and OLD\n");
+    await backend.edit("/scratch/a1.md", "OLD", "$&$$", true);
+    await expect(workspace.readFile("/workspace/scratch/a1.md")).resolves.toBe("price: $& $$ $1 and $&$$\n");
+  });
+
   test("uses the native DeepAgentsJS filesystem middleware with a read-only plan and writable scratch route", async () => {
     const workspace = createMemoryResearchWorkspace();
     const backend = new CompositeBackend(

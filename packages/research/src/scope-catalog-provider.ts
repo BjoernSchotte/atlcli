@@ -4,14 +4,14 @@ import { JiraClient, type JiraIssue, type JiraProject } from "@atlcli/jira/brows
 import { ConfluenceClient, type ConfluenceSpace } from "@atlcli/confluence/research";
 import type {
   ResearchReferenceResolveIntentV1,
-} from "@atlcli/research/scope-catalog";
+} from "./scope-catalog.js";
 import type {
   ResearchScopeCatalogProviderPageV1,
   ResearchScopeCatalogProvidersV1,
-} from "@atlcli/research/scope-catalog-broker";
-import type { ResearchScopeCandidateV1 } from "@atlcli/research/scope-discovery";
-import { RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1 } from "@atlcli/research/scope-discovery";
-import { ResearchContractError } from "@atlcli/research/contracts";
+} from "./scope-catalog-broker.js";
+import type { ResearchScopeCandidateV1 } from "./scope-discovery.js";
+import { RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1 } from "./scope-discovery.js";
+import { ResearchContractError } from "./contracts.js";
 import { classifyResearchError } from "./redaction.js";
 
 export interface RestScopeCatalogProviderOptions {

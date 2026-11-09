@@ -69,6 +69,30 @@ test("verifies every inventoried output, ownership, internal URL, and anchor", a
   }
 });
 
+test("verifies the SEO digest for mixed-case and underscore artifact names", async () => {
+  const fixtureValue = await fixture();
+  try {
+    // Code-unit order, as the integration writes it; a locale sort differs.
+    for (const name of ["Zeta.xml", "_feed.xml", "alpha.xml", "robots.txt"]) {
+      const bytes = Buffer.from(name);
+      await writeFile(join(fixtureValue.root, name), bytes);
+      fixtureValue.inventory.output.push(record(name, bytes));
+    }
+    const manifest = await createAstroStaticPublicationManifestV1({
+      request: fixtureValue.request,
+      inventory: fixtureValue.inventory,
+      builderVersion: "0.1.0",
+      astroVersion: "7.1.6",
+      experience: { id: "test", version: "1", digest: "experience" },
+    });
+    await expect(verifyAstroStaticPublicationOutputV1({ manifest, inventory: fixtureValue.inventory, outputDirectory: fixtureValue.root })).resolves.toMatchObject({
+      outputFiles: 6,
+    });
+  } finally {
+    await rm(fixtureValue.root, { recursive: true, force: true });
+  }
+});
+
 test("verifies the root-base URL profile without double-normalizing '/'", async () => {
   const fixtureValue = await fixture();
   const htmlPath = join(fixtureValue.root, "publish", "guide", "index.html");

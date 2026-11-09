@@ -457,6 +457,38 @@ describe("@atlcli/web-publish/node immutable bundle activation", () => {
       .toMatchObject({ bundleDigest: recovered.bundle.bundleDigest });
   });
 
+  test("does not accumulate abort listeners while polling a held activation lease", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    const lockDirectory = join(request.workspaceDirectory, "locks", "activation.lock");
+    await mkdir(lockDirectory, { recursive: true });
+    const now = Date.now();
+    await writeFile(join(lockDirectory, "owner.json"), JSON.stringify({
+      schema: "atlcli.publication-activation-lock/1",
+      nonce: "00000000-0000-4000-8000-000000000000",
+      acquiredAt: now,
+      expiresAt: now + 60_000,
+    }));
+    const { signal } = new AbortController();
+    const add = signal.addEventListener.bind(signal);
+    const remove = signal.removeEventListener.bind(signal);
+    let added = 0;
+    let live = 0;
+    signal.addEventListener = ((...args: Parameters<typeof add>) => {
+      added += 1;
+      live += 1;
+      add(...args);
+    }) as typeof signal.addEventListener;
+    signal.removeEventListener = ((...args: Parameters<typeof remove>) => {
+      live -= 1;
+      remove(...args);
+    }) as typeof signal.removeEventListener;
+    await expect(materializeNodePublicationBundleV1({ ...request, signal, activationLockTimeoutMs: 80 }))
+      .rejects.toMatchObject({ code: "activation-lock-timeout" });
+    expect(added).toBeGreaterThan(1);
+    expect(live).toBe(0);
+  });
+
   test("writes identical content-addressed asset bytes once while retaining per-asset download names", async () => {
     const { root } = await fixture();
     const request = await publicationFixture(root);

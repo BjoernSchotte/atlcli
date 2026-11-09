@@ -72,6 +72,26 @@ describe("SQLite durable research session store", () => {
     }
   });
 
+  test("rejects dot-segment session IDs that would escape the per-session directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-research-sqlite-dot-id-"));
+    const store = new SqliteResearchSessionStoreV1({
+      databasePath: join(root, "catalog.sqlite"),
+      root: join(root, "session-data"),
+    });
+    try {
+      for (const id of ["research-session:.", "research-session:.."]) {
+        await expect(store.create(session(id))).rejects.toThrow("Research session ID is invalid.");
+        await expect(store.read(id)).resolves.toBeUndefined();
+      }
+      await expect(store.create(session("research-session:a..b"))).resolves.toMatchObject({
+        sessionId: "research-session:a..b",
+      });
+    } finally {
+      store.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("passes the shared evidence, claim, and outline publication suite through its real session workspace", async () => {
     const root = await mkdtemp(join(tmpdir(), "atlcli-research-sqlite-data-conformance-"));
     const store = new SqliteResearchSessionStoreV1({

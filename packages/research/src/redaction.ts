@@ -3,18 +3,23 @@ import {
   type ResearchErrorCode,
 } from "./contracts.js";
 
+// Each pattern may capture a prefix (group 1) that is kept; everything else in
+// the match is the secret. Header names tolerate JSON quoting.
 const SECRET_PATTERNS = [
   /sk-ant-[A-Za-z0-9_-]+/gi,
-  /(x-api-key\s*[:=]\s*)[^\s,;]+/gi,
-  /(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s,;]+/gi,
-  /(cookie\s*[:=]\s*)[^\s,;]+/gi,
-  /(set-cookie\s*[:=]\s*)[^\r\n]+/gi,
+  /(x-api-key["']?\s*[:=]\s*["']?)[^\s,;"']+/gi,
+  /(authorization["']?\s*[:=]\s*["']?(?:(?:bearer|basic|digest|negotiate|token)\s+)?)[^\s,;"']+/gi,
+  /(cookie["']?\s*[:=]\s*["']?)[^\s,;"']+(?:;\s*[^\s,;="']+=[^\s,;"']*)*/gi,
+  /(set-cookie["']?\s*[:=]\s*["']?)[^\r\n]+/gi,
 ] as const;
 
 export function redactResearchSecrets(value: unknown): string {
   let message = value instanceof Error ? value.message : String(value);
   for (const pattern of SECRET_PATTERNS) {
-    message = message.replace(pattern, "$1[REDACTED]");
+    message = message.replace(
+      pattern,
+      (_match, prefix: unknown) => `${typeof prefix === "string" ? prefix : ""}[REDACTED]`,
+    );
   }
   return message.slice(0, 2_000);
 }

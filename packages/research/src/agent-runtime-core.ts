@@ -134,7 +134,7 @@ import {
   type ResearchGraphRoleV1,
   type ResearchGraphRevisionProposalV1,
   type ResearchGraphV1,
-} from "@atlcli/research/graph";
+} from "./graph.js";
 import type { ResearchRetrievalAssessmentV1 } from "./retrieval-assessment.js";
 import type {
   ResearchGraphRevisionReasonV1,

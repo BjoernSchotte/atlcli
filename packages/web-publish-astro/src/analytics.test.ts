@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import * as analytics from "./analytics.js";
 import {
   createPublicationAnalyticsCspV1,
   createPublicationAnalyticsPrivacyDeclarationV1,
@@ -59,4 +62,15 @@ test("runtime sends a redacted pathname pageview, tolerates a blocked endpoint, 
     async (input) => { dntRequests.push(input); return new Response(); },
   );
   expect(dntRequests).toEqual([]);
+});
+
+test("the analytics component imports only real exports and injects the runtime as script text", async () => {
+  const source = await readFile(resolve(import.meta.dir, "components/PublicationAnalytics.astro"), "utf8");
+  const names = /import \{([^}]+)\} from "\.\.\/analytics\.js";/u.exec(source)?.[1]
+    ?.split(",").map((name) => name.trim()).filter(Boolean) ?? [];
+  expect(names.length).toBeGreaterThan(0);
+  for (const name of names) expect(typeof (analytics as Record<string, unknown>)[name]).toBe("function");
+  // Astro does not evaluate `{expression}` children of <script>.
+  expect(source).toContain("set:html={runtime}");
+  expect(source).not.toContain(">{runtime}<");
 });

@@ -199,8 +199,10 @@ export function validateBatchState(
   if (s.manifestDigest !== manifestDigest) {
     return { reason: "manifest changed since this state was written (digest mismatch) — re-run without --resume or restore the manifest" };
   }
-  if (!Array.isArray(s.items) || !isPlainObject(s.folderPages ?? {})) {
+  const folderPages = s.folderPages ?? {};
+  if (!Array.isArray(s.items) || !isPlainObject(folderPages)) {
     return { reason: "state is missing required fields" };
   }
-  return { state: s as DocxBatchStateV1 };
+  // A state without folderPages stays loadable; callers index into the map.
+  return { state: { ...s, folderPages } as DocxBatchStateV1 };
 }

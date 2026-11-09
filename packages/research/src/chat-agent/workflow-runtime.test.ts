@@ -1608,10 +1608,12 @@ describe("Chat agentic workflow runtime", () => {
   });
 
   test("blocks another search after saturation while preserving later ranking and detail evals", async () => {
+    const diagnostics: ChatSubagentEvalDiagnosticV1[] = [];
     const harness = createHarness({
       searchProducts: ["confluence"],
       withRetrievalAssessment: true,
       searchPlanSaturated: true,
+      onEvalDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
     const reader = harness.compiledSubagents.find(
       (entry) => entry.name === "chat-confluence-search-reader-v1",
@@ -1631,6 +1633,8 @@ describe("Chat agentic workflow runtime", () => {
     });
     expect(searchInvoked).toBe(false);
     expect((stopped as ToolMessage).content).toContain("SEARCH_PLAN_SATURATED");
+    expect(diagnostics.find((entry) => entry.status === "success"))
+      .toMatchObject({ usesToolsNamespace: true });
 
     await expect(guard.wrapToolCall({
       toolCall: {

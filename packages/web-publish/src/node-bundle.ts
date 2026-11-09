@@ -25,7 +25,6 @@ import type {
   StaticPublicationManifestV1,
 } from "./contracts.js";
 import {
-  assertPublicationBundleReferencesV1,
   digestPublicationBundleV1,
   digestPublicationPageV1,
   digestPublicationRefreshPlanV1,
@@ -250,11 +249,16 @@ function abortIfNeeded(signal: AbortSignal | undefined): void {
 async function delay(milliseconds: number, signal: AbortSignal | undefined): Promise<void> {
   abortIfNeeded(signal);
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal?.addEventListener("abort", () => {
+    const onAbort = (): void => {
       clearTimeout(timer);
       reject(new NodePublicationBundleErrorV1("aborted", "publication bundle materialization was cancelled"));
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      // Lock polling calls this every few milliseconds on one signal.
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -644,7 +648,7 @@ async function buildBundle(
   };
   let bundle: PublicationBundleV1;
   try {
-    assertPublicationBundleReferencesV1(provisional, pages);
+    // digestPublicationBundleV1 asserts the bundle references itself.
     bundle = { ...provisional, bundleDigest: await digestPublicationBundleV1(provisional, pages) };
   } catch (error) {
     if (error instanceof NodePublicationBundleErrorV1) throw error;

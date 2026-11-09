@@ -207,7 +207,8 @@ function assertResolvedAstroConfig(
   const normalizedBase = normalizePublicationRoutePrefixV1(suppliedBase);
   // Astro's resolved config follows the selected URL profile: directory output
   // retains the non-root trailing slash, while portable-file output removes it.
-  const expectedBase = normalizedBase === "/" ? "/" : expected.outputProfile === "directory"
+  // The normalizer maps the root base ("/") to the empty prefix.
+  const expectedBase = normalizedBase === "" ? "/" : expected.outputProfile === "directory"
     ? `${normalizedBase}/`
     : normalizedBase;
   if (config.base !== expectedBase) {
@@ -672,9 +673,9 @@ export function atlcliPublishingIntegration(
             ? options.expectedConfig.base.slice(0, -1)
             : options.expectedConfig.base;
           const basePrefix = normalizePublicationRoutePrefixV1(suppliedBase);
-          const sitemapPathForUrl = basePrefix === "/" ? `/${sitemapPath}` : `${basePrefix}/${sitemapPath}`;
+          const sitemapPathForUrl = basePrefix === "" ? `/${sitemapPath}` : `${basePrefix}/${sitemapPath}`;
           const plannedSitemapUrl = new URL(sitemapPathForUrl, `${site}/`).href;
-          const defaultSitemapPathForUrl = basePrefix === "/" ? "/sitemap.xml" : `${basePrefix}/sitemap.xml`;
+          const defaultSitemapPathForUrl = basePrefix === "" ? "/sitemap.xml" : `${basePrefix}/sitemap.xml`;
           const robots = seoPlan.robots.replace(
             new URL(defaultSitemapPathForUrl, `${site}/`).href,
             plannedSitemapUrl,
