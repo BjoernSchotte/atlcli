@@ -113,6 +113,6 @@
     "quickjs-emscripten-core@0.32.0": "patches/quickjs-emscripten-core@0.32.0.patch"
   },
   "overrides": {
-    "deepagents": "1.12.1"
+    "deepagents": "1.16.3"
   }
 }
