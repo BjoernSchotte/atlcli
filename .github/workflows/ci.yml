@@ -407,7 +407,7 @@ jobs:
       matrix:
         lane: [neutral-palette, research-worker-rovo, jobs]
     # Playwright 1.55 has no Chromium for ubuntu-latest (26.04); unpin after a Playwright bump.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     env:
       ATLCLI_BROWSER_EVIDENCE_ROOT: ${{ github.workspace }}/.artifacts/browser-evidence
@@ -500,7 +500,7 @@ jobs:
       matrix:
         browser: [pinned-chromium-140, current-cft-stable]
     # Playwright 1.55 has no Chromium for ubuntu-latest (26.04); unpin after a Playwright bump.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       ATLCLI_RASTER_QUALITY_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/raster-quality/${{ matrix.browser }}
@@ -618,7 +618,7 @@ jobs:
     if: needs.changes.outputs.proofMode == 'required' && needs.changes.outputs.browserHarness == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     continue-on-error: true
     # Playwright 1.55 has no Chromium for ubuntu-latest (26.04); unpin after a Playwright bump.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
