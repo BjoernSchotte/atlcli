@@ -81,7 +81,7 @@ export class PackedBrowserEvidence {
 
   launchOptions(
     options: PersistentContextOptions,
-  ): PersistentContextOptions & { recordVideo: RecordVideoOptions } {
+  ): PersistentContextOptions & { recordVideo: RecordVideoOptions & { dir: string } } {
     return {
       ...options,
       recordVideo: {

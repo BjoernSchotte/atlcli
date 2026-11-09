@@ -208,7 +208,7 @@ test("records the PRE-QUEUE DOCX and Typst/PDF paths in real headless Chrome", a
         treeFingerprint: provenance.treeFingerprint,
         harnessFixtureDigest: provenance.harnessFixtureDigest,
         browser: browserVersion,
-        playwright: "1.55.0",
+        playwright: "1.65.0",
         platform: platform(),
         release: release(),
         architecture: process.arch,
