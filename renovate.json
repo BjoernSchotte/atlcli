@@ -43,6 +43,11 @@
       "groupName": "Astro"
     },
     {
+      "description": "@opentui/react pins an exact @opentui/core; update both together or two cores get installed.",
+      "matchPackageNames": ["@opentui/*"],
+      "groupName": "OpenTUI"
+    },
+    {
       "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
       "groupName": "React"
     },
