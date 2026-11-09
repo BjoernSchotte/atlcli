@@ -6,7 +6,7 @@ describe("provesPreflight", () => {
   const full = [
     ok("Product quality / Linux typecheck, browser checks, build, and package contracts"),
     ok("Product quality / Linux Bun tests (general-1)"),
-    ok("Product quality / Astro platform (minimum-astro, ubuntu-latest, Node 22.23.4)"),
+    ok("Product quality / Astro platform (minimum-astro, ubuntu-latest, Node 26.13.0)"),
     { name: "Browser evidence / jobs", status: "completed", conclusion: "skipped" },
   ];
 
