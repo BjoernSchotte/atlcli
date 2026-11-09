@@ -66,7 +66,7 @@ function sceneNodes(nodes: readonly SceneNode[]): SceneNode[] {
 }
 
 test("pins the single all-static TanStack adapter", () => {
-  expect(TANSTACK_CHART_ADAPTER_V1).toEqual({ id: "tanstack-v0.3/all-static", package: "@tanstack/charts", version: "0.18.0" });
+  expect(TANSTACK_CHART_ADAPTER_V1).toEqual({ id: "tanstack-v0.3/all-static", package: "@tanstack/charts", version: "1.5.0" });
 });
 
 test("renders pie charts through the required polar scale registry", () => {
