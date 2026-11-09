@@ -16,7 +16,7 @@ test("is a Starlight-free Astro render-kit package with an isolated chart runtim
     "@atlcli/export-blocks": "workspace:*",
     "@atlcli/export-charts-tanstack": "workspace:*",
     "@tanstack/charts": "1.5.0",
-    "d3-scale": "4.0.2",
+    "d3-scale": "4.0.3",
   });
   expect(manifest.exports).toMatchObject({
     "./fixtures": {

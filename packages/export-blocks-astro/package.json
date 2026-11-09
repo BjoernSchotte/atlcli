@@ -45,7 +45,7 @@
     "@atlcli/export-blocks": "workspace:*",
     "@atlcli/export-charts-tanstack": "workspace:*",
     "@tanstack/charts": "1.5.0",
-    "d3-scale": "4.0.2"
+    "d3-scale": "4.0.3"
   },
   "peerDependencies": {
     "astro": ">=7.1.6 <8"
