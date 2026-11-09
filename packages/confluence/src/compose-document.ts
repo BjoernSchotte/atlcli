@@ -412,12 +412,14 @@ function registerPageAnchors(
         case "layout":
           for (const column of block.columns) walk(column.content);
           break;
+        case "divider":
+          if (block.label) walk([block.label]);
+          break;
         case "paragraph":
         case "smartCard":
         case "codeBlock":
         case "image":
         case "mediaFallback":
-        case "divider":
         case "pageBreak":
         case "unknown":
           break;
@@ -718,6 +720,9 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       };
     }
     case "divider":
+      return block.label
+        ? { ...block, label: transformBlock(block.label, ctx) as typeof block.label }
+        : block;
     case "pageBreak":
     case "unknown":
       // No links/headings to rewrite; carry through unchanged.

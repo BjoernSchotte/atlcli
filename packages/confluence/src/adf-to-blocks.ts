@@ -22,6 +22,7 @@ import type {
   AdfUnsupportedAttribute,
   AdfUnsupportedNodeProvenance,
   BlockPresentation,
+  DividerLineStyle,
   EmojiSemantics,
   ExportBlock,
   ExportLink,
@@ -427,7 +428,23 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       }];
     }
     case "rule":
-      return [{ type: "divider" }];
+      return [{ type: "divider", ...decodeRuleStyle(node) }];
+    case "bodiedRule": {
+      // Stage-0 labeled divider; the validator guarantees one paragraph/heading.
+      const [label] = decodeBlockChildren(node.content, ctx, `${path}.content`);
+      const alignment = node.attrs?.alignment;
+      return [{
+        type: "divider",
+        ...decodeRuleStyle(node),
+        ...(label?.type === "paragraph" || label?.type === "heading"
+          ? {
+              label: alignment === "center" || alignment === "end"
+                ? { ...label, presentation: { ...label.presentation, alignment } }
+                : label,
+            }
+          : {}),
+      }];
+    }
     case "blockquote":
       return [{ type: "blockquote", content: decodeBlockChildren(node.content, ctx, `${path}.content`) }];
     case "bulletList":
@@ -2072,6 +2089,20 @@ function decodeInlineDescendants(
     else out.push(...decodeInlineDescendants(node.content, ctx, `${nodePath}.content`));
   }
   return out;
+}
+
+/** Stage-0 rule styling; values are already constrained by the validator. */
+function decodeRuleStyle(
+  node: AdfNode,
+): Pick<Extract<ExportBlock, { type: "divider" }>, "color" | "style" | "weight" | "localId"> {
+  const { color, style, weight } = node.attrs ?? {};
+  const localId = optionalStringAttr(node, "localId");
+  return {
+    ...(typeof color === "string" ? { color: color.toLowerCase() } : {}),
+    ...(typeof style === "string" ? { style: style as DividerLineStyle } : {}),
+    ...(typeof weight === "number" ? { weight } : {}),
+    ...(localId !== undefined ? { localId } : {}),
+  };
 }
 
 function stringAttr(node: AdfNode, key: string): string | undefined {

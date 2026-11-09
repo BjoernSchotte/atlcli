@@ -40,6 +40,19 @@ export const PINNED_PACKAGE_METADATA = Object.freeze({
 export const PINNED_STAGE0_SCHEMA_PATH =
   "package/dist/json-schema/v1/stage-0.json";
 
+/**
+ * Stage-0 definitions pinned beside the `<type>_node` Stage-0 nodes because the
+ * validator enforces them for a stable node type (`rule` with color/style/weight).
+ */
+export const PINNED_STAGE0_EXTRA_DEFINITIONS = Object.freeze(["rule_with_attrs_node"]);
+
+export function pinnedStage0DefinitionNames(): string[] {
+  return [
+    ...PINNED_ADF_STAGE0_NODE_TYPES.map((type) => `${type}_node`),
+    ...PINNED_STAGE0_EXTRA_DEFINITIONS,
+  ].sort();
+}
+
 export const PINNED_REFERENCE_INDEX = Object.freeze({
   nodes: [
     "blockTaskItem", "blockquote", "bodiedSyncBlock", "bulletList", "codeBlock",
@@ -956,8 +969,7 @@ export function stage0ExtensionContract(
     throw new TypeError("ADF Stage-0 schema must contain a definitions object.");
   }
   const definitions: Record<string, unknown> = {};
-  for (const type of PINNED_ADF_STAGE0_NODE_TYPES) {
-    const name = `${type}_node`;
+  for (const name of pinnedStage0DefinitionNames()) {
     if (schema.definitions[name] === undefined) {
       throw new TypeError(`ADF Stage-0 schema is missing ${name}.`);
     }
@@ -1195,9 +1207,7 @@ export async function checkPinned(paths: {
       detail: "ADF Stage-0 extension pin differs from the reviewed package contract.",
     });
   }
-  const expectedStage0Definitions = PINNED_ADF_STAGE0_NODE_TYPES
-    .map((type) => `${type}_node`)
-    .sort();
+  const expectedStage0Definitions = pinnedStage0DefinitionNames();
   if (
     canonicalJson(Object.keys(stage0Extensions.definitions).sort()) !==
       canonicalJson(expectedStage0Definitions) ||

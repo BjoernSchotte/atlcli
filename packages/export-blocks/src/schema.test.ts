@@ -133,3 +133,25 @@ test("visitExportBlocksV1 walks nested blocks and inline links with stable paths
     "text:$blocks[0].rows[0].cells[0].content[0].content[0].content[0].content[0]",
   ]);
 });
+
+test("styled and labeled dividers parse, validate their label, and are visited", () => {
+  const blocks = parseExportBlocksV1([
+    { type: "divider" },
+    {
+      type: "divider",
+      color: "#ff5630",
+      style: "fade",
+      weight: 2,
+      localId: "br1",
+      label: { type: "heading", level: 2, content: [{ type: "text", text: "Part" }] },
+    },
+  ]);
+  expect(blocks).toHaveLength(2);
+  expect(() => parseExportBlocksV1([{ type: "divider", style: "wavy" }])).toThrow(ExportBlockValidationErrorV1);
+  expect(() => parseExportBlocksV1([{ type: "divider", label: { type: "divider" } }])).toThrow(ExportBlockValidationErrorV1);
+  expect(() => parseExportBlocksV1([{ type: "divider", extra: 1 }])).toThrow(ExportBlockValidationErrorV1);
+
+  const visited: string[] = [];
+  visitExportBlocksV1(blocks, { block(block, context) { visited.push(`${block.type}:${context.path}`); } });
+  expect(visited).toEqual(["divider:$blocks[0]", "divider:$blocks[1]", "heading:$blocks[1].label"]);
+});

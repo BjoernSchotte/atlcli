@@ -853,6 +853,8 @@ export function resolvePdfFontRequirementsV1(
           }
           break;
         case "divider":
+          if (block.label) walkBlocks([block.label], inheritedFamily, `${path}.label`);
+          break;
         case "pageBreak":
         case "anchor":
           break;

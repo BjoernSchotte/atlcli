@@ -119,6 +119,8 @@ Descriptions, comments and worklog comments are written and read as markdown. at
 | Images and attachments, macros/extensions, layouts, tables without a header row or with merged cells | An invisible `<!--adf:…-->` marker | Unchanged. Leave the marker in place when editing. |
 | Background colour and other marks without a markdown form | Text only | The formatting is lost |
 | Card or embed appearance of a smart link | `<url>` | Becomes an inline smart link |
+| Experimental styled rule (color, dash style, weight) | `---` | A plain divider. Jira Cloud rejects the styling on write. |
+| Experimental labeled divider (`bodiedRule`) | The label between two `---` lines | Two plain dividers around the label paragraph or heading. Jira Cloud rejects `bodiedRule` on write. |
 | Local images such as `![shot](./a.png)` | — | Kept as a link, with a warning. Upload the file with `jira issue attach`. |
 
 :::note[Data Center]

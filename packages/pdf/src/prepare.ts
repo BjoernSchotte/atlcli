@@ -815,8 +815,19 @@ export async function preparePdfDocument(
             );
             return { ...chart, visualAssetPath, ...(caption ? { caption } : {}) };
           }
+          case "divider": {
+            const { label, ...divider } = block;
+            return label
+              ? {
+                  ...divider,
+                  label: (await walk([label], `${path}.label`))[0] as Extract<
+                    PreparedPdfBlock,
+                    { type: "paragraph" | "heading" }
+                  >,
+                }
+              : divider;
+          }
           case "smartCard":
-          case "divider":
           case "pageBreak":
           case "anchor":
             return block;
@@ -896,6 +907,9 @@ function countAssetBlocks(blocks: ExportBlock[]): number {
         case "table":
           countCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          break;
+        case "divider":
+          if (block.label) walk([block.label]);
           break;
       }
     }

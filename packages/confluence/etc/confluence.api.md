@@ -102,6 +102,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
 
 // export: ADF_STAGE0_NODE_DECODE_MODES
 export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly bodiedRule: "native";
     readonly extensionFrame: "approximation";
     readonly multiBodiedExtension: "approximation";
 }>;
@@ -1605,6 +1606,9 @@ export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChan
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
+// export: DividerLineStyle
+export type DividerLineStyle = "solid" | "dashed" | "dotted" | "sketch" | "fade";
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>, options?: {
     maxItems?: number;
@@ -1878,6 +1882,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {
@@ -2886,6 +2897,7 @@ export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "bodiedRule",
     "extensionFrame",
     "multiBodiedExtension"
 ];
@@ -3649,6 +3661,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
 
 // export: ADF_STAGE0_NODE_DECODE_MODES
 export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly bodiedRule: "native";
     readonly extensionFrame: "approximation";
     readonly multiBodiedExtension: "approximation";
 }>;
@@ -5152,6 +5165,9 @@ export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChan
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
+// export: DividerLineStyle
+export type DividerLineStyle = "solid" | "dashed" | "dotted" | "sketch" | "fade";
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>, options?: {
     maxItems?: number;
@@ -5425,6 +5441,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {
@@ -6433,6 +6456,7 @@ export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "bodiedRule",
     "extensionFrame",
     "multiBodiedExtension"
 ];
@@ -7196,6 +7220,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
 
 // export: ADF_STAGE0_NODE_DECODE_MODES
 export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly bodiedRule: "native";
     readonly extensionFrame: "approximation";
     readonly multiBodiedExtension: "approximation";
 }>;
@@ -8699,6 +8724,9 @@ export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChan
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
+// export: DividerLineStyle
+export type DividerLineStyle = "solid" | "dashed" | "dotted" | "sketch" | "fade";
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>, options?: {
     maxItems?: number;
@@ -8972,6 +9000,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {
@@ -9980,6 +10015,7 @@ export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "bodiedRule",
     "extensionFrame",
     "multiBodiedExtension"
 ];
@@ -11951,6 +11987,9 @@ export interface DiffResult {
     hunks: DiffHunk[];
 }
 
+// export: DividerLineStyle
+export type DividerLineStyle = "solid" | "dashed" | "dotted" | "sketch" | "fade";
+
 // export: EditorVersion
 export type EditorVersion = "v2" | "v1" | null;
 
@@ -12225,6 +12264,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {
@@ -14356,6 +14402,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
 
 // export: ADF_STAGE0_NODE_DECODE_MODES
 export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly bodiedRule: "native";
     readonly extensionFrame: "approximation";
     readonly multiBodiedExtension: "approximation";
 }>;
@@ -15859,6 +15906,9 @@ export declare const DEFAULT_STORAGE_CHANGE_TREE_BUDGET_V1: Readonly<StorageChan
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
+// export: DividerLineStyle
+export type DividerLineStyle = "solid" | "dashed" | "dotted" | "sketch" | "fade";
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>, options?: {
     maxItems?: number;
@@ -16132,6 +16182,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {
@@ -17140,6 +17197,7 @@ export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "bodiedRule",
     "extensionFrame",
     "multiBodiedExtension"
 ];
@@ -18423,6 +18481,13 @@ export type ExportBlock = {
     content: ExportBlock[];
 } | {
     type: "divider";
+    color?: string;
+    style?: DividerLineStyle;
+    weight?: number;
+    label?: Extract<ExportBlock, {
+        type: "paragraph" | "heading";
+    }>;
+    localId?: string;
 } | {
     type: "pageBreak";
 } | {

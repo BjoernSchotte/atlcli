@@ -332,6 +332,11 @@
       "requirements": ["fonts", "typst-runtime"]
     },
     {
+      "path": "packages/pdf-compiler-browser/src/styled-divider.test.ts",
+      "lane": "pdf-typst",
+      "requirements": ["fonts", "typst-runtime"]
+    },
+    {
       "path": "packages/pdf-compiler-browser/src/template-capabilities-v5.test.ts",
       "lane": "pdf-typst",
       "requirements": ["fonts", "poppler", "typst-runtime"]

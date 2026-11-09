@@ -128,6 +128,16 @@ documented `icon=false` parameter suppresses the default icon in both formats.
 This keeps the source contract intact instead of inventing an icon that the
 Confluence page explicitly disabled.
 
+Horizontal rules render as a thin gray line. ADF from other producers can also
+carry two experimental (Stage-0) rule variants, which atlcli reads and renders
+faithfully although Confluence Cloud does not store them: it saves a styled
+rule as a plain one and rejects a labeled divider.
+
+| ADF | DOCX | PDF |
+|-----|------|-----|
+| `rule` with `color`, `style`, `weight` | Paragraph bottom border in that color; `dashed`/`dotted` as is, `sketch` as a wave, `fade` as solid; weight 1–3 is 0.75–2.25 pt | Line in that color, 1–3 pt; `dashed`/`dotted` as is, `fade` as a gradient, `sketch` as solid |
+| `bodiedRule` (labeled divider) | The label paragraph or heading, aligned, carrying the styled border | The label on the line, at the start, center, or end |
+
 `ATLCLI_EXPORT_SOURCE` is the single deployment rollback switch. It changes
 only the source adapter; it does not fork DOCX/PDF rendering, bypass version
 checks, or become part of a durable export-job request.

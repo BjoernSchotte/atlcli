@@ -160,6 +160,9 @@ Behaviour to know:
   kept as plain text, with a warning on stderr.
 - Background colour and other marks without a Markdown form are dropped
   silently when a description is read as Markdown, and the rewrite loses them.
+- An experimental styled rule reads as `---`, and a labeled divider
+  (`bodiedRule`) reads as its label between two `---` lines, not as a marker:
+  Jira Cloud rejects both nodes on write, so the rewrite keeps plain rules.
 - Table cells that hold more than one block, merged cells, line breaks inside
   a cell, or a first row that is not all header cells do not fit a GFM table.
   They come back as a marker (below).

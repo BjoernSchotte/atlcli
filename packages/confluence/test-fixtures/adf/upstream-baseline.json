@@ -18,10 +18,12 @@
   "stage0Extensions": {
     "schemaPath": "package/dist/json-schema/v1/stage-0.json",
     "definitions": [
+      "bodiedRule_node",
       "extensionFrame_node",
-      "multiBodiedExtension_node"
+      "multiBodiedExtension_node",
+      "rule_with_attrs_node"
     ],
-    "canonicalSha256": "e789ae42c75a13f14edf33d86c45eefbdc097777a6b3890d07368d6b11279101"
+    "canonicalSha256": "3920b9976ebecc0821578a741af205cf07f502bbb049971e1b0ac10c15ebc62d"
   },
   "inventory": {
     "nodes": [
@@ -261,7 +263,7 @@
       "underline_mark": "132db45c39cae3e0c2c064b9b51514645f7aa848cdee3609fef0c60ec566cbf0"
     }
   },
-  "coverageSha256": "93bafb1cfb0df8fd9225bd78cded902989ddc548cfcaeb5b2772ae1edc943d32",
+  "coverageSha256": "b977e099f3e58729053b03f86658a6dad385eb10f3f84739484bb822323c8654",
   "fixturesSha256": "fe7327230611bf9ee1e752b8ec5a2d6aefe6522b5f80a5976eda0e8a7f629d58",
   "referenceIndex": {
     "nodes": [
