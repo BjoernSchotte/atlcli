@@ -32,6 +32,6 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "devDependencies": {
-    "jsondiffpatch": "0.7.6"
+    "jsondiffpatch": "0.7.7"
   }
 }
