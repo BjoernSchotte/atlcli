@@ -221,6 +221,26 @@ describe("Anthropic Chat model binding", () => {
     });
   });
 
+  it("never sends temperature, which anthropic-version 2026-10-21 rejects", () => {
+    const binding = createAnthropicChatModelBindingV1({
+      credential: "synthetic-key",
+      maxOutputTokens: 1_024,
+      qualityPolicy: chatQualityPolicyV1("deep"),
+    });
+    for (const model of [
+      createAnthropicChatModelBindingV1({
+        credential: "synthetic-key",
+        maxOutputTokens: 1_024,
+        qualityPolicy: chatQualityPolicyV1("quick"),
+      }).model,
+      binding.model,
+      binding.modelForPreference?.("fast"),
+      binding.modelForFinalization?.(),
+    ]) {
+      expect((model as ChatAnthropic).invocationParams({}).temperature).toBeUndefined();
+    }
+  });
+
   it("gives finalize-only synthesis a bounded non-thinking output corridor", () => {
     const binding = createAnthropicChatModelBindingV1({
       credential: "synthetic-key",

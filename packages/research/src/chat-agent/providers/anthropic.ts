@@ -69,7 +69,7 @@ export function createAnthropicChatModelBindingV1(
       streaming: true,
       ...(resolved.controls?.adaptiveThinking
         ? { thinking: { type: "adaptive" as const, display: "summarized" as const } }
-        : { temperature: 0 }),
+        : {}),
       ...(resolved.controls?.effort
         ? { outputConfig: { effort: resolved.controls.effort } }
         : {}),
