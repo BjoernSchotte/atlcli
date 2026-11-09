@@ -79,32 +79,6 @@ export function CheckboxField({
   );
 }
 
-/** A native radio with its label as one row. */
-export function RadioField({
-  label,
-  help,
-  className,
-  ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & {
-  label: React.ReactNode;
-  help?: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <div className={cn("flex flex-col gap-0.5", className)}>
-      <label
-        className={cn(
-          "flex items-start gap-2 text-xs font-medium",
-          props.disabled ? "opacity-50" : undefined
-        )}
-      >
-        <input type="radio" className="mt-0.5 size-3.5 shrink-0 accent-primary" {...props} />
-        <span>{label}</span>
-      </label>
-      {help === undefined ? null : <FieldHelp className="pl-[1.375rem]">{help}</FieldHelp>}
-    </div>
-  );
-}
-
 /** Small inline label, e.g. the Global/Space scope badge in the library list. */
 export function Badge({
   className,

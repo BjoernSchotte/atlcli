@@ -974,8 +974,8 @@ function messageOf(error: unknown): string {
  * Exported ready-made so the shell owner adds one import and one array element
  * to `components/screens/index.ts` — the registry, not this file, decides where
  * the screen appears. The `pdf-preview` capability must also be advertised by
- * the host (`CHROME_CAPABILITIES`); until it is, the entry renders as
- * disabled-with-a-reason, which is the registry behaving correctly.
+ * the host (`CHROME_CAPABILITIES` does); on a host that does not, the entry
+ * renders as disabled-with-a-reason, which is the registry behaving correctly.
  */
 export const previewScreenDefinition: ScreenDefinition = {
   id: PREVIEW_SCREEN_ID,

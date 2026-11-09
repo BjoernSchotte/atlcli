@@ -16,20 +16,15 @@
  * work and replaces this adapter's `get`/`put`/`remove`, not the port.
  */
 import type { ScanResult } from "@atlcli/docx/browser-entry";
-import { profileFromTabUrl } from "../../../utils/profile.js";
 import { idbTemplateLibrary, type IdbTemplateLibrary, type StoredTemplateEntry } from "../../../utils/templates/library.js";
 import type { DocxExportPort, DocxTemplateStore } from "../../../utils/ports/export.js";
 import type { SiteContext } from "./site-context.js";
+import { siteOriginOf } from "./templates.js";
 
 // The scan stays panel-local and light. Export itself is a durable observer
 // adapter; PizZip/docxtemplater and canvas load only in the offscreen executor.
 const loadScan = () => import("@atlcli/docx/browser-entry");
 const loadRun = () => import("../../../utils/export-jobs/docx-run.js");
-
-function siteOriginOf(site: SiteContext): string | undefined {
-  const profile = site.url ? profileFromTabUrl(site.url) : null;
-  return profile ? profile.baseUrl : undefined;
-}
 
 /** The entry the single-slot panel considers "the" template. */
 async function currentEntry(library: IdbTemplateLibrary): Promise<StoredTemplateEntry | null> {

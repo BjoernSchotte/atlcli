@@ -18,7 +18,7 @@ import type { PdfJobStatus } from "../pdf/job-store.js";
 export type { PdfJobKind, PdfJobStatus };
 
 /**
- * Statuses that mean "a compiler is, or is about to be, working on this".
+ * True while a compiler still owns this record.
  *
  * `"prepared"` is the plan's `queued`: the record exists and the compile has
  * been requested, but no worker has claimed it yet. It is spelled `prepared`
@@ -26,9 +26,6 @@ export type { PdfJobKind, PdfJobStatus };
  * `workers/pdf-compiler.ts`; the panel already *shows* it as the `queued`
  * export phase (`ExportPhase`, `pdf.phase.queued`).
  */
-export const PDF_JOB_IN_FLIGHT_STATUSES = ["prepared", "compiling"] as const;
-
-/** True while a compiler still owns this record. */
 export function isPdfJobInFlight(status: PdfJobStatus): boolean {
   return status === "prepared" || status === "compiling";
 }
@@ -210,19 +207,6 @@ export function planSweep(
 // ---------------------------------------------------------------------------
 // Notification
 // ---------------------------------------------------------------------------
-
-/**
- * Badge text for `n` finished exports nobody has collected yet.
- *
- * The toolbar badge is the *only* notification channel available here:
- * `chrome.notifications` would need a new manifest permission, and this folder
- * ships none (`tests/manifest.test.ts`). Two characters is all the badge renders
- * legibly, so anything past nine collapses.
- */
-export function jobBadgeText(unconsumedFinished: number): string {
-  if (unconsumedFinished <= 0) return "";
-  return unconsumedFinished > 9 ? "9+" : String(unconsumedFinished);
-}
 
 // ---------------------------------------------------------------------------
 // Presentation helpers (pure; the component supplies the translated frame)

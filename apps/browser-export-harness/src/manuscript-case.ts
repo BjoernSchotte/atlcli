@@ -29,6 +29,8 @@ import {
 } from "@atlcli/pdf/browser";
 import { MANUSCRIPT_BLOCKS, MANUSCRIPT_FILENAME, MANUSCRIPT_METADATA } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
+import { equalBytes, sha256Hex } from "./digest.js";
+import { deterministicClock } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const compiler = new HarnessPdfWorkerClient();
@@ -38,22 +40,6 @@ const noAssets: PdfAssetResolver = {
     throw new Error("The Manuscript conformance fixture has no external assets.");
   },
 };
-
-function deterministicClock(): () => number {
-  let tick = 0;
-  return () => tick++;
-}
-
-function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 async function compileWith(
   templateManifest?: TemplateManifest,

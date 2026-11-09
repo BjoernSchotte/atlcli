@@ -92,7 +92,7 @@ export function chromeTemplateLibrary(site: SiteContext): TemplateLibraryPort {
 }
 
 /** The active tab's Atlassian origin, or `undefined` off an Atlassian host. */
-function siteOriginOf(site: SiteContext): string | undefined {
+export function siteOriginOf(site: SiteContext): string | undefined {
   const profile = site.url ? profileFromTabUrl(site.url) : null;
   return profile ? profile.baseUrl : undefined;
 }

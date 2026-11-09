@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { rasterizerTimingNote } from "../../entrypoints/sidepanel/TemplateSection.js";
+import { rasterizerTimingNote } from "../../components/export/docx-template.js";
 
 describe("rasterizerTimingNote", () => {
   it("omits the extension note when no rasterization succeeded", () => {

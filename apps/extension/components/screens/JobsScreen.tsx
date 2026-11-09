@@ -21,7 +21,7 @@ import {
   Select,
 } from "../ui/field.js";
 
-export const JOBS_SCREEN_ID = "activity";
+const JOBS_SCREEN_ID = "activity";
 
 type StatusFilter =
   | "all"
@@ -511,7 +511,7 @@ function JobRow({
   );
 }
 
-export interface JobsListProps {
+interface JobsListProps {
   jobs: readonly ExportActivityJob[];
   error?: string | null;
   now?: number;
@@ -525,7 +525,7 @@ export interface JobsListProps {
   onView: (route: string) => void;
 }
 
-export function JobsList({
+function JobsList({
   jobs,
   error = null,
   now = Date.now(),
@@ -603,27 +603,6 @@ function boundList(
       onAcknowledge={jobs.acknowledge}
       onView={jobs.viewDetail}
     />
-  );
-}
-
-/** Compact list for the Export screen; the full monitor lives on Activity. */
-export function JobsSection({
-  siteOrigin,
-  now,
-}: {
-  siteOrigin: string | null;
-  now?: number;
-}): React.JSX.Element | null {
-  const jobs = useDurableJobs(siteOrigin);
-  const list = boundList(jobs, jobs.jobs, now);
-  if (!list && !jobs.detail) return null;
-  return (
-    <>
-      {list}
-      {jobs.detail && (
-        <JobDetail detail={jobs.detail} onClose={jobs.closeDetail} />
-      )}
-    </>
   );
 }
 

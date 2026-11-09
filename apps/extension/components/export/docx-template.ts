@@ -2,10 +2,7 @@
  * Pure helpers behind the DOCX export panel (spec 010 Phase 0).
  *
  * All four are host-neutral and DOM-free, which is why they live next to the
- * screen rather than in the Chrome shell. `entrypoints/sidepanel/TemplateSection.tsx`
- * re-exports `loadCurrentTemplate` and `rasterizerTimingNote` so
- * `tests/docx/template-load.test.ts` and `tests/docx/rasterizer-report.test.ts`
- * keep passing unchanged through the move.
+ * screen rather than in the Chrome shell.
  */
 import type { ExportReport } from "@atlcli/docx/browser";
 import type { ScanResult } from "@atlcli/docx/scan";

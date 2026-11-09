@@ -17,6 +17,7 @@ import {
 } from "@atlcli/pdf/browser";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { MemoryOutputSink } from "./memory-output.js";
+import { deterministicClock as clock } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const noAssets: PdfAssetResolver = {
@@ -25,10 +26,6 @@ const noAssets: PdfAssetResolver = {
   },
 };
 
-function clock(): () => number {
-  let tick = 0;
-  return () => tick++;
-}
 
 export interface ChartCaseResult {
   shapes: readonly string[];

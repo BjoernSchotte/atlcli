@@ -17,8 +17,8 @@ const executorSource = readFileSync(
 );
 /**
  * The lazy-load boundary moved with the code it guards: spec 010 Phase 0 took
- * the DOCX effect half out of `TemplateSection.tsx` (now a compatibility
- * re-export) and into the Chrome adapter. Export submission now crosses the
+ * the DOCX effect half out of `TemplateSection.tsx` (since removed) and into
+ * the Chrome adapter. Export submission now crosses the
  * durable-job adapter and the heavy engine lives in the offscreen bundle. The
  * invariant is unchanged — the initial panel chunk must not import the scan or
  * productive DOCX runtime for users who never open that path.

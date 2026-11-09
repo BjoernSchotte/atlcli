@@ -15,7 +15,7 @@
  */
 import { beforeEach, describe, expect, it } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
-import { loadCurrentTemplate } from "../../entrypoints/sidepanel/TemplateSection.js";
+import { loadCurrentTemplate } from "../../components/export/docx-template.js";
 import {
   buildRecordKey,
   getTemplate,

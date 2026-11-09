@@ -59,6 +59,8 @@ import {
 } from "@atlcli/pdf-template-authoring/browser";
 import { packTemplate } from "@atlcli/template-pack";
 import { MemoryOutputSink } from "./memory-output.js";
+import { equalBytes, sha256Hex as sha256 } from "./digest.js";
+import { deterministicClock } from "./pdf-run.js";
 
 const PROJECT_ID = "browser:docx-template-intake";
 const IMPORTER_VERSION = "atlcli.pdf-template-import/1";
@@ -118,25 +120,6 @@ const FINAL_BLOCKS: readonly ExportBlock[] = [
 
 function clone<T>(value: T): T {
   return structuredClone(value);
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
-}
-
-function deterministicClock(): () => number {
-  let tick = 0;
-  return () => tick++;
-}
-
-function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return (
-    left.byteLength === right.byteLength &&
-    left.every((byte, index) => byte === right[index])
-  );
 }
 
 function decisionContext(

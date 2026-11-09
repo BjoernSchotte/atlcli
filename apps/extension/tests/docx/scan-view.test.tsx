@@ -8,7 +8,7 @@
 import { describe, expect, it } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ScanView } from "../../entrypoints/sidepanel/TemplateSection.js";
+import { ScanView } from "../../components/export/ScanView.js";
 import type { ScanResult } from "@atlcli/docx/scan";
 import { I18nProvider } from "../../utils/i18n/context.js";
 

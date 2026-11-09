@@ -1133,14 +1133,6 @@
       "skipped": 0
     },
     {
-      "file": "apps/extension/tests/detection-pull.test.ts",
-      "durationSeconds": 0.0008500000000000001,
-      "tests": 6,
-      "passed": 6,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "apps/extension/tests/docx/bootstrap-boundary.test.ts",
       "durationSeconds": 0.000301,
       "tests": 3,
@@ -1193,14 +1185,6 @@
       "durationSeconds": 0.009812,
       "tests": 8,
       "passed": 8,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
-      "file": "apps/extension/tests/docx/session-cache.test.ts",
-      "durationSeconds": 0.000826,
-      "tests": 6,
-      "passed": 6,
       "failed": 0,
       "skipped": 0
     },

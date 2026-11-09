@@ -10,6 +10,8 @@ import {
 import { ATLCLI_TYPST_TEMPLATE, validatePdfOutput } from "@atlcli/pdf/internal";
 import { PDF_BLOCKS, PDF_FILENAME, PDF_METADATA } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
+import { equalBytes } from "./digest.js";
+import { deterministicClock } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const compiler = new HarnessPdfWorkerClient();
@@ -19,16 +21,6 @@ const noAssets: PdfAssetResolver = {
     throw new Error("The deterministic harness fixture has no external assets.");
   },
 };
-
-function deterministicClock(): () => number {
-  let tick = 0;
-  return () => tick++;
-}
-
-function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.byteLength !== right.byteLength) return false;
-  return left.every((byte, index) => byte === right[index]);
-}
 
 function assertNormalizedDiagnostic(diagnostic: PdfCompilerDiagnostic): void {
   const raw = diagnostic as PdfCompilerDiagnostic & { package?: unknown; range?: unknown };
