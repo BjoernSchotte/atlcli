@@ -77,7 +77,7 @@
     "@langchain/langgraph-checkpoint": "1.2.2",
     "@langchain/langgraph-sdk": "1.15.0",
     "@langchain/quickjs": "1.0.0",
-    "@playwright/test": "1.55.0",
+    "@playwright/test": "1.65.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/chrome": "^0.3.0",
     "@types/react": "^19.2.0",
