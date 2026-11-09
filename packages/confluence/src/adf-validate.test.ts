@@ -873,12 +873,92 @@ describe("validateAdf", () => {
       .toBe("invalid-attributes");
   });
 
+  test("accepts Stage-0 styled rule attrs and rejects values outside the pinned constraints", () => {
+    const styled = validateAdf(doc([{
+      type: "rule",
+      attrs: { localId: "r1", color: "#FF5630", style: "dashed", weight: 2.5 },
+    }]));
+    expect(styled.diagnostics).toEqual([]);
+    for (const style of ["solid", "dashed", "dotted", "sketch", "fade"]) {
+      expect(validateAdf(doc([{ type: "rule", attrs: { style } }])).diagnostics).toEqual([]);
+    }
+    for (const attrs of [
+      { color: "red" },
+      { color: "#FF563" },
+      { style: "double" },
+      { weight: 0 },
+      { weight: 3.5 },
+      { weight: "2" },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([{ type: "rule", attrs }])))).toBe("invalid-attributes");
+    }
+  });
+
+  test("accepts Stage-0 bodiedRule in its pinned containers with exact attrs and one label", () => {
+    const label = { type: "paragraph", content: [{ type: "text", text: "Section" }] };
+    const bodiedRule = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+      type: "bodiedRule",
+      attrs: { localId: "br1", alignment: "center", color: "#00b8d9", style: "dotted", weight: 1 },
+      content: [label],
+      ...overrides,
+    });
+    const cell = (content: unknown[]) => ({ type: "tableCell", content });
+    const containers: unknown[] = [
+      bodiedRule({ content: [{ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "H" }] }] }),
+      { type: "panel", attrs: { panelType: "info" }, content: [bodiedRule()] },
+      { type: "expand", attrs: { title: "x" }, content: [bodiedRule()] },
+      { type: "table", content: [{ type: "tableRow", content: [cell([bodiedRule()])] }] },
+      { type: "layoutSection", content: [{ type: "layoutColumn", attrs: { width: 100 }, content: [bodiedRule()] }] },
+      { type: "bodiedSyncBlock", attrs: { localId: "s", resourceId: "r" }, content: [bodiedRule()] },
+      {
+        type: "multiBodiedExtension",
+        attrs: { extensionType: "x", extensionKey: "y" },
+        content: [{ type: "extensionFrame", content: [bodiedRule(), { type: "rule", attrs: { style: "fade" } }] }],
+      },
+    ];
+    for (const container of containers) {
+      expect(validateAdf(doc([container])).diagnostics).toEqual([]);
+    }
+    expect(validateAdf(doc([bodiedRule({ attrs: { localId: "only" } })])).diagnostics).toEqual([]);
+
+    // Parents outside the Stage-0 contract.
+    expect(errorCode(() => validateAdf(doc([{ type: "blockquote", content: [bodiedRule()] }])))).toBe("invalid-node");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "bulletList",
+      content: [{ type: "listItem", content: [bodiedRule()] }],
+    }])))).toBe("invalid-node");
+    // Attributes.
+    for (const attrs of [
+      undefined,
+      {},
+      { localId: "" },
+      { localId: "x", alignment: "left" },
+      { localId: "x", color: "blue" },
+      { localId: "x", style: "wavy" },
+      { localId: "x", weight: 4 },
+      { localId: "x", extra: true },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([bodiedRule({ attrs })])))).toBe("invalid-attributes");
+    }
+    // Content: exactly one unmarked paragraph or heading; no node marks.
+    for (const overrides of [
+      { content: [] },
+      { content: [label, label] },
+      { content: [{ type: "codeBlock", content: [] }] },
+      { content: [{ ...label, marks: [{ type: "alignment", attrs: { align: "center" } }] }] },
+      { marks: [] },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([bodiedRule(overrides)])))).toBe("invalid-node");
+    }
+    expect(validateAdf(doc([bodiedRule({ content: [{ ...label, marks: [] }] })])).diagnostics).toEqual([]);
+  });
+
   test("classifies every pinned schema node and mark exactly once", () => {
     expect(PINNED_ADF_NODE_TYPES).toHaveLength(43);
-    expect(PINNED_ADF_STAGE0_NODE_TYPES).toHaveLength(2);
+    expect(PINNED_ADF_STAGE0_NODE_TYPES).toHaveLength(3);
     expect(PINNED_ADF_MARK_TYPES).toHaveLength(17);
     expect(new Set(PINNED_ADF_NODE_TYPES).size).toBe(43);
-    expect(new Set(PINNED_ADF_STAGE0_NODE_TYPES).size).toBe(2);
+    expect(new Set(PINNED_ADF_STAGE0_NODE_TYPES).size).toBe(3);
     expect(new Set(PINNED_ADF_MARK_TYPES).size).toBe(17);
     expect(ADF_COVERAGE.filter(({ kind }) => kind === "node").map(({ type }) => type).sort())
       .toEqual([...PINNED_ADF_NODE_TYPES, ...PINNED_ADF_STAGE0_NODE_TYPES].sort());

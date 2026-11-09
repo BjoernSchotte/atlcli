@@ -69,6 +69,7 @@ import {
   captionSeqName,
   codeLineParagraph,
   dataTable,
+  dividerBorderPPr,
   dividerParagraph,
   hyperlinkField,
   internalHyperlink,
@@ -1089,7 +1090,11 @@ async function serializeBlock(
     }
 
     case "divider":
-      return dividerParagraph();
+      // A bodiedRule label sits on the styled rule: its own paragraph (heading
+      // style, alignment) carries the bottom border instead of an empty one.
+      return block.label
+        ? addParagraphProps(await serializeBlock(block.label, ctx, notes, depth), dividerBorderPPr(block))
+        : dividerParagraph(block);
 
     case "image": {
       // A captioned image that fails to embed still emits a numbered figure

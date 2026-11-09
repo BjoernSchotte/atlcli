@@ -583,7 +583,12 @@ function serializeBlock(node: AdfNode, options: AdfToMarkdownOptions): string {
         .map((line) => (line ? `> ${line}` : ">"))
         .join("\n");
     case "rule":
+      // Stage-0 color/style/weight have no Markdown form (Jira rejects them on write).
       return "---";
+    case "bodiedRule":
+      // Stage-0 labeled divider: Jira rejects it on write, so read it as its
+      // label between two plain rules instead of an un-writable marker.
+      return ["---", serializeBlocks(content, options), "---"].join("\n\n");
     case "panel": {
       const panelType = String(node.attrs?.panelType ?? "info");
       if (!PANEL_TYPES.has(panelType)) return encodeSentinel(node);

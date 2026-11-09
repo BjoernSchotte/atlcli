@@ -88,6 +88,7 @@ export const ADF_NODE_DECODE_MODES = Object.freeze({
 
 /** Exhaustive implementation classification for the separately pinned Stage-0 slice. */
 export const ADF_STAGE0_NODE_DECODE_MODES = Object.freeze({
+  bodiedRule: "native",
   extensionFrame: "approximation",
   multiBodiedExtension: "approximation",
 } as const satisfies Record<PinnedAdfStage0NodeType, AdfDecoderMode>);

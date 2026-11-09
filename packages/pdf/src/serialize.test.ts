@@ -246,6 +246,32 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).not.toContain("opaque-marker-not-rendered");
   });
 
+  it("renders ADF Stage-0 styled rules and bodiedRule labels as Typst strokes and grids", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "divider", color: "#ff5630", style: "dashed", weight: 2 },
+      { type: "divider", style: "fade" },
+      {
+        type: "divider",
+        style: "dotted",
+        label: { type: "paragraph", content: [{ type: "text", text: "Middle" }], presentation: { alignment: "center" } },
+      },
+      { type: "divider", label: { type: "paragraph", content: [{ type: "text", text: "Last" }], presentation: { alignment: "end" } } },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const { main } = serializePdfDocument(prepared, { metadata });
+
+    expect(main).toContain('#line(length: 100%, stroke: (paint: rgb("#FF5630"), thickness: 2pt, dash: "dashed"))');
+    expect(main).toMatch(/stroke: \(paint: gradient\.linear\(rgb\("[^"]+"\)\.transparentize\(100%\), rgb\("[^"]+"\), /);
+    expect(main).toMatch(/#grid\(columns: \(1fr, auto, 1fr\), column-gutter: [^,]+, align: horizon, line\([^\n]*dash: "dotted"\)\), \[[^\n]*Middle[^\n]*\], line\(/);
+    expect(main).toMatch(/#grid\(columns: \(1fr, auto\),[^\n]*Last/);
+    // The label alignment is expressed by the grid, not a nested #align.
+    expect(main).not.toContain("#align(center)");
+  });
+
   it("promotes headings and serializes every common semantic block", async () => {
     const blocks: ExportBlock[] = [
       { type: "heading", level: 2, content: [{ type: "text", text: "Overview" }] },

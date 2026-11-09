@@ -67,3 +67,19 @@
 @media (prefers-reduced-motion: reduce) {
   [data-atlcli-chart-runtime] *, [data-atlcli-block="chart"] * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }
+
+/* ADF Stage-0 rule styling; a plain divider keeps the user agent's <hr>. */
+hr[data-atlcli-block="divider"]:is([style], [data-style]), [data-atlcli-rule-label] > hr {
+  border: 0;
+  border-top: var(--atlcli-rule-weight, 1px) solid var(--atlcli-rule-color, var(--atlcli-content-border));
+}
+hr[data-atlcli-block="divider"][data-style="dashed"], [data-atlcli-rule-label][data-style="dashed"] > hr { border-top-style: dashed; }
+hr[data-atlcli-block="divider"][data-style="dotted"], [data-atlcli-rule-label][data-style="dotted"] > hr { border-top-style: dotted; }
+hr[data-atlcli-block="divider"][data-style="fade"], [data-atlcli-rule-label][data-style="fade"] > hr {
+  border-image: linear-gradient(to right, transparent, var(--atlcli-rule-color, var(--atlcli-content-border)), transparent) 1;
+}
+[data-atlcli-rule-label] { display: flex; align-items: center; gap: 0.6em; }
+[data-atlcli-rule-label] > hr { flex: 1; margin: 0; }
+[data-atlcli-rule-label] > :not(hr) { flex: none; }
+[data-atlcli-rule-label][data-align="start"] > hr:first-child,
+[data-atlcli-rule-label][data-align="end"] > hr:last-child { display: none; }

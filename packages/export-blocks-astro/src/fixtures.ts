@@ -74,6 +74,8 @@ export const EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1: readonly ExportBlock[] =
   { type: "mediaFallback", label: "Movie", media: { mediaType: "video", filename: "movie.mp4" } },
   { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "Quote" }] }] },
   { type: "divider" }, { type: "pageBreak" },
+  { type: "divider", color: "#ff5630", style: "dashed", weight: 2 },
+  { type: "divider", style: "dotted", label: { type: "heading", level: 3, content: [{ type: "text", text: "Rule label" }], presentation: { alignment: "center" } } },
   { type: "orientation", landscape: true, content: [{ type: "paragraph", content: [{ type: "text", text: "Landscape" }] }] },
   { type: "anchor", name: "bookmark" },
   { type: "unknown", macroName: "custom-widget", plainBody: "<not-html-executed />", body: [{ type: "paragraph", content: [{ type: "text", text: "Fallback body" }] }] },

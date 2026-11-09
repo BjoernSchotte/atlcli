@@ -115,7 +115,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **82 of 84 rows closed; 2 rows open.** This count
+Current matrix orientation: **83 of 85 rows closed; 2 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -279,7 +279,9 @@ Neither alone is a complete Confluence export contract.
 
 The matrix covers every semantic node type in the stable
 `@atlaskit/adf-schema@56.1.15` `full.json` plus the separately pinned
-`multiBodiedExtension`/`extensionFrame` definitions from `stage-0.json`.
+`multiBodiedExtension`/`extensionFrame` definitions from `stage-0.json`, and
+(since the 57.7.39 follow-on) the Stage-0 `bodiedRule` and
+`rule_with_attrs_node` definitions.
 “Source” describes the current direct ADF path plus the distinct
 Storage/export-view compatibility adapters.
 
@@ -292,7 +294,8 @@ Storage/export-view compatibility adapters.
 | [x] | `heading` | `<h1>`…`<h6>` retains level, inline content, and local identity; direct ADF additionally retains logical alignment and indentation. | Native | Native | Closed for the pinned schema. Composed level rebasing remains an explicit document policy and does not discard source identity. |
 | [x] | `text` | Unicode text is retained and XML/Typst escaped. | Native | Native | Closed semantically; target font fallback is a renderer/platform constraint tracked separately where a guaranteed bundled font is required. |
 | [x] | `hardBreak` | ADF `hardBreak` and Storage `<br>` become `lineBreak`. | Native | Native | Closed with direct ADF and Storage coverage. |
-| [x] | `rule` | ADF `rule` and Storage `<hr>` become `divider`. | Native | Native | Closed with direct ADF and Storage coverage. |
+| [x] | `rule` | ADF `rule` and Storage `<hr>` become `divider`; Stage-0 `color`/`style`/`weight` are retained. | Native | Native | Closed with direct ADF and Storage coverage. Stage-0 `fade` draws solid in DOCX and `sketch` solid in PDF (no target primitive). |
+| [x] | `bodiedRule` (Stage-0) | Becomes a styled `divider` whose `label` is the single paragraph/heading; alignment is the label's presentation. Read-only: Confluence and Jira Cloud reject it on write. | Native | Native | Closed for reading/export (PLAN, 2026-11-09 follow-on). |
 | [x] | `blockquote` | Structured body becomes `blockquote`. | Native static projection | Native static projection | Closed; target-owned static styling is not ADF notation loss. |
 | [x] | `codeBlock` | Direct ADF retains exact code (including empty/final lines), optional language (including empty), tri-state `wrap`, normalized `hideLineNumbers`, `localId`, `uniqueId`, and root-only breakout intent. Storage `<pre>`/`code`/`noformat` retain their separate no-gutter default; code macros additionally retain `linenumbers`, `firstline`, language, macro local identity, `title`, and authored `collapse` intent where present. | Native with page-bound no-wrap/breakout policy | Native with page-bound no-wrap/breakout policy | Closed for the node's pinned content/attribute/mark contract and the documented legacy Storage compatibility parameters. Both targets render syntax-highlighted code and authored line numbers; continuation lines align after the gutter. A Storage title becomes a header above the complete body. Requested no-wrap/breakout states and authored collapse intent remain in the neutral model and are explicitly reported when a bounded static page must constrain or expand them. |
 

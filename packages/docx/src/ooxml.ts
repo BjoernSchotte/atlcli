@@ -11,7 +11,7 @@
  * id ({@link resolveHeadingStyleId}). Code blocks reference a synthesized
  * `AtlcliCode` paragraph style; callouts are self-styled single-cell tables.
  */
-import type { CaptionKind, ExportNote } from "@atlcli/confluence";
+import type { CaptionKind, DividerLineStyle, ExportNote } from "@atlcli/confluence";
 import { isSafeLinkScheme, normalizeExportColor } from "@atlcli/confluence";
 import { CODE_FONT_FAMILY } from "./font-embedding.js";
 import { encodeXmlText } from "./ooxml-text.js";
@@ -518,9 +518,34 @@ export function paragraph(runsXml: string, opts: { styleId?: string; extraPPr?: 
   return `<w:p>${ppr}${runsXml}</w:p>`;
 }
 
+/** Styling of a `divider` block (ADF Stage-0 rule color/style/weight). */
+export interface DividerRuleStyle {
+  color?: string;
+  style?: DividerLineStyle;
+  weight?: number;
+}
+
+// ponytail: OOXML borders have no gradient, so `fade` draws solid; `sketch`
+// (hand-drawn) maps to Word's native wave border.
+const DIVIDER_BORDER_VAL: Record<DividerLineStyle, string> = {
+  solid: "single",
+  dashed: "dashed",
+  dotted: "dotted",
+  sketch: "wave",
+  fade: "single",
+};
+
+/** The `w:pBdr` bottom border that draws a divider; weight 1 is 0.75pt. */
+export function dividerBorderPPr(rule: DividerRuleStyle = {}): string {
+  const val = DIVIDER_BORDER_VAL[rule.style ?? "solid"];
+  const sz = Math.round(6 * (rule.weight ?? 1));
+  const color = /^#([0-9a-f]{6})$/i.exec(rule.color ?? "")?.[1]?.toUpperCase() ?? "BBBBBB";
+  return `<w:pBdr><w:bottom w:val="${val}" w:sz="${sz}" w:space="1" w:color="${color}"/></w:pBdr>`;
+}
+
 /** An empty paragraph with a bottom border — the `divider` block. */
-export function dividerParagraph(): string {
-  return `<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="BBBBBB"/></w:pBdr></w:pPr></w:p>`;
+export function dividerParagraph(rule?: DividerRuleStyle): string {
+  return `<w:p><w:pPr>${dividerBorderPPr(rule)}</w:pPr></w:p>`;
 }
 
 /**

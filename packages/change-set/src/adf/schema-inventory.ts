@@ -49,11 +49,14 @@ export const PINNED_ADF_NODE_TYPES = [
 ] as const;
 
 /**
- * Nodes published by the same pinned Atlassian package in `stage-0.json` and
- * linked from the official ADF structure index, but deliberately omitted from
- * `full.json`.
+ * Nodes published by the same pinned Atlassian package in `stage-0.json` but
+ * deliberately omitted from `full.json`. `extensionFrame` and
+ * `multiBodiedExtension` are linked from the official ADF structure index;
+ * `bodiedRule` (a labeled divider) is experimental and accepted for reading
+ * only, because Confluence and Jira Cloud reject it on write.
  */
 export const PINNED_ADF_STAGE0_NODE_TYPES = [
+  "bodiedRule",
   "extensionFrame",
   "multiBodiedExtension",
 ] as const;

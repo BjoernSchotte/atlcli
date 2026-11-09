@@ -754,6 +754,7 @@ export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "bodiedRule",
     "extensionFrame",
     "multiBodiedExtension"
 ];
