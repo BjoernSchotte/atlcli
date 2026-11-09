@@ -33,7 +33,7 @@ import { curveStepAfter, pie as createPie, type PieArcDatum } from "d3-shape";
 export const TANSTACK_CHART_ADAPTER_V1 = Object.freeze({
   id: "tanstack-v0.3/all-static" as const,
   package: "@tanstack/charts" as const,
-  version: "0.18.0" as const,
+  version: "1.5.0" as const,
 });
 
 export const TANSTACK_CHART_SIZE_V1 = Object.freeze({ width: 720, height: 400 });
