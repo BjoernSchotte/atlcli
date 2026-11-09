@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat, unlink } from "node:fs/promises";
+import { link, mkdir, open, readFile, rename, rm, stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { ensurePrivateDirectory, writeDurableAtomic } from "./atomic-fs.js";
 
@@ -63,6 +63,46 @@ async function readOwner(path: string): Promise<FileExportLockOwnerV1 | undefine
   }
 }
 
+/**
+ * The mutation guard is only ever held across one owner.json read, one durable
+ * owner.json write, or one directory rename (milliseconds), never across caller
+ * work. It carries no owner, so a process killed inside that window would
+ * otherwise block the lock forever. A guard this old (file mtime against the
+ * wall clock: unlike the lease TTL it cannot follow an injected clock) is
+ * abandoned.
+ */
+const GUARD_STALE_MS = 10_000;
+/** Backstop: waiting this long for a guard means stale recovery is not working; fail instead of hanging. */
+const GUARD_WAIT_LIMIT_MS = 3 * GUARD_STALE_MS;
+
+function isMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+/** Remove the guard if it is abandoned. Never removes a guard created after the staleness check. */
+async function clearStaleGuard(guard: string): Promise<void> {
+  try {
+    const seen = await stat(guard);
+    if (Date.now() - seen.mtimeMs < GUARD_STALE_MS) return;
+    // Two contenders can both judge the same guard stale; the slower one would
+    // then remove the faster one's fresh guard. Move it aside, and put it back
+    // if it is not the file that was judged.
+    const aside = `${guard}.${randomBytes(8).toString("hex")}`;
+    await rename(guard, aside);
+    const moved = await stat(aside);
+    if (moved.ino !== seen.ino || moved.mtimeMs !== seen.mtimeMs) await link(aside, guard).catch(() => undefined);
+    await unlink(aside);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+  }
+}
+
+function guardStuck(since: number): Error | undefined {
+  return Date.now() - since > GUARD_WAIT_LIMIT_MS
+    ? new Error("File export lock mutation guard could not be acquired; remove the stale lock directory.")
+    : undefined;
+}
+
 /** Cross-process mutex backed by atomic directory creation and nonce-fenced stale recovery. */
 export class FileExportLock {
   readonly path: string;
@@ -81,6 +121,7 @@ export class FileExportLock {
 
   async acquire(options: { signal?: AbortSignal; label?: string } = {}): Promise<FileExportLockLease> {
     await ensurePrivateDirectory(dirname(this.path));
+    let guardBlockedSince: number | undefined;
     for (;;) {
       if (options.signal?.aborted) throw abortReason(options.signal);
       const acquiredAt = this.#now();
@@ -113,6 +154,7 @@ export class FileExportLock {
           throw error;
         }
       }
+      if (!stale) guardBlockedSince = undefined;
       if (stale) {
         const guard = join(this.path, ".mutation.guard");
         let guardHandle: Awaited<ReturnType<typeof open>> | undefined;
@@ -121,10 +163,15 @@ export class FileExportLock {
           await guardHandle.close();
         } catch (error) {
           await guardHandle?.close().catch(() => undefined);
-          if ((error as NodeJS.ErrnoException).code === "EEXIST") { await delay(this.#pollMs, options.signal); continue; }
+          if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+            guardBlockedSince ??= Date.now();
+            const stuck = guardStuck(guardBlockedSince); if (stuck) throw stuck;
+            await clearStaleGuard(guard); await delay(this.#pollMs, options.signal); continue;
+          }
           if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
           throw error;
         }
+        guardBlockedSince = undefined;
         const guardedOwner = await readOwner(this.path);
         if (guardedOwner && guardedOwner.expiresAt > this.#now()) { await unlink(guard).catch(() => undefined); await delay(this.#pollMs, options.signal); continue; }
         const quarantine = `${this.path}.stale-${process.pid.toString(36)}-${randomBytes(8).toString("hex")}`;
@@ -151,11 +198,15 @@ export class FileExportLock {
     const withGuard = async <T>(operation: () => Promise<T>): Promise<T> => {
       const guard = join(this.path, ".mutation.guard");
       let handle: Awaited<ReturnType<typeof open>> | undefined;
+      const waitingSince = Date.now();
       for (;;) {
         try { handle = await open(guard, "wx", 0o600); await handle.close(); break; }
         catch (error) {
           await handle?.close().catch(() => undefined);
-          if ((error as NodeJS.ErrnoException).code === "EEXIST") { await delay(1); continue; }
+          if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+            const stuck = guardStuck(waitingSince); if (stuck) throw stuck;
+            await clearStaleGuard(guard); await delay(1); continue;
+          }
           throw error;
         }
       }

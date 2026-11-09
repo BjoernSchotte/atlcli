@@ -6,8 +6,11 @@ import {
   DocxError,
   MAX_TEMPLATE_BYTES,
   assertSafeDocxEntryName,
+  collectFieldKeywords,
   collectRiskyFieldInstructions,
+  collectStylerefFields,
   hasAltChunkRelationship,
+  needsFieldRefresh,
   scanTemplate,
   unzipDocx,
 } from "./scan.js";
@@ -615,6 +618,95 @@ describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", ()
       body: `<w:p><w:fldSimple w:instr=" DDE Excel Sheet1 R1C1 "/></w:p>`,
     });
     expectDocxError(() => unzipDocx(bytes), "active-content");
+  });
+
+  it("REJECTS a DDE field outside the main story (footnotes, endnotes, comments, glossary)", () => {
+    const field =
+      `<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+      `<w:r><w:instrText xml:space="preserve"> DDEAUTO cmd.exe "/k calc.exe"</w:instrText></w:r>` +
+      `<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
+    const W = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"`;
+    for (const [part, xml] of [
+      ["word/footnotes.xml", `<w:footnotes ${W}><w:footnote w:id="1">${field}</w:footnote></w:footnotes>`],
+      ["word/endnotes.xml", `<w:endnotes ${W}><w:endnote w:id="1">${field}</w:endnote></w:endnotes>`],
+      ["word/comments.xml", `<w:comments ${W}><w:comment w:id="1">${field}</w:comment></w:comments>`],
+      ["word/glossary/document.xml", `<w:glossaryDocument ${W}><w:docParts><w:docPart><w:docPartBody>${field}</w:docPartBody></w:docPart></w:docParts></w:glossaryDocument>`],
+    ] as const) {
+      const err = expectDocxError(
+        () => unzipDocx(buildDocx({ body: para("$scroll.content"), extraParts: { [part]: xml } })),
+        "active-content"
+      );
+      expect(err.message).toContain("DDEAUTO");
+      expect(err.message).toContain(part);
+    }
+  });
+
+  it("REJECTS a DDE keyword spelled with XML character references", () => {
+    for (const instr of [" D&#68;E Excel Sheet1 R1C1 ", " D&#x44;E Excel Sheet1 R1C1 ", " &#68;&#x44;&#69;AUTO cmd.exe "]) {
+      expectDocxError(
+        () => unzipDocx(buildDocx({ body: `<w:p><w:fldSimple w:instr="${instr}"/></w:p>` })),
+        "active-content"
+      );
+      expectDocxError(
+        () =>
+          unzipDocx(
+            buildDocx({
+              body:
+                `<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">${instr}</w:instrText></w:r>` +
+                `<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`,
+            })
+          ),
+        "active-content"
+      );
+    }
+  });
+
+  it("POSITIVE CONTROL: DDE as body text, or as escaped reference text in a field, is accepted", () => {
+    expect(() =>
+      unzipDocx(buildDocx({ body: para("DDE and DDEAUTO fields are refused; D&#68;E too.") }))
+    ).not.toThrow();
+    expect(() =>
+      unzipDocx(
+        buildDocx({
+          body: para("x"),
+          extraParts: {
+            "word/footnotes.xml": `<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:footnote w:id="1">${para("DDE")}</w:footnote></w:footnotes>`,
+          },
+        })
+      )
+    ).not.toThrow();
+    // `&amp;#68;` denotes the literal text "&#68;", not the letter D.
+    expect(() =>
+      unzipDocx(buildDocx({ body: `<w:p><w:fldSimple w:instr=" QUOTE D&amp;#68;E "/></w:p>` }))
+    ).not.toThrow();
+    // An out-of-range reference is left alone instead of crashing the scan.
+    expect(() =>
+      unzipDocx(buildDocx({ body: `<w:p><w:fldSimple w:instr=" QUOTE &#x110000; &#99999999999; "/></w:p>` }))
+    ).not.toThrow();
+  });
+
+  it("audits INCLUDETEXT in a footnote and with a reference-encoded keyword", () => {
+    const scan = scanTemplate(
+      buildDocx({
+        body: para("$scroll.content") + `<w:p><w:fldSimple w:instr=" INCLUDE&#80;ICTURE &quot;http://x.example/x.png&quot; "/></w:p>`,
+        extraParts: {
+          "word/footnotes.xml": `<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:footnote w:id="1"><w:p><w:fldSimple w:instr=" INCLUDETEXT &quot;x.docx&quot; "/></w:p></w:footnote></w:footnotes>`,
+        },
+      })
+    );
+    expect(scan.riskyFieldInstructions).toEqual(["INCLUDETEXT", "INCLUDEPICTURE"]);
+  });
+
+  it("classifies a field whose keyword is spelled with character references like Word does", () => {
+    // Same decoding gap as the DDE check: `T&#79;C` is a TOC field to Word, so
+    // it must still earn the field-refresh flag and feed the STYLEREF audit.
+    expect(collectFieldKeywords(`<w:fldSimple w:instr=" T&#79;C \\o &quot;1-3&quot; "/>`)).toEqual(["TOC"]);
+    expect(collectFieldKeywords(`<w:fldSimple w:instr=" &#x54;OC "/>`)).toEqual(["TOC"]);
+    expect(collectStylerefFields(`<w:fldSimple w:instr=" STYLE&#82;EF &#34;Heading 1&#34; "/>`)).toEqual(["Heading 1"]);
+    const refresh = (instr: string): boolean =>
+      needsFieldRefresh(unzipDocx(buildDocx({ body: `<w:p><w:fldSimple w:instr="${instr}"/></w:p>` })));
+    expect(refresh(" T&#79;C ")).toBe(true);
+    expect(refresh(" QUOTE T&amp;#79;C ")).toBe(false);
   });
 
   it("detects INCLUDETEXT in a w:fldSimple instruction attribute", () => {

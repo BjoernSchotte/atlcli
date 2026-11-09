@@ -5,6 +5,8 @@ import { FileExportSpoolStore } from "./file-spool-store.js";
 
 export interface ReconcileStaleExportJobsResultV1 {
   finalizationsRecovered: number;
+  /** One message per prepared finalization that could not be finished; these never abort the reconcile. */
+  finalizationFailures: string[];
   requeued: string[];
   interrupted: string[];
   cancelled: string[];
@@ -16,9 +18,17 @@ export async function reconcileStaleExportJobs(
   stores: { spool: FileExportSpoolStore; artifacts: FileExportArtifactStore },
   now = Date.now(),
 ): Promise<ReconcileStaleExportJobsResultV1> {
-  const finalizationsRecovered = await jobs.reconcilePreparedArtifactFinalizations();
+  // One unfinishable intent must not block the other intents, the lease
+  // reclaim below, or the export that triggered this reconcile.
+  const finalizationFailures: string[] = [];
+  const finalizationsRecovered = await jobs.reconcilePreparedArtifactFinalizations((error, intent) => {
+    finalizationFailures.push(`${intent.finalize.id}: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  if (finalizationFailures.length > 0) {
+    process.stderr.write(`warn: could not finish ${finalizationFailures.length} prepared export finalization(s) (${finalizationFailures[0]}); new exports continue.\n`);
+  }
   const active = await jobs.list({ states: ["running", "cancelling"], includeDismissed: true, limit: 500 });
-  const result: ReconcileStaleExportJobsResultV1 = { finalizationsRecovered, requeued: [], interrupted: [], cancelled: [] };
+  const result: ReconcileStaleExportJobsResultV1 = { finalizationsRecovered, finalizationFailures, requeued: [], interrupted: [], cancelled: [] };
   for (const job of active) {
     if (!job.lease || job.lease.expiresAt > now) continue;
     let next: ExportJobSnapshotV1;

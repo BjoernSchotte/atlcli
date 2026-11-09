@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -31,6 +31,8 @@ import {
   createFileExportExecutionContext,
   runClaimedFileExportJob,
 } from "./runtime.js";
+import { FileExportArtifactStore } from "./file-artifact-store.js";
+import { FileExportJobStore } from "./file-job-store.js";
 import { FileExportLock } from "./file-lock.js";
 import { openDurableTemp } from "./atomic-fs.js";
 import { reconcileStaleExportJobs } from "./reconcile.js";
@@ -1078,6 +1080,128 @@ describe("file export persistence", () => {
     expect([refresh.status, replacement.status].filter((status) => status === "fulfilled")).toHaveLength(1);
     if (replacement.status === "fulfilled") await replacement.value.release();
     else await old.release();
+  });
+
+  it("re-renders and finishes after a restart when the prior lease epoch already completed its result", async () => {
+    let now = 10; const dir = await root(); const p = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    await p.jobs.create({ request: request("epoch-job") });
+    const contextFor = (job: { id: string; leaseEpoch: number }): ExportJobExecutionContext => ({ jobId: job.id, leaseEpoch: job.leaseEpoch, signal: new AbortController().signal,
+      spool: bindExportJobSpool(p.spool, job.id, job.leaseEpoch, p.spoolLimits), artifacts: bindExportJobArtifacts(p.artifacts, job.id, job.leaseEpoch), updateProgress: async () => {}, updateStats: async () => {}, appendEvent: async () => {}, checkpoint: async () => {} });
+    const pending = (): PendingArtifactV1 => ({ mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename: "x.docx", byteLength: 3,
+      sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", bytes: bytes("abc") });
+    let first = (await p.jobs.claimNext({ ownerId: "dead", now, leaseDurationMs: 10 }))!;
+    // Only a job with a ready-to-render checkpoint is requeued automatically.
+    first = await p.jobs.compareAndSet({ kind: "checkpoint", id: first.id, expectedRevision: first.revision, leaseEpoch: first.leaseEpoch, at: now, checkpointRef: "ready" });
+    const intent: DocxExportResultIntentV1 = { schema: "atlcli.docx-result-intent/1", key: { schema: "atlcli.docx-result-key/1", ref: `docx-result:${"a".repeat(64)}`, jobId: first.id, requestId: first.id, requestKey: `idem:${first.id}`, requestSha256: "b".repeat(64), checkpointRef: "ready", preparedByteLength: 1, preparedSha256: "c".repeat(64), template: { recordKey: "default", byteLength: 1, sha256: "0".repeat(64) }, estimate: { heapBytes: 1, spoolBytes: 1, outputBytes: 3, rasterPixels: 0, confidence: "estimated" } },
+      artifact: { mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename: "x.docx", byteLength: 3, sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" }, reportRef: "logical:report:epoch", reportSha256: "d".repeat(64), reportSummary: { issues: { info: 0, warning: 0, error: 0 }, topCodes: [], completeness: "complete" } };
+    const firstContext = contextFor(first);
+    await p.docxResults.prepare({ intent, report: { run: 1 } as never }, firstContext);
+    await p.docxResults.stage({ intent, artifact: pending() }, firstContext);
+    expect((await p.docxResults.recover(intent.key, firstContext))?.result.stagedArtifact.leaseEpoch).toBe(first.leaseEpoch);
+
+    // Crash after render/stage but before finalization; the restart reclaims the lease.
+    now = 21; const restarted = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    expect(await reconcileStaleExportJobs(restarted.jobs, restarted, now)).toMatchObject({ requeued: [first.id] });
+    const second = (await restarted.jobs.claimNext({ ownerId: "alive", now, leaseDurationMs: 1_000 }))!;
+    expect(second.leaseEpoch).toBe(first.leaseEpoch + 1);
+    const context = contextFor(second);
+    context.spool = bindExportJobSpool(restarted.spool, second.id, second.leaseEpoch, restarted.spoolLimits); context.artifacts = bindExportJobArtifacts(restarted.artifacts, second.id, second.leaseEpoch);
+    expect(await restarted.docxResults.recover(intent.key, context)).toBeUndefined();
+    // The re-render is not byte-identical (report hash differs) but owns the same result key.
+    const rerendered = { ...intent, reportSha256: "e".repeat(64) };
+    await restarted.docxResults.prepare({ intent: rerendered, report: { run: 2 } as never }, context);
+    const result = await restarted.docxResults.stage({ intent: rerendered, artifact: pending() }, context);
+    expect(result.stagedArtifact.leaseEpoch).toBe(second.leaseEpoch);
+    expect(await restarted.docxResults.recover(intent.key, context)).toEqual({ intent: rerendered, result });
+    expect(await readFileExportReport<{ run: number }>(restarted.jobs, intent.reportRef)).toEqual({ run: 2 });
+    const done = await restarted.jobs.finalizeArtifact({ id: second.id, expectedRevision: second.revision, leaseEpoch: second.leaseEpoch, stagedArtifact: result.stagedArtifact, finishedAt: now });
+    expect(done.state).toBe("succeeded");
+  });
+
+  it("overwrites a prepared-only result row left by a prior lease epoch", async () => {
+    let now = 10; const dir = await root(); const p = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    await p.jobs.create({ request: request("prepared-only") });
+    let first = (await p.jobs.claimNext({ ownerId: "dead", now, leaseDurationMs: 10 }))!;
+    first = await p.jobs.compareAndSet({ kind: "checkpoint", id: first.id, expectedRevision: first.revision, leaseEpoch: first.leaseEpoch, at: now, checkpointRef: "ready" });
+    const row = { key: "result:1", jobId: first.id, reportRef: "logical:r", reportPath: join(dir, "reports", "r.json") };
+    await p.jobs.prepareExecutorResult({ ...row, leaseEpoch: first.leaseEpoch, intent: { run: 1 } });
+    await expect(p.jobs.prepareExecutorResult({ ...row, leaseEpoch: first.leaseEpoch, intent: { run: 2 } })).rejects.toThrow("Result key was reused");
+    now = 21; await reconcileStaleExportJobs(p.jobs, p, now);
+    const second = (await p.jobs.claimNext({ ownerId: "alive", now, leaseDurationMs: 1_000 }))!;
+    expect(await p.jobs.prepareExecutorResult({ ...row, leaseEpoch: second.leaseEpoch, intent: { run: 2 } })).toEqual({ run: 2 });
+    expect(await p.jobs.loadExecutorResult("result:1")).toEqual({ intent: { run: 2 } });
+    await expect(p.jobs.prepareExecutorResult({ ...row, leaseEpoch: second.leaseEpoch, intent: { run: 3 } })).rejects.toThrow("Result key was reused");
+  });
+
+  it("abandons a prepared finalization intent whose job failed instead of blocking every later start", async () => {
+    let now = 10; const dir = await root(); const artifacts = new FileExportArtifactStore(dir, { now: () => now });
+    // The first process dies between journaling the intent and promoting the artifact.
+    const crashing = new FileExportJobStore(dir, { now: () => now, artifactFinalizer: { commitFinalization: async () => { throw new Error("simulated crash"); } } });
+    await crashing.create({ request: request("doomed") }); const claimed = (await crashing.claimNext({ ownerId: "a", now, leaseDurationMs: 1_000 }))!;
+    const staged = await artifacts.stage(claimed.id, claimed.leaseEpoch, { mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename: "x.docx", byteLength: 3,
+      sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", bytes: bytes("abc") });
+    await expect(crashing.finalizeArtifact({ id: claimed.id, expectedRevision: claimed.revision, leaseEpoch: claimed.leaseEpoch, stagedArtifact: staged, finishedAt: now })).rejects.toThrow("simulated crash");
+    const failed = await crashing.compareAndSet({ kind: "transition", id: claimed.id, expectedRevision: claimed.revision, leaseEpoch: claimed.leaseEpoch, to: "failed", at: now, error: { code: "render-failed", category: "render", message: "boom", retryable: false, occurredAt: now } } as never);
+    expect(failed.state).toBe("failed");
+
+    const p = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    expect(await reconcileStaleExportJobs(p.jobs, p, now)).toMatchObject({ finalizationsRecovered: 0, finalizationFailures: [] });
+    expect(await p.jobs.reconcilePreparedArtifactFinalizations()).toBe(0);
+    const heads = (await readdir(join(dir, "journal"))).filter((name) => name.endsWith(".json")).sort();
+    expect(JSON.parse(await readFile(join(dir, "journal", heads.at(-1)!), "utf8")).finalizations).toEqual({});
+    expect((await p.jobs.get(claimed.id))!.state).toBe("failed");
+    expect((await p.jobs.create({ request: request("next") })).state).toBe("queued");
+  });
+
+  it("keeps reconciling other intents and reclaiming leases when one live finalization cannot be finished", async () => {
+    let now = 10; const dir = await root(); const artifacts = new FileExportArtifactStore(dir, { now: () => now });
+    const crashing = new FileExportJobStore(dir, { now: () => now, artifactFinalizer: { commitFinalization: async () => { throw new Error("simulated crash"); } } });
+    const stageFor = async (id: string) => {
+      await crashing.create({ request: { ...request(id), createdAt: now } }); const claimed = (await crashing.claimNext({ ownerId: "a", ids: [id], now, leaseDurationMs: 5 }))!;
+      const staged = await artifacts.stage(claimed.id, claimed.leaseEpoch, { mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename: "x.docx", byteLength: 3,
+        sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", bytes: bytes("abc") });
+      await expect(crashing.finalizeArtifact({ id: claimed.id, expectedRevision: claimed.revision, leaseEpoch: claimed.leaseEpoch, stagedArtifact: staged, finishedAt: now })).rejects.toThrow("simulated crash");
+      return { claimed, staged };
+    };
+    const broken = await stageFor("broken"); const healthy = await stageFor("healthy");
+    // The first intent's staged bytes are gone, so its promotion fails on every attempt.
+    await artifacts.deleteStaged(broken.staged.ref);
+    now = 30; const p = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    const warnings: string[] = []; const write = spyOn(process.stderr, "write").mockImplementation(((chunk: string) => { warnings.push(String(chunk)); return true; }) as never);
+    let result; try { result = await reconcileStaleExportJobs(p.jobs, p, now); } finally { write.mockRestore(); }
+    expect(result.finalizationsRecovered).toBe(1);
+    expect(result.finalizationFailures).toHaveLength(1); expect(result.finalizationFailures[0]).toContain("Exact staged artifact is missing");
+    expect(warnings.join("")).toContain("Exact staged artifact is missing");
+    expect((await p.jobs.get(healthy.claimed.id))!.state).toBe("succeeded");
+    // The broken job's expired lease is still reclaimed, which makes its intent dead; the next start drops it.
+    expect((await p.jobs.get(broken.claimed.id))!.state).not.toBe("running");
+    expect(await reconcileStaleExportJobs(p.jobs, p, now)).toMatchObject({ finalizationsRecovered: 0, finalizationFailures: [] });
+  });
+
+  it("recovers a mutation guard left behind by a killed process", async () => {
+    const dir = await root(); let now = 1; const lock = new FileExportLock(join(dir, "locks", "guard.lock"), { ttlMs: 10, pollMs: 1, now: () => now });
+    const guard = join(lock.path, ".mutation.guard"); const longAgo = new Date(Date.now() - 60_000);
+    const dead = await lock.acquire(); await writeFile(guard, ""); await utimes(guard, longAgo, longAgo);
+    now = 20; const replacement = await lock.acquire({ signal: AbortSignal.timeout(2_000) });
+    await expect(dead.release()).rejects.toThrow("lost");
+    // A contender that died inside the guard must not hang the live holder either.
+    await writeFile(guard, ""); await utimes(guard, longAgo, longAgo);
+    await Promise.race([replacement.refresh(), new Promise((_, reject) => setTimeout(() => reject(new Error("refresh hung on a stale guard")), 2_000))]);
+    await writeFile(guard, ""); await utimes(guard, longAgo, longAgo);
+    await Promise.race([replacement.release(), new Promise((_, reject) => setTimeout(() => reject(new Error("release hung on a stale guard")), 2_000))]);
+    await (await lock.acquire({ signal: AbortSignal.timeout(2_000) })).release();
+  });
+
+  it("still waits for a fresh mutation guard", async () => {
+    const dir = await root(); let now = 1; const lock = new FileExportLock(join(dir, "locks", "fresh-guard.lock"), { ttlMs: 10, pollMs: 1, now: () => now });
+    const guard = join(lock.path, ".mutation.guard");
+    const held = await lock.acquire(); await writeFile(guard, ""); now = 20;
+    await expect(lock.acquire({ signal: AbortSignal.timeout(100) })).rejects.toThrow();
+    expect((await stat(guard)).isFile()).toBe(true);
+    let refreshed = false; const refresh = held.refresh().then(() => { refreshed = true; });
+    await new Promise((resolve) => setTimeout(resolve, 100)); expect(refreshed).toBe(false);
+    await rm(guard); await refresh; expect(refreshed).toBe(true);
+    await held.release();
   });
 
   it("keeps state directories and committed files private", async () => {

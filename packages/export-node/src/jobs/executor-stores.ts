@@ -211,6 +211,12 @@ function createResultStore<TIntent extends { key: { ref: string }; reportRef: st
   return {
     async recover(key: TIntent["key"], context: ExportJobExecutionContext) {
       const stored = await options.jobs.loadExecutorResult<TIntent>(key.ref); if (!stored?.result) return undefined;
+      // The staged artifact is fenced to the lease epoch that produced it, and
+      // reclaiming that lease discards its staged bytes, so a result from an
+      // earlier epoch is not recoverable: the executor re-renders and `prepare`
+      // replaces the row.
+      // ponytail: no O(1) re-bind of the old artifact to the new epoch (the extension store does that); add if re-rendering after a late crash gets too costly.
+      if (stored.result.stagedArtifact.leaseEpoch !== context.leaseEpoch) return undefined;
       return { intent: stored.intent, result: stored.result };
     },
     async prepare(input: { intent: TIntent; report: unknown }, context: ExportJobExecutionContext): Promise<TIntent> {

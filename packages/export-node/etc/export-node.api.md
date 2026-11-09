@@ -182,7 +182,7 @@ export declare class FileExportJobStore implements ExportJobStore, ExportJobEven
     appendEvent(id: string, input: ExportJobEventAppendV1): Promise<void>;
     readEvents(id: string, query?: ExportJobEventQueryV1): Promise<ExportJobEventPageV1>;
     finalizeArtifact(input: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1>;
-    reconcilePreparedArtifactFinalizations(): Promise<number>;
+    reconcilePreparedArtifactFinalizations(onFailure?: (error: unknown, intent: ExportArtifactFinalizationIntentV1) => void): Promise<number>;
     loadExecutorCheckpoint<T>(key: string): Promise<{
         checkpoint: T;
         manifestRef: import("@atlcli/export-jobs").SpoolRefV1;
@@ -409,6 +409,7 @@ export declare function reconcileStaleExportJobs(jobs: FileExportJobStore, store
 // export: ReconcileStaleExportJobsResultV1
 export interface ReconcileStaleExportJobsResultV1 {
     finalizationsRecovered: number;
+    finalizationFailures: string[];
     requeued: string[];
     interrupted: string[];
     cancelled: string[];

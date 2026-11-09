@@ -140,17 +140,28 @@ export function createAstroStaticPublicationBuilderV1(
           experience: options.experience,
         });
         committed = true;
-        if (previousOutput !== undefined) await rm(previousOutput, { recursive: true, force: true });
-        if (previousInventory !== undefined) await rm(previousInventory, { force: true });
         return { manifest, outputDirectory };
       } catch (error) {
-        await rm(outputDirectory, { recursive: true, force: true });
-        if (previousOutput !== undefined) await rename(previousOutput, outputDirectory);
-        await rm(inventoryPath, { force: true });
-        if (previousInventory !== undefined) await rename(previousInventory, inventoryPath);
+        // The backups are the only copy of the last good build: they are moved
+        // back, never deleted, and stay on disk if moving them back fails.
+        try {
+          await rm(outputDirectory, { recursive: true, force: true });
+          if (previousOutput !== undefined) { await rename(previousOutput, outputDirectory); previousOutput = undefined; }
+          await rm(inventoryPath, { force: true });
+          if (previousInventory !== undefined) { await rename(previousInventory, inventoryPath); previousInventory = undefined; }
+        } catch (restoreError) {
+          const preserved = [previousOutput, previousInventory].filter((path) => path !== undefined);
+          if (preserved.length === 0) throw error;
+          throw new Error(
+            `Astro build failed (${error instanceof Error ? error.message : String(error)}) and the previous output could not be restored ` +
+            `(${restoreError instanceof Error ? restoreError.message : String(restoreError)}); it is preserved at ${preserved.join(" and ")}`,
+            { cause: error },
+          );
+        }
         throw error;
       } finally {
-        if (!committed) {
+        // Best effort: a leftover backup must not fail or roll back a build that is already in place.
+        if (committed) {
           if (previousOutput !== undefined) await rm(previousOutput, { recursive: true, force: true }).catch(() => undefined);
           if (previousInventory !== undefined) await rm(previousInventory, { force: true }).catch(() => undefined);
         }
