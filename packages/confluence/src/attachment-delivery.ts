@@ -1,4 +1,5 @@
 import type { AttachmentInfo } from "./client.js";
+import { parseRetryAfterMs } from "./retry-after.js";
 
 /** A Confluence product request supplied by the active host. */
 export type ConfluenceProductRequestV1 = (
@@ -175,15 +176,6 @@ function searchableErrorText(payload: unknown, rawText: string): string {
     }
   }
   return parts.join("\n").toLowerCase();
-}
-
-function parseRetryAfterMs(value: string | null): number | undefined {
-  if (value === null) return undefined;
-  const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
-  const date = Date.parse(value);
-  if (Number.isNaN(date)) return undefined;
-  return Math.max(0, date - Date.now());
 }
 
 function mutationMayBeAmbiguous(

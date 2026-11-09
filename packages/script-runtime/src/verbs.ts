@@ -5,7 +5,6 @@ import {
   capRest,
   hostOp,
   id,
-  ISSUE_KEY,
   issueUnchanged,
   pageUnchanged,
   PLACEHOLDER,
@@ -18,7 +17,6 @@ import {
   pagedIterator,
   verb,
   type PlanScriptOptions,
-  type Precondition,
   type ScriptRunPlan,
   type Verb,
 } from "./recorder.js";

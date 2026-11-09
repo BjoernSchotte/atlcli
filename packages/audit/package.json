@@ -22,8 +22,5 @@
   "dependencies": {
     "@atlcli/jira": "workspace:*",
     "@atlcli/script-runtime": "workspace:*"
-  },
-  "devDependencies": {
-    "@jitl/quickjs-ng-wasmfile-debug-sync": "0.32.0"
   }
 }

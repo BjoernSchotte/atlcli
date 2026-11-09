@@ -77,7 +77,8 @@ export async function isGitRepo(dir: string): Promise<boolean> {
   try {
     const gitDir = join(dir, ".git");
     const stats = await stat(gitDir);
-    return stats.isDirectory();
+    // `.git` is a file (gitdir pointer) in linked worktrees and submodules.
+    return stats.isDirectory() || stats.isFile();
   } catch {
     // Also check if we're inside a git repo (not at root)
     try {

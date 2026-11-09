@@ -21,6 +21,8 @@ import {
   setPageEditorVersion,
   getPageEditorVersion,
   getAllEditorVersions,
+  readState,
+  writeState,
 } from "./atlcli-dir.js";
 import { createSyncDb } from "./sync-db/index.js";
 import { createPageRecord } from "./sync-db/types.js";
@@ -213,6 +215,45 @@ describe("atlcli-dir", () => {
     test("returns null when not found", () => {
       const found = findAtlcliDir(tempDir);
       expect(found).toBeNull();
+    });
+  });
+
+  describe("writeState and readState", () => {
+    test("persists the content type of a newly tracked folder", async () => {
+      await initAtlcliDirV2(tempDir, {
+        scope: { type: "space" },
+        space: "TEAM",
+        baseUrl: "https://example.atlassian.net",
+      });
+      const entry = (contentType?: "page" | "folder") => ({
+        path: contentType === "folder" ? "docs/index.md" : "page.md",
+        title: "T",
+        spaceKey: "TEAM",
+        version: 1,
+        lastSyncedAt: "2026-01-01T00:00:00.000Z",
+        localHash: "h",
+        remoteHash: "h",
+        baseHash: "h",
+        syncState: "synced" as const,
+        parentId: null,
+        ancestors: [],
+        ...(contentType ? { contentType } : {}),
+      });
+      await writeState(tempDir, {
+        schemaVersion: 1,
+        lastSync: null,
+        pages: { "100": entry("folder"), "200": entry() },
+        pathIndex: {},
+      });
+
+      const state = await readState(tempDir);
+      expect(state.pages["100"]?.contentType).toBe("folder");
+      expect(state.pages["200"]?.contentType).toBe("page");
+
+      // A later write that omits the field keeps what is stored.
+      delete state.pages["100"]!.contentType;
+      await writeState(tempDir, state);
+      expect((await readState(tempDir)).pages["100"]?.contentType).toBe("folder");
     });
   });
 

@@ -103,6 +103,12 @@ describe("markdownToStorage", () => {
     expect(html).toContain("</ac:plain-text-link-body></ac:link>");
   });
 
+  test("a CDATA terminator in link text does not end the CDATA section early", () => {
+    const split = "<![CDATA[a]]]]><![CDATA[>b]]></ac:plain-text-link-body>";
+    expect(markdownToStorage("@[a\\]\\]>b](acc-1)")).toContain(split);
+    expect(markdownToStorage("See !report.pdf|a]]>b! here")).toContain(split);
+  });
+
   test("mention round trip: userkey ids, unnamed mentions without a body", () => {
     expect(markdownToStorage("@[Server User](userkey:8a7f)")).toContain('<ac:link><ri:user ri:userkey="8a7f" /><ac:plain-text-link-body><![CDATA[Server User]]>');
     expect(markdownToStorage("@[acc-1](acc-1)")).toContain('<ac:link><ri:user ri:account-id="acc-1" /></ac:link>');

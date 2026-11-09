@@ -5,13 +5,14 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile, writeFile, mkdir, rename, rm, chmod } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, chmod } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { homedir, tmpdir, platform, arch } from "node:os";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import { swapBinary } from "./update-swap.js";
 import {
   getCurrentVersion,
   getReleaseInfo,
@@ -512,23 +513,12 @@ export async function installUpdate(version?: string): Promise<string> {
     // Ensure bin directory exists
     await mkdir(binDir, { recursive: true });
 
-    // Backup current binary
-    if (existsSync(targetPath)) {
-      try {
-        await rename(targetPath, backupPath);
-      } catch {
-        // If rename fails, try copy + delete
-        const { copyFile, unlink } = await import("node:fs/promises");
-        await copyFile(targetPath, backupPath);
-        await unlink(targetPath);
-      }
-    }
-
-    // Extract new binary
-    await extractTar(tarPath, binDir);
-
-    // Make executable
-    await chmod(targetPath, 0o755);
+    // Backup current binary, extract the new one and make it executable;
+    // the backup is restored if extraction or chmod fails.
+    await swapBinary(targetPath, backupPath, async () => {
+      await extractTar(tarPath, binDir);
+      await chmod(targetPath, 0o755);
+    });
 
     // Update state
     await saveUpdateState({

@@ -4,7 +4,6 @@
  * Supports CSV and JSON formats with create-only mode.
  */
 import { readFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
 import type { JiraClient } from "./client.js";
 import { toJiraRichText } from "./adf-markdown.js";
 import type { ImportIssue, ImportResult, ExportData } from "./types.js";

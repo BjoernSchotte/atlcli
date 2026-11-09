@@ -1,4 +1,4 @@
-import { ConfluenceClient, SyncScope, PageChangeInfo } from "./client.js";
+import { ConfluenceClient, SyncScope } from "./client.js";
 
 /** Event emitted when polling detects changes */
 export interface PollChangeEvent {
