@@ -37,6 +37,10 @@ const result = await Bun.build({
         () => ({ path: researchModule("langsmith-sandbox-browser-stub") }),
       );
       build.onResolve(
+        { filter: /^langsmith\/traceable$/ },
+        () => ({ path: researchModule("langsmith-traceable-browser-stub") }),
+      );
+      build.onResolve(
         { filter: /^micromatch$/ },
         () => ({ path: researchModule("micromatch-browser") }),
       );
