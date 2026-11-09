@@ -16,12 +16,8 @@
  *                       Requires `template-library`, so a host that cannot
  *                       store templates drops it without the Export screen
  *                       noticing.
- *   - `JobsSection`   → still the Activity placeholder (T5.6); its
- *                       `durable-jobs` requirement is already declared, so the
- *                       entry becomes available the moment a host advertises
- *                       the capability.
- *
- * Chat is deliberately out of scope; nothing here makes it awkward to add.
+ *   - `JobsScreen`    → the Activity monitor (T5.6). Requires `durable-jobs`.
+ *   - `ResearchScreen` → the research chat. Requires `research`.
  */
 import { FileDown, Info, Settings } from "lucide-react";
 import type { ScreenDefinition } from "../../utils/screens/registry.js";
@@ -61,9 +57,7 @@ export const defaultScreens: readonly ScreenDefinition[] = [
   },
   previewScreenDefinition,
   templatesScreenDefinition,
-  {
-    ...jobsScreenDefinition,
-  },
+  jobsScreenDefinition,
   researchScreenDefinition,
   {
     id: SCREEN_IDS.settings,

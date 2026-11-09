@@ -4,7 +4,7 @@
  * Installs/removes/checks post-commit hooks for auto-pushing to Confluence.
  */
 
-import { readFile, writeFile, unlink, chmod, realpath, stat } from "node:fs/promises";
+import { readFile, writeFile, unlink, chmod, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { existsSync } from "node:fs";
 import type { CommandContext } from "./types.js";

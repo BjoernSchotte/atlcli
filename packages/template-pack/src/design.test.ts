@@ -19,6 +19,7 @@ import {
 } from "./design.js";
 import { validateBindings } from "./bindings.js";
 import {
+  localeChain,
   validateLocalization,
   WIKI_PDF_SUPPORTED_DOCUMENT_LABELS,
   WIKI_PDF_V1_DOCUMENT_LABELS,
@@ -848,6 +849,16 @@ describe("validateLocalization", () => {
       },
     };
   }
+
+  it("does not treat inherited Object.prototype keys as locales", () => {
+    const options = { requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS };
+    expect(() => validateLocalization({ ...localization(), defaultLocale: "constructor" }, options))
+      .toThrow(/defaultLocale/);
+    expect(() => validateLocalization({ ...localization(), fallbackLocale: "toString" }, options))
+      .toThrow(/fallbackLocale/);
+    const valid = validateLocalization(localization(), options);
+    expect(localeChain(valid, "constructor")).toEqual([valid.locales.en!]);
+  });
 
   it("accepts a complete fallback locale", () => {
     expect(() =>

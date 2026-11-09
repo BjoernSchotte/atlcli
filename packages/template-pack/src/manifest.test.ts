@@ -10,6 +10,7 @@ import {
   PINNED_TYPST_VERSION,
   type ManifestErrorReason,
 } from "./manifest.js";
+import { validateTemplateVisualManifestFieldsV1 } from "./assets.js";
 
 function base(): Record<string, unknown> {
   return {
@@ -175,6 +176,38 @@ describe("validateManifest gate", () => {
       kind: "rounded-rect",
       radius: "4mm",
     });
+  });
+
+  it("does not accept inherited Object.prototype keys as known descriptors or assets", () => {
+    const descriptor = {
+      path: "assets/hero.svg",
+      sha256: "a".repeat(64),
+      mediaType: "image/svg+xml",
+      byteLength: 128,
+      dimensions: { width: 1200, height: 800, unit: "pixel" },
+    };
+    expect(() =>
+      validateTemplateVisualManifestFieldsV1({
+        assetDescriptors: { hero: descriptor },
+        assets: { logo: { descriptor: "constructor", writer: "writer.image", decorative: true } },
+      })
+    ).toThrow(/unknown descriptor "constructor"/);
+    expect(() =>
+      validateTemplateVisualManifestFieldsV1({
+        assetDescriptors: { hero: descriptor },
+        assets: { logo: { descriptor: "hero", writer: "writer.image", decorative: true } },
+        decorations: [{
+          kind: "image",
+          id: "decoration",
+          writer: "writer.image",
+          scope: "all",
+          layer: "header",
+          asset: "toString",
+          decorative: true,
+          placement: {},
+        }],
+      })
+    ).toThrow(/unknown asset "toString"/);
   });
 
   it("rejects asset shape, path, reference, alt, and placement-bound errors", () => {

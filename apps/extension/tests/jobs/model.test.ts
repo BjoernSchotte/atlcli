@@ -13,7 +13,6 @@ import {
   isPdfJobInFlight,
   isPdfJobTerminal,
   jobAgeMinutes,
-  jobBadgeText,
   planSweep,
   planStoreEviction,
   siteOriginFromSourceIdentity,
@@ -149,16 +148,6 @@ describe("the sweep", () => {
 
   it("keeps a finished export the user has not collected", () => {
     expect(planSweep([candidate({ id: "waiting", status: "complete" })], options)).toEqual([]);
-  });
-});
-
-describe("badge text", () => {
-  it("is empty for nothing waiting and caps at two characters", () => {
-    expect(jobBadgeText(0)).toBe("");
-    expect(jobBadgeText(-1)).toBe("");
-    expect(jobBadgeText(1)).toBe("1");
-    expect(jobBadgeText(9)).toBe("9");
-    expect(jobBadgeText(10)).toBe("9+");
   });
 });
 

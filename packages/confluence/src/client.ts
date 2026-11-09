@@ -3249,38 +3249,24 @@ export class ConfluenceClient {
     limit: number
   ): Promise<PageChangeInfo[]> {
     const space = await this.getSpace(spaceKey);
-    const allResults: PageChangeInfo[] = [];
-    let cursor: string | undefined;
-
-    while (true) {
+    // Ends only on the absence of a next link: a short page with a live
+    // `_links.next` is not the last page (see drainPaginated). The poller
+    // treats pages missing from this list as deleted.
+    return drainPaginated<PageChangeInfo>(async (cursor) => {
       const query: Record<string, string | number | undefined> = { limit };
       if (cursor) query.cursor = cursor;
 
       const data = (await this.requestV2(`/spaces/${space.id}/pages`, { query })) as any;
       const results = Array.isArray(data.results) ? data.results : [];
-      if (results.length === 0) break;
-
-      for (const item of results) {
-        allResults.push({
-          id: item.id,
-          title: item.title,
-          version: item.version?.number ?? 1,
-          lastModified: item.version?.createdAt,
-          spaceKey,
-        });
-      }
-
-      if (data._links?.next) {
-        const nextUrl = new URL(data._links.next, this.confluenceBaseUrl);
-        cursor = nextUrl.searchParams.get("cursor") ?? undefined;
-      } else {
-        break;
-      }
-
-      if (results.length < limit) break;
-    }
-
-    return allResults;
+      const items: PageChangeInfo[] = results.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        version: item.version?.number ?? 1,
+        lastModified: item.version?.createdAt,
+        spaceKey,
+      }));
+      return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+    });
   }
 
   /**
@@ -3291,44 +3277,25 @@ export class ConfluenceClient {
     cql: string,
     limit: number
   ): Promise<PageChangeInfo[]> {
-    const allResults: PageChangeInfo[] = [];
-    let nextLink: string | undefined;
-    let isFirstRequest = true;
-
-    while (true) {
-      let data: any;
-
-      if (isFirstRequest) {
-        data = await this.request("/content/search", {
-          query: { cql, limit, expand: "version,space,history.lastUpdated" },
-        });
-        isFirstRequest = false;
-      } else if (nextLink) {
-        // Strip /rest/api prefix since request() adds it
-        const path = nextLink.replace(/^\/rest\/api/, "");
-        data = await this.request(path);
-      } else {
-        break;
-      }
-
+    // Ends only on the absence of a next link (see drainPaginated).
+    return drainPaginated<PageChangeInfo>(async (nextLink) => {
+      const data: any =
+        nextLink === undefined
+          ? await this.request("/content/search", {
+              query: { cql, limit, expand: "version,space,history.lastUpdated" },
+            })
+          : // Strip /rest/api prefix since request() adds it
+            await this.request(nextLink.replace(/^\/rest\/api/, ""));
       const results = Array.isArray(data.results) ? data.results : [];
-      if (results.length === 0) break;
-
-      for (const item of results) {
-        allResults.push({
-          id: item.id,
-          title: item.title,
-          version: item.version?.number ?? 1,
-          lastModified: item.history?.lastUpdated?.when,
-          spaceKey: item.space?.key,
-        });
-      }
-
-      nextLink = data._links?.next;
-      if (!nextLink || results.length < limit) break;
-    }
-
-    return allResults;
+      const items: PageChangeInfo[] = results.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        version: item.version?.number ?? 1,
+        lastModified: item.history?.lastUpdated?.when,
+        spaceKey: item.space?.key,
+      }));
+      return { items, next: data._links?.next || undefined };
+    });
   }
 
   /**

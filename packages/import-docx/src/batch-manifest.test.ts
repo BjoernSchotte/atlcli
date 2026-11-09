@@ -79,4 +79,11 @@ describe("validateBatchState", () => {
     expect(validateBatchState(state, "wave-1", "e".repeat(64)).reason).toContain("manifest changed");
     expect(validateBatchState(null, "wave-1", "d".repeat(64)).reason).toContain("not an object");
   });
+
+  it("defaults a missing folderPages map and rejects a malformed one", () => {
+    const { folderPages: _omitted, ...withoutFolders } = state;
+    expect(validateBatchState(withoutFolders, "wave-1", "d".repeat(64)).state?.folderPages).toEqual({});
+    expect(validateBatchState({ ...state, folderPages: [] }, "wave-1", "d".repeat(64)).reason)
+      .toContain("missing required fields");
+  });
 });

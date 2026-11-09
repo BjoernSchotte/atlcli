@@ -550,13 +550,15 @@ export function createChatDirectToolSurfaceMiddlewareV1(
             !isChatAnswerStructuredOutputErrorV1(error)
           ) throw error;
           nativeStructuredRepairAttempts += 1;
+          // LangChain rejects a request that changes both systemPrompt and
+          // systemMessage (terminal repair already replaced the message), so
+          // extend the message and leave the prompt string untouched.
           response = await handler({
             ...filteredRequest,
-            systemPrompt: [
-              filteredRequest.systemPrompt,
+            systemMessage: filteredRequest.systemMessage.concat(new SystemMessage("\n\n" + [
               "The previous terminal answer did not satisfy the required JSON schema. Retry the terminal answer exactly once from the already accepted evidence; do not call eval, ask a question, retrieve, or widen scope. Return ChatAnswerDraftV2 with ordered blocks and an actual gaps array. Put exactly one factual paragraph, list item, or table row in each block. Copy exact accepted evidence references into sourceRefs. Positive facts use assertion=positive and scope=none. Negative findings use assertion=absence and the narrowest truthful scope. Headings and non-factual transitions use assertion=none, scope=none, and no sourceRefs.",
               options.answerOutputInstruction,
-            ].filter(Boolean).join("\n\n"),
+            ].filter(Boolean).join("\n\n"))),
           });
         }
         onDiagnostic?.({

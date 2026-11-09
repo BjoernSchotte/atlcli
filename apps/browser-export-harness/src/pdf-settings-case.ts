@@ -33,6 +33,8 @@ import {
   PDF_TEMPLATE_PACK_MANIFEST,
 } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
+import { equalBytes, sha256Hex } from "./digest.js";
+import { deterministicClock } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 import { buildPdfV4RuntimeFixture } from "./pdf-v4-runtime-fixture.js";
 
@@ -43,23 +45,6 @@ const noAssets: PdfAssetResolver = {
     throw new Error("The deterministic PDF settings fixture has no external assets.");
   },
 };
-
-function deterministicClock(): () => number {
-  let tick = 0;
-  return () => tick++;
-}
-
-function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  // Copy into an ArrayBuffer-backed view so subtle.digest's BufferSource type is met.
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 async function compileWith(
   settings: PdfTemplateSettings,

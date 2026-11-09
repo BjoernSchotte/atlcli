@@ -6,7 +6,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile, copyFile, unlink, rename } from "node:fs/promises";
+import { readFile, copyFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   SyncDbAdapter,

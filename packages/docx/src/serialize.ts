@@ -649,7 +649,13 @@ function addParagraphProps(frag: string, propsXml: string): string {
       /(<w:p\b[^>]*><w:pPr>)(<w:pStyle\b[^>]*\/>)?/g,
       (_m, open: string, pStyle: string | undefined) => `${open}${pStyle ?? ""}${propsXml}`
     )
-    .replace(/(<w:p\b[^>]*>)(?!<w:pPr>)/g, `$1<w:pPr>${propsXml}</w:pPr>`);
+    // A self-closing `<w:p/>` (empty table cell) is expanded: appending the
+    // pPr AFTER it would leave the props loose in the parent.
+    .replace(
+      /<w:p\b([^>]*?)(\/?)>(?!<w:pPr>)/g,
+      (_m, attrs: string, selfClosing: string) =>
+        `<w:p${attrs}><w:pPr>${propsXml}</w:pPr>${selfClosing ? "</w:p>" : ""}`
+    );
 }
 
 /**
@@ -1747,18 +1753,21 @@ async function serializeLayout(
     return "";
   }
   const widthsDxa = layoutWidthsDxa(block.columns.map((column) => column.width));
-  const cells = await Promise.all(block.columns.map(async (column, index) => {
+  // Sequential on purpose: caption ordinals, bookmark/numbering ids and image
+  // relationship ids are allocated as document-order side effects.
+  const cells: string[] = [];
+  for (const [index, column] of block.columns.entries()) {
     const body = await serializeChildren(
       column.content,
       { ...ctx, container: "tableCell" },
       notes,
       depth + 1,
     );
-    return tableCell(body || paragraph(run("")), {
+    cells.push(tableCell(body || paragraph(run("")), {
       widthDxa: widthsDxa[index],
       verticalAlignment: column.verticalAlignment,
-    });
-  }));
+    }));
+  }
   return dataTable(block.columns.length, `<w:tr>${cells.join("")}</w:tr>`, {
     widthsDxa,
     widthDxa: widthsDxa.reduce((sum, width) => sum + width, 0),

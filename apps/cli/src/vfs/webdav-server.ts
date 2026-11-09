@@ -77,7 +77,7 @@ export async function startWebdavServer(
         `Bind to 127.0.0.1, or pass --token to require a bearer token.`,
     );
   }
-  const bearerToken = loopback ? options.bearerToken : options.bearerToken;
+  const bearerToken = options.bearerToken;
 
   const server = new webdav.WebDAVServer({
     hostname,

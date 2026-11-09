@@ -124,6 +124,10 @@ export function ExportRunsProvider({
       const controller = new AbortController();
       pdfRun.current = { identity: runIdentity, controller };
       setPdf({ phase: "preparing", error: null, report: null, progress: null });
+      // A detached run (page change) keeps running with an un-aborted signal,
+      // so "not aborted" is not "still watched": only the run this provider
+      // currently holds may write panel state.
+      const watched = (): boolean => pdfRun.current?.controller === controller;
 
       void (async () => {
         try {
@@ -131,17 +135,17 @@ export function ExportRunsProvider({
             ...request,
             signal: controller.signal,
             onPhase: (phase) => {
-              if (!controller.signal.aborted) setPdf((prev) => ({ ...prev, phase }));
+              if (watched()) setPdf((prev) => ({ ...prev, phase }));
             },
             onProgress: (progress) => {
-              if (!controller.signal.aborted) setPdf((prev) => ({ ...prev, progress }));
+              if (watched()) setPdf((prev) => ({ ...prev, progress }));
             },
           });
-          if (!controller.signal.aborted && identityRef.current === runIdentity) {
+          if (watched() && identityRef.current === runIdentity) {
             setPdf({ phase: null, error: null, report, progress: null });
           }
         } catch (reason) {
-          if (!controller.signal.aborted) {
+          if (watched()) {
             setPdf({
               phase: null,
               report: null,
@@ -170,6 +174,7 @@ export function ExportRunsProvider({
       const controller = new AbortController();
       docxRun.current = { identity: runIdentity, controller };
       setDocx({ running: true, error: null, report: null, progress: null });
+      const watched = (): boolean => docxRun.current?.controller === controller;
 
       void (async () => {
         try {
@@ -177,14 +182,14 @@ export function ExportRunsProvider({
             ...request,
             signal: controller.signal,
             onProgress: (progress) => {
-              if (!controller.signal.aborted) setDocx((prev) => ({ ...prev, progress }));
+              if (watched()) setDocx((prev) => ({ ...prev, progress }));
             },
           });
-          if (!controller.signal.aborted && identityRef.current === runIdentity) {
+          if (watched() && identityRef.current === runIdentity) {
             setDocx({ running: false, error: null, report, progress: null });
           }
         } catch (reason) {
-          if (!controller.signal.aborted) {
+          if (watched()) {
             setDocx({
               running: false,
               report: null,

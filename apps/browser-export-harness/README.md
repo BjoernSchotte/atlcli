@@ -3,7 +3,7 @@
 Private vanilla Vite consumer for the public browser exports of `@atlcli/docx`, `@atlcli/pdf`,
 and `@atlcli/pdf-compiler-browser`. It is test infrastructure, not a shipped product.
 
-The production Playwright case serves `dist/` below `/conformance/nested/`, applies a local CSP,
+The production Playwright case serves `dist/` below `/browser-export-harness/`, applies a local CSP,
 and runs independent DOCX and PDF exports in Chromium. It verifies the real DOCX canvas/Mermaid
 path, a real module Worker and Typst-WASM/font compile, deterministic warm PDF output, and
 abort-without-emission. The artifact scanner rejects native-runtime, extension-runtime, remote

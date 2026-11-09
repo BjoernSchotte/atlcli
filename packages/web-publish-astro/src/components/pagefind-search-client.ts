@@ -1,6 +1,7 @@
 interface PagefindResultDataV1 {
   url: string;
-  excerpt?: string;
+  /** Pagefind's `excerpt` is HTML with `<mark>`; this is its text-only twin. */
+  plain_excerpt?: string;
   meta: { title?: string };
 }
 
@@ -121,7 +122,7 @@ export function initPagefindSearchV1(root: HTMLElement): void {
         const excerpt = document.createElement("p");
         link.href = href;
         link.textContent = entry.meta.title ?? entry.url;
-        excerpt.textContent = entry.excerpt ?? "";
+        excerpt.textContent = entry.plain_excerpt ?? "";
         item.append(link, excerpt);
         results.append(item);
       }

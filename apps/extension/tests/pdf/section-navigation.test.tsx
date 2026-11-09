@@ -129,24 +129,29 @@ interface Harness {
   port: PdfExportPort;
   /** The signal the running export is bound to. */
   signal(): AbortSignal | undefined;
+  /** Emit a phase the way the still-running export would. */
+  phase(phase: Parameters<NonNullable<PdfExportRequest["onPhase"]>>[0]): void;
   finish(): void;
   started: number;
 }
 
 function longRunningPort(): Harness {
   let signal: AbortSignal | undefined;
+  let onPhase: PdfExportRequest["onPhase"];
   let finish: (() => void) | undefined;
   const harness: Harness = {
     port: {
       run(request: PdfExportRequest): Promise<PdfExportReport> {
         harness.started += 1;
         signal = request.signal;
+        onPhase = request.onPhase;
         return new Promise<PdfExportReport>((resolve) => {
           finish = () => resolve({ notes: [] } as unknown as PdfExportReport);
         });
       },
     },
     signal: () => signal,
+    phase: (phase) => onPhase?.(phase),
     finish: () => finish?.(),
     started: 0,
   };
@@ -248,6 +253,36 @@ describe("a page change while an export runs", () => {
       harness.finish();
     });
     await flush();
+  });
+
+  it("a detached export cannot write its phase into the new page's panel", async () => {
+    const harness = longRunningPort();
+    await renderWithIdentity("https://site/a|1|1");
+
+    const { act } = await import("react");
+    await act(async () => {
+      runs!.startPdf(harness.port, { page: page(), pageUrl: "https://site/a" });
+    });
+    await flush();
+
+    await renderWithIdentity("https://site/b|2|1");
+    await flush();
+    expect(runs!.pdf.phase).toBeNull();
+
+    // The export is still running (its signal is not aborted) and keeps
+    // reporting phases. A non-null phase here disables Export on page B with
+    // no way to cancel, because the panel no longer holds the run.
+    await act(async () => {
+      harness.phase("downloading");
+    });
+    await flush();
+    expect(runs!.pdf.phase).toBeNull();
+
+    await act(async () => {
+      harness.finish();
+    });
+    await flush();
+    expect(runs!.pdf.phase).toBeNull();
   });
 
   it("still aborts on the explicit Cancel button", async () => {

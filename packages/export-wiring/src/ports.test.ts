@@ -267,6 +267,21 @@ describe("attachmentLookupFromClient", () => {
   });
 });
 
+test("attachmentLookupFromClient retries the listing after a transient failure", async () => {
+  let calls = 0;
+  const fake = {
+    async listAttachments() {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error("rate limited"), { status: 429 });
+      return [{ filename: "a.png", version: 3 }];
+    },
+  } as unknown as ConfluenceClient;
+  const port = attachmentLookupFromClient(fake);
+  expect(isPortError(await port.lookup("1", "a.png").catch((error: unknown) => error))).toBe(true);
+  expect(await port.lookup("1", "a.png")).toEqual({ filename: "a.png", version: 3 });
+  expect(calls).toBe(2);
+});
+
 describe("jiraIssuePortFromClient", () => {
   function failing(err: Error): JiraClientLike {
     return {

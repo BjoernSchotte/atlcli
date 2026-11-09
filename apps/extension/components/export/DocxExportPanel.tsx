@@ -158,9 +158,17 @@ export function DocxExportPanel({
   }
 
   async function onDelete(): Promise<void> {
-    await store.remove();
-    setTemplate(null);
-    setDocxError(null);
+    try {
+      await store.remove();
+      setTemplate(null);
+      setDocxError(null);
+    } catch (error) {
+      setDocxError(
+        t("docx.error.delete", {
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
   }
 
   const busy = uploading || docx.running;

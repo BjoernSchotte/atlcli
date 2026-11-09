@@ -202,6 +202,17 @@ export default async (issue, { label }) => {
     expect(out.stdout).toContain("240 issues not done");
   });
 
+  test("an invalid --max-items is a usage error before any snapshot, not a run on every issue", async () => {
+    const file = await script("stale.ts", STALE);
+    for (const bad of ["abc", "0", "10x"]) {
+      const out = await run(["run", file, "--each", "project = ATLCLI", "--max-items", bad]);
+      expect(out.exitCode).toBe(1);
+      expect(out.stderr).toContain(`--max-items expects a positive integer, got "${bad}"`);
+    }
+    expect(searches).toEqual([]);
+    expect(await jobIds()).toEqual([]);
+  });
+
   test("script errors are recorded per issue; resume --script retries them with a fixed script", async () => {
     const broken = await script("broken.ts", `export default async (issue) => { if (issue.key === "ATLCLI-2") throw new Error("boom"); };`);
     const out = await run(["run", broken, "--each", "project = ATLCLI"]);

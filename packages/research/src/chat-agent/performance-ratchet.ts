@@ -393,7 +393,8 @@ export function createChatPerformanceReceiptV1(input: {
 }
 
 function changePermille(before: number, after: number): number {
-  if (before === 0) return after === 0 ? 0 : 1_000;
+  // Positive means reduction; growth from a zero baseline is a full regression.
+  if (before === 0) return after === 0 ? 0 : -1_000;
   return Math.round(((before - after) * 1_000) / before);
 }
 

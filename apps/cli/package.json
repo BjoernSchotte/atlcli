@@ -8,6 +8,7 @@
     "atlcli": "src/index.ts"
   },
   "dependencies": {
+    "@atlcli/audit": "workspace:*",
     "@atlcli/change-set": "workspace:*",
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
@@ -25,6 +26,7 @@
     "@atlcli/import-core": "workspace:*",
     "@atlcli/import-docx": "workspace:*",
     "@atlcli/import-pdf": "workspace:*",
+    "@atlcli/jinja": "workspace:*",
     "@atlcli/jira": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",

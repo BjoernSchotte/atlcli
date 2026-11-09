@@ -5,7 +5,7 @@
 
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile, mkdir, rm } from "node:fs/promises";
-import { join, basename, dirname } from "node:path";
+import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";

@@ -7,22 +7,18 @@
  * says "full size, and no 'open large preview' action — you are it". No second
  * viewer, no second compile path.
  *
- * The `pdf-preview` capability is added to the ports here rather than being
- * assumed: this page *is* the surface that provides a large PDF preview, so it
- * advertises it. The side panel advertises it from `CHROME_CAPABILITIES` once
- * the screen is registered in `components/screens/index.ts`; until then the
- * panel's entry correctly renders as disabled-with-a-reason.
+ * The `pdf-preview` capability comes with the Chrome ports
+ * (`CHROME_CAPABILITIES` in `../sidepanel/ports/index.ts`), exactly as in the
+ * side panel.
  */
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { ExportApp } from "../../components/app/ExportApp.js";
 import {
-  PREVIEW_CAPABILITY,
   PREVIEW_SCREEN_ID,
   PreviewShellContext,
   previewScreenDefinition,
   type PreviewShellConfig,
 } from "../../components/screens/PreviewScreen.js";
-import type { AppPorts } from "../../utils/ports/index.js";
 import { createChromePorts } from "../sidepanel/ports/index.js";
 
 const FULL_SHELL: PreviewShellConfig = {
@@ -31,20 +27,8 @@ const FULL_SHELL: PreviewShellConfig = {
   closePreview: () => window.close(),
 };
 
-function withPreviewCapability(ports: AppPorts): AppPorts {
-  if (ports.host.capabilities.includes(PREVIEW_CAPABILITY)) return ports;
-  return {
-    ...ports,
-    host: {
-      ...ports.host,
-      capabilities: [...ports.host.capabilities, PREVIEW_CAPABILITY],
-    },
-  };
-}
-
 export function App(): React.JSX.Element {
-  const [base] = useState(createChromePorts);
-  const ports = useMemo(() => withPreviewCapability(base), [base]);
+  const [ports] = useState(createChromePorts);
   return (
     <PreviewShellContext.Provider value={FULL_SHELL}>
       <ExportApp

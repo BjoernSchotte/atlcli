@@ -129,6 +129,40 @@ describe("PDFium facts adapter", () => {
     expect(result.facts.pages[0]?.operatorSummary).toEqual({ capability: "unavailable", count: null });
   });
 
+  it("walks a long sibling outline without recursing per sibling", async () => {
+    const siblings = 20_000;
+    const objects: string[] = [
+      "<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>",
+      `<< /Type /Outlines /First 5 0 R /Last ${siblings + 4} 0 R /Count ${siblings} >>`,
+    ];
+    for (let index = 0; index < siblings; index += 1) {
+      const id = index + 5;
+      objects.push(
+        `<< /Title (B${index}) /Parent 4 0 R` +
+        (index > 0 ? ` /Prev ${id - 1} 0 R` : "") +
+        (index < siblings - 1 ? ` /Next ${id + 1} 0 R` : "") +
+        " /Dest [3 0 R /Fit] >>",
+      );
+    }
+    let pdf = "%PDF-1.7\n";
+    const offsets: number[] = [];
+    objects.forEach((body, index) => {
+      offsets.push(pdf.length);
+      pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+    });
+    const xref = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` +
+      offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("") +
+      `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+
+    const result = await createPdfiumFactsAdapter({ wasmBinary: await wasm() })
+      .analyze(new TextEncoder().encode(pdf));
+    expect(result.facts.outline).toHaveLength(siblings);
+    expect(result.facts.outline.at(-1)).toEqual({ title: `B${siblings - 1}`, pageIndex: 0, depth: 0 });
+  });
+
   it("classifies scan, mixed, encrypted, and inert active-content cases without fallback", async () => {
     const adapter = createPdfiumFactsAdapter({ wasmBinary: await wasm() });
     const scan = await adapter.analyze(await fixture("scan.pdf"));

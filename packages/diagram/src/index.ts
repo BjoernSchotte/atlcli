@@ -147,7 +147,14 @@ let rendererPromise: Promise<BeautifulMermaid> | null = null;
 
 /** Lazy-load beautiful-mermaid exactly once (the `highlight.ts` pattern). */
 function loadRenderer(): Promise<BeautifulMermaid> {
-  if (!rendererPromise) rendererPromise = import("beautiful-mermaid");
+  if (!rendererPromise) {
+    const attempt = import("beautiful-mermaid");
+    rendererPromise = attempt;
+    // A failed import (transient chunk-load error) must not be cached forever.
+    attempt.catch(() => {
+      if (rendererPromise === attempt) rendererPromise = null;
+    });
+  }
   return rendererPromise;
 }
 
@@ -190,10 +197,10 @@ export async function renderDiagram(
   const token = headerToken(body);
   if (!token) return { kind: "failed", reason: "the diagram source is empty" };
 
-  const unsupported = UNSUPPORTED_TYPES[token];
+  const unsupported = Object.hasOwn(UNSUPPORTED_TYPES, token) ? UNSUPPORTED_TYPES[token] : undefined;
   if (unsupported) return { kind: "unsupported", diagramType: unsupported };
 
-  if (!(token in SUPPORTED_HEADERS)) {
+  if (!Object.hasOwn(SUPPORTED_HEADERS, token)) {
     return { kind: "failed", reason: `unrecognized diagram type "${token}"` };
   }
 

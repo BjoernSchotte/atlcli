@@ -740,7 +740,9 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   // Logo pass, fetch leg (spec 005, gap G3): the template scan + space-logo
   // byte fetch start NOW so the (up to three-round-trip) logo chain overlaps
   // body serialization and the resolver; the archive is only touched in step
-  // 3b below, in the same deterministic order as before. Never rejects.
+  // 3b below, in the same deterministic order as before. Rejects only on
+  // cancellation; the consumed branch below keeps that from surfacing as an
+  // unhandled rejection before step 3b awaits the ORIGINAL promise.
   const logoFetch = startLogoPass(zip, {
     embedder: wantImages ? embedder : undefined,
     assets: input.assets,
@@ -751,6 +753,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     timings.logoFetchMs = Date.now() - start;
     return s;
   });
+  logoFetch.catch(() => {});
 
   // The template's body-level sectPr (portrait) is cloned into orientation
   // regions' section sandwiches (spec 003 C6); read before any zip surgery.
@@ -865,6 +868,9 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     diagramTheme: input.diagramTheme,
     budget,
     styleNames,
+    numbering,
+    tableStyle: tableStyleResolution.tableStyle,
+    ...(bodySectPr ? { bodySectPr } : {}),
     captionLang: captionLocale.lang,
     codeTheme,
     ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
@@ -2221,9 +2227,9 @@ function diagramSeam(
   // network round-trips; embed() then consumes the in-flight result in
   // document order. Repeated occurrences of the same source share preparation
   // (theme + rasterizer are seam-wide), while each occurrence still embeds in
-  // document order and receives its own drawing id. The preparation never
-  // rejects — every failure is a value — so an unawaited prefetch can't surface
-  // an unhandled rejection.
+  // document order and receives its own drawing id. Ordinary failures are
+  // values; only cancellation rejects, and a consumed branch keeps an unawaited
+  // prefetch from surfacing that as an unhandled rejection.
   type DiagramPrep =
     | { kind: "ready"; svg: string; png: Uint8Array; widthPx: number; heightPx: number }
     | { kind: "unsupported"; diagramType: string }
@@ -2286,6 +2292,8 @@ function diagramSeam(
         }
       };
       p = chain.then(work);
+      // embed() awaits the ORIGINAL promise and still sees the cancellation.
+      p.catch(() => {});
       chain = p;
       preps.set(key, p);
     }
@@ -2371,6 +2379,10 @@ interface IncludePassDeps {
   diagramTheme?: DiagramTheme;
   budget: AssetBudget;
   styleNames: Map<string, string>;
+  /** The export's ONE allocator: included lists must land in numbering.xml. */
+  numbering: NumberingAllocator;
+  tableStyle: TableStyleSource;
+  bodySectPr?: string;
   captionLang: CaptionLang;
   codeTheme: CodeThemeId;
   dateLocale?: string;
@@ -2612,6 +2624,9 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
       : undefined;
     const serialized = await serializeBlocks(walked.blocks, {
       styleNames: pass.styleNames,
+      numbering: pass.numbering,
+      tableStyle: pass.tableStyle,
+      ...(pass.bodySectPr ? { bodySectPr: pass.bodySectPr } : {}),
       codeTheme: pass.codeTheme,
       highlightTimings: pass.codeHighlightTimings,
       comments: pass.comments,
@@ -2896,7 +2911,9 @@ export function mergeTrailingRegionSectPr(zip: PizZip): void {
   const xml = zip.file(part)?.asText();
   if (!xml) return;
   const merged = xml.replace(
-    /<w:p><w:pPr>(<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>)<\/w:pPr><\/w:p>(<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>)(?=<\/w:body>)/,
+    // The first group must not cross a `</w:sectPr>`: a lazy `[\s\S]*?` would
+    // start at the region's OPENING sectPr paragraph and swallow its content.
+    /<w:p><w:pPr>(<w:sectPr\b[^>]*>(?:(?!<\/w:sectPr>)[\s\S])*<\/w:sectPr>)<\/w:pPr><\/w:p>(<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>)(?=<\/w:body>)/,
     "$1"
   );
   if (merged !== xml) zip.file(part, merged);

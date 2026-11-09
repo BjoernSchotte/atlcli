@@ -57,6 +57,7 @@ import {
 } from "../semantic-diff-spill.js";
 import { unknownSubcommand } from "./unknown-subcommand.js";
 import { labelList } from "./search.js";
+import { openUrl } from "./jira.js";
 import { checkTemplateRender } from "./template-render-check.js";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -277,7 +278,7 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
 
     // Create template resolver
     const config = await loadConfig();
-    const activeProfile = getActiveProfile(config);
+    const activeProfile = getActiveProfile(config, profileName);
     const docsDir = await findAtlcliDir(process.cwd());
 
     const global = new GlobalTemplateStorage();
@@ -1674,16 +1675,27 @@ async function handleCopy(flags: Record<string, string | boolean | string[]>, op
   output(lines.join("\n"), opts);
 }
 
+/**
+ * `page children` search arguments. `searchPages` treats its limit as the page
+ * size, so only `maxResults` makes --limit cap the total; without --limit all
+ * children are listed.
+ */
+export function childrenSearch(id: string, limitFlag?: string): { cql: string; pageSize: number; maxResults?: number } {
+  const limit = Number(limitFlag);
+  const maxResults = limitFlag !== undefined && Number.isInteger(limit) && limit > 0 ? limit : undefined;
+  return { cql: `parent=${id} AND type=page`, pageSize: Math.min(maxResults ?? 100, 100), maxResults };
+}
+
 async function handleChildren(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
-  const limit = Number(getFlag(flags, "limit") ?? 100);
 
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
   }
 
   const client = await getClient(flags, opts);
-  const children = await client.getChildren(id, { limit: Number.isNaN(limit) ? 100 : limit });
+  const { cql, pageSize, maxResults } = childrenSearch(id, getFlag(flags, "limit"));
+  const children = await client.searchPages(cql, pageSize, { maxResults });
 
   if (opts.json) {
     output({ schemaVersion: "1", parentId: id, children }, opts);
@@ -1996,39 +2008,6 @@ async function handleOpen(
   } catch {
     // Silently fail - URL was already printed
   }
-}
-
-async function openUrl(url: string): Promise<void> {
-  const { spawn } = await import("node:child_process");
-  const platform = process.platform;
-
-  let command: string;
-  let args: string[];
-
-  if (platform === "darwin") {
-    command = "open";
-    args = [url];
-  } else if (platform === "win32") {
-    command = "cmd";
-    args = ["/c", "start", "", url];
-  } else {
-    // Linux and others
-    command = "xdg-open";
-    args = [url];
-  }
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: "ignore",
-      detached: true,
-    });
-
-    child.on("error", reject);
-    child.on("spawn", () => {
-      child.unref();
-      resolve();
-    });
-  });
 }
 
 // ============ Cross-Product Linking (Confluence → Jira) ============

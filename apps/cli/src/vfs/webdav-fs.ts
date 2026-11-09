@@ -73,21 +73,6 @@ const WEBDAV_ERROR_FOR: Record<VfsErrorCode, Error> = {
   EAGAIN: webdav.Errors.InsufficientStorage,
 };
 
-/** The HTTP status each code ends up as, for documentation and tests. */
-export const HTTP_STATUS_FOR: Record<VfsErrorCode, number> = {
-  ENOENT: 404,
-  EACCES: 403,
-  EROFS: 403,
-  EISDIR: 409,
-  ENOTDIR: 409,
-  EEXIST: 409,
-  EBUSY: 409,
-  ENOTEMPTY: 409,
-  EINVAL: 403,
-  ENOSPC: 507,
-  EAGAIN: 507,
-};
-
 export function httpErrorFor(error: unknown): Error {
   if (isVfsError(error)) return WEBDAV_ERROR_FOR[error.code] ?? webdav.Errors.IllegalArguments;
   return error instanceof Error ? error : new Error(String(error));

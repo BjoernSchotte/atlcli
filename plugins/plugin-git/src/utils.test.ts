@@ -41,6 +41,14 @@ describe("git utils", () => {
       expect(result).toBe(true);
     });
 
+    test("returns true for a linked worktree, where .git is a file", async () => {
+      await gitExec(tempDir, ["init"]);
+      await gitExec(tempDir, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--allow-empty", "-m", "init"]);
+      const worktree = join(tempDir, "wt");
+      await gitExec(tempDir, ["worktree", "add", worktree]);
+      expect(await isGitRepo(worktree)).toBe(true);
+    });
+
     test("returns true for subdirectory of git repo", async () => {
       await gitExec(tempDir, ["init"]);
       const subDir = join(tempDir, "subdir");

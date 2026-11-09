@@ -6,7 +6,7 @@
  * for normalized derivatives too. The shared DCT constants also drive the
  * decoder's IDCT.
  */
-import { ByteSink, concat, writeUint32 } from "./bytes.js";
+import { ByteSink, concat } from "./bytes.js";
 
 /* ------------------------------------------------------------------------- *
  * Baseline JPEG encoder (Annex K tables, 4:4:4).

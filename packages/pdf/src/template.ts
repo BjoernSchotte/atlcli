@@ -52,7 +52,6 @@ import type {
   WikiPdfTemplatePageBorderV1,
 } from "@atlcli/template-pack";
 import {
-  projectPdfDesignThroughCatalog,
   readPdfDesignCapability,
 } from "./design-catalog.js";
 import { typstString } from "./escape.js";
@@ -295,10 +294,8 @@ export function createAtlcliTypstTemplate(
   // `createAtlcliTypstTemplateV5`. Its V1-shaped renderer projection can carry
   // conditionally active V3 tokens (for example `coverTitleInverse`) that the
   // historical Catalog-V1 validator must not reject. Revisions 1-4 retain the
-  // exact characterized Catalog-V1 path.
-  const catalogDesign = revision5
-    ? design
-    : projectPdfDesignThroughCatalog(design);
+  // exact characterized Catalog-V1 path (the legacy return above).
+  const catalogDesign = design;
   const typography = options.typographyModelV5 ?? catalogDesign.typography;
   const fonts = typography.fonts;
   const roles = typography.roles;

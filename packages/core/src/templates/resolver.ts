@@ -2,7 +2,6 @@ import type {
   Template,
   TemplateFilter,
   TemplateSummary,
-  TemplateSource,
 } from "./types.js";
 import type { TemplateStorage } from "./storage.js";
 

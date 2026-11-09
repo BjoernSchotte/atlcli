@@ -32,6 +32,7 @@ import {
   runClaimedFileExportJob,
 } from "./runtime.js";
 import { FileExportLock } from "./file-lock.js";
+import { openDurableTemp } from "./atomic-fs.js";
 import { reconcileStaleExportJobs } from "./reconcile.js";
 import { sweepFileExportJobRetentionV1 } from "./retention.js";
 
@@ -83,6 +84,16 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<v
 }
 
 describe("file export persistence", () => {
+  it("lets discard() clean up a durable temp file whose commit failed", async () => {
+    const dir = await root();
+    const temp = await openDurableTemp(join(dir, "object.bin"), { privateDirectory: false });
+    await temp.handle.write(new Uint8Array([1, 2, 3]));
+    // rename() into a missing directory fails after the handle was closed.
+    await expect(temp.commit(join(dir, "missing", "object.bin"))).rejects.toThrow();
+    await temp.discard();
+    await expect(stat(temp.path)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("shares verified template packs across restarts and reconciles only complete-scan orphans", async () => {
     const dir = await root();
     const first = createFileExportJobPersistence({ rootDir: dir });
@@ -859,6 +870,32 @@ describe("file export persistence", () => {
       { kind: "state", from: "running", to: "failed" },
       { kind: "issue", level: "error", code: "executor.failed" },
     ]);
+
+    // Regression: an empty or oversized executor message must still persist
+    // (snapshot validation rejects both) instead of leaving the job running.
+    for (const [index, message] of ["", "x".repeat(20_000)].entries()) {
+      const id = `runtime-odd-message-${index}`;
+      await persistence.jobs.create({ request: request(id) });
+      const oddClaim = (await persistence.jobs.claimNext({
+        ownerId: "worker",
+        now: 22,
+        leaseDurationMs: 10_000,
+        ids: [id],
+      }))!;
+      const odd = await runClaimedFileExportJob({
+        claimed: oddClaim,
+        jobs: persistence.jobs,
+        spool: persistence.spool,
+        artifacts: persistence.artifacts,
+        spoolLimits: persistence.spoolLimits,
+        executor: { format: "docx", execute: async () => { throw new Error(message); } },
+        now: () => 22,
+        heartbeatIntervalMs: 60_000,
+        cancelPollMs: 60_000,
+      });
+      expect(odd.state).toBe("failed");
+      expect(odd.error?.message).toBe(message ? "x".repeat(16_384) : "Export executor failed.");
+    }
 
     await persistence.jobs.create({ request: request("runtime-source-failure") });
     const sourceFailureClaim = (await persistence.jobs.claimNext({

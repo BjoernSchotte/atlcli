@@ -304,7 +304,7 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
       ? `ri:userkey="${escapeHtml(id.slice(USERKEY_MENTION_PREFIX.length))}"`
       : `ri:account-id="${escapeHtml(id)}"`;
     // An unnamed mention (`@[id](id)`) gets no link body, so Confluence shows the live name.
-    const body = displayName === id ? "" : `<ac:plain-text-link-body><![CDATA[${displayName}]]></ac:plain-text-link-body>`;
+    const body = displayName === id ? "" : `<ac:plain-text-link-body>${cdataSection(displayName)}</ac:plain-text-link-body>`;
     const html = `<ac:link><ri:user ${user} />${body}</ac:link>`;
     macros.push({ placeholder, html });
     return placeholder;
@@ -1093,7 +1093,7 @@ ${md.render(trimmedContent).trim()}
         macros.push({ placeholder, html });
       } else {
         const linkText = alt?.trim() || filename;
-        const html = `<ac:link><ri:attachment ri:filename="${escapeHtml(filename)}"/><ac:plain-text-link-body><![CDATA[${linkText}]]></ac:plain-text-link-body></ac:link>`;
+        const html = `<ac:link><ri:attachment ri:filename="${escapeHtml(filename)}"/><ac:plain-text-link-body>${cdataSection(linkText)}</ac:plain-text-link-body></ac:link>`;
         macros.push({ placeholder, html });
       }
       return placeholder;
@@ -1141,7 +1141,7 @@ ${md.render(trimmedContent).trim()}
     }
 
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
-    const html = `<ac:link><ri:attachment ri:filename="${escapeHtml(filename)}"/><ac:plain-text-link-body><![CDATA[${text}]]></ac:plain-text-link-body></ac:link>`;
+    const html = `<ac:link><ri:attachment ri:filename="${escapeHtml(filename)}"/><ac:plain-text-link-body>${cdataSection(text)}</ac:plain-text-link-body></ac:link>`;
     macros.push({ placeholder, html });
     return placeholder;
   });
@@ -1324,11 +1324,6 @@ function restoreTableLayout(html: string): string {
 }
 
 /**
- * Valid status colors in Confluence
- */
-const STATUS_COLORS = ["grey", "red", "yellow", "green", "blue"];
-
-/**
  * Regex for inline status macro: {status:color}text{status}
  */
 const STATUS_REGEX = /\{status:(\w+)\}([^{]*)\{status\}/gi;
@@ -1385,12 +1380,6 @@ const LOCAL_IMAGE_REGEX = /!\[([^\]]*)\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)/
  * Matches file links from .attachments/ directories (but not images)
  */
 const LOCAL_ATTACHMENT_LINK_REGEX = /\[([^\]]+)\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)/g;
-
-/**
- * Regex for image size syntax: {width=600} or {width=600 height=400}
- * Applied after the image markdown
- */
-const IMAGE_SIZE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)\{([^}]+)\}/g;
 
 /**
  * Image file extensions (case-insensitive check)
@@ -3287,9 +3276,12 @@ function renderDrawioPreviewBlocks(markdown: string): string {
  * Wrap text in CDATA while preserving literal CDATA terminators.
  * XML represents `]]>` by closing and reopening the CDATA section.
  */
+function cdataSection(content: string): string {
+  return `<![CDATA[${content.replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
+}
+
 function serializePlainTextBody(content: string): string {
-  const safeContent = content.replaceAll("]]>", "]]]]><![CDATA[>");
-  return `<ac:plain-text-body><![CDATA[${safeContent}]]></ac:plain-text-body>`;
+  return `<ac:plain-text-body>${cdataSection(content)}</ac:plain-text-body>`;
 }
 
 /** Extract a Confluence plain-text body and reassemble split CDATA sections. */

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { AIMessage, SystemMessage } from "@langchain/core/messages";
+import { FakeListChatModel } from "@langchain/core/utils/testing";
+import { createAgent } from "langchain";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
   type ChatPresentationStreamEventV1,
@@ -2456,6 +2458,40 @@ describe("separate Chat root", () => {
     expect(systemText).toContain("Do not call a tool");
     expect(systemText).toContain("Return the accepted ChatAnswerDraftV2 shape.");
     expect((response as AIMessage).text).toBe("Corrected terminal answer.");
+  });
+
+  test("retries a rejected structured answer through LangChain while in terminal repair", async () => {
+    const systemTexts: string[] = [];
+    class RejectingOnceModel extends FakeListChatModel {
+      // The stock fake returns a plain FakeListChatModel from bindTools.
+      override bindTools(): this {
+        return this;
+      }
+      override async _generate(
+        ...args: Parameters<FakeListChatModel["_generate"]>
+      ): ReturnType<FakeListChatModel["_generate"]> {
+        systemTexts.push(args[0].find((message) => message.getType() === "system")?.text ?? "");
+        if (systemTexts.length === 1) {
+          throw new Error("Failed to parse structured output for tool 'ChatAnswerDraftV2'");
+        }
+        return super._generate(...args);
+      }
+    }
+    const agent = createAgent({
+      model: new RejectingOnceModel({ responses: ["Repaired terminal answer."] }),
+      tools: [],
+      systemPrompt: "Stable Chat contract.",
+      middleware: [createChatDirectToolSurfaceMiddlewareV1(undefined, {
+        terminalRepairOnly: () => true,
+        nativeStructuredOutput: true,
+      })],
+    });
+    const result = await agent.invoke({ messages: [{ role: "user", content: "Question" }] });
+
+    expect(systemTexts).toHaveLength(2);
+    expect(systemTexts[1]).toContain("Terminal answer correction for this turn");
+    expect(systemTexts[1]).toContain("did not satisfy the required JSON schema");
+    expect(result.messages.at(-1)?.text).toBe("Repaired terminal answer.");
   });
 
   test("does not add a model round trip for an already host-accepted strategy", async () => {

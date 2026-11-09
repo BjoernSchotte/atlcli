@@ -110,7 +110,7 @@ async function main(): Promise<void> {
 
   // Command-level help: show command-specific help
   if (helpRequested) {
-    showCommandHelp(command, rest, registry, opts);
+    await showCommandHelp(command, rest, registry, opts);
     return;
   }
 
@@ -271,12 +271,12 @@ async function main(): Promise<void> {
  * Show help for a specific command.
  * Passes args to handler with help flag so nested subcommands can show their help.
  */
-function showCommandHelp(
+async function showCommandHelp(
   command: string,
   subArgs: string[],
   registry: import("./plugins/loader.js").PluginRegistry,
   opts: { json: boolean }
-): void {
+): Promise<void> {
   // Groups whose handlers ignore `help` print their help text directly: dispatching would run the verb (#270).
   const helpFlags = { help: true };
 
@@ -291,13 +291,13 @@ function showCommandHelp(
       output(configHelp(), opts);
       break;
     case "doctor":
-      handleDoctor(subArgs, helpFlags, opts);
+      await handleDoctor(subArgs, helpFlags, opts);
       break;
     case "flag":
       output(flagHelp(), opts);
       break;
     case "wiki":
-      handleWiki(subArgs, helpFlags, opts);
+      await handleWiki(subArgs, helpFlags, opts);
       break;
     case "jira":
       output(jiraHelpFor(subArgs), opts);
@@ -313,7 +313,8 @@ function showCommandHelp(
       break;
     case "audit":
       // `audit jira --help` / `audit wiki --help` print the target's help (#286).
-      output(subArgs[0] === "jira" ? auditJiraHelp() : subArgs[0] === "wiki" ? auditWikiHelp() : auditHelp(), opts);
+      if (subArgs[0] === "access") output((await import("./commands/audit-access.js")).auditAccessHelp(), opts);
+      else output(subArgs[0] === "jira" ? auditJiraHelp() : subArgs[0] === "wiki" ? auditWikiHelp() : auditHelp(), opts);
       break;
     case "chat":
       output(chatHelp(), opts);
@@ -325,19 +326,22 @@ function showCommandHelp(
       output(logHelp(), opts);
       break;
     case "models":
-      handleModels(subArgs, helpFlags, opts);
+      await handleModels(subArgs, helpFlags, opts);
       break;
     case "plugin":
       output(pluginHelp(), opts);
       break;
     case "skill":
-      handleSkill(subArgs, helpFlags, opts);
+      await handleSkill(subArgs, helpFlags, opts);
+      break;
+    case "script":
+      await handleScript(subArgs, helpFlags, opts);
       break;
     case "template":
       output(templateCommandHelp(), opts);
       break;
     case "update":
-      handleUpdate(subArgs, helpFlags, opts);
+      await handleUpdate(subArgs, helpFlags, opts);
       break;
     case "version":
       printVersion(opts);

@@ -235,6 +235,10 @@ function countPrepared(blocks: PreparedPdfBlock[]): { images: number; diagrams: 
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
+        case "unknown":
+          if (block.body) walk(block.body);
+          for (const frame of block.extensionFrames ?? []) walk(frame.content);
+          break;
       }
     }
   };

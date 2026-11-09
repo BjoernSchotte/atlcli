@@ -30,6 +30,7 @@
         "apps/*/src/**",
         "packages/*/package.json",
         "packages/*/src/**",
+        "plugins/*/src/**",
         "scripts/**/*.ts",
         "patches/**"
       ]

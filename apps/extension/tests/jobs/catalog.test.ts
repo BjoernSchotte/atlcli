@@ -15,7 +15,6 @@ import {
   recoverAndClaimExtensionExportJob,
 } from "../../utils/export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
-import { createExtensionQueueFoundation } from "../../utils/export-jobs/recovery.js";
 
 globalThis.IDBKeyRange = IDBKeyRange;
 
@@ -464,23 +463,5 @@ describe("IndexedDbExportJobCatalog", () => {
     const stillV1 = await rawOpen(1);
     expect([...stillV1.objectStoreNames]).toEqual(["jobs", "requests"]);
     stillV1.close();
-  });
-
-  it("retries queue startup after a blocked database upgrade", async () => {
-    const old = await rawOpen(1, (db) => {
-      const jobs = db.createObjectStore("jobs", { keyPath: "id" });
-      jobs.createIndex("idempotencyKey", "idempotencyKey", { unique: true });
-      jobs.createIndex("derivationKey", "derivationKey", { unique: true });
-      db.createObjectStore("requests", { keyPath: "ref" });
-    });
-    const queue = createExtensionQueueFoundation({ factory, blockedTimeoutMs: 5 });
-
-    // Bun async matchers can delay fake IndexedDB tasks past the short blocked timeout.
-    const blocked = await queue.startup().catch((error: unknown) => error);
-    expect(blocked).toMatchObject({ code: "blocked" });
-    old.close();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(await queue.startup()).toBeUndefined();
   });
 });

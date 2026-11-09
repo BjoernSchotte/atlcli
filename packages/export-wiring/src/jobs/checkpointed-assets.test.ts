@@ -113,6 +113,38 @@ describe("checkpointed job assets", () => {
     });
   });
 
+  it("makes concurrent callers on a resumed job wait for checkpoint recovery", async () => {
+    const store = new InMemorySpoolStore();
+    const refs = ["a.png", "b.png"].map((filename) => ({
+      kind: "attachment" as const,
+      pageId: "42",
+      filename,
+    }));
+    const first = context(store, "pdf-job", 1);
+    const resolver = checkpointPdfAssetsV1(first, "request-key", {
+      async resolve(ref) {
+        const filename = ref.kind === "attachment" ? ref.filename : "";
+        return { bytes: new TextEncoder().encode(filename), mediaType: "image/png", filename };
+      },
+    });
+    for (const ref of refs) await resolver.resolve(ref);
+
+    // A slow spool keeps the recovery walk in flight while the second caller arrives.
+    const second = context(store, "pdf-job", 2, first.checkpointRef);
+    const readSpool = second.readSpool!;
+    second.readSpool = async function* (ref, options) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      yield* readSpool(ref, options);
+    };
+    const recovered = checkpointPdfAssetsV1(second, "request-key", {
+      async resolve() {
+        throw new Error("Recovered asset must not hit the host.");
+      },
+    });
+    const results = await Promise.all(refs.map((ref) => recovered.resolve(ref)));
+    expect(results.map((result) => result.filename)).toEqual(["a.png", "b.png"]);
+  });
+
   it("deduplicates equal DOCX bytes physically across different references", async () => {
     const store = new InMemorySpoolStore();
     const execution = context(store, "docx-job", 1);

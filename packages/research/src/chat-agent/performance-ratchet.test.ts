@@ -174,6 +174,21 @@ describe("Deep Chat performance ratchet", () => {
     expect(result.failures).toContain("duration regression exceeded tolerance");
   });
 
+  test("reports growth from a zero baseline as a regression, not a reduction", () => {
+    const before = receipt([observation()]);
+    const zeroBefore = { ...before, metrics: { ...before.metrics, inputTokens: 0, durationMs: 0 } };
+    const result = evaluateChatPerformanceRatchetV1(zeroBefore, before, {
+      minimumCallReduction: 0,
+      minimumFreshInputReductionPermille: 0,
+      minimumDurationReductionPermille: 0,
+      maximumFreshInputRegressionPermille: 50,
+      maximumDurationRegressionPermille: 50,
+    });
+    expect(result.changes).toMatchObject({ freshInputPermille: -1_000, durationPermille: -1_000 });
+    expect(result.accepted).toBe(false);
+    expect(result.failures).toContain("fresh-input regression exceeded tolerance");
+  });
+
   test("freezes the accepted three-sample Deep Chat release ceilings", () => {
     const result = evaluateChatDeepFinalCeilingsV1(finalReceipts());
     expect(result).toMatchObject({

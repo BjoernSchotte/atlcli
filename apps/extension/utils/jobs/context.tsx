@@ -34,16 +34,6 @@ export function DurableJobsProvider({
 }
 
 /**
- * Swappable creator for the ambient port, so the seam can be exercised without
- * a real Chrome. `null` disables the ambient default entirely.
- */
-let ambientFactory: (() => DurableJobsPort) | null = chromeDurableJobsStore;
-
-export function setAmbientDurableJobsFactory(factory: (() => DurableJobsPort) | null): void {
-  ambientFactory = factory;
-}
-
-/**
  * The ambient default: the Chrome-backed store, but only where both halves it
  * needs actually exist. Evaluated at first render, never at module scope.
  */
@@ -51,7 +41,7 @@ function ambientDurableJobs(): DurableJobsPort | null {
   const scope = globalThis as unknown as { chrome?: { runtime?: unknown }; indexedDB?: unknown };
   if (!scope.chrome?.runtime || !scope.indexedDB) return null;
   try {
-    return ambientFactory?.() ?? null;
+    return chromeDurableJobsStore();
   } catch {
     return null;
   }

@@ -15,8 +15,8 @@ import type {
   ResearchGraphNodeV1,
   ResearchGraphRoleV1,
   ResearchGraphV1,
-} from "@atlcli/research/graph";
-import { validateResearchGraphV1 } from "@atlcli/research/graph";
+} from "./graph.js";
+import { validateResearchGraphV1 } from "./graph.js";
 import { ResearchContractError } from "./contracts.js";
 import { createResearchPtcTools, type ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 import {

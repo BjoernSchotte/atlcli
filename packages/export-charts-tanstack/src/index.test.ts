@@ -212,6 +212,18 @@ test("renders the documented pie label mini-language as inert text", () => {
   expect(svg).not.toContain("%0%");
 });
 
+test("pie labels substitute source text literally and only once", () => {
+  const base = model("pie");
+  const svg = renderTanStackChartSvgV1({
+    ...base,
+    pie: { sectionLabelFormat: "%0% = %1%" },
+    data: { mode: "categories", labels: ["A$&B", "x%1%y", "p$$q"], series: [{ id: "budget", label: "Budget", values: [50, 30, 20] }] },
+  });
+  expect(svg).toContain("A$&amp;B = 50");
+  expect(svg).toContain("x%1%y = 30");
+  expect(svg).toContain("p$$q = 20");
+});
+
 test("bounds Gantt date ticks so adjacent provider dates cannot collide", () => {
   const gantt = createTanStackChartSceneV1(model("gantt"));
   const labels = sceneNodes(gantt.nodes)

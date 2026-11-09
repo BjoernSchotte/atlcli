@@ -189,11 +189,14 @@ function applyProperty(
       ...(shade ? { shade } : {}),
     };
   } else if (event.local === "spacing") {
-    target.spacingBeforeTwips = integer(
-      attribute(event, "before", WORD_URIS)
-    );
-    target.spacingAfterTwips = integer(attribute(event, "after", WORD_URIS));
-    target.lineTwips = integer(attribute(event, "line", WORD_URIS));
+    // Each field only when its attribute is present: a run-level
+    // `<w:spacing w:val=…/>` (character spacing) must not wipe paragraph spacing.
+    const before = integer(attribute(event, "before", WORD_URIS));
+    const after = integer(attribute(event, "after", WORD_URIS));
+    const line = integer(attribute(event, "line", WORD_URIS));
+    if (before !== undefined) target.spacingBeforeTwips = before;
+    if (after !== undefined) target.spacingAfterTwips = after;
+    if (line !== undefined) target.lineTwips = line;
   } else if (event.local === "outlineLvl") {
     target.outlineLevel = integer(attribute(event, "val", WORD_URIS));
   } else if (event.local === "jc") {

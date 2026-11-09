@@ -96,6 +96,21 @@ describe("parseDocx", () => {
     expect(bullets.ordered).toBe(false);
   });
 
+  it("clamps an out-of-range list level to the OOXML maximum", () => {
+    const bytes = buildDocxFixture({
+      body:
+        p(r("top"), { numId: "1", ilvl: 0 }) +
+        p(r("absurdly deep"), { numId: "1", ilvl: 5000 }) +
+        p(r("Heading"), { style: "Heading1", numId: "10", ilvl: 5000 }),
+      numbering: HEADING_NUMBERING,
+    });
+    const doc = parseDocx(bytes);
+    let depth = 0;
+    for (let list = doc.blocks[0] as ImportListBlock | undefined; list; list = list.items.at(-1)?.child) depth += 1;
+    expect(depth).toBe(9);
+    expect(JSON.stringify(doc.blocks)).not.toContain("NaN");
+  });
+
   it("parses tables with header rows and flattens nested tables with an issue", () => {
     const cell = (inner: string, header = false) =>
       `<w:tc>${header ? "" : ""}${inner}</w:tc>`;

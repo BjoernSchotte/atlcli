@@ -152,7 +152,7 @@ async function loadRecipeLayer(
  * file (plan 007 baseline: defaults < recipe < CLI < override file).
  * Fails closed on any validation or precedence conflict.
  */
-function resolvePolicyFromFlags(
+export function resolvePolicyFromFlags(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
   recipeLayer?: PolicyLayerInput,
@@ -160,10 +160,15 @@ function resolvePolicyFromFlags(
   const cli: PolicyLayerInput = {};
   const revisions = getFlag(flags, "revisions");
   const unsupported = getFlag(flags, "unsupported");
-  if (revisions || unsupported) {
+  const comments = getFlag(flags, "comments");
+  if (flags.comments !== undefined && !["auto", "inline", "footer", "skip"].includes(comments ?? "")) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Invalid --comments "${comments ?? ""}": expected auto|inline|footer|skip.`, {});
+  }
+  if (revisions || unsupported || comments) {
     cli.options = {
       ...(revisions ? { revisions: revisions as never } : {}),
       ...(unsupported ? { unsupported: unsupported as never } : {}),
+      ...(comments ? { comments: comments as never } : {}),
     };
   }
   const mapStyles = getFlags(flags, "map-style");
@@ -1405,19 +1410,6 @@ export async function handleUpdateImport(
   }
 }
 
-function countTypes(types: string[]): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const t of types) counts[t] = (counts[t] ?? 0) + 1;
-  return counts;
-}
-
-function formatTypeCounts(counts: Record<string, number>): string {
-  const entries = Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
-  return entries.length === 0
-    ? "empty page"
-    : entries.map(([k, v]) => `${v} ${k}`).join(", ");
-}
-
 interface PublishedPageReport {
   id: string;
   title: string;
@@ -1922,6 +1914,7 @@ Options:
                           paragraph|heading-1..6|blockquote|code
   --revisions <mode>      accept|reject tracked changes (default accept)
   --unsupported <mode>    report|fail on lossy constructs (default report)
+  --comments <mode>       auto|inline|footer|skip Word comments (default auto)
   --overrides <file>      Format-specific digest-bound override file (YAML/JSON)
   --overrides-template <file>  PDF: write an override file with one entry per
                           figure without alt text (never overwrites)

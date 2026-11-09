@@ -3,8 +3,8 @@ import { z } from "zod/v4";
 import {
   RESEARCH_SCOPE_CATALOG_SCHEMAS,
   type ResearchScopeCatalogCapabilityId,
-} from "@atlcli/research/scope-catalog";
-import { ResearchScopeCatalogBroker } from "@atlcli/research/scope-catalog-broker";
+} from "./scope-catalog.js";
+import { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import type { ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 
 export const RESEARCH_SCOPE_CATALOG_TOOL_NAMES = {

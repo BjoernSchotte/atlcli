@@ -108,7 +108,7 @@ function textSize(value: string): number {
 /** Glob matcher covering DeepAgentsJS' documented `*`, `**`, and `?` patterns. */
 function globMatches(path: string, pattern: string): boolean {
   const escaped = pattern
-    .replace(/[|\\{}()[\]^$+?.]/g, "\\$&")
+    .replace(/[|\\{}()[\]^$+.]/g, "\\$&")
     .replaceAll("**", "\\u0000")
     .replaceAll("*", "[^/]*")
     .replaceAll("?", "[^/]")
@@ -227,7 +227,8 @@ export class ResearchDeepAgentWorkspaceBackendV1 {
       if (occurrences === 0) return { error: "The old string was not found in the file." };
       await this.#workspace.writeFile(
         workspacePath(filePath),
-        replaceAll ? contents.replaceAll(oldString, newString) : contents.replace(oldString, newString),
+        // Replacer functions keep `$&`/`$1` in model-supplied text literal.
+        replaceAll ? contents.replaceAll(oldString, () => newString) : contents.replace(oldString, () => newString),
       );
       return { path: filePath, occurrences: replaceAll ? occurrences : 1, filesUpdate: null };
     } catch (error) {

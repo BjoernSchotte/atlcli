@@ -1206,7 +1206,7 @@ function compileChatSubagentsV1(input: {
             status: "success",
             attempt: evalAttempts,
             codeChars: code.length,
-            usesToolsNamespace: /\\btools\\s*\\./u.test(code),
+            usesToolsNamespace: /\btools\s*\./u.test(code),
             capabilityNames,
           });
           return new ToolMessage({

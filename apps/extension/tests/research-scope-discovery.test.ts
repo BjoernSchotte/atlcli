@@ -8,7 +8,7 @@ import {
   scopeSourcePrecedence,
   type ResearchScopeCandidateV1,
   type ResearchScopeMentionV1,
-} from "../utils/research/scope-discovery.js";
+} from "@atlcli/research/scope-discovery";
 
 const tenantOrigin = "https://example.atlassian.net";
 

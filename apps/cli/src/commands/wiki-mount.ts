@@ -14,7 +14,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { platform } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import {
   ERROR_CODES,
@@ -31,6 +31,7 @@ import {
 import { ConfluenceClient } from "@atlcli/confluence";
 import { ConfluenceVfsImpl, type VfsMode } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { DEFAULT_CACHE_DIR } from "./wiki-sh.js";
 
 import { quote, findNfsHelper, nfsMountCommandFor, parseMountTransport, type MountTransport } from "../vfs/mount-transport.js";
 import { stderrVfsLogger } from "../vfs/stderr-logger.js";
@@ -52,8 +53,6 @@ export function runMountCommand(command: string[], quiet = false): Promise<numbe
     child.once("close", resolve);
   });
 }
-
-const DEFAULT_CACHE_DIR = join(homedir(), ".atlcli", "vfs");
 
 export interface MountRecord {
   mountpoint: string;
@@ -539,17 +538,6 @@ async function handleUnmount(
     rmSync(file, { force: true });
   }
   output({ unmounted: mountpoint }, opts);
-}
-
-/** Detached mode (WP7.6): the server keeps running after the shell exits. */
-export function spawnDetached(argv: string[], logFile: string): number {
-  mkdirSync(join(logFile, ".."), { recursive: true });
-  const child = spawn(process.execPath, argv, {
-    detached: true,
-    stdio: ["ignore", "ignore", "ignore"],
-  });
-  child.unref();
-  return child.pid ?? 0;
 }
 
 export function wikiMountHelp(): string {

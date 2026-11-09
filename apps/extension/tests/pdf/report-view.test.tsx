@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PdfReportView } from "../../entrypoints/sidepanel/PdfSection.js";
+import { PdfReportView } from "../../components/export/PdfReportView.js";
 
 describe("PdfReportView", () => {
   it("shows the exact Shiki theme used by the export", () => {

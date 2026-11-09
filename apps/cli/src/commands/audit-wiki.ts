@@ -11,7 +11,6 @@ import { join, resolve as resolvePath } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
   AUDIT_SEVERITY_RANK,
-  type AuditBaseline,
   type AuditPage,
   type AuditRules,
   AuditRulesError,
@@ -21,7 +20,6 @@ import {
   applyRulePatch,
   auditConfluence,
   createAuditBaseline,
-  parseAuditBaseline,
   parseConfluenceAuditRules,
   pruneAuditBaseline,
   renderAuditText,
@@ -42,7 +40,7 @@ import {
   validateFolders,
 } from "@atlcli/confluence/internal";
 import type { ScriptPort } from "@atlcli/script-runtime";
-import { auditRulesCandidates } from "./audit-jira.js";
+import { auditRulesCandidates, readBaseline } from "./audit-jira.js";
 import { emitAuditOutput, handleRuleListing, loadAuditScripts, registryOf, runAuditFixes, scriptFlags } from "./audit-scripts.js";
 import { writeJsonAtomic } from "./profile-paths.js";
 import { assertCliAuthSupported } from "./session-guard.js";
@@ -437,20 +435,6 @@ export async function buildPageSnapshots(adapter: SyncDbAdapter, o: SnapshotOpti
 // ============================================================================
 // Main handler
 // ============================================================================
-
-async function readBaseline(path: string): Promise<{ baseline?: AuditBaseline; warning?: string }> {
-  let text: string;
-  try {
-    text = await readFile(path, "utf8");
-  } catch {
-    return {};
-  }
-  try {
-    return { baseline: parseAuditBaseline(JSON.parse(text)) };
-  } catch {
-    return { warning: `${path} is unreadable; no baseline applied.` };
-  }
-}
 
 /** A port for rules that read through `atlcli.*` when no profile is set up. */
 const offlinePort = new Proxy({} as ScriptPort, {

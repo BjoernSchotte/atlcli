@@ -33,8 +33,6 @@ import {
   PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1,
 } from "@atlcli/pdf/internal";
 import {
-  ACCEPT_RECOMMENDED_POLICY_V1,
-  ACCEPT_SAFE_POLICY_V1,
   AUTHORING_MESSAGE_REGISTRY_V1,
   InMemoryTemplateAssetStore,
   TemplateAuthoringError,

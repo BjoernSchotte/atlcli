@@ -4,14 +4,13 @@
  * Supports CSV and JSON formats with comments and attachments.
  */
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, basename } from "node:path";
+import { dirname, join } from "node:path";
 import type { JiraClient } from "./client.js";
 import { adfToMarkdown } from "./adf-markdown.js";
 import type {
   JiraIssue,
   ExportedIssue,
   ExportedComment,
-  ExportedAttachment,
   ExportData,
   ExportFetchError,
   ExportOptions,

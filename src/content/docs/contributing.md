@@ -11,7 +11,7 @@ Guidelines for contributing to atlcli.
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) 1.3.14 (the version declared in `package.json`)
+- [Bun](https://bun.sh), the version declared as `packageManager` in `package.json`
 - Node.js 22.23.4+ (for documentation tooling)
 - An Atlassian Cloud account for testing
 
@@ -181,17 +181,17 @@ documentation-only CI policy.
 ```
 atlcli/
 ├── apps/
-│   └── cli/              # CLI application
-│       └── src/
-│           ├── commands/ # Command handlers
-│           └── index.ts  # Entry point
-├── packages/
-│   ├── core/             # Shared utilities
-│   ├── confluence/       # Confluence API client
-│   └── jira/             # Jira API client
+│   ├── cli/              # CLI application
+│   │   └── src/
+│   │       ├── commands/ # Command handlers
+│   │       └── index.ts  # Entry point
+│   ├── extension/        # Browser extension
+│   └── browser-export-harness/ # Browser conformance harness for the export engine
+├── packages/             # Workspace libraries (core, confluence, jira, export, import, ...)
+├── plugins/              # Built-in plugins compiled into the CLI
 ├── skills/               # Agent skill, embedded in the CLI (atlcli skill)
-├── docs/                 # Documentation (this site)
-└── spec/                 # Internal specs and roadmaps
+├── src/content/docs/     # Documentation (this site)
+└── specs/                # Internal specs and plans
 ```
 
 `skills/atlcli/SKILL.md` names the atlcli source its content was last checked
@@ -373,15 +373,6 @@ A compiler upgrade can therefore change `packages/*/etc/*.api.md` without any
 API change. Regenerate with `bun scripts/api-report.ts --update` and review
 the diff before committing.
 :::
-
-### Formatting
-
-The project uses Biome for linting and formatting:
-
-```bash
-bun run lint
-bun run format
-```
 
 ### Commits
 

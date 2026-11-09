@@ -15,7 +15,6 @@ import {
   type AttachmentRecord,
   type LinkRecord,
   type UserRecord,
-  type LabelRecord,
   type ContributorRecord,
   type ContentPropertyRecord,
   type PageFilter,

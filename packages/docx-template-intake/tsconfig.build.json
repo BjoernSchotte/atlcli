@@ -18,6 +18,9 @@
     "src/**/*.test.tsx",
     "src/fixture-analysis.ts",
     "src/test-support.ts",
+    "src/visual-test-support.ts",
+    "src/visual-oracle.ts",
+    "src/fixtures/visual-oracles.ts",
     "src/fixtures/tools/**/*.ts"
   ]
 }

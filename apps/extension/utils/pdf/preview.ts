@@ -39,16 +39,12 @@ import {
   nodeId,
   type ExportBlock,
   type ExportNode,
-  type ExportNote,
   type ExportScope,
   type LabelFilter,
 } from "@atlcli/confluence/browser";
 import {
-  runPdfExport as runNeutralPdfExport,
-  type PdfAssetResolver,
   type PdfBytesHandle,
   type PdfCompilePort,
-  type PdfExportMetadata,
   type PdfExportReport,
   type PdfOutputSink,
   type PdfProfile,
@@ -371,31 +367,6 @@ export interface PdfScopedPreviewInput extends PdfPagePreviewInput {
   labels?: LabelFilter;
 }
 
-/**
- * A preview of an already-composed (and already-truncated) document — the
- * tree/space case.
- *
- * Takes blocks rather than a scope because composition belongs to the caller
- * that fetched the tree; {@link planPreviewTruncation} is the piece this module
- * contributes to that flow.
- */
-export interface PdfComposedPreviewInput {
-  blocks: ExportBlock[];
-  sourceNotes?: ExportNote[];
-  metadata: PdfExportMetadata;
-  filename: string;
-  assets: PdfAssetResolver;
-  settings?: PdfTemplateSettings;
-  codeTheme?: CodeThemeId;
-  theme?: PdfThemeOptions;
-  profile?: PdfProfile;
-  signal?: AbortSignal;
-  /** From {@link planPreviewTruncation} — reported back verbatim, never inferred. */
-  truncation: PreviewTruncationPlan;
-  /** `false` when composition dropped unreadable pages (partial mode). */
-  complete?: boolean;
-}
-
 export interface PdfPreviewDeps {
   now: () => number;
   /** Builds the compile port. Overridden in tests; always `kind: "preview"`. */
@@ -569,52 +540,6 @@ export async function runScopedPdfPreview(
         reason: "none",
       } satisfies PreviewTruncationPlan);
     if (isPreviewSupersededError(error)) return supersededResult(plan);
-    throw error;
-  }
-}
-
-/** Preview of a composed tree/space document, truncated by the caller's plan. */
-export async function runComposedPdfPreview(
-  input: PdfComposedPreviewInput,
-  overrides: Partial<PdfPreviewDeps> = {}
-): Promise<PdfPreviewResult> {
-  const deps = { ...defaultDeps, ...overrides };
-  const captured = capturePdfOutput();
-  const compiler = deps.createCompilePort({
-    sourceIdentity: input.metadata.title,
-    onQueued: () => undefined,
-    onCompiling: () => undefined,
-  });
-  try {
-    const report = await runNeutralPdfExport(
-      {
-        blocks: input.blocks,
-        sourceNotes: input.sourceNotes,
-        metadata: input.metadata,
-        settings: input.settings,
-        codeTheme: input.codeTheme,
-        theme: input.theme,
-        profile: input.profile,
-        filename: input.filename,
-        signal: input.signal,
-        // A truncated preview is by definition not the whole document; saying
-        // so in the report is what keeps the "complete" flag honest.
-        complete: input.complete !== false && !input.truncation.truncated,
-      },
-      { assets: input.assets, compiler, output: captured.sink, now: deps.now }
-    );
-    return {
-      status: "ready",
-      bytes: captured.bytes,
-      report,
-      filename: captured.filename,
-      truncated: input.truncation.truncated,
-      includedChapters: input.truncation.includedChapters,
-      totalChapters: input.truncation.totalChapters,
-      reason: input.truncation.reason,
-    };
-  } catch (error) {
-    if (isPreviewSupersededError(error)) return supersededResult(input.truncation);
     throw error;
   }
 }

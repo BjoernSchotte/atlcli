@@ -86,7 +86,7 @@ export default defineConfig({
     zipSources: false,
     compressionLevel: 9,
   },
-  // WXT 0.20 builds and packages in one canonical `wxt zip` lifecycle, but its
+  // WXT builds and packages in one canonical `wxt zip` lifecycle, but its
   // JSZip call stamps entries with the current time. Normalize that WXT-owned
   // artifact in-place in the supported completion hook. `zip:prebuilt` calls
   // the same normalizer directly and therefore never starts another build.

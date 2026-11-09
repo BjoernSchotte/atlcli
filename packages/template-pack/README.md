@@ -9,15 +9,15 @@ and DOCX engines and any external template tooling.
   surface) — `packTemplate`, `unpackTemplate`, `validatePack`, the
   `TemplateManifest` types, and engine-neutral visual asset/decorations
   contracts.
-- **Runtime:** Node ≥ 20, Bun, and browsers (PizZip + WebCrypto only).
+- **Runtime:** Node ≥ 26.13, Bun, and browsers (PizZip + WebCrypto only).
 - **Install:** filesystem link or packed tarball — no registry publish today.
   See the [package consumption guide](https://atlcli.sh/reference/package-consumption/).
 
 ```ts
 import { packTemplate, unpackTemplate } from "@atlcli/template-pack";
 
-const packed = await packTemplate({ payload, manifest });
-const { manifest: readBack, payload: bytes } = await unpackTemplate(packed);
+const packed = await packTemplate({ manifest, files });
+const { manifest: readBack, files: payload } = unpackTemplate(packed);
 ```
 
 `validateManifest()` checks only portable manifest shape: safe asset paths,

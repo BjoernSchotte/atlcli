@@ -655,6 +655,29 @@ test("validates the operator-owned Astro URL and output profile without rewritin
   }
 });
 
+test("accepts a root base for both output profiles", async () => {
+  const { root, bundlePath } = await fixture();
+  const integrationFor = (outputProfile: "directory" | "portable-file") => atlcliPublishingIntegration({
+    bundlePath,
+    manifestPath: join(root, "private", "inventory.json"),
+    routePrefix: "/publish",
+    expectedConfig: expectedConfig(root, { base: "/", outputProfile }),
+  });
+  try {
+    expect(() => integrationFor("portable-file").hooks["astro:config:done"]({
+      config: resolvedConfig(root, { base: "/", build: { format: "file" }, trailingSlash: "never" }),
+    })).not.toThrow();
+    expect(() => integrationFor("directory").hooks["astro:config:done"]({
+      config: resolvedConfig(root, { base: "/" }),
+    })).not.toThrow();
+    expect(() => integrationFor("portable-file").hooks["astro:config:done"]({
+      config: resolvedConfig(root, { base: "/docs", build: { format: "file" }, trailingSlash: "never" }),
+    })).toThrow("base mismatch");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("injects a static catch-all only for an operator-owned layout entrypoint", () => {
   const withoutLayout = atlcliPublishingIntegration({
     bundlePath: "/bundle.json",

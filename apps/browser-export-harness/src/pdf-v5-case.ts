@@ -6,6 +6,7 @@ import {
 } from "@atlcli/pdf/browser";
 import { PDF_SETTINGS_BLOCKS, PDF_SETTINGS_METADATA } from "@atlcli/export-fixtures";
 import { MemoryOutputSink } from "./memory-output.js";
+import { deterministicClock as clock } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 import { buildPdfV5RuntimeFixture } from "./pdf-v5-runtime-fixture.js";
 import { sha256Hex } from "./digest.js";
@@ -17,10 +18,6 @@ const noAssets: PdfAssetResolver = {
   },
 };
 
-function clock(): () => number {
-  let tick = 0;
-  return () => tick++;
-}
 
 async function compile(runtime: Awaited<ReturnType<typeof buildPdfV5RuntimeFixture>>["runtime"]) {
   const output = new MemoryOutputSink();

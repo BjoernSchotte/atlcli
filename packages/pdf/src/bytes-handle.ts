@@ -235,7 +235,7 @@ export function pdfBytesFromUint8Array(
  * decision at one boundary.
  */
 export function pdfBytesFromBlob(source: Blob, options: { mimeType?: string } = {}): PdfBytesHandle {
-  const mimeType = options.mimeType ?? source.type ?? PDF_MIME;
+  const mimeType = options.mimeType ?? (source.type || PDF_MIME);
   return handle(source.size, mimeType, {
     blob: async () => source,
     bytes: async () => new Uint8Array(await source.arrayBuffer()),

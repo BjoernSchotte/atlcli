@@ -11,9 +11,6 @@
  *    conflict that only exists inside the shell that produced it is a lost
  *    edit, which is the one outcome the write path must never have.
  */
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { readFileSync } from "node:fs";
 import {
   ERROR_CODES,
   fail,
@@ -34,11 +31,10 @@ import {
   resolveCachePaths,
 } from "@atlcli/confluence-vfs";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { DEFAULT_CACHE_DIR } from "./wiki-sh.js";
 import { unknownSubcommand } from "./unknown-subcommand.js";
 
 type Flags = Record<string, string | boolean | string[]>;
-
-const DEFAULT_CACHE_DIR = join(homedir(), ".atlcli", "vfs");
 
 export async function handleWikiVfs(
   args: string[],
@@ -224,16 +220,7 @@ async function handleConflicts(
 
 function pick(store: ConflictStore, target: string | undefined) {
   if (!target) return store.list()[0];
-  if (target.includes("/")) {
-    const record = store.read(target);
-    if (record) return record;
-    try {
-      readFileSync(target, "utf8");
-    } catch {
-      return undefined;
-    }
-    return undefined;
-  }
+  if (target.includes("/")) return store.read(target);
   return store.forPage(target).at(-1);
 }
 

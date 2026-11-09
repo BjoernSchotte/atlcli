@@ -588,7 +588,3 @@ export async function runPdfExport(
   }
   return report;
 }
-
-export function hasPdfRelevantBlocks(blocks: ExportBlock[]): boolean {
-  return blocks.length > 0;
-}

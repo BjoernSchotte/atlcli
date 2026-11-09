@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { handleWikiImport } from "./wiki-import.js";
+import { handleWikiImport, resolvePolicyFromFlags } from "./wiki-import.js";
 import {
   buildDocxFixture,
   p,
@@ -381,5 +381,16 @@ describe("wiki import (preview mode, offline)", () => {
 
     const parsed = JSON.parse(stdout.join(""));
     expect(parsed.preview.target.title).toBe("notes");
+  });
+});
+
+describe("wiki import policy flags", () => {
+  it("reads the documented --comments mode into the policy", () => {
+    expect(resolvePolicyFromFlags({}, { json: false }).options.comments).toBe("auto");
+    for (const mode of ["inline", "footer", "skip"]) {
+      const policy = resolvePolicyFromFlags({ comments: mode }, { json: false });
+      expect(policy.options.comments as string).toBe(mode);
+      expect(policy.provenance["options.comments"]).toBe("cli");
+    }
   });
 });

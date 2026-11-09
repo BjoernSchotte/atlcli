@@ -838,7 +838,9 @@ function paragraphNumbering(
   // numId 0 means "no numbering" (an override that removes list membership).
   if (!numId || numId === "0") return undefined;
   const rawIlvl = ilvlEl ? Number(attr(ilvlEl, "val", W_NS)) : 0;
-  const ilvl = Number.isInteger(rawIlvl) && rawIlvl >= 0 ? rawIlvl : 0;
+  // OOXML allows levels 0..8; clamp so an untrusted value cannot drive
+  // unbounded list nesting or index past the nine numbering counters.
+  const ilvl = Number.isInteger(rawIlvl) && rawIlvl >= 0 ? Math.min(rawIlvl, 8) : 0;
   const level = ctx.numbering.get(numId)?.get(ilvl);
   if (level === undefined) {
     report(

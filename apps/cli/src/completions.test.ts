@@ -76,3 +76,29 @@ test("root completion offers every root help command (#279)", async () => {
   for (const [name] of ROOT_COMMANDS) expect(roots).toContain(name);
   expect(getCompletions(["re"])).toEqual(["release-info", "research"]);
 });
+
+describe("completions match what the handlers read", () => {
+  test("wiki offers export and import", () => {
+    expect(getCompletions(["wiki", ""])).toEqual(expect.arrayContaining(["export", "import"]));
+  });
+
+  test("log tail and log clear offer only implemented flags", () => {
+    const tail = getCompletions(["log", "tail", "--"]);
+    expect(tail).toContain("--limit");
+    for (const flag of ["--lines", "--global", "--type"]) expect(tail).not.toContain(flag);
+    const clear = getCompletions(["log", "clear", "--"]);
+    expect(clear).toContain("--confirm");
+    expect(clear).not.toContain("--all");
+  });
+
+  test("plugin install offers no scope flags", () => {
+    const install = getCompletions(["plugin", "install", "--"]);
+    expect(install).not.toContain("--global");
+    expect(install).not.toContain("--local");
+  });
+
+  test("auth login and wiki mount offer their documented flags", () => {
+    expect(getCompletions(["auth", "login", "--"])).toEqual(expect.arrayContaining(["--bearer", "--username", "--deployment", "--ca-file", "--insecure"]));
+    expect(getCompletions(["wiki", "mount", "--"])).toEqual(expect.arrayContaining(["--transport", "--sync-writes"]));
+  });
+});

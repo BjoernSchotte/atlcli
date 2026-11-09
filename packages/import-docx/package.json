@@ -23,10 +23,8 @@
     "@atlcli/core": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/import-core": "workspace:*",
+    "pizzip": "3.3.0",
     "saxes": "6.0.0",
     "yaml": "2.9.1"
-  },
-  "devDependencies": {
-    "pizzip": "3.3.0"
   }
 }

@@ -34,7 +34,6 @@ import {
 } from "./messages.js";
 import {
   INITIAL_ACTION_PALETTE_STATE_V1,
-  createActionInputValuesV1,
   reduceActionPaletteStateV1,
   validateActionPaletteInputV1,
   type ActionInputErrorCodeV1,

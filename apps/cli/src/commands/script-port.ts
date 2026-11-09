@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { LookupAddress, LookupOptions } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { lstat, mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
@@ -747,14 +748,20 @@ export function createCliScriptPort(
       return (await readState(stateDir, store))[key];
     },
     async stateSet(store, key, value) {
-      const state = await readState(stateDir, store);
-      if (value === undefined) delete state[key];
-      else state[key] = value;
       const file = statePath(stateDir, store);
-      await mkdir(dirname(file), { recursive: true, mode: 0o700 });
-      const tmp = `${file}.${process.pid}.tmp`;
-      await writeFile(tmp, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
-      await rename(tmp, file);
+      // Per-issue plans apply in parallel: one read-modify-write at a time per store.
+      // ponytail: in-process chain only; a file lock if several atlcli processes share a store.
+      const write = (stateWrites.get(file) ?? Promise.resolve()).catch(() => {}).then(async () => {
+        const state = await readState(stateDir, store);
+        if (value === undefined) delete state[key];
+        else state[key] = value;
+        await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+        const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+        await writeFile(tmp, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+        await rename(tmp, file);
+      });
+      stateWrites.set(file, write);
+      return write;
     },
     render: createTemplateRenderer(profileName),
   };
@@ -944,6 +951,9 @@ async function inside(root: string, path: string): Promise<string> {
   if (target !== base && !target.startsWith(base + sep)) throw new Error(`${path} leads outside the working directory`);
   return target;
 }
+
+/** Tail of the write chain per state file. */
+const stateWrites = new Map<string, Promise<void>>();
 
 const statePath = (dir: string, store: string) => {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(store) || store.includes("..")) throw new Error(`Invalid state store name: ${JSON.stringify(store)}`);

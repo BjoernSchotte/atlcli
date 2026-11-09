@@ -11,10 +11,10 @@
 import { join, dirname, relative, resolve, sep } from "path";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile, unlink } from "fs/promises";
-import { createSyncDb, hasSyncDb, getStorageType } from "./sync-db/index.js";
+import { createSyncDb, hasSyncDb } from "./sync-db/index.js";
 import type { SyncDbAdapter, PageRecord, AttachmentRecord, LinkRecord } from "./sync-db/types.js";
 import { extractLinksFromStorage } from "./link-extractor-storage.js";
-import { extractLinksFromMarkdown, compareLinkSets, type MarkdownLinkWithResolution } from "./link-extractor-markdown.js";
+import { extractLinksFromMarkdown, type MarkdownLinkWithResolution } from "./link-extractor-markdown.js";
 
 const ATLCLI_DIR = ".atlcli";
 const CONFIG_FILE = "config.json";
@@ -484,8 +484,6 @@ export async function writeState(
   state: AtlcliState
 ): Promise<void> {
   const atlcliPath = join(dir, ATLCLI_DIR);
-  const syncDbPath = join(atlcliPath, SYNC_DB_FILE);
-  const statePath = join(atlcliPath, STATE_FILE);
 
   // Always use sync.db (creates it if needed, auto-migrates from state.json)
   const adapter = await createSyncDb(atlcliPath, { autoMigrate: true });
@@ -511,7 +509,8 @@ async function writeStateToAdapter(
 
   // Get existing pages to detect deletions
   const existingPages = await adapter.listPages();
-  const existingPageIds = new Set(existingPages.map((p) => p.pageId));
+  const existingById = new Map(existingPages.map((p) => [p.pageId, p]));
+  const existingPageIds = new Set(existingById.keys());
   const newPageIds = new Set(Object.keys(state.pages));
 
   // Delete removed pages
@@ -523,7 +522,8 @@ async function writeStateToAdapter(
 
   // Upsert pages and attachments
   for (const [pageId, pageState] of Object.entries(state.pages)) {
-    const existing = await adapter.getPage(pageId);
+    // listPages() omits inaccessible pages, so only unlisted ids need a lookup.
+    const existing = existingById.get(pageId) ?? (await adapter.getPage(pageId));
     const record = pageStateToRecord(pageId, pageState, existing);
     await adapter.upsertPage(record);
 
@@ -583,7 +583,7 @@ function pageStateToRecord(
     parentId: state.parentId ?? null,
     ancestors: state.ancestors || [],
     hasAttachments: state.hasAttachments ?? false,
-    contentType: existingRecord?.contentType ?? "page",
+    contentType: state.contentType ?? existingRecord?.contentType ?? "page",
     // Preserve existing metadata or use defaults
     createdBy: existingRecord?.createdBy ?? null,
     createdAt: existingRecord?.createdAt ?? now,

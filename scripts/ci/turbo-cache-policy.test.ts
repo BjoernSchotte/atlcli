@@ -76,6 +76,8 @@ describe("Turbo cache policy", () => {
     expect(cli.tasks.build?.inputs).toContain("build.ts");
     // The CLI embeds the agent skill from the repository root.
     expect(cli.tasks.build?.inputs).toContain("$TURBO_ROOT$/skills/**");
+    // The CLI statically imports the built-in plugins from the repository root.
+    expect(cli.tasks.build?.inputs).toContain("$TURBO_ROOT$/plugins/**");
   });
 
   it("hashes local app files and the complete external browser-build closure", async () => {

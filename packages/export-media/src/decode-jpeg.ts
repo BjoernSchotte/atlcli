@@ -64,13 +64,22 @@ class ScanReader {
     return value;
   }
 
-  restart(): void {
+  /**
+   * Consume the RSTn marker at a restart-interval boundary. `marker` is only
+   * set when a refill ran into it, so when the interval ended exactly on a
+   * byte boundary it is still in the stream: peek it. Returns false when no
+   * RSTn is there — the scan is then not decodable faithfully.
+   */
+  restart(): boolean {
     this.#bitBuffer = 0;
     this.#bitCount = 0;
-    if (this.marker >= 0xd0 && this.marker <= 0xd7) {
-      this.marker = 0;
-      this.offset += 2; // consume the RSTn marker itself
+    if (this.marker === 0 && this.data[this.offset] === 0xff) {
+      this.marker = this.data[this.offset + 1] ?? 0;
     }
+    if (this.marker < 0xd0 || this.marker > 0xd7) return false;
+    this.marker = 0;
+    this.offset += 2; // consume the RSTn marker itself
+    return true;
   }
 }
 
@@ -232,7 +241,7 @@ function decodeScan(
   for (let mcuY = 0; mcuY < mcusY; mcuY += 1) {
     for (let mcuX = 0; mcuX < mcusX; mcuX += 1) {
       if (restartInterval && mcusSinceRestart === restartInterval) {
-        reader.restart();
+        if (!reader.restart()) return null;
         for (const component of components) component.pred = 0;
         mcusSinceRestart = 0;
       }

@@ -5,12 +5,10 @@
  * case the other rejects.
  *
  * `must-reject`  — vectors the sanitizers reject today (the regex baseline).
- * `pending-006`  — CSS-carried references (`url(...)` / `@import`) the current
- *                  regex-based sanitizer cannot reliably close. These are the
- *                  forcing function for 006 to move `assertSafeSvg` to a real
- *                  XML/CSS-aware parser (see 011 PLAN, Risks). The test records
- *                  them as a documented gap today and tightens to `must-reject`
- *                  once 006's shared sanitizer lands and closes them.
+ * `pending-006`  — a documented gap the sanitizers cannot close yet. EMPTY
+ *                  today: the CSS-carried references (`url(...)` / `@import`)
+ *                  it used to hold moved to `must-reject` once the shared
+ *                  sanitizer closed them. Kept so a new gap can be pinned.
  */
 export type SvgCaseCategory = "must-reject" | "pending-006";
 

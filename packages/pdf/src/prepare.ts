@@ -467,7 +467,7 @@ export async function preparePdfDocument(
         reportAsset(filename);
         return { ...node, assetPath, fallbackLabel };
       } catch (error) {
-        if (error instanceof AssetBudgetExceededError) throw error;
+        if (error instanceof AssetBudgetExceededError || error instanceof AssetPipelineError) throw error;
         if (isAbortError(error)) throw error;
         reportAsset(filename);
         notes.push({
@@ -907,6 +907,10 @@ function countAssetBlocks(blocks: ExportBlock[]): number {
         case "table":
           countCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          break;
+        case "unknown":
+          if (block.body) walk(block.body);
+          for (const frame of block.extensionFrames ?? []) walk(frame.content);
           break;
         case "divider":
           if (block.label) walk([block.label]);

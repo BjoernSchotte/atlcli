@@ -95,6 +95,15 @@ describe("renderDiagram — theme (Task 4)", () => {
 });
 
 describe("renderDiagram — unsupported types are named", () => {
+  it("does not treat inherited Object.prototype keys as diagram types", async () => {
+    for (const token of ["constructor", "toString"]) {
+      expect(await renderDiagram(`${token}\n  A --> B`)).toEqual({
+        kind: "failed",
+        reason: `unrecognized diagram type "${token}"`,
+      });
+    }
+  });
+
   const cases: Array<[string, string]> = [
     ["gantt\n  title A\n  section S\n  T :a1, 2026-01-01, 30d", "Gantt"],
     ['pie title Pets\n  "Dogs" : 50', "Pie"],

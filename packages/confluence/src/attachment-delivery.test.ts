@@ -337,6 +337,24 @@ describe("createPageAttachmentWriterV1", () => {
     expect(error.retryAfterMs).toBe(status === 429 ? 2_000 : undefined);
   });
 
+  test.each([
+    ["-1", undefined],
+    ["99999999", 60_000],
+    ["0", 1_000],
+  ] as const)("clamps Retry-After %s like the shared parser", async (header, expected) => {
+    const writer = createPageAttachmentWriterV1(async () =>
+      jsonResponse({ message: "slow down" }, {
+        status: 429,
+        headers: { "Content-Type": "application/json", "Retry-After": header },
+      })
+    );
+    const error = expectDeliveryError(
+      await rejected(writer.findByFilename({ pageId: "123", filename: "report.pdf" })),
+      "rate-limited",
+    );
+    expect(error.retryAfterMs).toBe(expected);
+  });
+
   test("classifies a product-reported oversized response", async () => {
     const writer = createPageAttachmentWriterV1(async () =>
       jsonResponse({ message: "Attachment exceeds the maximum file size" }, {

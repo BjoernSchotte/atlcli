@@ -15,6 +15,9 @@ describe("@atlcli/export-blocks", () => {
     expect(EXPORT_NOTE_CODES).toContain("unknown-macro");
     expect(canonicalExportNoteCode("pdf-image-skipped")).toBe("image-embed-failed");
     expect(canonicalExportNoteCode("not-an-export-note")).toBeUndefined();
+    // Inherited Object.prototype keys are not retired codes.
+    expect(canonicalExportNoteCode("constructor")).toBeUndefined();
+    expect(canonicalExportNoteCode("toString")).toBeUndefined();
   });
 
   test("keeps pure renderer-neutral display helpers deterministic", () => {

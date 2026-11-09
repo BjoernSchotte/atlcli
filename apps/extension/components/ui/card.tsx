@@ -20,14 +20,6 @@ export function CardTitle({ className, ...props }: DivProps): React.JSX.Element 
   return <div className={cn("text-sm font-semibold leading-tight", className)} {...props} />;
 }
 
-export function CardDescription({ className, ...props }: DivProps): React.JSX.Element {
-  return <div className={cn("text-xs text-muted-foreground", className)} {...props} />;
-}
-
 export function CardContent({ className, ...props }: DivProps): React.JSX.Element {
   return <div className={cn("p-3 pt-0", className)} {...props} />;
-}
-
-export function CardFooter({ className, ...props }: DivProps): React.JSX.Element {
-  return <div className={cn("flex items-center gap-2 p-3 pt-0", className)} {...props} />;
 }

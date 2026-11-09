@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { ResearchContractError } from "./contracts.js";
@@ -48,7 +48,9 @@ function clone<T>(value: T): T {
 
 function sessionDirectoryName(sessionId: string): string {
   const match = /^research-session:([A-Za-z0-9._-]{1,120})$/.exec(sessionId);
-  if (!match) invalid("Research session ID is invalid.");
+  // "." and ".." would resolve the session root to the store root (or above),
+  // which eraseDeleted removes recursively.
+  if (!match || match[1] === "." || match[1] === "..") invalid("Research session ID is invalid.");
   return match[1]!;
 }
 

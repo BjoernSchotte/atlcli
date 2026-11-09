@@ -37,7 +37,7 @@ import {
   type PdfTextCharacterFact,
   type PdfTextCharacterFactV2,
 } from "../contracts.js";
-import { resolvePdfAnalysisBudgets, type PdfAnalysisBudgets } from "../budgets.js";
+import { PDF_ANALYSIS_BUDGET_REVISION, resolvePdfAnalysisBudgets, type PdfAnalysisBudgets } from "../budgets.js";
 import { digestPdfCanonical, digestPdfFacts, digestPdfFactsV2 } from "../canonical.js";
 import { PdfObjectError } from "../pdf-objects.js";
 import { flattenStructureV2 } from "../structure.js";
@@ -862,24 +862,30 @@ function extractOutline(
   control: Control,
 ): PdfFactsV1["outline"] {
   const outline: PdfFactsV1["outline"] = [];
-  const visit = (bookmark: number, depth: number): void => {
-    if (!bookmark) return;
-    budget(
-      depth <= control.budgets.maxOutlineDepth,
-      "outline depth",
-      depth,
-      control.budgets.maxOutlineDepth,
-    );
-    check(control, "outline");
-    countEvidence(control);
-    const destination = module.FPDFBookmark_GetDest(document, bookmark);
-    outline.push({
-      title: readUtf16(module, (pointer, bytes) => module.FPDFBookmark_GetTitle(bookmark, pointer, bytes)),
-      pageIndex: destination ? module.FPDFDest_GetDestPageIndex(document, destination) : null,
-      depth,
-    });
-    visit(module.FPDFBookmark_GetFirstChild(document, bookmark), depth + 1);
-    visit(module.FPDFBookmark_GetNextSibling(document, bookmark), depth);
+  // Siblings are walked in a loop so stack depth follows nesting (bounded by
+  // maxOutlineDepth), not the attacker-controlled sibling count.
+  const visit = (first: number, depth: number): void => {
+    for (
+      let bookmark = first;
+      bookmark;
+      bookmark = module.FPDFBookmark_GetNextSibling(document, bookmark)
+    ) {
+      budget(
+        depth <= control.budgets.maxOutlineDepth,
+        "outline depth",
+        depth,
+        control.budgets.maxOutlineDepth,
+      );
+      check(control, "outline");
+      countEvidence(control);
+      const destination = module.FPDFBookmark_GetDest(document, bookmark);
+      outline.push({
+        title: readUtf16(module, (pointer, bytes) => module.FPDFBookmark_GetTitle(bookmark, pointer, bytes)),
+        pageIndex: destination ? module.FPDFDest_GetDestPageIndex(document, destination) : null,
+        depth,
+      });
+      visit(module.FPDFBookmark_GetFirstChild(document, bookmark), depth + 1);
+    }
   };
   visit(module.FPDFBookmark_GetFirstChild(document, 0), 0);
   return outline;
@@ -932,7 +938,7 @@ async function analyzePdfiumV2(
     throw new PdfImportError("pdf/wasm-digest-mismatch", "PDFium WASM digest does not match the reviewed artifact.");
   }
   const optionsDigest = await digestPdfCanonical({
-    budgetRevision: "atlcli.pdf-analysis-budgets/1",
+    budgetRevision: PDF_ANALYSIS_BUDGET_REVISION,
     budgets,
     policyRevision: PDF_ANALYSIS_POLICY_REVISION_V2,
   });
@@ -1386,7 +1392,7 @@ async function analyzePdfiumV1(
   );
   const budgets = resolvePdfAnalysisBudgets(options.budgets);
   const optionsDigest = await digestPdfCanonical({
-    budgetRevision: "atlcli.pdf-analysis-budgets/1",
+    budgetRevision: PDF_ANALYSIS_BUDGET_REVISION,
     budgets,
     policyRevision: PDF_ANALYSIS_POLICY_REVISION,
   });

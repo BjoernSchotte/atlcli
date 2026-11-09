@@ -108,4 +108,41 @@ describe("DocxExportPanel — honest preview wiring", () => {
     );
     expect(warmOptions).toEqual([{ codeTheme: "github-dark" }]);
   });
+
+  it("reports a failed template delete instead of leaving an unhandled rejection", async () => {
+    const store: DocxTemplateStore = {
+      async get() {
+        return { name: "report.docx", uploadedAt: 1, bytes: new ArrayBuffer(8) };
+      },
+      async put(record) {
+        return { ...record, uploadedAt: 1 };
+      },
+      async remove() {
+        throw new Error("idb is gone");
+      },
+    };
+    const port: DocxExportPort = {
+      async scan() {
+        return SCAN;
+      },
+      async run() {
+        throw new Error("export is not part of this view test");
+      },
+    };
+
+    await dom.render(
+      <I18nProvider locale="en">
+        <ExportRunsProvider identity="docx-delete-failure">
+          <DocxExportPanel port={port} store={store} page={null} pageUrl={null} />
+        </ExportRunsProvider>
+      </I18nProvider>
+    );
+    await dom.flush();
+
+    await dom.click("template-delete");
+    await dom.flush();
+
+    expect(dom.find("template-error").textContent).toContain("idb is gone");
+    expect(dom.find("template-name").textContent).toBe("report.docx");
+  });
 });

@@ -15,7 +15,6 @@ import {
   OutputOptions,
   output,
   fail,
-  hasFlag,
   ERROR_CODES,
 } from "@atlcli/core";
 import {

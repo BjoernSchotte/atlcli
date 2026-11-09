@@ -42,9 +42,14 @@ export function resolveCaptionLang(raw: string | undefined): { lang: CaptionLang
   };
 }
 
-/** Escape text for a `<w:t>` / attribute value. */
+/** Escape text for a `<w:t>`. Does NOT encode `"`: use {@link escAttr} in attributes. */
 export function esc(s: string): string {
   return encodeXmlText(s);
+}
+
+/** Escape text for a double-quoted XML attribute value. */
+function escAttr(s: string): string {
+  return esc(s).replace(/"/g, "&quot;");
 }
 
 // ---------------------------------------------------------------------------
@@ -309,7 +314,7 @@ export function hyperlinkField(url: string, innerRuns: string, tooltip?: string)
  * counter value; `bookmarkEnd` must reuse the same id.
  */
 export function bookmarkStart(id: number, name: string): string {
-  return `<w:bookmarkStart w:id="${id}" w:name="${esc(name)}"/>`;
+  return `<w:bookmarkStart w:id="${id}" w:name="${escAttr(name)}"/>`;
 }
 
 /** The `<w:bookmarkEnd>` matching a {@link bookmarkStart} with the same `id`. */
@@ -328,8 +333,8 @@ export function internalHyperlink(
   innerRuns: string,
   tooltip?: string,
 ): string {
-  const screenTip = tooltip !== undefined ? ` w:tooltip="${esc(tooltip)}"` : "";
-  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1"${screenTip}>${innerRuns}</w:hyperlink>`;
+  const screenTip = tooltip !== undefined ? ` w:tooltip="${escAttr(tooltip)}"` : "";
+  return `<w:hyperlink w:anchor="${escAttr(anchor)}" w:history="1"${screenTip}>${innerRuns}</w:hyperlink>`;
 }
 
 /** A hard page break paragraph (`pageBreak` block → `<w:br w:type="page"/>`). */

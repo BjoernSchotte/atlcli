@@ -9,8 +9,8 @@
  * Used during `wiki docs pull` to populate the users table.
  */
 
-import type { ConfluenceClient, UserInfo, ConfluencePageDetails, PageHistory } from "./client.js";
-import type { SyncDbAdapter, UserRecord, PageRecord, ContributorRecord } from "./sync-db/types.js";
+import type { ConfluenceClient, UserInfo, ConfluencePageDetails } from "./client.js";
+import type { SyncDbAdapter, UserRecord, ContributorRecord } from "./sync-db/types.js";
 
 /**
  * Default TTL for user status cache (7 days in milliseconds).

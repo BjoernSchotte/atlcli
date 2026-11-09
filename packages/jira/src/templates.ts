@@ -13,7 +13,7 @@
 import { homedir } from "os";
 import { join } from "path";
 import { existsSync } from "fs";
-import { mkdir, readdir, readFile, writeFile, unlink, rename as fsRename, cp } from "fs/promises";
+import { mkdir, readdir, readFile, writeFile, unlink } from "fs/promises";
 import type { TemplateVariable } from "@atlcli/core";
 import type { JiraIssue, AdfDocument } from "./types";
 
@@ -688,40 +688,6 @@ export async function deleteTemplate(name: string): Promise<void> {
 }
 
 // ============ Conversion Functions ============
-
-/** Fields that should never be captured in templates */
-const EXCLUDED_FIELDS = new Set([
-  "key",
-  "id",
-  "self",
-  "status",
-  "created",
-  "updated",
-  "creator",
-  "reporter",
-  "assignee",
-  "resolution",
-  "resolutiondate",
-  "project",
-  "subtasks",
-  "issuelinks",
-  "changelog",
-  "worklog",
-  "comment",
-  "attachment",
-  "votes",
-  "watches",
-  "timetracking",
-  "aggregatetimespent",
-  "aggregatetimeoriginalestimate",
-  "aggregatetimeestimate",
-  "aggregateprogress",
-  "progress",
-  "lastViewed",
-  "environment",
-  "thumbnail",
-  "statuscategorychangedate",
-]);
 
 /**
  * Convert a Jira issue to a template.

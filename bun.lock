@@ -65,6 +65,7 @@
         "atlcli": "src/index.ts",
       },
       "dependencies": {
+        "@atlcli/audit": "workspace:*",
         "@atlcli/change-set": "workspace:*",
         "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
@@ -82,6 +83,7 @@
         "@atlcli/import-core": "workspace:*",
         "@atlcli/import-docx": "workspace:*",
         "@atlcli/import-pdf": "workspace:*",
+        "@atlcli/jinja": "workspace:*",
         "@atlcli/jira": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/pdf-compiler-browser": "workspace:*",
@@ -189,9 +191,6 @@
         "@atlcli/jira": "workspace:*",
         "@atlcli/script-runtime": "workspace:*",
       },
-      "devDependencies": {
-        "@jitl/quickjs-ng-wasmfile-debug-sync": "0.32.0",
-      },
     },
     "packages/change-set": {
       "name": "@atlcli/change-set",
@@ -225,7 +224,6 @@
         "markdown-it-task-lists": "^2.1.1",
         "turndown": "^7.1.2",
         "turndown-plugin-gfm": "^1.0.2",
-        "yaml": "^2.8.2",
       },
     },
     "packages/confluence-vfs": {
@@ -257,7 +255,6 @@
       "dependencies": {
         "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
-        "@atlcli/core": "workspace:*",
         "@atlcli/diagram": "workspace:*",
         "@atlcli/export-blocks": "workspace:*",
         "@atlcli/export-charts-tanstack": "workspace:*",
@@ -347,6 +344,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
+        "@atlcli/export-blocks": "workspace:*",
       },
     },
     "packages/export-media": {
@@ -409,11 +407,9 @@
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/import-core": "workspace:*",
+        "pizzip": "3.3.0",
         "saxes": "6.0.0",
         "yaml": "2.9.1",
-      },
-      "devDependencies": {
-        "pizzip": "3.3.0",
       },
     },
     "packages/import-pdf": {

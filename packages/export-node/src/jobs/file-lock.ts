@@ -33,11 +33,15 @@ function abortReason(signal?: AbortSignal): unknown {
 async function delay(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) throw abortReason(signal);
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
+    const onAbort = (): void => {
       clearTimeout(timer);
       reject(abortReason(signal));
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 

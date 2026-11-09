@@ -2,6 +2,7 @@ import {
   unzipDocx,
   type ExportReport,
 } from "@atlcli/docx/browser-entry";
+import { equalBytes } from "./digest.js";
 
 export interface DocxParityRun {
   bytes: Uint8Array;
@@ -66,10 +67,6 @@ function firstByteDifference(left: Uint8Array, right: Uint8Array): number {
     if (left[index] !== right[index]) return index;
   }
   return length;
-}
-
-function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
 }
 
 /** Fail closed unless the job reproduces every decompressed DOCX part and report field. */

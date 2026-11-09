@@ -18,33 +18,7 @@ import {
   removeHookHandler,
   statusHookHandler,
 } from "./git-hooks.js";
-import type { AtlcliPlugin, CommandDefinition, Subcommand } from "./types.js";
-
-// Nested subcommand structure for git hook commands
-const hookSubcommands: Subcommand[] = [
-  {
-    name: "install",
-    description: "Install post-commit hook for auto-push to Confluence",
-    flags: [
-      {
-        name: "force",
-        alias: "f",
-        description: "Overwrite existing hook",
-      },
-    ],
-    handler: installHookHandler,
-  },
-  {
-    name: "remove",
-    description: "Remove the post-commit hook",
-    handler: removeHookHandler,
-  },
-  {
-    name: "status",
-    description: "Show git hook status",
-    handler: statusHookHandler,
-  },
-];
+import type { AtlcliPlugin, CommandDefinition } from "./types.js";
 
 // Git command with nested subcommands
 const gitCommands: CommandDefinition[] = [

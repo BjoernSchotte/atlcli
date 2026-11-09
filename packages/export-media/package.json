@@ -10,8 +10,7 @@
   },
   "sideEffects": false,
   "files": [
-    "dist",
-    "README.md"
+    "dist"
   ],
   "type": "module",
   "exports": {

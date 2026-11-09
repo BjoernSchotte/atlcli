@@ -33,6 +33,7 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
-    "@atlcli/confluence": "workspace:*"
+    "@atlcli/confluence": "workspace:*",
+    "@atlcli/export-blocks": "workspace:*"
   }
 }

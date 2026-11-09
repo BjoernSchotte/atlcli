@@ -500,6 +500,31 @@ describe("neutral runPdfExport", () => {
     expect(report.embeddedImages).toBe(1);
   });
 
+  it("counts an image nested inside an unresolved macro body (embeddedImages)", async () => {
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+      0, 0, 0, 1, 0, 0, 0, 1,
+    ]);
+    const report = await runPdfExport(
+      {
+        blocks: [{
+          type: "unknown",
+          macroName: "acme",
+          body: [{ type: "image", source: { kind: "attachment", filename: "in.png" }, alt: "In" }],
+        }],
+        metadata,
+        filename: "Test.pdf",
+      },
+      {
+        assets: { resolve: async () => ({ bytes: png, mediaType: "image/png" }) },
+        compiler: { compile: async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" }) },
+        output: { emit: async () => {} },
+      }
+    );
+    expect(report.embeddedImages).toBe(1);
+  });
+
   it("lets abort win after a late compiler result", async () => {
     const controller = new AbortController();
     let emitted = 0;
