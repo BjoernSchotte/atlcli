@@ -1044,8 +1044,8 @@ describe("CI workflow policy", () => {
         if (node) floors.add(node);
       }
     }
-    expect([...floors]).toEqual([">=22.23.4"]);
-    expect(reusable).toMatch(/node-version: "22\.23\.4"/);
+    expect([...floors]).toEqual([">=26.13.0"]);
+    expect(reusable).toMatch(/node-version: "26\.13\.0"/);
   });
 
   it("does not let a non-blocking benchmark mask M1 acceptance", async () => {
