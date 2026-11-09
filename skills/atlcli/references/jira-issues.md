@@ -141,7 +141,7 @@ Supported constructs:
 | `@[Jane Doe](accountId)` | Mention (needs the account ID) |
 | `{jira:PROJ-123}` | Smart link to the issue (a bare `/browse/PROJ-123` URL and `<https://…>` also become smart links) |
 | `{date:2026-12-31}` | Date |
-| `{status:green}Done{status}` | Status lozenge |
+| `{status:green}Done{status}` | Status lozenge (named color or custom `#RRGGBB`) |
 | `:smile:` | Emoji |
 | `:::info`, `:::note`, `:::warning`, `:::error`, `:::success` (`:::tip` is success), closed by `:::` | Panel |
 | `:::expand Title` … `:::` | Expand |

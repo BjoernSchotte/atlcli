@@ -1,6 +1,6 @@
 /** Pinned schema package used to generate and review the ADF inventory. */
 export const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
-export const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+export const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 export const PINNED_ADF_NODE_TYPES = [
   "blockCard",

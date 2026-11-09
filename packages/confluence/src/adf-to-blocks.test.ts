@@ -869,6 +869,17 @@ describe("adfToBlocks", () => {
     }));
   });
 
+  it("decodes a custom #RRGGBB status color allowed by ADF schema 57.x", () => {
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [{ type: "status", attrs: { text: "Custom", color: "#00B8D9" } }],
+    }]));
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [{ type: "status", text: "Custom", color: "#00b8d9" }],
+    }]);
+  });
+
   it("maps emoji, dates, mentions, status, and cards without interpreting literal colon text", () => {
     const result = adfToBlocks(doc([
       {
