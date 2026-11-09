@@ -1,0 +1,26 @@
+diff --git a/dist/langsmith-BCgECepG.js b/dist/langsmith-BCgECepG.js
+index 00f6b9d77924bfda842bdc187b2f3cdfa5778b72..ff1ed1b9bf9ffab73c78c3aa0f4b149e72eca0e2 100644
+--- a/dist/langsmith-BCgECepG.js
++++ b/dist/langsmith-BCgECepG.js
+@@ -4679,7 +4679,7 @@ function createTaskTool(options) {
+ 	}
+ 	async function runTask(input, config) {
+ 		const { description, subagent_type } = input;
+-		const currentState = getCurrentTaskInput();
++		const currentState = getCurrentTaskInput(config);
+ 		if (currentState[FORKED_CONTEXT_KEY]) return FORK_RECURSION_REFUSAL;
+ 		if (!(subagent_type in subagentGraphs)) {
+ 			const allowedTypes = Object.keys(subagentGraphs).map((k) => `\`${k}\``).join(", ");
+diff --git a/dist/langsmith-CAjAu64d.cjs b/dist/langsmith-CAjAu64d.cjs
+index 17a899030709f7db01fd3adb3dfbece937e1bb5b..fcd700ca5c9ca0602614b135310795e5f34ab7ab 100644
+--- a/dist/langsmith-CAjAu64d.cjs
++++ b/dist/langsmith-CAjAu64d.cjs
+@@ -4702,7 +4702,7 @@ function createTaskTool(options) {
+ 	}
+ 	async function runTask(input, config) {
+ 		const { description, subagent_type } = input;
+-		const currentState = (0, _langchain_langgraph.getCurrentTaskInput)();
++		const currentState = (0, _langchain_langgraph.getCurrentTaskInput)(config);
+ 		if (currentState[FORKED_CONTEXT_KEY]) return FORK_RECURSION_REFUSAL;
+ 		if (!(subagent_type in subagentGraphs)) {
+ 			const allowedTypes = Object.keys(subagentGraphs).map((k) => `\`${k}\``).join(", ");
