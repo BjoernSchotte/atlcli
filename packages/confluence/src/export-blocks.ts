@@ -2412,4 +2412,3 @@ function addMark(nodes: InlineNode[], mark: InlineMark): InlineNode[] {
     return node;
   });
 }
-
