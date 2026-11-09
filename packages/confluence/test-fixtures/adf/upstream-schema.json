@@ -2532,7 +2532,8 @@
               "type": "string"
             },
             "color": {
-              "enum": ["neutral", "purple", "blue", "red", "yellow", "green"]
+              "type": "string",
+              "pattern": "^(neutral|purple|blue|red|yellow|green|#[0-9a-fA-F]{6})$"
             },
             "localId": {
               "type": "string"

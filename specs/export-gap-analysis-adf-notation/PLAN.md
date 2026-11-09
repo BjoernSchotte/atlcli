@@ -53,7 +53,7 @@ The plan is grounded in these contracts:
 
 - Confluence REST v2 exposes `GET /api/v2/pages/{id}?body-format=atlas_doc_format`; `body.atlas_doc_format.value` is a JSON string.
 - The pinned stable-schema baseline in the gap analysis is
-  `@atlaskit/adf-schema@56.1.15`, containing 43 semantic nodes and 17 marks;
+  `@atlaskit/adf-schema@57.7.39`, containing 43 semantic nodes and 17 marks;
   the same verified package's exact `multiBodiedExtension` and
   `extensionFrame` definitions are pinned separately from `stage-0.json`.
 - `packages/confluence/src/export-blocks.ts` owns the shared `ExportBlock`, `InlineNode`, `ExportNote`, and Storage walker contracts.
@@ -1663,6 +1663,21 @@ previous pin while `stage-0.json` contains exact `multiBodiedExtension` and
 `extensionFrame` definitions linked by the official ADF structure index. The
 pin now records and independently drift-checks those two definitions without
 inflating the 43-node stable inventory.
+
+Pin bump to `@atlaskit/adf-schema@57.7.39` recorded on 2026-11-09: the weekly
+watchguard reported three findings. In stable `full.json` the only semantic
+change is `status_node.attrs.color`, which now also accepts a custom
+`#RRGGBB` value besides the six named colors. The validator, the Jira
+`{status:#RRGGBB}` dialect, and the DOCX badge fill accept it; the decoder
+and PDF already carried hex colors. The node and mark inventory is unchanged.
+In `stage-0.json`, `extensionFrame` content now also references
+`rule_with_attrs_node` (a `rule` with color/style/weight) and the new
+`bodiedRule` node. Those are experimental Stage-0 nodes that the official ADF
+structure index does not list, and Stage-0 also allows them at the root and in
+panels or cells, where the stable contract does not. So they stay outside the
+supported contract: the validator keeps rejecting them in every position,
+including inside `extensionFrame`. The pinned Stage-0 hash records the reviewed
+definitions.
 
 The bounded validator enforces root/parent placement, exact attributes, marks,
 and child families. The neutral model retains ordered frame boundaries,

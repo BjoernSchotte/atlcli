@@ -138,6 +138,7 @@ describe("validateAdf", () => {
           attrs: { text: "Ready", color: "purple", localId: "", style: "mixedCase" },
         },
         { type: "placeholder", attrs: { text: "", localId: "" } },
+        { type: "status", attrs: { text: "Custom", color: "#00b8D9" } },
       ],
     }]))).not.toThrow();
 
@@ -147,6 +148,9 @@ describe("validateAdf", () => {
       { type: "status", attrs: { text: "", color: "green" } },
       { type: "status", attrs: { text: "Ready", color: "GREEN" } },
       { type: "status", attrs: { text: "Ready", color: "teal" } },
+      { type: "status", attrs: { text: "Ready", color: "#fff" } },
+      { type: "status", attrs: { text: "Ready", color: "00B8D9" } },
+      { type: "status", attrs: { text: "Ready", color: "#00B8D9 " } },
       { type: "status", attrs: { text: "Ready", color: "green", style: 1 } },
       { type: "status", attrs: { text: "Ready", color: "green", localId: 1 } },
       { type: "placeholder", attrs: {} },
