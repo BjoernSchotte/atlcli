@@ -36,18 +36,16 @@ function addDateClauses(
   if (window?.to) clauses.push(`${field} <= "${window.to}"`);
 }
 
-const JIRA_RESEARCH_STOP_WORDS = new Set([
-  "and",
-  "confluence",
-  "der",
-  "die",
-  "for",
-  "jira",
-  "project",
-  "the",
-  "ticket",
-  "und",
-  "work",
+// Function words and question scaffolding the chat keeps in its keyword
+// variants. A term disjunction is only as good as its terms: "den" or
+// "Seiten" match nearly every page and would crowd the real topic terms out
+// of the six-term cap.
+const RESEARCH_TEXT_STOP_WORDS = new Set([
+  "about", "and", "are", "auf", "aus", "bei", "behandeln", "das", "dem", "den",
+  "der", "des", "die", "ein", "eine", "einen", "for", "from", "für", "how",
+  "ist", "mit", "nach", "nenne", "oder", "page", "pages", "project", "seite",
+  "seiten", "sind", "space", "the", "ticket", "und", "von", "was", "welche",
+  "what", "which", "wie", "with", "work", "zwei", "confluence", "jira",
 ]);
 
 /**
@@ -63,7 +61,7 @@ export function jiraResearchTextTerms(value: string): string[] {
       .filter(
         (term) =>
           term.length >= 3 &&
-          !JIRA_RESEARCH_STOP_WORDS.has(term.toLocaleLowerCase())
+          !RESEARCH_TEXT_STOP_WORDS.has(term.toLocaleLowerCase())
       )
   )].slice(0, 6);
 }
@@ -107,8 +105,19 @@ export function buildResearchCql(
   if (query.ancestorId) clauses.push(`ancestor = ${query.ancestorId}`);
   if (query.parentId) clauses.push(`parent = ${query.parentId}`);
   if (query.text) {
+    // The exact phrase alone found nothing for keyword-bag queries (the chat's
+    // "question-terms" variant): Confluence requires every word of a quoted or
+    // multi-word `text ~` value. Keep the phrase for precision and OR in the
+    // individual terms for recall; drop terms naming the scoped spaces.
     const phrase = `\\"${escapeResearchCqlLiteral(query.text)}\\"`;
-    clauses.push(`(title ~ "${phrase}" OR text ~ "${phrase}")`);
+    const spaceKeys = new Set(scope.confluenceSpaceKeys.map((key) => key.toLocaleLowerCase()));
+    const terms = jiraResearchTextTerms(query.text)
+      .filter((term) => !spaceKeys.has(term.toLocaleLowerCase()))
+      .map((term) => `text ~ "${escapeResearchCqlLiteral(term)}"`);
+    clauses.push(`(${[`title ~ "${phrase}"`, `text ~ "${phrase}"`, ...terms].join(" OR ")})`);
+    // Without ORDER BY Confluence ranks text matches by relevance; recency
+    // order would fill the page with recently edited pages matching any term.
+    return clauses.join(" AND ");
   }
   return `${clauses.join(" AND ")} ORDER BY lastmodified DESC`;
 }
