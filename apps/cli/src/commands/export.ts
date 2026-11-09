@@ -6,7 +6,7 @@ import {
 } from "@atlcli/code-highlight/registry";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -25,7 +25,6 @@ import {
 } from "@atlcli/core";
 import {
   ConfluenceClient,
-  ConfluencePageDetails,
   SpaceHomepageError,
   composeChapters,
   confluenceTreeSource,
@@ -35,7 +34,6 @@ import {
   fetchExportTree,
   pageBodyToBlocks,
   resolveExportMentions,
-  storageToBlocks,
   type ComposeOptions,
   type ConfluenceExportPageDetails,
   type ExportBlock,
@@ -123,11 +121,6 @@ import { unknownSubcommand } from "./unknown-subcommand.js";
  */
 function templateFlag(flags: Record<string, string | boolean | string[]>): string | undefined {
   return getFlag(flags, "template") ?? getFlag(flags, "t");
-}
-
-/** Whether `--template` (or `-t`) was passed at all. See {@link templateFlag}. */
-function hasTemplateFlag(flags: Record<string, string | boolean | string[]>): boolean {
-  return hasFlag(flags, "template") || hasFlag(flags, "t");
 }
 
 export async function handleExport(

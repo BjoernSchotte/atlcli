@@ -1,4 +1,10 @@
 import type { CanonicalJsonValue } from "./types.js";
+import {
+  CanonicalJsonErrorV1,
+  fail,
+  positiveBudget,
+  propertyValue,
+} from "./canonical-json-guards.js";
 
 export interface CanonicalJsonBudgetV1 {
   maxDepth: number;
@@ -15,35 +21,9 @@ Readonly<CanonicalJsonBudgetV1> = Object.freeze({
   maxOutputBytes: 16 * 1024 * 1024,
 });
 
-export class CanonicalJsonErrorV1 extends Error {
-  constructor(
-    public readonly path: string,
-    message: string,
-  ) {
-    super(`${path}: ${message}`);
-    this.name = "CanonicalJsonErrorV1";
-  }
-}
+export { CanonicalJsonErrorV1 };
 
 const encoder = new TextEncoder();
-
-function fail(path: string, message: string): never {
-  throw new CanonicalJsonErrorV1(path, message);
-}
-
-function positiveBudget(value: number, name: keyof CanonicalJsonBudgetV1): void {
-  if (!Number.isSafeInteger(value) || value < 1) {
-    fail("$", `${name} must be a positive safe integer`);
-  }
-}
-
-function propertyValue(object: object, key: string, path: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(object, key);
-  if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
-    return fail(path, "expected an enumerable data property");
-  }
-  return descriptor.value;
-}
 
 /**
  * Serialize plain JSON data with recursively sorted object keys.

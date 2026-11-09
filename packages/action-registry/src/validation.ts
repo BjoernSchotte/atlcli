@@ -1,3 +1,4 @@
+import { deepFreeze } from "./deep-freeze.js";
 import {
   ACTION_SCHEMA_VERSION,
   ACTION_UNAVAILABLE_TEXTS,
@@ -863,16 +864,6 @@ function cloneJsonValue(
   } finally {
     ancestors.delete(value);
   }
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object" && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value as Record<string, unknown>)) {
-      deepFreeze(child);
-    }
-  }
-  return value;
 }
 
 export function validateActionModuleV1(

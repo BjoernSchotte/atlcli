@@ -25,6 +25,7 @@
  * than a regex, because a details macro can legitimately contain other macros
  * and a non-greedy `</ac:structured-macro>` match would slice the wrong one.
  */
+import { textOf } from "./xml-text.js";
 import { parseXml, type XmlElement, type XmlNode } from "./export-blocks.js";
 
 /** One Page Properties macro instance on a page. */
@@ -52,12 +53,6 @@ function isElement(node: XmlNode): node is XmlElement {
 
 function tag(node: XmlNode): string {
   return isElement(node) ? node.name.toLowerCase() : "";
-}
-
-/** Flatten an element's text, collapsing whitespace (values are plain text). */
-function textOf(node: XmlNode): string {
-  if (node.type === "text") return node.text;
-  return node.children.map(textOf).join("");
 }
 
 function normalize(s: string): string {

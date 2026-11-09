@@ -42,7 +42,6 @@ import {
   type PdfAssetResolver,
   type PdfExportMetadata,
   type PdfExportReport,
-  type PdfOutputSink,
   type PdfOutputPolicyV1,
   type PdfResolvedAsset,
 } from "@atlcli/pdf";
@@ -471,7 +470,7 @@ export async function resolveScope(
  * throws past this boundary, never calls `fail()`.
  */
 export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
-  const { client, request, baseUrl, strict, opts } = args;
+  const { client, baseUrl, strict, opts } = args;
   const startedAt = Date.now();
 
   const controller = new AbortController();

@@ -13,15 +13,11 @@
  * non-greedy close-tag regex mis-slices nested macros; see `parseXml` docs).
  * Isomorphic; exported from both barrels.
  */
+import { textOf } from "./xml-text.js";
 import { parseXml, type XmlElement, type XmlNode } from "./export-blocks.js";
 
 function isElement(node: XmlNode): node is XmlElement {
   return node.type === "element";
-}
-
-function textOf(node: XmlNode): string {
-  if (node.type === "text") return node.text;
-  return node.children.map(textOf).join("");
 }
 
 /**

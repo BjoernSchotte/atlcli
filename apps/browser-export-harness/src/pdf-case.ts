@@ -1,6 +1,5 @@
 import {
   runPdfExport,
-  type PdfAssetResolver,
   type PdfCompilePort,
   type PdfCompilerDiagnostic,
   type PdfExportReport,
@@ -11,16 +10,14 @@ import { ATLCLI_TYPST_TEMPLATE, validatePdfOutput } from "@atlcli/pdf/internal";
 import { PDF_BLOCKS, PDF_FILENAME, PDF_METADATA } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes } from "./digest.js";
-import { deterministicClock } from "./pdf-run.js";
+import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const compiler = new HarnessPdfWorkerClient();
 
-const noAssets: PdfAssetResolver = {
-  async resolve(): Promise<never> {
-    throw new Error("The deterministic harness fixture has no external assets.");
-  },
-};
+const noAssets = failingPdfAssets(
+  "The deterministic harness fixture has no external assets.",
+);
 
 function assertNormalizedDiagnostic(diagnostic: PdfCompilerDiagnostic): void {
   const raw = diagnostic as PdfCompilerDiagnostic & { package?: unknown; range?: unknown };

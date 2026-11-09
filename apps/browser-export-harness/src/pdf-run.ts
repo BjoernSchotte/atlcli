@@ -16,11 +16,18 @@ import {
 } from "@atlcli/pdf/browser";
 import { MemoryOutputSink } from "./memory-output.js";
 
-export const noPdfAssets: PdfAssetResolver = {
-  async resolve(): Promise<never> {
-    throw new Error("The deterministic conformance fixture has no external assets.");
-  },
-};
+/** An asset resolver for fixtures without assets: any lookup fails with `message`. */
+export function failingPdfAssets(message: string): PdfAssetResolver {
+  return {
+    async resolve(): Promise<never> {
+      throw new Error(message);
+    },
+  };
+}
+
+export const noPdfAssets = failingPdfAssets(
+  "The deterministic conformance fixture has no external assets.",
+);
 
 export function deterministicClock(): () => number {
   let tick = 0;

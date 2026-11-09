@@ -280,15 +280,25 @@ export async function normalizeHybridPdfFactsV2(
   const reconciliations: PageReconciliation[] = [];
   const pagesWithHybridResidual = new Set<number>();
 
+  // Audited once: ownership is keyed by page, and every evidence entry the loop
+  // below adds belongs to the page being processed, so a page's entries are the
+  // same whether the audit runs before the loop or at that page's iteration.
+  const initialAudit = auditPdfCharacterOwnershipV2(facts, evidence);
+  const taggedOwnedByPage = new Map<number, Set<number>>();
+  for (const entry of initialAudit.ownership) {
+    if (
+      entry.basis !== "tagged"
+      || !entry.targetNodeId
+      || entry.outcome === "reported"
+      || entry.outcome === "rejected"
+    ) continue;
+    let owned = taggedOwnedByPage.get(entry.pageIndex);
+    if (!owned) taggedOwnedByPage.set(entry.pageIndex, owned = new Set());
+    owned.add(entry.characterIndex);
+  }
+
   for (const page of facts.pages) {
-    const initialAudit = auditPdfCharacterOwnershipV2(facts, evidence);
-    const taggedOwned = new Set(initialAudit.ownership.filter((entry) =>
-      entry.pageIndex === page.index
-      && entry.basis === "tagged"
-      && entry.targetNodeId
-      && entry.outcome !== "reported"
-      && entry.outcome !== "rejected"
-    ).map((entry) => entry.characterIndex));
+    const taggedOwned = taggedOwnedByPage.get(page.index) ?? new Set<number>();
     // An unresolved cell of a linearized table is already in its row text and
     // inside the table's rendered region, and a figure's caption is projected
     // with its figure; geometry must not project either again.

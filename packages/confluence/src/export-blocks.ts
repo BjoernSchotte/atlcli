@@ -1,3 +1,4 @@
+import { applyInlineColors, inlineCssColor } from "./inline-colors.js";
 import { mermaidMacroSource } from "./mermaid-macro.js";
 /**
  * Intermediate export model (spec 004 Task 2, also consumed by spec 005 Typst).
@@ -2407,34 +2408,6 @@ function addMark(nodes: InlineNode[], mark: InlineMark): InlineNode[] {
     }
     if (node.type === "link") {
       return { ...node, content: addMark(node.content, mark) };
-    }
-    return node;
-  });
-}
-
-function inlineCssColor(style: string, property: "color" | "background-color"): string | undefined {
-  const escaped = property.replace("-", "\\-");
-  const value = style.match(new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, "i"))?.[1];
-  return normalizeExportColor(value);
-}
-
-/** Apply span colors to every nested text run, including link labels. */
-function applyInlineColors(
-  nodes: InlineNode[],
-  colors: { color?: string; backgroundColor?: string }
-): InlineNode[] {
-  return nodes.map((node) => {
-    if (node.type === "text") {
-      return {
-        ...node,
-        ...(colors.color && !node.color ? { color: colors.color } : {}),
-        ...(colors.backgroundColor && !node.backgroundColor
-          ? { backgroundColor: colors.backgroundColor }
-          : {}),
-      };
-    }
-    if (node.type === "link") {
-      return { ...node, content: applyInlineColors(node.content, colors) };
     }
     return node;
   });

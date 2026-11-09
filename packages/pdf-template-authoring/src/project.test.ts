@@ -4,7 +4,10 @@ import {
   BUILTIN_PDF_DESIGN,
   BUILTIN_PDF_TEMPLATE_MANIFEST,
   PDF_TEMPLATE_CAPABILITIES_V1,
-} from "@atlcli/pdf/internal";
+// Relative on purpose: @atlcli/pdf depends on this package, so declaring it
+// here (even as a devDependency) is a build cycle. The test only borrows the
+// built-in design, manifest and capability catalog as fixtures.
+} from "../../pdf/src/internal.js";
 import {
   canonicalCapabilityJson,
   computeCapabilityCatalogDigest,

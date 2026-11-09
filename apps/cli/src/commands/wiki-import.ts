@@ -47,7 +47,6 @@ import {
   SplitTitleConflictError,
   buildGovernance,
   governanceHasEffects,
-  principalId,
   renderGovernanceSummary,
   renderPolicySummary,
   resolveImportPolicy,
@@ -80,7 +79,6 @@ import {
   recipeApplicability,
   renderSemanticDiffLines,
   validateBaseline,
-  type ImportedPageBaselineV1,
 } from "@atlcli/import-docx";
 
 interface RecipeInfo {

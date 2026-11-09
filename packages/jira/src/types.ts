@@ -5,7 +5,7 @@
  * https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/
  */
 
-import type { AdfDocument, AdfNode } from "@atlcli/change-set/adf";
+import type { AdfDocument } from "@atlcli/change-set/adf";
 
 export type { AdfDocument, AdfNode } from "@atlcli/change-set/adf";
 

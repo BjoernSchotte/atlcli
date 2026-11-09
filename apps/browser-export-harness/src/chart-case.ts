@@ -11,20 +11,17 @@ import {
 } from "@atlcli/export-fixtures";
 import {
   runPdfExport,
-  type PdfAssetResolver,
   type PdfCompilePort,
   type PdfSourceBundle,
 } from "@atlcli/pdf/browser";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { MemoryOutputSink } from "./memory-output.js";
-import { deterministicClock as clock } from "./pdf-run.js";
+import { deterministicClock as clock, failingPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
-const noAssets: PdfAssetResolver = {
-  async resolve(): Promise<never> {
-    throw new Error("The chart acceptance corpus has no external assets.");
-  },
-};
+const noAssets = failingPdfAssets(
+  "The chart acceptance corpus has no external assets.",
+);
 
 
 export interface ChartCaseResult {

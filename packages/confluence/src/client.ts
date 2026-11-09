@@ -4935,21 +4935,25 @@ export class ConfluenceClient {
    * @param spaceKey - The space key (e.g., "DOCSY")
    */
   async getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]> {
-    // Find homepage using CQL (page with no parent in the space)
-    const searchResults = await this.searchPages(
-      `space = "${spaceKey}" AND type = page ORDER BY created ASC`,
-      50
-    );
-
-    let homepageId: string | undefined;
-
-    for (const result of searchResults) {
-      // Check if this page has no parent (homepage)
-      const pageDetails = await this.getPage(result.id);
-      if (!pageDetails.parentId && (!pageDetails.ancestors || pageDetails.ancestors.length === 0)) {
-        homepageId = result.id;
-        break;
+    // Find homepage using CQL (the oldest page with no parent in the space).
+    const cql = `space = "${spaceKey}" AND type = page ORDER BY created ASC`;
+    const batch = 50;
+    const firstParentless = async (results: ConfluenceSearchResult[]): Promise<string | undefined> => {
+      for (const result of results) {
+        const pageDetails = await this.getPage(result.id);
+        if (!pageDetails.parentId && (!pageDetails.ancestors || pageDetails.ancestors.length === 0)) {
+          return result.id;
+        }
       }
+      return undefined;
+    };
+
+    // The homepage is normally the oldest page, so look at the first batch
+    // before draining the whole space (this runs on every poll).
+    const head = await this.searchPages(cql, batch, { maxResults: batch });
+    let homepageId = await firstParentless(head);
+    if (!homepageId && head.length === batch) {
+      homepageId = await firstParentless((await this.searchPages(cql, batch)).slice(batch));
     }
 
     if (!homepageId) {

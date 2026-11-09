@@ -2,21 +2,18 @@
 import {
   runPdfExport,
   validatePdfOutput,
-  type PdfAssetResolver,
 } from "@atlcli/pdf/browser";
 import { PDF_SETTINGS_BLOCKS, PDF_SETTINGS_METADATA } from "@atlcli/export-fixtures";
 import { MemoryOutputSink } from "./memory-output.js";
-import { deterministicClock as clock } from "./pdf-run.js";
+import { deterministicClock as clock, failingPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 import { buildPdfV5RuntimeFixture } from "./pdf-v5-runtime-fixture.js";
 import { sha256Hex } from "./digest.js";
 
 const compiler = new HarnessPdfWorkerClient();
-const noAssets: PdfAssetResolver = {
-  async resolve(): Promise<never> {
-    throw new Error("The revision-5 browser fixture has no document assets.");
-  },
-};
+const noAssets = failingPdfAssets(
+  "The revision-5 browser fixture has no document assets.",
+);
 
 
 async function compile(runtime: Awaited<ReturnType<typeof buildPdfV5RuntimeFixture>>["runtime"]) {

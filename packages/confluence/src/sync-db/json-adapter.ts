@@ -23,7 +23,6 @@ import {
   type ContentPropertyRecord,
   type PageFilter,
   type SyncDbExport,
-  type SimilarityResult,
   type InaccessibleReason,
   type JsonAdapterConfig,
 } from "./types.js";
@@ -60,7 +59,6 @@ const DEFAULT_STORAGE: JsonStorage = {
  * JSON adapter for sync database.
  */
 export class JsonAdapter implements SyncDbAdapter {
-  private readonly config: JsonAdapterConfig;
   private readonly filePath: string;
   private storage: JsonStorage = { ...DEFAULT_STORAGE };
   private dirty = false;
@@ -70,7 +68,6 @@ export class JsonAdapter implements SyncDbAdapter {
   readonly supportsVectors = false;
 
   constructor(config: JsonAdapterConfig) {
-    this.config = config;
     this.filePath = join(config.atlcliDir, "sync-state.json");
   }
 
