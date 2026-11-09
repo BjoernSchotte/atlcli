@@ -143,6 +143,32 @@ it("skips an unchanged file when the page changed remotely", async () => {
   expect(puts).toEqual([]);
 }, 90_000);
 
+it("does not re-send a page that did not change locally or remotely", async () => {
+  // A directory push used to PUT every tracked page: a new version each time,
+  // with the body replaced by its (lossy) markdown round trip.
+  const push = await runCli(["wiki", "docs", "push", "--json"]);
+  expect(push.exitCode, push.stdout).toBe(0);
+  expect(puts).toEqual([]);
+  expect(storage).toBe("<p>Original body.</p>");
+}, 90_000);
+
+it("a pull that initializes the directory remembers its --page-id scope", async () => {
+  // Without `docs init`: the auto-init used to store only the space, so the
+  // next scope-less pull fetched the whole space into the directory.
+  const fresh = await mkdtemp(join(tmpdir(), "atlcli-conflict-fresh-"));
+  try {
+    const pull = await runCli(["wiki", "docs", "pull", ".", "--page-id", PAGE_ID, "--skip-user-check", "--json"], fresh);
+    expect(pull.exitCode, `${pull.stdout}${pull.stderr}`).toBe(0);
+    const config = JSON.parse(await readFile(join(fresh, ".atlcli", "config.json"), "utf8"));
+    expect(config.scope).toEqual({ type: "page", pageId: PAGE_ID });
+    expect(config.space).toBe("DOCSY");
+    const again = await runCli(["wiki", "docs", "pull", "--skip-user-check", "--json"], fresh);
+    expect(again.exitCode, `${again.stdout}${again.stderr}`).toBe(0);
+  } finally {
+    await rm(fresh, { recursive: true, force: true });
+  }
+}, 90_000);
+
 it("--force overwrites the remote edit on purpose", async () => {
   remoteEdit();
   await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));

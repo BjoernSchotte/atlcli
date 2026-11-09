@@ -40,7 +40,6 @@ import {
   // Local storage
   findAtlcliDir,
   getAtlcliPath,
-  initAtlcliDir,
   isInitialized,
   readConfig,
   readState,
@@ -677,7 +676,13 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     const profile = getActiveProfile(appConfig, profileName);
     if (profile) {
       await ensureDir(outDir);
-      await initAtlcliDir(outDir, {
+      // Persist the scope that was asked for. Storing only the space made the
+      // next scope-less pull of a single page or tree fetch the whole space.
+      await initAtlcliDirV2(outDir, {
+        scope:
+          scope.type === "page" ? { type: "page", pageId: scope.pageId }
+          : scope.type === "tree" ? { type: "tree", ancestorId: scope.ancestorId }
+          : { type: "space" },
         space,
         baseUrl: profile.baseUrl,
         profile: profile.name,
@@ -2527,6 +2532,7 @@ async function pushFile(params: {
   const attachmentRefs = extractAttachmentRefs(markdownContent);
   const attachmentsDir = join(pageDir, getAttachmentsDirName(pageFilename));
   const updatedDrawioVersions = new Map<string, number>();
+  let attachmentsChanged = false;
 
   if (pageId) {
     // Upload attachments before updating the page
@@ -2573,6 +2579,7 @@ async function pushFile(params: {
 
           if (existing) {
             // Update existing attachment
+            attachmentsChanged = true;
             const updatedAttachment = await client.updateAttachment({
               attachmentId: existing.id,
               pageId,
@@ -2595,6 +2602,7 @@ async function pushFile(params: {
             }
           } else {
             // Upload new attachment
+            attachmentsChanged = true;
             const newAttachment = await client.uploadAttachment({
               pageId,
               filename,
@@ -2650,6 +2658,7 @@ async function pushFile(params: {
           if (!existsSync(localAttPath) && !referencedFiles.has(attState.filename)) {
             try {
               await client.deleteAttachment(attId);
+              attachmentsChanged = true;
               removeAttachmentState(state, pageId, attId);
               await deleteAttachmentBase(atlcliDir, pageId, attId, extname(attState.filename));
               if (!opts.json) {
@@ -2723,6 +2732,20 @@ async function pushFile(params: {
           }
         }
       }
+    }
+
+    // Nothing changed locally: do not write. Re-sending an unchanged page
+    // creates a new version and replaces the stored body with its markdown
+    // round trip, which is lossy for content markdown cannot express.
+    if (
+      !force
+      && !pageMoved
+      && !attachmentsChanged
+      && existingPageState !== undefined
+      && existingPageState.baseHash === hashContent(normalizeMarkdown(markdownContent))
+      && (!frontmatter?.title || frontmatter.title === existingPageState.title)
+    ) {
+      return "skipped";
     }
 
     // Update existing page
