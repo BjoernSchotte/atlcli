@@ -178,7 +178,7 @@ describe("research query builders", () => {
       'project in ("DEMO") AND updated >= "2026-01-01" AND updated <= "2026-07-30" AND (text ~ "OTHER") ORDER BY updated DESC, key ASC'
     );
     expect(buildResearchCql(scope, { text })).toBe(
-      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND (title ~ "\\"\\" OR project = \\"OTHER\\"\\"" OR text ~ "\\"\\" OR project = \\"OTHER\\"\\"") ORDER BY lastmodified DESC'
+      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND (title ~ "\\"\\" OR project = \\"OTHER\\"\\"" OR text ~ "\\"\\" OR project = \\"OTHER\\"\\"" OR text ~ "OTHER")'
     );
   });
 
@@ -207,8 +207,20 @@ describe("research query builders", () => {
         text: "Lead Pipeline: Modernisierung",
       }),
     ).toContain(
-      '(title ~ "\\"Lead Pipeline: Modernisierung\\"" OR text ~ "\\"Lead Pipeline: Modernisierung\\"")',
+      '(title ~ "\\"Lead Pipeline: Modernisierung\\"" OR text ~ "\\"Lead Pipeline: Modernisierung\\"" OR text ~ "Lead" OR text ~ "Pipeline" OR text ~ "Modernisierung")',
     );
+  });
+
+  it("finds Confluence pages for a chat keyword-bag query instead of demanding the exact phrase", () => {
+    // Regression: the chat's "question-terms" variant is a keyword bag; as a
+    // quoted phrase it matched no page, so `atlcli chat` reported 0 hits.
+    const cql = buildResearchCql({ ...request().scope, confluenceSpaceKeys: ["DOCSY"] }, {
+      text: "Seiten DOCSY behandeln den Export nach Word oder PDF zwei",
+    });
+    expect(cql).toContain('OR text ~ "Export" OR text ~ "Word" OR text ~ "PDF")');
+    expect(cql).not.toContain('text ~ "DOCSY"');
+    expect(cql).not.toContain('text ~ "den"');
+    expect(cql).not.toContain("ORDER BY");
   });
 
   it("compiles closed typed labels and Confluence hierarchy filters into the already-clamped host query", () => {

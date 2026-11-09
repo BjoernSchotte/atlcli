@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-07-23T19:11:14.412Z",
+  "reviewedAt": "2026-11-09T18:01:53.902Z",
   "canonicalUrl": "https://go.atlassian.com/adf-json-schema",
-  "resolvedVersionedUrl": "https://unpkg.com/@atlaskit/adf-schema@56.1.15/dist/json-schema/v1/full.json",
+  "resolvedVersionedUrl": "https://unpkg.com/@atlaskit/adf-schema@57.7.39/dist/json-schema/v1/full.json",
   "package": {
     "name": "@atlaskit/adf-schema",
-    "version": "56.1.15",
-    "integrity": "sha512-boR3IAsr/2SITxTm/tswhL+Z3KCDxShJB7E31JqWmq2nbkQYv7CRRTvmmVh7RU0ndqo79NAQRPkCcTsAfErMRg==",
-    "shasum": "33b9a9aee50b138bba60bfd1b7c797dba340de27",
-    "tarball": "https://registry.npmjs.org/@atlaskit/adf-schema/-/adf-schema-56.1.15.tgz",
+    "version": "57.7.39",
+    "integrity": "sha512-ueDMkn+Ocx2sr3V0Cuyv9vgorky4Wqiyt9zW6GRUKGPiE04iGybNRO1gBcBt7gk89wivumymQaDE1z/6nmlk1g==",
+    "shasum": "0c0386ae95dffea82a9b696382efb9b651bbaba6",
+    "tarball": "https://registry.npmjs.org/@atlaskit/adf-schema/-/adf-schema-57.7.39.tgz",
     "schemaPath": "package/dist/json-schema/v1/full.json"
   },
   "hashes": {
-    "rawSha256": "75f080928a970250eb8289e9cae5374e3c2a6c0ac3ca22478acaa9d3f39484a3",
-    "canonicalSha256": "762ecde4f2c06a70c7e08a62c69e70632768c2e03893f7c8bb44f901899cb291"
+    "rawSha256": "5128562b75278c8a83e7e3619a570205bc80d59696985ec31a7a7883cff66fbe",
+    "canonicalSha256": "8b7ea38d58dadd66c743db5fd61d106bd0dad1a932c8675bf7e3e1778592c23e"
   },
   "stage0Extensions": {
     "schemaPath": "package/dist/json-schema/v1/stage-0.json",
@@ -21,7 +21,7 @@
       "extensionFrame_node",
       "multiBodiedExtension_node"
     ],
-    "canonicalSha256": "9278b8348e10bde016bf32cfbd3396a71d1234f8dfef3e3658e62763030e78ef"
+    "canonicalSha256": "e789ae42c75a13f14edf33d86c45eefbdc097777a6b3890d07368d6b11279101"
   },
   "inventory": {
     "nodes": [
@@ -243,7 +243,7 @@
       "paragraph_with_no_marks_node": "0b4fa1f5c598487f8d85b61db1f466ce6b86ce074e56ae4061cd8f567e945638",
       "placeholder_node": "94b1ddb5e2fbb6b7a9800720cb21082281caa3850422d2ef175b950abd0d72ad",
       "rule_node": "83f836dd981d95ddb4e71bda2a48d644aad2bbe90f27419d3a7cbea87386a699",
-      "status_node": "45dd944efad73e621f7676574cf57d563a24d5254f95d4715e06e81c5b070058",
+      "status_node": "a8e8089435ef76173c544937bd5468c373d96a66fe8557fb2e68372d4b734226",
       "strike_mark": "0a490d9d3d249c558cf8d9c4e6985743f5437e8f576d7a5c0d9c64c9fc5341dc",
       "strong_mark": "d99a8759fe13ceb147f4de6045e4a16501de9e41d37a21dc50b8b58c8d27d129",
       "subsup_mark": "3437942ae01d796e260a7fa920a4fc3f8d40ea09e9dc423e83baf7ee0f8befba",

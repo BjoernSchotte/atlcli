@@ -23,7 +23,7 @@ import {
   plainCodeHighlight,
   type CodeHighlightRuntime,
 } from "@atlcli/code-highlight/contract";
-import { dataTable, parseStyleNames, resolveCaptionLang } from "./ooxml.js";
+import { dataTable, parseStyleNames, resolveCaptionLang, statusBadgeRun } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 import { collectDocxCodeHighlightUsage } from "./code-highlighting.js";
 
@@ -2767,5 +2767,13 @@ describe("dataTable — tblPr schema child order (spec 006 G3)", () => {
     expect(xml).toContain('<w:tblW w:w="1" w:type="dxa"/>');
     expect(xml.match(/<w:gridCol w:w="1"\/>/g)).toHaveLength(2);
     expect(xml).not.toContain('<w:gridCol w:w="0"/>');
+  });
+});
+
+describe("statusBadgeRun", () => {
+  it("fills named and custom #RRGGBB status colors (ADF schema 57.x)", () => {
+    expect(statusBadgeRun("Done", "green")).toContain('w:fill="E3FCEF"');
+    expect(statusBadgeRun("Custom", "#00b8d9")).toContain('w:fill="00B8D9"');
+    expect(statusBadgeRun("Odd", "teal")).toContain('w:fill="DFE1E6"');
   });
 });

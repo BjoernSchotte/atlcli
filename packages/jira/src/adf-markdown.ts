@@ -50,7 +50,7 @@ const FENCE_REGEX = /^[ \t]{0,3}(`{3,}|~{3,})/;
 // Inline dialect (same shapes as the Confluence converter).
 const INLINE_DIALECT_REGEX = new RegExp(
   [
-    /\{status:(\w+)\}([^{]*)\{status\}/.source,
+    /\{status:(#[0-9a-fA-F]{6}|\w+)\}([^{]*)\{status\}/.source,
     /\{date:(\d{4}-\d{2}-\d{2})\}/.source,
     /\{jira:([A-Z][A-Z0-9_]*-\d+)(?:\|[^}]*)?\}/.source,
     /(?<=^|[\s(])(:[a-z][a-z0-9_+-]*:)(?=$|[\s).,!?;])/.source,

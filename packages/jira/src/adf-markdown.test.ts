@@ -44,6 +44,7 @@ describe("markdown → ADF → markdown", () => {
     ["mention", "ping @[Jane Doe](557058:abc-def) please"],
     ["date", "due {date:2026-12-31}"],
     ["status", "state {status:green}Done{status} and {status:grey}Todo{status}"],
+    ["custom status color", "state {status:#00b8d9}Custom{status}"],
     ["jira key", "see {jira:ATLCLI-42}"],
     ["emoji", "nice :smile: work"],
     ["panel", ":::warning\nCareful **here**.\n:::"],
@@ -64,6 +65,11 @@ describe("markdown → ADF → markdown", () => {
     expect(roundtrip("- [ ] open\n- [x] done")).toBe("- [ ] open\n- [x] done");
     expect(roundtrip("ping @[Jane Doe](557058:abc-def)")).toBe("ping @[Jane Doe](557058:abc-def)");
     expect(roundtrip("see {jira:ATLCLI-42}")).toBe("see {jira:ATLCLI-42}");
+    // ADF schema 57.x status colors may be #RRGGBB; they must stay a status node.
+    expect(roundtrip("{status:#00b8d9}Custom{status}")).toBe("{status:#00b8d9}Custom{status}");
+    const custom = markdownToAdf("{status:#00B8D9}Custom{status}", { baseUrl: BASE });
+    expect(() => validateAdf(custom)).not.toThrow();
+    expect(JSON.stringify(custom)).toContain('"color":"#00b8d9"');
     expect(roundtrip(":::warning\nCareful.\n:::")).toBe(":::warning\nCareful.\n:::");
     expect(roundtrip("| A | B |\n| --- | --- |\n| 1 | 2 |")).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |");
   });

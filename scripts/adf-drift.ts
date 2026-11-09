@@ -31,9 +31,9 @@ export const ADF_FIXTURE_MANIFEST_PATH = resolve(ADF_FIXTURE_DIR, "fixtures.json
 export const PINNED_PACKAGE_METADATA = Object.freeze({
   name: PINNED_ADF_SCHEMA_PACKAGE,
   version: PINNED_ADF_SCHEMA_VERSION,
-  integrity: "sha512-boR3IAsr/2SITxTm/tswhL+Z3KCDxShJB7E31JqWmq2nbkQYv7CRRTvmmVh7RU0ndqo79NAQRPkCcTsAfErMRg==",
-  shasum: "33b9a9aee50b138bba60bfd1b7c797dba340de27",
-  tarball: "https://registry.npmjs.org/@atlaskit/adf-schema/-/adf-schema-56.1.15.tgz",
+  integrity: "sha512-ueDMkn+Ocx2sr3V0Cuyv9vgorky4Wqiyt9zW6GRUKGPiE04iGybNRO1gBcBt7gk89wivumymQaDE1z/6nmlk1g==",
+  shasum: "0c0386ae95dffea82a9b696382efb9b651bbaba6",
+  tarball: "https://registry.npmjs.org/@atlaskit/adf-schema/-/adf-schema-57.7.39.tgz",
   schemaPath: "package/dist/json-schema/v1/full.json",
 });
 

@@ -737,7 +737,8 @@ export function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?:
     blue: "DEEBFF",
     purple: "EAE6FF",
   };
-  const fill = fillByColor[color.toLowerCase()] ?? "DFE1E6";
+  // ADF schema 57.x also allows a custom `#RRGGBB` status color.
+  const fill = fillByColor[color.toLowerCase()] ?? /^#([0-9a-f]{6})$/i.exec(color)?.[1]?.toUpperCase() ?? "DFE1E6";
   const fontSize = fontSizeHalfPointsXml(fontSizeHalfPoints);
   return (
     `<w:r><w:rPr><w:b/>${fontSize}<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/></w:rPr>` +

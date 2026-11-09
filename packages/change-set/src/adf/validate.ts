@@ -600,18 +600,12 @@ function validateKnownNodeShape(
         `${path}.attrs.text`,
       );
     }
+    // Pinned schema 57.x: `^(neutral|purple|blue|red|yellow|green|#[0-9a-fA-F]{6})$`.
     const color = attrs?.color;
-    if (
-      color !== "neutral" &&
-      color !== "purple" &&
-      color !== "blue" &&
-      color !== "red" &&
-      color !== "yellow" &&
-      color !== "green"
-    ) {
+    if (typeof color !== "string" || !/^(?:neutral|purple|blue|red|yellow|green|#[0-9a-fA-F]{6})$/.test(color)) {
       throw new AdfValidationError(
         "invalid-attributes",
-        "ADF status color must be neutral, purple, blue, red, yellow, or green.",
+        "ADF status color must be neutral, purple, blue, red, yellow, green, or #RRGGBB.",
         `${path}.attrs.color`,
       );
     }

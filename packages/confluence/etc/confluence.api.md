@@ -2882,7 +2882,7 @@ export declare const PINNED_ADF_NODE_TYPES: readonly [
 export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
 
 // export: PINNED_ADF_SCHEMA_VERSION
-export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
@@ -6429,7 +6429,7 @@ export declare const PINNED_ADF_NODE_TYPES: readonly [
 export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
 
 // export: PINNED_ADF_SCHEMA_VERSION
-export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
@@ -9976,7 +9976,7 @@ export declare const PINNED_ADF_NODE_TYPES: readonly [
 export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
 
 // export: PINNED_ADF_SCHEMA_VERSION
-export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
@@ -17136,7 +17136,7 @@ export declare const PINNED_ADF_NODE_TYPES: readonly [
 export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
 
 // export: PINNED_ADF_SCHEMA_VERSION
-export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+export declare const PINNED_ADF_SCHEMA_VERSION = "57.7.39";
 
 // export: PINNED_ADF_STAGE0_NODE_TYPES
 export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "package": {
     "name": "@atlaskit/adf-schema",
-    "version": "56.1.15",
+    "version": "57.7.39",
     "schemaPath": "package/dist/json-schema/v1/stage-0.json"
   },
   "definitions": {
@@ -50,7 +50,13 @@
                 "$ref": "#/definitions/bulletList_node"
               },
               {
+                "$ref": "#/definitions/rule_with_attrs_node"
+              },
+              {
                 "$ref": "#/definitions/rule_node"
+              },
+              {
+                "$ref": "#/definitions/bodiedRule_node"
               },
               {
                 "$ref": "#/definitions/heading_with_no_marks_node"
