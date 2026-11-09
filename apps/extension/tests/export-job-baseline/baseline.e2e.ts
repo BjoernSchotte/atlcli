@@ -298,7 +298,7 @@ test("records productive POST-QUEUE DOCX and PDF jobs in real Chromium", async (
           treeFingerprint: provenance.treeFingerprint,
           harnessDigest: provenance.harnessDigest,
           browser,
-          playwright: "1.55.0",
+          playwright: "1.65.0",
           platform: platform(),
           release: release(),
           architecture: process.arch,
