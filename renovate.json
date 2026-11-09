@@ -49,6 +49,8 @@
     },
     {
       "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
+      "description": "Bump ranges too: an exact pin elsewhere would otherwise hoist react past react-dom, and React refuses mismatched versions.",
+      "rangeStrategy": "bump",
       "groupName": "React"
     },
     {
