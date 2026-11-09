@@ -920,13 +920,17 @@ describe("research-owned native task dispatch interception", () => {
     });
     expect(result.runtimeInvariants).toEqual({
       subagentMergeKey: "subAgentMiddleware",
+      // deepagents 1.16 wraps the stack with parentNotifierMiddleware (no-op
+      // without an async-subagent parent) and UnsupportedContentMiddleware.
       middlewareNames: [
+        "parentNotifierMiddleware",
         "FilesystemMiddleware",
         "subAgentMiddleware",
         "SummarizationMiddleware",
         "patchToolCallsMiddleware",
         "dispatchWrapperCharacterization",
         "CodeInterpreterMiddleware",
+        "UnsupportedContentMiddleware",
       ],
       delegatedTaskToolCount: 1,
       quickChatTaskToolCount: 0,

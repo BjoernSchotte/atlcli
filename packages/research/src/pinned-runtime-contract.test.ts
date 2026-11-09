@@ -153,13 +153,20 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
       );
       const names = middlewareNames(agent);
 
+      // deepagents 1.16 adds parentNotifierMiddleware (head; a no-op unless
+      // the run was started by start_async_task, which we never use) and
+      // UnsupportedContentMiddleware (tail; scrubs multimodal blocks the
+      // model profile rejects), and moves SkillsMiddleware into the tail.
+      // Neither added entry owns a tool or a name we replace.
       expect(names).toEqual([
-        "SkillsMiddleware",
+        "parentNotifierMiddleware",
         "FilesystemMiddleware",
         "subAgentMiddleware",
         "SummarizationMiddleware",
         "patchToolCallsMiddleware",
+        "SkillsMiddleware",
         "MemoryMiddleware",
+        "UnsupportedContentMiddleware",
       ]);
       expect(new Set(names).size).toBe(names.length);
       expect(agent.options.middleware[2]).toBe(replacement);
@@ -231,11 +238,17 @@ describe("pinned DeepAgentsJS and QuickJS runtime contract", () => {
     const taskTool = middleware.tools?.find((candidate) => candidate.name === "task");
     if (!taskTool) throw new Error("Pinned subagent middleware did not expose task.");
 
+    // deepagents 1.16 reads the graph task input (fork-recursion guard)
+    // before the registry check, so the tool needs the Pregel scratchpad a
+    // real ToolNode call carries; production always forwards that config.
     await expect(
-      taskTool.invoke({
-        description: "Try an unregistered profile.",
-        subagent_type: "late-reader",
-      }),
+      taskTool.invoke(
+        {
+          description: "Try an unregistered profile.",
+          subagent_type: "late-reader",
+        },
+        { configurable: { __pregel_scratchpad: { currentTaskInput: { messages: [] } } } },
+      ),
     ).rejects.toThrow("the only allowed types are `reader`");
   });
 

@@ -1509,7 +1509,9 @@ globalThis.fetch = async (input, init) => {
       url: url.href,
       method: request.method,
       modelCall: modelCalls,
-      apiKeyPresent: request.headers.has("x-api-key"),
+      // @anthropic-ai/sdk >= 1 sends the API key as a Bearer token.
+      apiKeyPresent: request.headers.has("x-api-key") ||
+        /^Bearer \S/u.test(request.headers.get("authorization") ?? ""),
       toolNames,
       ...(serializedRequest.includes("packed-hitl:")
         ? {
@@ -3865,13 +3867,17 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
   expect(response.result?.runtimeInvariants).toEqual({
     subagentMergeKey: "subAgentMiddleware",
+    // deepagents 1.16 wraps the stack with parentNotifierMiddleware (no-op
+    // without an async-subagent parent) and UnsupportedContentMiddleware.
     middlewareNames: [
+      "parentNotifierMiddleware",
       "FilesystemMiddleware",
       "subAgentMiddleware",
       "SummarizationMiddleware",
       "patchToolCallsMiddleware",
       "dispatchWrapperCharacterization",
       "CodeInterpreterMiddleware",
+      "UnsupportedContentMiddleware",
     ],
     delegatedTaskToolCount: 1,
     quickChatTaskToolCount: 0,

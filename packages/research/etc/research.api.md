@@ -27847,6 +27847,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     contextSchema?: undefined;
     streamTransformers?: readonly [
     ] | undefined;
+    tracePolicy?: import("@langchain/core/tracers/tracer_langchain").TracePolicy;
     wrapToolCall?: import("langchain").WrapToolCallHook<undefined, unknown> | undefined;
     wrapModelCall?: import("langchain").WrapModelCallHook<undefined, unknown> | undefined;
     beforeAgent?: import("langchain").BeforeAgentHook<undefined, unknown> | undefined;
@@ -36718,6 +36719,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     contextSchema?: undefined;
     streamTransformers?: readonly [
     ] | undefined;
+    tracePolicy?: import("@langchain/core/tracers/tracer_langchain").TracePolicy;
     wrapToolCall?: import("langchain").WrapToolCallHook<undefined, unknown> | undefined;
     wrapModelCall?: import("langchain").WrapModelCallHook<undefined, unknown> | undefined;
     beforeAgent?: import("langchain").BeforeAgentHook<undefined, unknown> | undefined;
@@ -47666,6 +47668,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     contextSchema?: undefined;
     streamTransformers?: readonly [
     ] | undefined;
+    tracePolicy?: import("@langchain/core/tracers/tracer_langchain").TracePolicy;
     wrapToolCall?: import("langchain").WrapToolCallHook<undefined, unknown> | undefined;
     wrapModelCall?: import("langchain").WrapModelCallHook<undefined, unknown> | undefined;
     beforeAgent?: import("langchain").BeforeAgentHook<undefined, unknown> | undefined;
