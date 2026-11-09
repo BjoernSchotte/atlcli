@@ -54,3 +54,6 @@ security-attestation.json
 
 # Generated image-heavy benchmark corpus (issue #118 Phase 0) — reproduced from (seed, scale)
 apps/extension/tests/pdf/memory/public/image-heavy/
+
+# Written by the published-consumer fixture build on every test run.
+packages/web-publish-starlight/fixtures/evidence/
