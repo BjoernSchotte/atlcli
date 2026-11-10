@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { extractPageTasks, markdownToStorage, taskFingerprint } from "@atlcli/confluence";
-import { planTaskIssues, planTaskStatusSync, type IssueState, type TaskLedger } from "./page-tasks-to-issues.js";
+import { planTaskIssues, planTaskStatusSync, recordSyncedTasks, type IssueState, type TaskLedger } from "./page-tasks-to-issues.js";
 
 const empty: TaskLedger = { v: 1, issues: {} };
 const tasks = (markdown: string) => extractPageTasks(markdownToStorage(markdown));
@@ -67,5 +67,27 @@ describe("planTaskStatusSync", () => {
   test("missing issues are reported, unlinked tasks ignored", () => {
     const list = tasks(`- [ ] a ${link("AB-9")}\n- [ ] plain\n`);
     expect(planTaskStatusSync(list, states({}), empty)).toEqual([{ index: 0, action: "report:missing", keys: ["AB-9"] }]);
+  });
+});
+
+describe("recordSyncedTasks", () => {
+  // Regression: the mark was never cleared, so after sync unticked a task a
+  // later manual tick was undone by the next sync instead of being reported.
+  test("a task sync unticked is no longer ticked by sync", () => {
+    const ledger: TaskLedger = { v: 1, issues: { "AB-1": { fingerprint: "f", tickedBySync: true }, "AB-2": { fingerprint: "g" } } };
+    expect(recordSyncedTasks(ledger, { ticked: [], reopened: ["AB-1", "AB-2", "AB-9"] })).toBe(true);
+    expect(ledger.issues).toEqual({ "AB-1": { fingerprint: "f" }, "AB-2": { fingerprint: "g" } });
+
+    // Ticked by hand while AB-1 is still open: reported, not unticked.
+    const states = new Map<string, IssueState>([["AB-1", "open"]]);
+    const plan = planTaskStatusSync(tasks("- [x] done https://x.atlassian.net/browse/AB-1\n"), states, ledger);
+    expect(plan.map((e) => e.action)).toEqual(["report:ticked-but-open"]);
+  });
+
+  test("ticks are marked; nothing to record leaves the ledger alone", () => {
+    const ledger: TaskLedger = { v: 1, issues: { "AB-1": { fingerprint: "f" } } };
+    expect(recordSyncedTasks(ledger, { ticked: ["AB-1"], reopened: [] })).toBe(true);
+    expect(ledger.issues["AB-1"]).toEqual({ fingerprint: "f", tickedBySync: true });
+    expect(recordSyncedTasks(ledger, { ticked: [], reopened: [] })).toBe(false);
   });
 });

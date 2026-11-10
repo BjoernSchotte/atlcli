@@ -5,7 +5,7 @@
  * strict atomic filesystem sink.
  *
  * Report/error-boundary contract (T3.2): this module NEVER calls `fail()` and
- * never lets an error escape `exportPdf()`. It returns a typed
+ * never lets an error escape `exportPdfAsOrdinaryJob()`. It returns a typed
  * {@link ExportOutcome}; the command entry point (`handleExport`) turns that into
  * stdout output and the exit code via the single `emitReportOutcome` sink.
  *
@@ -18,26 +18,16 @@ import { basename, join, resolve } from "node:path";
 import { buildConfluenceUrl, type OutputOptions, type Profile } from "@atlcli/core";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
-  createAdfAnnotationResolver,
-  createAdfMediaAttachmentResolver,
-  SpaceHomepageError,
-  composeChapters,
-  confluenceTreeSource,
   exportSourcePolicyFromFlag,
-  fetchExportTree,
-  pageBodyToBlocks,
   resolveExportMentions,
   type ComposeOptions,
   type ConfluenceClient,
   type ConfluencePageDetails,
   type ExportBlock,
   type ExportNote,
-  type ExportProgressCallback,
-  type ExportTreeBodyStoreV1,
 } from "@atlcli/confluence";
 import {
   normalizePdfLocale,
-  runPdfExport,
   type PdfAssetRef,
   type PdfAssetResolver,
   type PdfExportMetadata,
@@ -186,47 +176,6 @@ export function resolveExportedAt(raw: string | undefined): Date | undefined {
   return undefined;
 }
 
-/** Throwing page-ref resolver (the boundary turns throws into a report). */
-async function resolvePageIdThrowing(
-  client: ConfluenceClient,
-  ref: string,
-  signal?: AbortSignal
-): Promise<string> {
-  if (/^\d+$/.test(ref)) return ref;
-  if (ref.startsWith("http://") || ref.startsWith("https://")) {
-    const match = ref.match(/pages\/(\d+)/) ?? ref.match(/pageId=(\d+)/);
-    if (match) return match[1];
-    throw new PdfUsageError(`Could not extract page ID from URL: ${ref}`);
-  }
-  if (ref.includes(":")) {
-    const [spaceKey, ...titleParts] = ref.split(":");
-    const cql = `type=page AND space="${spaceKey}" AND title="${titleParts.join(":")}"`;
-    const results = await client.searchPages(cql, 1, signal ? { signal } : {});
-    if (results.length === 0) throw new PdfUsageError(`Page not found: ${ref}`);
-    return results[0].id;
-  }
-  throw new PdfUsageError(`Invalid page reference: ${ref}. Use ID, SPACE:Title, or URL.`);
-}
-
-/**
- * Progress → stderr only (stdout stays clean for `--report json`). In `--json`
- * mode each event is one JSONL line; otherwise a single rewriting status line.
- */
-function makePdfProgress(opts: OutputOptions): { report: ExportProgressCallback; clear: () => void } {
-  let dirty = false;
-  const report: ExportProgressCallback = (event) => {
-    if (opts.json) {
-      process.stderr.write(`${JSON.stringify(event)}\n`);
-      return;
-    }
-    const total = event.total === null ? "?" : String(event.total);
-    const detail = event.detail ? ` ${event.detail}` : "";
-    process.stderr.write(`\r${`[${event.phase}] ${event.done}/${total}${detail}`.slice(0, 120).padEnd(120)}`);
-    dirty = true;
-  };
-  return { report, clear: () => { if (!opts.json && dirty) process.stderr.write(`\r${" ".repeat(120)}\r`); } };
-}
-
 export interface ResolvedScope {
   metaPage: ConfluencePageDetails;
   blocks: ExportBlock[];
@@ -280,6 +229,8 @@ export async function buildPdfMacroOptions(
   client: ConfluenceClient,
   chapterAnchorById?: ReadonlyMap<string, string>,
   signal?: AbortSignal,
+  /** `false` under `--no-live-macros`: only pure renderers run. */
+  live = true,
 ): Promise<MacroResolutionOptions> {
   const [wiring, { JiraClient }] = await Promise.all([
     import("./export-macros-wiring.js"),
@@ -292,7 +243,7 @@ export async function buildPdfMacroOptions(
     // accessible the chain degrades to a note, never a hard failure.
     jira: new JiraClient(profile),
     targetEngine: "pdf",
-    live: true,
+    live,
     ...(chapterAnchorById ? { chapterAnchorById } : {}),
     ...(signal ? { signal } : {}),
   });
@@ -341,289 +292,8 @@ function cliConfluenceExternalUrlResolver(
 }
 
 /**
- * Resolve the export scope into ONE composed block list. Page scope walks a
- * single page (with page context so attachment ImageSources carry pageId);
- * tree/space scope drives folder 002's shared `fetchExportTree` →
- * `composeChapters` orchestration and feeds the composed blocks straight into
- * the same `runPdfExport` call (artifact-cardinality contract: always one file).
- */
-export async function resolveScope(
-  args: ExportPdfArgs,
-  signal: AbortSignal,
-  onProgress: ExportProgressCallback,
-  walk: { exporter?: "pdf" | "word"; keepIgnored?: boolean } = {},
-  bodyStore?: ExportTreeBodyStoreV1,
-): Promise<ResolvedScope> {
-  const { client, request, profile } = args;
-
-  if (request.scopeKind === "page") {
-    const pageId = await resolvePageIdThrowing(client, request.pageRef!, signal);
-    const page = await client.getExportPageDetailsWithMedia(pageId, { signal });
-    const spaceKey = page.spaceKey ?? "UNKNOWN";
-    const walked = pageBodyToBlocks(page.exportSource, {
-      exporter: walk.exporter ?? "pdf",
-      resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
-      resolveAnnotation: createAdfAnnotationResolver(page.inlineComments),
-      annotationCommentsComplete: page.inlineCommentsComplete,
-      ...(walk.keepIgnored ? { exportControls: "passthrough" as const } : {}),
-      pageContext: {
-        id: pageId,
-        title: page.title,
-        ...(page.exportSource.sourceVersion !== undefined
-          ? { version: page.exportSource.sourceVersion }
-          : {}),
-        spaceKey,
-      },
-    });
-    const mention = await resolveExportMentions(
-      walked.blocks,
-      tokenMentionLookup(client, signal),
-    );
-    const sourceNotes: ExportNote[] = [...walked.notes];
-    // `mention-unresolved` is the CROSS-HOST code (spec 010): the CLI's DOCX
-    // path (`export.ts`) and the extension's PDF host
-    // (`apps/extension/utils/pdf/run-export.ts`) report this same condition
-    // under this same code. Pinned from both ends —
-    // `export-source-contract.test.ts` for the CLI, `apps/extension/tests/pdf/
-    // run-export.test.ts` for the extension.
-    if (mention.unresolved > 0) {
-      sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });
-    }
-    return {
-      metaPage: page,
-      blocks: mention.blocks,
-      sourceNotes,
-      complete: true,
-      // Provisional: these are the PRE-macro-resolution walker notes. The
-      // engine owns the terminal outcome, so `exportPdf` projects its
-      // reconciled `sourceNotes` back onto this entry (see
-      // `reconcilablePageId`) before the report is built.
-      sourcePages: [{ id: pageId, title: page.title, notes: walked.notes.map((n) => noteToIssue(n, "compose", pageId)) }],
-      outNameKey: pageId,
-      reconcilablePageId: pageId,
-    };
-  }
-
-  // --- tree / space scope (spec 008 T3.3, reusing folder 002's orchestration) ---
-  let rootId: string;
-  if (request.scopeKind === "space") {
-    const homepageId = await client.getSpaceHomepageId(request.spaceKey!, { signal });
-    if (!homepageId) throw new SpaceHomepageError(request.spaceKey!);
-    rootId = homepageId;
-  } else {
-    rootId = await resolvePageIdThrowing(client, request.pageRef!, signal);
-  }
-  const scope = buildExportScope(request, rootId);
-  const treeResult = await fetchExportTree(confluenceTreeSource(client), scope, {
-    ...(request.labels ? { labels: request.labels } : {}),
-    completenessMode: request.completenessMode,
-    ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
-    ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
-    bodyOptions: {
-      exporter: walk.exporter ?? "pdf",
-      ...(walk.keepIgnored ? { exportControls: "passthrough" as const } : {}),
-    },
-    ...(bodyStore ? { bodyStore } : {}),
-    signal,
-    onProgress: (p) => onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
-  });
-
-  const composed = composeChapters(treeResult.nodes, {
-    resolveExternalUrl: cliConfluenceExternalUrlResolver(profile),
-  });
-  const rootDetails = await client.getPageDetails(rootId, { signal });
-
-  const mention = await resolveExportMentions(
-    composed.blocks,
-    tokenMentionLookup(client, signal),
-  );
-  const sourceNotes: ExportNote[] = [...treeResult.notes, ...composed.notes];
-  if (mention.unresolved > 0) {
-    sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });
-  }
-
-  const pageNodes = treeResult.nodes.filter(
-    (node): node is Extract<typeof node, { kind: "page" }> => node.kind === "page"
-  );
-  const sourcePages: SourcePageEntry[] = pageNodes.map((node) => ({
-    id: node.pageId,
-    title: node.title,
-    notes: node.notes.map((note) => noteToIssue(note, "compose", node.pageId)),
-  }));
-
-  return {
-    metaPage: rootDetails,
-    blocks: mention.blocks,
-    sourceNotes,
-    complete: treeResult.complete,
-    sourcePages,
-    outNameKey: request.scopeKind === "space" ? request.spaceKey! : rootId,
-    // Same builder the DOCX tree path uses — a `--scope space` request stays
-    // traceable to the tree rooted at the resolved homepage id (spec 002 A5).
-    scopeReport: buildScopeReportFields(request, scope),
-    chapterAnchorById: composed.chapterAnchorById,
-  };
-}
-
-/**
- * The PDF export host wiring. Returns a typed {@link ExportOutcome} — never
- * throws past this boundary, never calls `fail()`.
- */
-export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
-  const { client, baseUrl, strict, opts } = args;
-  const startedAt = Date.now();
-
-  const controller = new AbortController();
-  const onSignal = (): void => controller.abort();
-  process.once("SIGINT", onSignal);
-  process.once("SIGTERM", onSignal);
-  const progress = makePdfProgress(opts);
-
-  const format = "pdf" as const;
-
-  try {
-    // Resolve the scope into a single composed block list (T3.3:
-    // `--scope tree|space` always yields exactly ONE artifact, never one file
-    // per page). Mentions are resolved across the whole document with one
-    // deduped bulk lookup.
-    const scope = await resolveScope(args, controller.signal, progress.report);
-
-    const locale = normalizePdfLocale(undefined);
-    const metadata: PdfExportMetadata = {
-      title: scope.metaPage.title,
-      space: scope.metaPage.spaceKey ?? "UNKNOWN",
-      ...(scope.metaPage.version !== undefined ? { version: scope.metaPage.version } : {}),
-      ...(scope.metaPage.createdBy?.displayName ? { author: scope.metaPage.createdBy.displayName } : {}),
-      exporter: "atlcli",
-      language: locale.language,
-      ...(locale.region ? { region: locale.region } : {}),
-      exportedAt: args.exportedAt ?? new Date(),
-    };
-
-    // Choose the output path: --output names the single file; --out-dir chooses
-    // a directory and derives a deterministic, sanitized, containment-checked
-    // filename (path-escape hardening — hostile titles/keys cannot escape it).
-    const outputPath = args.outDir
-      ? derivePdfOutputPath(args.outDir, scope.outNameKey, scope.metaPage.title)
-      : resolve(args.outputPath!);
-
-    const compiler = await getPdfCompiler();
-    const macros = await buildPdfMacroOptions(
-      args.profile,
-      client,
-      scope.chapterAnchorById,
-      controller.signal,
-    );
-    const report = await runPdfExport(
-      {
-        blocks: scope.blocks,
-        sourceNotes: scope.sourceNotes,
-        metadata,
-        filename: basename(outputPath),
-        signal: controller.signal,
-        complete: scope.complete,
-        ...(args.outputPolicy !== undefined
-          ? { outputPolicy: args.outputPolicy }
-          : {}),
-        onProgress: progress.report,
-        page: {
-          id: scope.metaPage.id,
-          ...(scope.metaPage.version !== undefined ? { version: scope.metaPage.version } : {}),
-          ...(scope.metaPage.spaceKey !== undefined ? { spaceKey: scope.metaPage.spaceKey } : {}),
-        },
-      },
-      {
-        assets: cliPdfAssets(client, baseUrl, { noCache: args.noCache }),
-        compiler,
-        output: filePdfOutputSink(outputPath, { force: args.force }),
-        macros,
-      }
-    );
-    progress.clear();
-
-    // `mention-unresolved` is deliberately NOT appended here. `resolveScope`
-    // already pushed it into `scope.sourceNotes`, which rides into the engine as
-    // `input.sourceNotes`, comes back on `report.notes`, and is projected onto an
-    // Issue by `pdfReportContributions` like every other note — same `prepare`
-    // phase, plus the message carrying the unresolved COUNT that a hand-built,
-    // message-less issue could not. Appending a second one made
-    // `notesByCode["mention-unresolved"]` read 2 on the PDF path where the DOCX
-    // ts path (which only maps `report.notes`) read 1, and inflated the
-    // `--strict` warning count for the same single fact.
-    const { outputDetail, issues } = pdfReportContributions(report, outputPath, report.compilerDiagnostics ?? []);
-
-    // Per-page provenance, reconciled (spec 010). For a single-page scope the
-    // one entry's notes ARE `scope.sourceNotes`, and macro resolution rewrote
-    // that list inside the engine — a provisional `macro-not-rendered` became
-    // `macro-rendered-via`. Projecting the engine's reconciled list back is what
-    // stops `sourcePages[].notes` from contradicting `notesByCode`, which said
-    // the macro rendered. Tree/space keeps its per-page walk: those notes never
-    // enter the engine, so there is no reconciled counterpart to project.
-    const sourcePages: SourcePageEntry[] =
-      scope.reconcilablePageId && report.sourceNotes
-        ? [
-            {
-              ...scope.sourcePages[0]!,
-              notes: report.sourceNotes.map((n) => noteToIssue(n, "compose", scope.reconcilablePageId!)),
-            },
-          ]
-        : scope.sourcePages;
-
-    // Report-contract parity with the DOCX path. `complete` rides on EVERY
-    // successful export (spec 002's completeness contract, which a CI consumer
-    // reads via `jq -r '.complete'` — it must never be null on success); the
-    // scope-traceability pair is tree/space-only, exactly as on the DOCX side,
-    // and comes from the same shared builder. A tree/space export goes through
-    // `buildTreeExportReport`, which makes both REQUIRED at compile time.
-    const common = {
-      format,
-      codeTheme: report.codeTheme,
-      ...(report.outputPolicy !== undefined
-        ? { outputPolicy: report.outputPolicy }
-        : {}),
-      ...(report.outputStandardEvidence !== undefined
-        ? { outputStandardEvidence: report.outputStandardEvidence }
-        : {}),
-      sourcePages,
-      outputDetails: [outputDetail],
-      issues,
-      timings: { ...report.timings, totalMs: Date.now() - startedAt },
-      complete: report.complete,
-      strict,
-    };
-
-    return {
-      ok: true,
-      report: scope.scopeReport
-        ? buildTreeExportReport({ ...common, scope: scope.scopeReport })
-        : buildReport(common),
-    };
-  } catch (error) {
-    progress.clear();
-    const classified =
-      error instanceof PdfUsageError
-        ? { exitCode: 1, issue: { code: "usage-error", severity: "error" as const, phase: "usage", retryable: false, message: error.message } }
-        : classifyError(error);
-    return {
-      ok: false,
-      report: buildReport({
-        format,
-        sourcePages: [],
-        outputDetails: [],
-        issues: [classified.issue],
-        timings: { totalMs: Date.now() - startedAt },
-        failureExitCode: classified.exitCode,
-      }),
-    };
-  } finally {
-    process.removeListener("SIGINT", onSignal);
-    process.removeListener("SIGTERM", onSignal);
-  }
-}
-
-/**
  * Queue-backed ordinary PDF command. The unresolved request is persisted by
- * {@link runOrdinaryExportJobV1} before `resolveScope` performs the first API
+ * {@link runOrdinaryExportJobV1} before the shared source resolver performs the first API
  * read; rendering then runs exclusively through the PR-C executor.
  */
 export async function exportPdfAsOrdinaryJob(
@@ -741,6 +411,7 @@ export async function exportPdfAsOrdinaryJob(
           args.client,
           resolved.chapterAnchorById,
           context.signal,
+          request.options.resolveMacros,
         );
         return {
           input: {

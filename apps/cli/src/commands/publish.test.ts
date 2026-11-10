@@ -1,13 +1,16 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   handlePublish,
+  installedPublicationAstroVersionV1,
+  SUPPORTED_ASTRO_RANGE_V1,
   collectChartRenderDependenciesV1,
   isMissingPublicationAttachmentErrorV1,
   latestPublicationBuildNameV1,
   normalizePublicationLinksV1,
   normalizePublicationPositionV1,
+  PublicationSourceClientV1,
   publicationBuildEnvironmentV1,
   publishHelp,
   replaceMissingPublicationAssetsV1,
@@ -210,5 +213,56 @@ test("configuration errors identify the field without echoing private values", a
     expect(message).not.toContain(secret);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the builder Astro version comes from the publishing project's installed Astro", async () => {
+  const root = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "atlcli-publish-astro-"));
+  const install = async (version: string): Promise<void> => {
+    await mkdir(join(root, "node_modules", "astro"), { recursive: true });
+    await writeFile(join(root, "node_modules", "astro", "package.json"), JSON.stringify({ name: "astro", version }));
+  };
+  try {
+    await expect(installedPublicationAstroVersionV1(root)).rejects.toThrow("not installed");
+    await install("7.4.8");
+    expect(await installedPublicationAstroVersionV1(root)).toBe("7.4.8");
+    await install("6.9.0");
+    await expect(installedPublicationAstroVersionV1(root)).rejects.toThrow("outside the supported range");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+  const peer = JSON.parse(
+    await readFile(resolve(import.meta.dir, "../../../../packages/web-publish-astro/package.json"), "utf8"),
+  ) as { peerDependencies: { astro: string } };
+  expect(SUPPORTED_ASTRO_RANGE_V1).toBe(peer.peerDependencies.astro);
+});
+
+test("the acquisition client keeps only the page relations Confluence itself returned", async () => {
+  const originalFetch = globalThis.fetch;
+  const base = "https://confluence.example.test/wiki";
+  const links: Record<string, Record<string, string>> = {
+    "1": { base, webui: "/spaces/DOCS/pages/1/Guide", editui: "/pages/resumedraft.action?draftId=1" },
+    "2": { base, webui: "/spaces/DOCS/pages/2/Other" },
+    "4": { base, webui: "/display/DOCS/Four", edit: "/pages/resumedraft.action?draftId=4" },
+    "3": {},
+  };
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const id = /\/content\/(\d+)/u.exec(String(input instanceof Request ? input.url : input))![1]!;
+    return new Response(JSON.stringify({ id, title: `Page ${id}`, version: { number: 1 }, body: { storage: { value: "" } }, _links: links[id] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as unknown as typeof fetch;
+  try {
+    const client = new PublicationSourceClientV1({ name: "p", baseUrl: "https://confluence.example.test", auth: { type: "apiToken", email: "e@example.test", token: "t" } } as never);
+    for (const id of ["1", "2", "3", "4"]) await client.getPageDetails(id);
+    expect([...client.editRelations.values()]).toEqual([
+      { sourceId: "1", editui: `${base}/pages/resumedraft.action?draftId=1`, webui: `${base}/spaces/DOCS/pages/1/Guide` },
+      { sourceId: "2", webui: `${base}/spaces/DOCS/pages/2/Other` },
+      { sourceId: "3" },
+      { sourceId: "4", editui: `${base}/pages/resumedraft.action?draftId=4`, webui: `${base}/display/DOCS/Four` },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

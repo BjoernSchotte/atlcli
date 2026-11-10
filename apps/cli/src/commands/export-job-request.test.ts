@@ -58,6 +58,24 @@ describe("durable CLI export job requests", () => {
     expect(JSON.stringify(request)).not.toContain("secret");
   });
 
+  test("persists --no-live-macros so retry and rerun stay deterministic", () => {
+    const base = {
+      id: "job-3", idempotencyKey: "key-3", createdAt: 30,
+      request: parseExportRequest("123", {}), profile,
+    };
+    const docx = {
+      ...base, outputPath: "out.docx",
+      template: { recordKey: "template:1", sha256: "a".repeat(64), name: "report.docx" },
+      embedImages: true, keepIgnored: false, strict: false, noFieldUpdatePrompt: false,
+      overwriteExisting: true,
+    };
+    const pdf = { ...base, outputPath: "/tmp/out.pdf", force: false, strict: false, noCache: false };
+    expect(buildCliDocxJobRequest(docx).options.resolveMacros).toBe(true);
+    expect(buildCliDocxJobRequest({ ...docx, liveMacros: false }).options.resolveMacros).toBe(false);
+    expect(buildCliPdfJobRequest(pdf).options.resolveMacros).toBe(true);
+    expect(buildCliPdfJobRequest({ ...pdf, liveMacros: false }).options.resolveMacros).toBe(false);
+  });
+
   test("pins PDF output policy and reproducible timestamp", () => {
     const request = buildCliPdfJobRequest({
       id: "job-2", idempotencyKey: "key-2", createdAt: 20,

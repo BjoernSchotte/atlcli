@@ -218,14 +218,16 @@ async function handleList(flags: Record<string, string | boolean | string[]>, op
   const label = labels[0];
   const cqlFlag = getFlag(flags, "cql");
   const space = getFlag(flags, "space") ?? defaults.space;
-  const limit = Number(getFlag(flags, "limit") ?? 25);
+  const limitFlag = Number(getFlag(flags, "limit") ?? 25);
+  const max = Number.isInteger(limitFlag) && limitFlag > 0 ? limitFlag : 25;
 
   // A single --label without --cql uses the label endpoint; anything else is one CQL query.
+  // Both read one page more than --limit, which tells a cut list from a complete one.
   if (label && labels.length === 1 && !cqlFlag) {
-    const pages = await client.getPagesByLabel(label, {
-      spaceKey: space,
-      limit: Number.isNaN(limit) ? 25 : limit,
-    });
+    const { pages, truncated } = capPageList(
+      await client.getPagesByLabel(label, { spaceKey: space, limit: max + 1 }),
+      max
+    );
     output({
       schemaVersion: "1",
       label,
@@ -235,15 +237,29 @@ async function handleList(flags: Record<string, string | boolean | string[]>, op
         title: p.title,
         spaceKey: p.spaceKey,
       })),
+      truncated,
     }, opts);
+    if (truncated) process.stderr.write(pageListTruncationNote(max));
     return;
   }
 
   // Otherwise use CQL search
-  const max = Number.isNaN(limit) ? 25 : limit;
   const cql = pageListCql(cqlFlag, space, labels);
-  const pages = await client.searchPages(cql, max, { maxResults: max });
-  output({ schemaVersion: "1", pages }, opts);
+  const { pages, truncated } = capPageList(
+    await client.searchPages(cql, Math.min(max + 1, 100), { maxResults: max + 1 }),
+    max
+  );
+  output({ schemaVersion: "1", pages, truncated }, opts);
+  if (truncated) process.stderr.write(pageListTruncationNote(max));
+}
+
+/** `page list` reads `limit + 1` pages; the extra one only says that more exist. */
+export function capPageList<T>(pages: T[], limit: number): { pages: T[]; truncated: boolean } {
+  return { pages: pages.slice(0, limit), truncated: pages.length > limit };
+}
+
+function pageListTruncationNote(limit: number): string {
+  return `Showing the first ${limit} pages; more match. Raise --limit to see them.\n`;
 }
 
 /**
@@ -463,9 +479,9 @@ async function handleLabelAdd(args: string[], flags: Record<string, string | boo
     fail(opts, 1, ERROR_CODES.USAGE, "--confirm or --dry-run required for bulk operations.");
   }
 
-  const results = await client.search(cql!, { limit: 1000, detail: "minimal" });
+  const results = await client.searchPages(cql!, 100);
 
-  if (results.results.length === 0) {
+  if (results.length === 0) {
     output("No pages match the CQL query.", opts);
     return;
   }
@@ -476,24 +492,24 @@ async function handleLabelAdd(args: string[], flags: Record<string, string | boo
         schemaVersion: "1",
         dryRun: true,
         labels,
-        count: results.results.length,
-        pages: results.results.map((p) => ({ id: p.id, title: p.title })),
+        count: results.length,
+        pages: results.map((p) => ({ id: p.id, title: p.title })),
       }, opts);
       return;
     }
 
-    output(`Would add labels [${labels.join(", ")}] to ${results.results.length} pages:`, opts);
-    for (const page of results.results.slice(0, 10)) {
+    output(`Would add labels [${labels.join(", ")}] to ${results.length} pages:`, opts);
+    for (const page of results.slice(0, 10)) {
       output(`  - ${page.title} (${page.id})`, opts);
     }
-    if (results.results.length > 10) {
-      output(`  ... and ${results.results.length - 10} more`, opts);
+    if (results.length > 10) {
+      output(`  ... and ${results.length - 10} more`, opts);
     }
     return;
   }
 
   // Execute bulk label add
-  const pageIds = results.results.map((p) => p.id);
+  const pageIds = results.map((p) => p.id);
   const result = await client.bulkOperation(pageIds, (pageId) => client.addLabels(pageId, labels), {
     onProgress: (done, total) => {
       if (!opts.json) {
@@ -563,9 +579,9 @@ async function handleLabelRemove(args: string[], flags: Record<string, string | 
     fail(opts, 1, ERROR_CODES.USAGE, "--confirm or --dry-run required for bulk operations.");
   }
 
-  const results = await client.search(cql!, { limit: 1000, detail: "minimal" });
+  const results = await client.searchPages(cql!, 100);
 
-  if (results.results.length === 0) {
+  if (results.length === 0) {
     output("No pages match the CQL query.", opts);
     return;
   }
@@ -576,24 +592,24 @@ async function handleLabelRemove(args: string[], flags: Record<string, string | 
         schemaVersion: "1",
         dryRun: true,
         label,
-        count: results.results.length,
-        pages: results.results.map((p) => ({ id: p.id, title: p.title })),
+        count: results.length,
+        pages: results.map((p) => ({ id: p.id, title: p.title })),
       }, opts);
       return;
     }
 
-    output(`Would remove label "${label}" from ${results.results.length} pages:`, opts);
-    for (const page of results.results.slice(0, 10)) {
+    output(`Would remove label "${label}" from ${results.length} pages:`, opts);
+    for (const page of results.slice(0, 10)) {
       output(`  - ${page.title} (${page.id})`, opts);
     }
-    if (results.results.length > 10) {
-      output(`  ... and ${results.results.length - 10} more`, opts);
+    if (results.length > 10) {
+      output(`  ... and ${results.length - 10} more`, opts);
     }
     return;
   }
 
   // Execute bulk label remove
-  const pageIds = results.results.map((p) => p.id);
+  const pageIds = results.map((p) => p.id);
   const result = await client.bulkOperation(pageIds, (pageId) => client.removeLabel(pageId, label), {
     onProgress: (done, total) => {
       if (!opts.json) {
@@ -1063,9 +1079,11 @@ async function handleComments(args: string[], flags: Record<string, string | boo
       await handleCommentsDelete(flags, opts);
       return;
     case "list":
-    default:
-      // Default to list if no subcommand or "list"
+    case undefined:
       await handleCommentsList(flags, opts);
+      return;
+    default:
+      unknownSubcommand(subcommand, commentsHelp(), opts);
       return;
   }
 }
@@ -1752,9 +1770,9 @@ async function handleDelete(flags: Record<string, string | boolean | string[]>, 
   }
 
   // Bulk delete via CQL
-  const results = await client.search(cql!, { limit: 1000, detail: "minimal" });
+  const results = await client.searchPages(cql!, 100);
 
-  if (results.results.length === 0) {
+  if (results.length === 0) {
     output("No pages match the CQL query.", opts);
     return;
   }
@@ -1764,24 +1782,24 @@ async function handleDelete(flags: Record<string, string | boolean | string[]>, 
       output({
         schemaVersion: "1",
         dryRun: true,
-        count: results.results.length,
-        pages: results.results.map((p) => ({ id: p.id, title: p.title })),
+        count: results.length,
+        pages: results.map((p) => ({ id: p.id, title: p.title })),
       }, opts);
       return;
     }
 
-    output(`Would delete ${results.results.length} pages:`, opts);
-    for (const page of results.results.slice(0, 10)) {
+    output(`Would delete ${results.length} pages:`, opts);
+    for (const page of results.slice(0, 10)) {
       output(`  - ${page.title} (${page.id})`, opts);
     }
-    if (results.results.length > 10) {
-      output(`  ... and ${results.results.length - 10} more`, opts);
+    if (results.length > 10) {
+      output(`  ... and ${results.length - 10} more`, opts);
     }
     return;
   }
 
   // Execute bulk delete
-  const pageIds = results.results.map((p) => p.id);
+  const pageIds = results.map((p) => p.id);
   const result = await client.bulkOperation(pageIds, (pageId) => client.deletePage(pageId), {
     onProgress: (done, total) => {
       if (!opts.json) {
@@ -1854,9 +1872,9 @@ async function handleArchive(flags: Record<string, string | boolean | string[]>,
   }
 
   // Bulk archive via CQL
-  const results = await client.search(cql!, { limit: 1000, detail: "minimal" });
+  const results = await client.searchPages(cql!, 100);
 
-  if (results.results.length === 0) {
+  if (results.length === 0) {
     output("No pages match the CQL query.", opts);
     return;
   }
@@ -1866,24 +1884,24 @@ async function handleArchive(flags: Record<string, string | boolean | string[]>,
       output({
         schemaVersion: "1",
         dryRun: true,
-        count: results.results.length,
-        pages: results.results.map((p) => ({ id: p.id, title: p.title })),
+        count: results.length,
+        pages: results.map((p) => ({ id: p.id, title: p.title })),
       }, opts);
       return;
     }
 
-    output(`Would archive ${results.results.length} pages:`, opts);
-    for (const page of results.results.slice(0, 10)) {
+    output(`Would archive ${results.length} pages:`, opts);
+    for (const page of results.slice(0, 10)) {
       output(`  - ${page.title} (${page.id})`, opts);
     }
-    if (results.results.length > 10) {
-      output(`  ... and ${results.results.length - 10} more`, opts);
+    if (results.length > 10) {
+      output(`  ... and ${results.length - 10} more`, opts);
     }
     return;
   }
 
   // Execute bulk archive
-  const pageIds = results.results.map((p) => p.id);
+  const pageIds = results.map((p) => p.id);
   const result = await client.bulkOperation(pageIds, (pageId) => client.archivePage(pageId), {
     onProgress: (done, total) => {
       if (!opts.json) {

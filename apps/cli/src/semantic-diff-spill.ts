@@ -645,58 +645,61 @@ async function diffIndexedSnapshots(
     }
   }
 
-  if (stable) {
-    for (const [side, kind] of [["baseline", "delete"], ["target", "insert"]] as const) {
-      for (const index of store.unmatched(side)) {
-        const row = store.row(side, index);
-        const semantic = semanticNodeForOperation(row.semantic);
-        const change = await sourceChange({
-          kind,
-          path: row.source.sourcePath,
-          ...(kind === "delete"
-            ? { before: sourceSubtree(row.source) }
-            : { after: sourceSubtree(row.source) }),
-          classification: "meaningful",
-        });
-        sourceChanges.push(change);
-        const opaque = isOpaque(semantic);
-        const draft: ChangeOperationDraftV1 = opaque
+  // Shards without a partner: by stable key, or in the positional lane the
+  // tail of the longer side (it pairs index with index up to the shorter one).
+  const paired = Math.min(baseline.shardCount, target.shardCount);
+  const tail = (count: number): number[] => Array.from({ length: count - paired }, (_, offset) => paired + offset);
+  for (const [side, kind] of [["baseline", "delete"], ["target", "insert"]] as const) {
+    const unpaired = stable ? store.unmatched(side) : tail(side === "baseline" ? baseline.shardCount : target.shardCount);
+    for (const index of unpaired) {
+      const row = store.row(side, index);
+      const semantic = semanticNodeForOperation(row.semantic);
+      const change = await sourceChange({
+        kind,
+        path: row.source.sourcePath,
+        ...(kind === "delete"
+          ? { before: sourceSubtree(row.source) }
+          : { after: sourceSubtree(row.source) }),
+        classification: "meaningful",
+      });
+      sourceChanges.push(change);
+      const opaque = isOpaque(semantic);
+      const draft: ChangeOperationDraftV1 = opaque
+        ? {
+            kind: "opaque-change",
+            path: row.source.sourcePath,
+            matchBasis: "opaque",
+            confidence: "ambiguous",
+            riskTags: kind === "delete" ? ["opaque", "destructive"] : ["opaque"],
+            source: { baseline: pair.representation, target: pair.representation },
+            coveredSourceChangeIds: [change.id],
+            reason: `Opaque semantic content was ${kind === "delete" ? "removed" : "inserted"}.`,
+            ...(kind === "delete"
+              ? { before: semanticSubtree(semantic) }
+              : { after: semanticSubtree(semantic) }),
+          }
+        : kind === "delete"
           ? {
-              kind: "opaque-change",
+              kind: "delete",
               path: row.source.sourcePath,
-              matchBasis: "opaque",
-              confidence: "ambiguous",
-              riskTags: kind === "delete" ? ["opaque", "destructive"] : ["opaque"],
+              matchBasis: "position",
+              confidence: "conservative",
+              riskTags: ["structure-change", "destructive"],
               source: { baseline: pair.representation, target: pair.representation },
               coveredSourceChangeIds: [change.id],
-              reason: `Opaque semantic content was ${kind === "delete" ? "removed" : "inserted"}.`,
-              ...(kind === "delete"
-                ? { before: semanticSubtree(semantic) }
-                : { after: semanticSubtree(semantic) }),
+              before: semanticSubtree(semantic),
             }
-          : kind === "delete"
-            ? {
-                kind: "delete",
-                path: row.source.sourcePath,
-                matchBasis: "position",
-                confidence: "conservative",
-                riskTags: ["structure-change", "destructive"],
-                source: { baseline: pair.representation, target: pair.representation },
-                coveredSourceChangeIds: [change.id],
-                before: semanticSubtree(semantic),
-              }
-            : {
-                kind: "insert",
-                path: row.source.sourcePath,
-                matchBasis: "position",
-                confidence: "conservative",
-                riskTags: ["structure-change"],
-                source: { baseline: pair.representation, target: pair.representation },
-                coveredSourceChangeIds: [change.id],
-                after: semanticSubtree(semantic),
-              };
-        operations.push(await operation(subject, baseline.digest, target.digest, draft));
-      }
+          : {
+              kind: "insert",
+              path: row.source.sourcePath,
+              matchBasis: "position",
+              confidence: "conservative",
+              riskTags: ["structure-change"],
+              source: { baseline: pair.representation, target: pair.representation },
+              coveredSourceChangeIds: [change.id],
+              after: semanticSubtree(semantic),
+            };
+      operations.push(await operation(subject, baseline.digest, target.digest, draft));
     }
   }
 

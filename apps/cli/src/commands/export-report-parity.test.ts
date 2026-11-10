@@ -146,8 +146,8 @@ function assertRealArtifacts(
 }
 
 /**
- * Assemble the two tree-scope reports exactly as `exportPdf` and
- * `exportTreeWithTsEngine` do: one shared `buildScopeReportFields` result fed
+ * Assemble the two tree-scope reports exactly as the PDF and DOCX
+ * job paths do: one shared `buildScopeReportFields` result fed
  * into `buildTreeExportReport` on both sides.
  */
 async function treeReportsForSameRequest(
@@ -415,7 +415,7 @@ describe("export report parity — PDF vs DOCX single-page scope", () => {
       pdfEngine.compilerDiagnostics ?? []
     );
 
-    // Mirrors exportPdf()'s page-scope branch.
+    // Mirrors the PDF job's page-scope report.
     const pdf = buildReport({
       format: "pdf",
       sourcePages: [{ id: "111", title: "Root", notes: [] }],
@@ -425,7 +425,7 @@ describe("export report parity — PDF vs DOCX single-page scope", () => {
       complete: pdfEngine.complete,
     });
 
-    // Mirrors exportWithTsEngine()'s single-page report.
+    // Mirrors the DOCX job's single-page report.
     const docx = buildReport({
       format: "docx",
       engine: "ts",

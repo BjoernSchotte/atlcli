@@ -260,7 +260,7 @@ describe("strict PDF template recipe YAML", () => {
       recipePath: documented,
       compiler,
     });
-    expect(materialized.manifest.canonicalSource?.revision).toBe("6");
+    expect(materialized.manifest.canonicalSource?.revision).toBe("7");
     expect(materialized.manifest.capabilityCatalog?.version).toBe(4);
     const design = materialized.manifest.design as WikiPdfTemplateDesignV3;
     expect(design.compositions.cover.enabled).toBe(false);

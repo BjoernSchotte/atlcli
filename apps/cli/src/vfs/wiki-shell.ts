@@ -10,7 +10,7 @@
  *
  * just-bash 3.4.2 throws `DefenseInDepthBox: critical patches failed` on every
  * `exec()` under Bun — issue #386, open and unanswered, reproduced in
- * `spikes/vfs-just-bash/`. It is a *secondary* layer by upstream's own threat
+ * `specs/confluence-virtual-filesystem/SPIKE-JUST-BASH.md`. It is a *secondary* layer by upstream's own threat
  * model: the interpreter's own sandbox, the command allow-list and the absence
  * of network access are the primary ones, and they stay on. atlcli also runs
  * these scripts locally with the user's own rights, so the layer being removed

@@ -958,16 +958,18 @@ async function handleValidate(
     const templates = await ctx.resolver.listAll();
 
     const invalid: string[] = [];
+    const reports: Array<{ name: string } & ReturnType<TemplateEngine["validate"]>> = [];
     for (const summary of templates) {
       const template = await ctx.resolver.resolve(summary.name);
       if (template) {
         const result = engine.validate(template);
-        if (!result.valid || result.warnings.length > 0) {
-          outputValidation(summary.name, result, opts);
-          if (!result.valid) invalid.push(summary.name);
-        }
+        reports.push({ name: summary.name, ...result });
+        if (!result.valid) invalid.push(summary.name);
+        // One JSON document for the whole run, not one per template.
+        if (!opts.json && (!result.valid || result.warnings.length > 0)) outputValidation(summary.name, result, opts);
       }
     }
+    if (opts.json) output({ valid: invalid.length === 0, templates: reports }, opts);
 
     if (invalid.length === 0) {
       if (!opts.json) {

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   getActiveProfile,
   getCurrentVersion,
@@ -30,18 +30,22 @@ import type { ExportSourceV1 } from "@atlcli/export-jobs";
 import {
   canonicalPublicationJsonV1,
   applyPublicationChartBudgetPolicyV1,
+  assertPublicationEditLinkBuildPolicyV1,
   applyPublicationChartDiagnosticPolicyV1,
   assertPublicationChartBuildPolicyV1,
   createPublicationChartRenderPolicyV1,
   digestPublicationJsonV1,
   digestPublicationRefreshPlanV1,
   digestPublicationPageV1,
+  planPublicationEditLinksV1,
   planPublicationRefreshV1,
   planPublicationRoutesV1,
   parsePublicationBundleV1,
   parsePublicationProjectV1,
   parseStaticPublicationManifestV1,
   runWithPublicationChartAcquisitionDeadlineV1,
+  type ConfluenceEditRelationV1,
+  type PublicationBundleEditLinksV1,
   type PublicationBundleV1,
   type PublicationLinkReferenceV1,
   type PublicationPageV1,
@@ -170,6 +174,25 @@ function sourceRequest(project: PublicationProjectV1, profile: Profile): ExportS
     maxPages: project.sourcePolicy.maxPages,
     maxFolders: project.sourcePolicy.maxFolders,
   } as ExportSourceV1;
+}
+
+/**
+ * The acquisition client, additionally keeping the web/edit relations
+ * Confluence returns with each page it reads. Edit links are built only from
+ * these provider-returned URLs, never from a page id, title, or page content.
+ */
+export class PublicationSourceClientV1 extends ConfluenceClient {
+  readonly editRelations = new Map<string, ConfluenceEditRelationV1>();
+
+  override async getPageDetails(id: string, options: { signal?: AbortSignal } = {}): ReturnType<ConfluenceClient["getPageDetails"]> {
+    const page = await super.getPageDetails(id, options);
+    this.editRelations.set(page.id, {
+      sourceId: page.id,
+      ...(page.editUrl === undefined ? {} : { editui: page.editUrl }),
+      ...(page.url === undefined ? {} : { webui: page.url }),
+    });
+    return page;
+  }
 }
 
 function pageNodes(nodes: readonly ExportNode[]): Extract<ExportNode, { kind: "page" }>[] {
@@ -420,8 +443,9 @@ async function graphAndPlan(state: PublishProjectStateV1, profile: Profile, sign
   assetRequests: readonly PublicationAssetRequestV1[];
   routes: readonly PublicationRouteRecordV1[];
   refreshPlan: Awaited<ReturnType<typeof planPublicationRefreshV1>>;
+  editLinks: PublicationBundleEditLinksV1 | undefined;
 }> {
-  const client = new ConfluenceClient(profile);
+  const client = new PublicationSourceClientV1(profile);
   const source = sourceRequest(state.project, profile);
   const acquisitionPolicy = createPublicationChartRenderPolicyV1(state.project).acquisition;
   const { pages, snapshot, assetRequests } = await runWithPublicationChartAcquisitionDeadlineV1(
@@ -477,7 +501,13 @@ async function graphAndPlan(state: PublishProjectStateV1, profile: Profile, sign
     planDigest: refreshPlan.planDigest,
     routeChanges: routePlan.changes,
   };
-  return { report, pages, snapshot, assetRequests, routes: routePlan.routes, refreshPlan };
+  // Only published pages get a link, and only on the profile's own Confluence origin.
+  const editLinks = planPublicationEditLinksV1({
+    project: state.project,
+    trustedOrigin: client.getInstanceUrl(),
+    relations: pages.flatMap((page) => client.editRelations.get(page.sourceId) ?? []),
+  });
+  return { report, pages, snapshot, assetRequests, routes: routePlan.routes, refreshPlan, editLinks };
 }
 
 async function writePlan(state: PublishProjectStateV1, report: PublishPlanReportV1): Promise<void> {
@@ -551,6 +581,7 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
       createdBy: { name: "atlcli", version: getCurrentVersion() },
       sourcePolicyDigest: await digestPublicationJsonV1(state.project.sourcePolicy),
       chartPolicy: createPublicationChartRenderPolicyV1(state.project),
+      ...(planned.editLinks === undefined ? {} : { editLinks: planned.editLinks }),
       rootIds: planned.snapshot.rootIds,
       pages,
       routes: planned.routes,
@@ -566,21 +597,48 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
   }
 }
 
+/** The Astro range the builder contract is tested against (the packages' peer range). */
+export const SUPPORTED_ASTRO_RANGE_V1 = ">=7.1.6 <8";
+
+/**
+ * The Astro version `buildCommand` actually runs: the one installed in the
+ * publishing project. Build stamps it into the manifest and verify compares the
+ * manifest against it, so the manifest never names a version that did not build
+ * the site.
+ */
+export async function installedPublicationAstroVersionV1(projectDir: string): Promise<string> {
+  // Node's lookup: the nearest `node_modules/astro` at or above the project.
+  let version: unknown;
+  for (let dir = resolve(projectDir); version === undefined; dir = dirname(dir)) {
+    const manifest = await readFile(join(dir, "node_modules", "astro", "package.json"), "utf8").catch(() => undefined);
+    if (manifest !== undefined) version = (JSON.parse(manifest) as { version?: unknown }).version ?? null;
+    else if (dirname(dir) === dir) {
+      throw new Error("Astro is not installed in the publishing project; run the project's package install first.");
+    }
+  }
+  if (typeof version !== "string" || !Bun.semver.satisfies(version, SUPPORTED_ASTRO_RANGE_V1)) {
+    throw new Error(`The publishing project's Astro ${String(version)} is outside the supported range ${SUPPORTED_ASTRO_RANGE_V1}.`);
+  }
+  return version;
+}
+
 async function executeBuild(state: PublishProjectStateV1): Promise<Record<string, unknown>> {
   const active = await readActiveBundle(state.workspaceDirectory);
   if (active === undefined) throw new Error("No active publication bundle; run `wiki publish refresh` first.");
   assertPublicationChartBuildPolicyV1(state.project, active.bundle.issues);
+  assertPublicationEditLinkBuildPolicyV1(state.project, active.bundle);
   const projectDigest = await digestPublicationJsonV1(state.project);
   const lockfile = await readFile(resolve(state.project.builder.projectDir, "bun.lock"), "utf8").catch(() => "");
   const lockfileDigest = createHash("sha256").update(lockfile).digest("hex");
   const experienceDigest = await digestPublicationJsonV1({ descriptor: STARLIGHT_PUBLISHING_EXPERIENCE_V1, selection: state.project.experience });
+  const astroVersion = await installedPublicationAstroVersionV1(state.project.builder.projectDir);
   const controller = new AbortController();
   const onSigint = (): void => controller.abort();
   process.once("SIGINT", onSigint);
   try {
     const builder = createAstroStaticPublicationBuilderV1({
       version: "0.1.0",
-      astroVersion: "7.1.6",
+      astroVersion,
       inventoryPath: join(state.workspaceDirectory, "build-inventory.json"),
       outputDirectory: resolve(state.project.builder.projectDir, "dist"),
       environment: publicationBuildEnvironmentV1(
@@ -629,8 +687,11 @@ async function executeVerify(state: PublishProjectStateV1, flags: Flags = {}): P
   if (manifest.base !== state.project.builder.base || manifest.outputProfile !== state.project.builder.outputProfile) {
     throw new Error("Publication build URL/output profile differs from the current project configuration.");
   }
-  if (manifest.builder.id !== "astro-static" || manifest.builder.astroVersion !== "7.1.6") {
-    throw new Error("Publication build uses an unsupported Astro builder/version.");
+  const installedAstro = await installedPublicationAstroVersionV1(state.project.builder.projectDir);
+  if (manifest.builder.id !== "astro-static" || manifest.builder.astroVersion !== installedAstro) {
+    throw new Error(
+      `Publication build was produced by Astro ${manifest.builder.astroVersion}, but the project now has Astro ${installedAstro}; rebuild.`,
+    );
   }
   const expectedExperienceDigest = await digestPublicationJsonV1({ descriptor: STARLIGHT_PUBLISHING_EXPERIENCE_V1, selection: state.project.experience });
   if (
@@ -649,6 +710,15 @@ async function executeVerify(state: PublishProjectStateV1, flags: Flags = {}): P
   }
   const expectedEditLinks = state.project.editLink.provider === "none" ? "none" : "confluence";
   if (manifest.editLinks.provider !== expectedEditLinks) throw new Error("Publication edit-link declaration differs from project configuration.");
+  assertPublicationEditLinkBuildPolicyV1(state.project, active.bundle);
+  const frozenEditLinks = active.bundle.editLinks;
+  const frozenEditLinkIds = (frozenEditLinks?.links ?? []).map((link) => link.sourceId).sort();
+  if (
+    JSON.stringify([...manifest.editLinks.includedSourceIds].sort()) !== JSON.stringify(frozenEditLinkIds) ||
+    (frozenEditLinkIds.length > 0 && manifest.editLinks.origin !== frozenEditLinks!.origin)
+  ) {
+    throw new Error("Publication edit-link declaration differs from the active bundle.");
+  }
   const expectedSearchLanguages = state.project.search.languages === "from-pages"
     ? state.project.i18n.locales
     : state.project.search.languages;
@@ -657,7 +727,12 @@ async function executeVerify(state: PublishProjectStateV1, flags: Flags = {}): P
   }
   const inventory = await readBoundedPublicationJsonV1(join(state.workspaceDirectory, "build-inventory.json")) as unknown as AstroBuildInventoryV1;
   const outputDirectory = resolve(state.project.builder.projectDir, "dist");
-  const verified = await verifyAstroStaticPublicationOutputV1({ manifest, inventory, outputDirectory });
+  const verified = await verifyAstroStaticPublicationOutputV1({
+    manifest,
+    inventory,
+    outputDirectory,
+    ...(frozenEditLinks === undefined ? {} : { editLinks: frozenEditLinks }),
+  });
   return { stage: "verified", buildDigest: manifest.buildDigest, bundleDigest: manifest.bundleDigest, ...verified };
 }
 

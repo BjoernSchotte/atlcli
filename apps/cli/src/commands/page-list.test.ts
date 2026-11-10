@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { childrenSearch, pageListCql } from "./page.js";
+import { capPageList, childrenSearch, pageListCql } from "./page.js";
 
 describe("pageListCql", () => {
   test("scopes to --space when no --cql is given (space was silently ignored)", () => {
@@ -28,5 +28,12 @@ describe("page children --limit", () => {
 
   test("lists every child without --limit", () => {
     expect(childrenSearch("42")).toEqual({ cql: "parent=42 AND type=page", pageSize: 100, maxResults: undefined });
+  });
+});
+
+describe("page list --limit", () => {
+  test("reports a cut list instead of passing it off as complete", () => {
+    expect(capPageList(["a", "b", "c"], 2)).toEqual({ pages: ["a", "b"], truncated: true });
+    expect(capPageList(["a", "b"], 2)).toEqual({ pages: ["a", "b"], truncated: false });
   });
 });

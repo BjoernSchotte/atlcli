@@ -80,6 +80,33 @@ describe("semantic diff spill", () => {
     expect(spilled.sourceChanges).toEqual(reference.sourceChanges);
   }, 20_000);
 
+  // Regression: without stable keys the lane pairs shard i with shard i and
+  // forgot the tail of the longer side, so appended or removed content was "no change".
+  for (const [before, after, kind] of [[2_001, 2_003, "insert"], [2_003, 2_001, "delete"]] as const) {
+    test(`large positional lane reports a trailing ${kind} like the reference matcher`, async () => {
+      const rows = (count: number) => Array.from({ length: count }, (_, index) => ({
+        type: "paragraph",
+        content: [{ type: "text", text: `row-${index}` }],
+      }));
+      const source = (version: number, value: unknown): PageDiffPairV1["from"] => ({
+        id: "synthetic-page",
+        title: "Synthetic",
+        version,
+        deployment: "cloud",
+        body: { representation: "atlas_doc_format", value: JSON.stringify({ type: "doc", version: 1, content: value }) },
+      });
+      const pair: PageDiffPairV1 = { from: source(1, rows(before)), to: source(2, rows(after)), representation: "atlas_doc_format" };
+      const reference = await buildPageDiffChangeSetV1(pair);
+      const spilled = await buildPageDiffChangeSetWithSpillV1(pair);
+      expect(spilled.changeSet.operations.map((op) => [op.kind, op.path])).toEqual([
+        [kind, ["content", 2_001]],
+        [kind, ["content", 2_002]],
+      ]);
+      expect(canonicalJsonV1(spilled.changeSet)).toBe(canonicalJsonV1(reference.changeSet));
+      expect(spilled.sourceChanges).toEqual(reference.sourceChanges);
+    }, 20_000);
+  }
+
   test("validation failure removes the owned temporary store", async () => {
     const pair = adfPair(1);
     pair.to.body.value = "{not-json";

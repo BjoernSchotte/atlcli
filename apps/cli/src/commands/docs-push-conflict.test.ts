@@ -328,4 +328,27 @@ describe("docs subcommands given ./dir from the parent directory", () => {
       await rm(`${tree}-fresh`, { recursive: true, force: true });
     }
   });
+
+  // `docs watch ./dir` without the file watcher (its timing hangs on Linux CI):
+  // the watcher hands over join(dir, filename), relative to the working directory.
+  it("watch pushes an edit and keeps the state path", async () => {
+    const { pushWatchedFile } = await import("./docs.js");
+    const { ConfluenceClient } = await import("@atlcli/confluence");
+    const { findAtlcliDir, readState } = await import("@atlcli/confluence/internal");
+    await writeFile(file(), (await readFile(file(), "utf8")).replace("Original body.", "My edit."));
+    const cwd = process.cwd();
+    process.chdir(parent());
+    try {
+      const atlcliDir = findAtlcliDir(rel());
+      expect(atlcliDir).not.toBeNull();
+      const client = new ConfluenceClient({ name: "stub", baseUrl: server.url.origin, deploymentType: "data-center", auth: { type: "bearer", pat: "stub-token" } });
+      const watched = join(rel(), `${SLUG}.md`);
+      const payload = await pushWatchedFile({ client, space: "DOCSY", opts: { json: true }, atlcliDir, state: await readState(atlcliDir!) }, watched);
+      expect(payload).toEqual({ schemaVersion: "1", file: watched, result: "updated" });
+    } finally {
+      process.chdir(cwd);
+    }
+    expect(puts).toEqual([3]);
+    expect(await storedPaths()).toEqual({ [`${SLUG}.md`]: PAGE_ID });
+  });
 });

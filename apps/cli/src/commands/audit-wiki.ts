@@ -340,8 +340,8 @@ export async function buildPageSnapshots(adapter: SyncDbAdapter, o: SnapshotOpti
   for (const r of records) pages.push(await snapshot(r));
 
   if (o.needs.has("remote") && o.client && o.spaceKey) {
-    const remote = await o.client.getAllPages({ scope: { type: "space", spaceKey: o.spaceKey }, limit: 500 });
-    if (remote.length >= 500) partial.push("remote pages");
+    // Every page of the space: getAllPages follows the cursor to the end.
+    const remote = await o.client.getAllPages({ scope: { type: "space", spaceKey: o.spaceKey } });
     const synced = new Set((await adapter.listPages({})).map((p) => p.pageId));
     for (const p of remote) {
       if (synced.has(p.id)) continue;
@@ -488,10 +488,6 @@ export async function handleAuditWiki(args: string[], flags: Flags, opts: Output
 
   const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
   try {
-    if (hasFlag(flags, "rebuild-graph")) {
-      output("Rebuilding link graph from synced pages...", opts);
-      output("Note: Full rebuild requires re-reading all markdown files. Use 'wiki docs pull' to refresh from remote.", opts);
-    }
     if (hasFlag(flags, "refresh-users")) await handleRefreshUsers(adapter, client!, opts);
     if (hasFlag(flags, "export-graph")) {
       await handleExportGraph(adapter, opts);
@@ -500,7 +496,7 @@ export async function handleAuditWiki(args: string[], flags: Flags, opts: Output
 
     const legacy = legacySelection(flags, config.audit);
     if (typeof legacy === "string") fail(opts, 1, ERROR_CODES.VALIDATION, legacy);
-    if (legacy === undefined && (hasFlag(flags, "rebuild-graph") || hasFlag(flags, "refresh-users")) && getFlag(flags, "checks") === undefined) return;
+    if (legacy === undefined && hasFlag(flags, "refresh-users") && getFlag(flags, "checks") === undefined) return;
     try {
       if (legacy) {
         // The older flags name what to run, and everything they find is listed.
@@ -740,7 +736,6 @@ Rule scripts (TypeScript, run read-only in the script sandbox):
 
 Maintenance:
   --refresh-users           Refresh user active/inactive status from the API
-  --rebuild-graph           Rebuild the link graph from synced markdown files
   --dir <path>              Directory to audit (default: current)
 
 Configuration (~/.atlcli/config.json, used when no check flag is given):

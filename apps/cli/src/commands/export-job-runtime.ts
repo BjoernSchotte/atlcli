@@ -203,28 +203,28 @@ async function cancelUnclaimed(
   jobId: string,
   now: number,
 ): Promise<void> {
-  const snapshot = await persistence.jobs.get(jobId);
-  if (!snapshot || isTerminal(snapshot)) return;
-  if (snapshot.state === "queued" || snapshot.state === "waiting") {
-    await persistence.jobs.compareAndSet({
-      kind: "transition",
-      id: snapshot.id,
-      expectedRevision: snapshot.revision,
-      to: "cancelled",
-      at: now,
-    });
-  }
-  // A running owner observes cancellation through its durable polling context.
-  // This process must not forge that owner's lease epoch.
-  if (snapshot.state === "running") {
-    await persistence.jobs.compareAndSet({
-      kind: "transition",
-      id: snapshot.id,
-      expectedRevision: snapshot.revision,
-      leaseEpoch: snapshot.leaseEpoch,
-      to: "cancelling",
-      at: now,
-    });
+  // A running job bumps its revision on every progress/lease write, so the
+  // transition is retried on a fresh snapshot instead of losing the Ctrl-C.
+  for (;;) {
+    const snapshot = await persistence.jobs.get(jobId);
+    if (!snapshot || isTerminal(snapshot)) return;
+    if (snapshot.state !== "queued" && snapshot.state !== "waiting" && snapshot.state !== "running") return;
+    try {
+      await persistence.jobs.compareAndSet({
+        kind: "transition",
+        id: snapshot.id,
+        expectedRevision: snapshot.revision,
+        // A running owner observes cancellation through its durable polling
+        // context. This process must not forge that owner's lease epoch.
+        ...(snapshot.state === "running"
+          ? { leaseEpoch: snapshot.leaseEpoch, to: "cancelling" as const }
+          : { to: "cancelled" as const }),
+        at: now,
+      });
+      return;
+    } catch (error) {
+      if ((error as { code?: unknown } | null)?.code !== "revision-conflict") throw error;
+    }
   }
 }
 

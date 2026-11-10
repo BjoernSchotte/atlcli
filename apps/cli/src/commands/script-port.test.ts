@@ -140,3 +140,39 @@ test("access methods map the clients' shapes and resolve each space id once", as
     ["setSpaceRoleAssignments", "7", [{ principal: { principalType: "ACCESS_CLASS", principalId: "all-licensed-users" } }]],
   ]);
 });
+
+import type { ConfluenceClient } from "@atlcli/confluence";
+
+const portOver = (confluence: Partial<Record<keyof ConfluenceClient, unknown>>) =>
+  createCliScriptPort(unused, () => confluence as unknown as ConfluenceClient, "https://example.atlassian.net", { profileName: "p", outDir: "/tmp" });
+
+// Regression: each copied attachment listed the whole source page again (250 at most).
+test("copying an attachment fetches it by id, without listing the source page", async () => {
+  const calls: string[] = [];
+  const port = portOver({
+    listAttachments: unused,
+    getAttachment: async (id: string) => (calls.push(`get ${id}`), { id, filename: "a.png", mediaType: "image/png", pageId: "10", downloadUrl: "/download/a.png" }),
+    downloadAttachment: async (a: { downloadUrl: string }) => (calls.push(`download ${a.downloadUrl}`), new Uint8Array([1])),
+    uploadAttachment: async (p: { pageId: string; filename: string }) => (calls.push(`upload ${p.pageId} ${p.filename}`), { id: "att-copy" }),
+  });
+  expect(await port.confluenceCopyAttachment!("att301", "10", "20")).toEqual({ id: "att-copy" });
+  expect(calls).toEqual(["get att301", "download /download/a.png", "upload 20 a.png"]);
+  await expect(port.confluenceCopyAttachment!("att301", "11", "20")).rejects.toThrow("Page 11 has no attachment att301");
+});
+
+// Regression: an offset cursor; Confluence Cloud ignores `start` and serves the first page again.
+test("search pages by the server's next link", async () => {
+  const calls: unknown[] = [];
+  const hit = (id: string) => ({ id, title: id, spaceKey: "S" });
+  const port = portOver({
+    search: async (cql: string, options: Record<string, unknown>) => {
+      calls.push(["search", cql, options.start]);
+      return { results: [hit("1")], hasMore: true, nextLink: "/rest/api/content/search?cursor=abc" };
+    },
+    searchNextPage: async (link: string) => (calls.push(["next", link]), { results: [hit("2")], hasMore: false }),
+  });
+  const first = await port.confluenceSearch("type = page", { limit: 1 });
+  expect(first).toEqual({ results: [hit("1")], nextCursor: "/rest/api/content/search?cursor=abc" });
+  expect(await port.confluenceSearch("type = page", { limit: 1, cursor: first.nextCursor })).toEqual({ results: [hit("2")] });
+  expect(calls).toEqual([["search", "type = page", undefined], ["next", "/rest/api/content/search?cursor=abc"]]);
+});

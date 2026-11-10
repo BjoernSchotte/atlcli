@@ -327,6 +327,52 @@ describe("ordinary export job runtime", () => {
     await expect(readFile(outputPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("retries a Ctrl-C cancellation that loses a revision race with the running job", async () => {
+    const root = await fixtureRoot();
+    const base = createFileExportJobPersistence({ rootDir: join(root, "state") });
+    let conflicts = 0;
+    const persistence = {
+      ...base,
+      jobs: new Proxy(base.jobs, {
+        get(target, property) {
+          const value = Reflect.get(target, property, target);
+          if (typeof value !== "function") return value;
+          if (property !== "compareAndSet") return value.bind(target);
+          return async (mutation: { kind: string; to?: string }) => {
+            if (mutation.kind === "transition" && mutation.to === "cancelling" && conflicts++ === 0) {
+              throw Object.assign(new Error("Revision is stale."), { code: "revision-conflict" });
+            }
+            return value.call(target, mutation);
+          };
+        },
+      }),
+    } as typeof base;
+    const controller = new AbortController();
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => { started = resolve; });
+    const running = runOrdinaryExportJobV1({
+      request: request(join(root, "raced.pdf")),
+      executor: {
+        format: "pdf",
+        async execute(_request, context): Promise<never> {
+          started();
+          return await new Promise<never>((_resolve, reject) => {
+            context.signal.addEventListener("abort", () => reject(context.signal.reason), { once: true });
+          });
+        },
+      },
+      persistence,
+      ownerId: "owner-cancel-race",
+      signal: controller.signal,
+      pollIntervalMs: 0,
+    });
+    await startedPromise;
+    controller.abort();
+
+    expect((await running).snapshot.state).toBe("cancelled");
+    expect(conflicts).toBe(2);
+  });
+
   it("recovers a crash after exact file delivery but before delivered metadata", async () => {
     const root = await fixtureRoot();
     const outputPath = join(root, "already-delivered.pdf");

@@ -295,11 +295,14 @@ export function createCliScriptPort(
     },
 
     async confluenceSearch(cql, { cursor, limit, signal }) {
-      const start = cursor ? Number(cursor) : 0;
-      const page = await confluence().search(cql, { limit, start, detail: "minimal", signal });
+      // The cursor is the server's next link: Confluence Cloud ignores `start`,
+      // so an offset cursor would return the first page again and again.
+      const page = cursor
+        ? await confluence().searchNextPage(cursor, { signal })
+        : await confluence().search(cql, { limit, detail: "minimal", signal });
       return {
         results: page.results.map((r) => ({ id: r.id, title: r.title, spaceKey: r.spaceKey ?? "" })),
-        ...(page.hasMore ? { nextCursor: String(start + page.results.length) } : {}),
+        ...(page.nextLink ? { nextCursor: page.nextLink } : {}),
       };
     },
     async confluenceGetPage(id, { signal }) {
@@ -351,8 +354,9 @@ export function createCliScriptPort(
     },
     async confluenceCopyAttachment(attachmentId, sourcePageId, toPageId) {
       // ponytail: in memory, one attachment at a time; stream through a temp file like Jira if pages carry huge files
-      const source = (await confluence().listAttachments(sourcePageId, { limit: 250 })).find((a) => a.id === attachmentId);
-      if (!source) throw new Error(`Page ${sourcePageId} has no attachment ${attachmentId}`);
+      // By id: listing the source page again for each of its attachments is quadratic.
+      const source = await confluence().getAttachment(attachmentId);
+      if (source.pageId && source.pageId !== sourcePageId) throw new Error(`Page ${sourcePageId} has no attachment ${attachmentId}`);
       const data = await confluence().downloadAttachment(source);
       const copy = await confluence().uploadAttachment({ pageId: toPageId, filename: source.filename, data, mimeType: source.mediaType });
       return { id: copy.id };
