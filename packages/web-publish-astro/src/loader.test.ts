@@ -1,15 +1,16 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
-import { STARLIGHT_PUBLISHING_EXPERIENCE_V1 } from "@atlcli/web-publish-starlight";
+import { digestPublicationJsonV1, digestPublicationPageV1, publicationBundleDigestInputV1, type PublicationBundleV1, type PublicationPageV1 } from "@atlcli/web-publish";
 import {
   atlcliPublishingIntegration,
   PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1,
   PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1,
   publicationRoutePathV1,
   publicationStaticPathsV1,
+  readPublicationNavigationV1,
 } from "./integration.js";
 import { readPublicationBundlePagesV1 } from "./loader.js";
 
@@ -169,13 +170,20 @@ function resolvedConfig(root: string, overrides: Record<string, unknown> = {}): 
   };
 }
 
-async function fixture(bundleValue = bundle(), pageValue = page): Promise<{ root: string; bundlePath: string }> {
+/** Write a bundle whose page and bundle digests are the real ones, as the materializer does. */
+async function fixture(bundleValue = bundle(), pageValue: Record<string, unknown> = page): Promise<{ root: string; bundlePath: string; bundleDigest: string }> {
   const root = await mkdtemp(join(tmpdir(), "atlcli-web-publish-astro-"));
   await mkdir(join(root, "pages"));
-  await writeFile(join(root, "pages", "guide.json"), JSON.stringify(pageValue));
+  const pageDigest = await digestPublicationPageV1(pageValue as unknown as PublicationPageV1);
+  await writeFile(join(root, "pages", "guide.json"), JSON.stringify({ ...pageValue, pageDigest }));
+  const sealed = {
+    ...bundleValue,
+    pages: (bundleValue.pages as { sourceId: string }[]).map((entry) => entry.sourceId === pageValue.sourceId ? { ...entry, pageDigest } : entry),
+  };
+  const bundleDigest = await digestPublicationJsonV1(publicationBundleDigestInputV1(sealed as unknown as PublicationBundleV1));
   const bundlePath = join(root, "bundle.json");
-  await writeFile(bundlePath, JSON.stringify(bundleValue));
-  return { root, bundlePath };
+  await writeFile(bundlePath, JSON.stringify({ ...sealed, bundleDigest }));
+  return { root, bundlePath, bundleDigest };
 }
 
 async function writeBuiltGuide(output: string, body = "Guide"): Promise<void> {
@@ -195,10 +203,10 @@ async function writeBuiltLabelLanding(output: string, slug: string): Promise<voi
 }
 
 test("reads only complete, referenced structured page documents", async () => {
-  const { root, bundlePath } = await fixture();
+  const { root, bundlePath, bundleDigest } = await fixture();
   try {
     await expect(readPublicationBundlePagesV1({ bundlePath })).resolves.toMatchObject({
-      bundle: { bundleDigest: "bundle-digest" },
+      bundle: { bundleDigest },
       pages: [{ sourceId: "guide", blocks: page.blocks }],
     });
   } finally {
@@ -243,6 +251,79 @@ test("rejects partial bundles and paths outside the immutable bundle directory",
     await expect(readPublicationBundlePagesV1({ bundlePath: escaped.bundlePath })).rejects.toThrow("escapes bundle directory");
   } finally {
     await rm(escaped.root, { recursive: true, force: true });
+  }
+});
+
+test("rejects a page or bundle that no longer hashes to its declared digest", async () => {
+  const tamperedPage = await fixture();
+  try {
+    const pagePath = join(tamperedPage.root, "pages", "guide.json");
+    const stored = JSON.parse(await readFile(pagePath, "utf8")) as Record<string, unknown>;
+    await writeFile(pagePath, JSON.stringify({ ...stored, title: "Tampered" }));
+    await expect(readPublicationBundlePagesV1({ bundlePath: tamperedPage.bundlePath })).rejects.toThrow("does not match its digest");
+  } finally {
+    await rm(tamperedPage.root, { recursive: true, force: true });
+  }
+
+  const tamperedBundle = await fixture();
+  try {
+    const stored = JSON.parse(await readFile(tamperedBundle.bundlePath, "utf8")) as Record<string, unknown>;
+    await writeFile(tamperedBundle.bundlePath, JSON.stringify({ ...stored, sourcePolicyDigest: "another-policy" }));
+    await expect(readPublicationBundlePagesV1({ bundlePath: tamperedBundle.bundlePath })).rejects.toThrow("bundle does not match its digest");
+  } finally {
+    await rm(tamperedBundle.root, { recursive: true, force: true });
+  }
+});
+
+test("rejects unsafe page paths, symlinked documents, and oversized bundle JSON", async () => {
+  for (const path of ["pages\\guide.json", "pages/./guide.json", "pages//guide.json", "/pages/guide.json"]) {
+    const unsafe = await fixture(bundle({ pages: [{ sourceId: "guide", path, pageDigest: "page-digest" }] }));
+    try {
+      await expect(readPublicationBundlePagesV1({ bundlePath: unsafe.bundlePath })).rejects.toThrow("escapes bundle directory");
+    } finally {
+      await rm(unsafe.root, { recursive: true, force: true });
+    }
+  }
+
+  const linked = await fixture();
+  try {
+    const pagePath = join(linked.root, "pages", "guide.json");
+    await rename(pagePath, join(linked.root, "real-guide.json"));
+    await symlink(join(linked.root, "real-guide.json"), pagePath);
+    await expect(readPublicationBundlePagesV1({ bundlePath: linked.bundlePath })).rejects.toThrow("symlinks");
+  } finally {
+    await rm(linked.root, { recursive: true, force: true });
+  }
+
+  const oversized = await fixture();
+  try {
+    await truncate(oversized.bundlePath, 64 * 1024 * 1024 + 1);
+    await expect(readPublicationBundlePagesV1({ bundlePath: oversized.bundlePath })).rejects.toThrow("byte limit");
+  } finally {
+    await rm(oversized.root, { recursive: true, force: true });
+  }
+});
+
+test("loads and plans a bundle once per bundle file, and again after it is rewritten", async () => {
+  const { root, bundlePath } = await fixture();
+  try {
+    const first = await readPublicationNavigationV1({ bundlePath });
+    // One page route render per page asks for the same navigation.
+    expect(await readPublicationNavigationV1({ bundlePath })).toBe(first);
+    expect((await readPublicationNavigationV1({ bundlePath, labelRoutePrefix: "/tags" })).navigation).not.toBe(first.navigation);
+
+    const rewritten = await fixture(bundle(), { ...page, title: "Rewritten guide" });
+    try {
+      await rename(join(rewritten.root, "pages", "guide.json"), join(root, "pages", "guide.json"));
+      await rename(rewritten.bundlePath, bundlePath);
+    } finally {
+      await rm(rewritten.root, { recursive: true, force: true });
+    }
+    const second = await readPublicationNavigationV1({ bundlePath });
+    expect(second).not.toBe(first);
+    expect(second.pages[0]?.title).toBe("Rewritten guide");
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 
@@ -296,11 +377,10 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
 });
 
 test("plans, reserves, and inventories collision-checked label landing routes from the complete bundle graph", async () => {
-  const { root, bundlePath } = await fixture();
+  const { root, bundlePath } = await fixture(bundle(), { ...page, labels: ["Docs"] });
   const output = join(root, "dist");
   const manifest = join(root, "private", "inventory.json");
   try {
-    await writeFile(join(root, "pages", "guide.json"), JSON.stringify({ ...page, labels: ["Docs"] }));
     await mkdir(output);
     await writeBuiltGuide(output);
     await writeBuiltLabelLanding(output, "docs");
@@ -580,29 +660,6 @@ test("accepts only a caller-imported compatible experience descriptor", async ()
       expectedConfig: expectedConfig(root),
       experience: { ...installedExperience, selection: { ...installedExperience.selection, id: "other" } },
     })).toThrow("does not match installed experience");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("accepts the installed Starlight descriptor without dynamic package resolution", async () => {
-  const { root, bundlePath } = await fixture();
-  try {
-    const selected = atlcliPublishingIntegration({
-      bundlePath, manifestPath: join(root, "private", "inventory.json"), routePrefix: "/publish",
-      expectedConfig: expectedConfig(root),
-      experience: {
-        selection: {
-          id: STARLIGHT_PUBLISHING_EXPERIENCE_V1.id,
-          expectedVersion: STARLIGHT_PUBLISHING_EXPERIENCE_V1.version,
-          requiredCapabilities: ["search-modal", "table-of-contents", "print-styles"],
-          designTokens: { accent: "#0052cc" }, componentOverrides: { search: "Search" },
-        },
-        descriptor: STARLIGHT_PUBLISHING_EXPERIENCE_V1,
-        tokenValidator: { schema: "atlcli.starlight.tokens/1", validate: () => [] },
-      },
-    });
-    expect(selected.name).toBe("atlcli-publishing");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

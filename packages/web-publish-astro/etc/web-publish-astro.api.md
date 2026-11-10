@@ -171,13 +171,6 @@ export interface BuildPagefindIndexOptionsV1 {
 // export: buildPagefindIndexV1
 export declare function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1): Promise<PublicationSearchBudgetMeasurementV1>;
 
-// export: ConfluenceEditRelationV1
-export interface ConfluenceEditRelationV1 {
-    sourceId: string;
-    editui?: string;
-    webui?: string;
-}
-
 // export: CreateAstroStaticManifestOptionsV1
 export interface CreateAstroStaticManifestOptionsV1 {
     request: PublicationBuildRequestV1;
@@ -268,9 +261,6 @@ export declare function normalizePlausibleAnalyticsConfigV1(input: {
 // export: PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1
 export declare const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
 
-// export: PAGEFIND_VERSION_V1
-export declare const PAGEFIND_VERSION_V1 = "1.5.2";
-
 // export: PagefindSearchFilterV1
 export interface PagefindSearchFilterV1 {
     name: string;
@@ -296,9 +286,6 @@ export interface PagefindSearchMessagesV1 {
 
 // export: PagefindSearchRuntimeV1
 export type PagefindSearchRuntimeV1 = "auto" | "main-thread";
-
-// export: planPublicationPrefetchLinksV1
-export declare function planPublicationPrefetchLinksV1(options: PublicationPrefetchOptionsV1): readonly string[];
 
 // export: PLAUSIBLE_TRACKER_VERSION_V1
 export declare const PLAUSIBLE_TRACKER_VERSION_V1 = "0.4.5";
@@ -345,12 +332,12 @@ export interface PublicationAnalyticsPrivacyDeclarationV1 {
     persistentQueue: false;
 }
 
-// export: PublicationEditLinkV1
-export interface PublicationEditLinkV1 {
-    sourceId: string;
+// export: publicationEditLinkV1
+export declare function publicationEditLinkV1(bundle: Pick<PublicationBundleV1, "editLinks">, sourceId: string): {
     href: string;
     label: string;
-}
+    placement: "page-footer" | "page-actions";
+} | undefined;
 
 // export: publicationLocaleRoutePathV1
 export declare function publicationLocaleRoutePathV1(route: string, routePrefix: string, locale: string | undefined, i18n: PublicationI18nOptionsV1 | undefined): string;
@@ -372,13 +359,6 @@ export interface PublicationPerformanceMeasurementV1 {
     readonly fontBytes: number;
     readonly transformedImageBytes: number;
     readonly largestPageBytes: number;
-}
-
-// export: PublicationPrefetchOptionsV1
-export interface PublicationPrefetchOptionsV1 {
-    origin: string;
-    verifiedRoutes: readonly string[];
-    hrefs: readonly string[];
 }
 
 // export: publicationRoutePathV1
@@ -512,17 +492,6 @@ export declare function readPublicationNavigationV1(options: AtlcliPublicationLo
     labelRoutePrefix?: string;
 }): Promise<LoadedPublicationNavigationV1>;
 
-// export: resolveConfluenceEditLinkV1
-export declare function resolveConfluenceEditLinkV1(options: {
-    relation: ConfluenceEditRelationV1;
-    trustedOrigin: string;
-    label: string;
-    fallback: "open-page" | "omit";
-    visibility: "internal" | "all";
-    publicationVisibility: "internal" | "public";
-    publicTenantDisclosureAcknowledged?: true;
-}): PublicationEditLinkV1 | undefined;
-
 // export: ResolvedAstroPublishingConfigV1
 export interface ResolvedAstroPublishingConfigV1 {
     output: string;
@@ -565,6 +534,7 @@ export interface VerifyAstroStaticPublicationOutputOptionsV1 {
     manifest: StaticPublicationManifestV1;
     inventory: AstroBuildInventoryV1;
     outputDirectory: string;
+    editLinks?: PublicationBundleEditLinksV1;
 }
 
 // export: verifyAstroStaticPublicationOutputV1

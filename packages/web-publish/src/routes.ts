@@ -376,7 +376,7 @@ function claimOutput(
   const matchingPrefix = reservedPrefixes.find((prefix) =>
     normalizedOwnerPath === outputPathFold(prefix) || normalizedOwnerPath.startsWith(`${outputPathFold(prefix)}/`)
   );
-  if (matchingPrefix !== undefined && !owner.sourceId.startsWith("[reserved-prefix:")) {
+  if (matchingPrefix !== undefined) {
     throw new PublicationRoutePlanningErrorV1(
       "output-path-collision",
       `Output path "${owner.path}" is reserved under "${matchingPrefix}/".`,

@@ -3,6 +3,7 @@ import {
   EXPORT_BLOCK_MODEL_SCHEMA_V1,
   parseExportBlockDocumentV1,
 } from "@atlcli/export-blocks";
+import { trustedConfluenceEditUrlV1 } from "./edit-links.js";
 import { normalizePublicationLocaleV1 } from "./i18n.js";
 import {
   PUBLICATION_BUNDLE_SCHEMA_V1,
@@ -11,7 +12,6 @@ import {
   PUBLICATION_PROJECT_SCHEMA_V1,
   PUBLICATION_REFRESH_PLAN_SCHEMA_V1,
   PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1,
-  PUBLISH_RUN_REQUEST_SCHEMA_V1,
   STATIC_PUBLICATION_MANIFEST_SCHEMA_V1,
   type PublicationBundleV1,
   type PublicationBuildRequestV1,
@@ -27,7 +27,6 @@ import {
   type PublicationRenderableKindV1,
   type PublicationRendererDescriptorV1,
   type PublicationSearchProviderDescriptorV1,
-  type PublishRunRequestV1,
   type StaticPublicationManifestV1,
 } from "./contracts.js";
 import {
@@ -696,19 +695,17 @@ function publicationProject(value: unknown, path: string): void {
   mediaOptions(candidate.media, `${path}.media`);
   analyticsOptions(candidate.analytics, `${path}.analytics`);
   editLinkOptions(candidate.editLink, `${path}.editLink`);
+  // A public edit link names the Confluence tenant to every reader.
+  const editLink = candidate.editLink as Record<string, unknown>;
+  if (
+    candidate.visibility === "public" && editLink.provider === "confluence" &&
+    editLink.visibility === "all" && editLink.publicTenantDisclosureAcknowledged !== true
+  ) {
+    fail(`${path}.editLink.publicTenantDisclosureAcknowledged`, "public Confluence edit links require explicit tenant-disclosure acknowledgement");
+  }
   builderOptions(candidate.builder, `${path}.builder`);
   retentionPolicy(candidate.retention, `${path}.retention`);
   optional(candidate, "activeBundleDigest", path, nonEmptyString);
-}
-
-function publishRunRequest(value: unknown, path: string): void {
-  const candidate = object(value, path);
-  keys(candidate, path, ["schema", "projectRef", "operation", "expectedActiveBundleDigest", "dryRun"]);
-  literal(candidate.schema, `${path}.schema`, PUBLISH_RUN_REQUEST_SCHEMA_V1);
-  nonEmptyString(candidate.projectRef, `${path}.projectRef`);
-  oneOf(candidate.operation, `${path}.operation`, ["plan", "refresh", "build", "verify", "run"]);
-  optional(candidate, "expectedActiveBundleDigest", path, nonEmptyString);
-  boolean(candidate.dryRun, `${path}.dryRun`);
 }
 
 export function parsePublicationProjectV1(
@@ -716,13 +713,6 @@ export function parsePublicationProjectV1(
   budget: PublicationValidationBudgetV1 = DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1,
 ): PublicationProjectV1 {
   return parse(value, budget, publicationProject);
-}
-
-export function parsePublishRunRequestV1(
-  value: unknown,
-  budget: PublicationValidationBudgetV1 = DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1,
-): PublishRunRequestV1 {
-  return parse(value, budget, publishRunRequest);
 }
 
 function issueSource(value: unknown, path: string): void {
@@ -925,7 +915,7 @@ function publicationBundle(value: unknown, path: string): void {
   const candidate = object(value, path);
   keys(candidate, path, [
     "schema", "bundleDigest", "createdBy", "sourceSnapshot", "sourcePolicyDigest",
-    "chartPolicy", "complete", "rootIds", "pages", "routes", "assets", "issues",
+    "chartPolicy", "editLinks", "complete", "rootIds", "pages", "routes", "assets", "issues",
   ]);
   literal(candidate.schema, `${path}.schema`, PUBLICATION_BUNDLE_SCHEMA_V1);
   nonEmptyString(candidate.bundleDigest, `${path}.bundleDigest`);
@@ -942,6 +932,44 @@ function publicationBundle(value: unknown, path: string): void {
   values(candidate.routes, `${path}.routes`, routeRecord);
   values(candidate.assets, `${path}.assets`, assetEntry);
   values(candidate.issues, `${path}.issues`, publicationIssue);
+  if (candidate.editLinks !== undefined) {
+    bundleEditLinks(
+      candidate.editLinks,
+      `${path}.editLinks`,
+      new Set((candidate.pages as readonly { sourceId: string }[]).map((entry) => entry.sourceId)),
+    );
+  }
+}
+
+function httpsOrigin(value: unknown, path: string): string {
+  const candidate = nonEmptyString(value, path);
+  let url: URL | undefined;
+  try {
+    url = new URL(candidate);
+  } catch {
+    url = undefined;
+  }
+  if (url?.protocol !== "https:" || url.origin !== candidate) return fail(path, "expected an https origin");
+  return candidate;
+}
+
+function bundleEditLinks(value: unknown, path: string, pageIds: ReadonlySet<string>): void {
+  const candidate = object(value, path);
+  keys(candidate, path, ["origin", "label", "placement", "fallback", "links"]);
+  const origin = httpsOrigin(candidate.origin, `${path}.origin`);
+  nonEmptyString(candidate.label, `${path}.label`);
+  oneOf(candidate.placement, `${path}.placement`, ["page-footer", "page-actions"]);
+  oneOf(candidate.fallback, `${path}.fallback`, ["open-page", "omit"]);
+  const seen = new Set<string>();
+  values(candidate.links, `${path}.links`, (entry, entryPath) => {
+    const link = object(entry, entryPath);
+    keys(link, entryPath, ["sourceId", "href"]);
+    const sourceId = nonEmptyString(link.sourceId, `${entryPath}.sourceId`);
+    if (!pageIds.has(sourceId) || seen.has(sourceId)) fail(`${entryPath}.sourceId`, "expected one link per bundle page");
+    seen.add(sourceId);
+    const href = nonEmptyString(link.href, `${entryPath}.href`);
+    if (trustedConfluenceEditUrlV1(href, origin) !== href) fail(`${entryPath}.href`, "expected a provider URL on the trusted Confluence origin");
+  });
 }
 
 function rendererDescriptor(value: unknown, path: string): void {
@@ -1066,9 +1094,13 @@ function builtAnalytics(value: unknown, path: string): void {
 
 function builtEditLinks(value: unknown, path: string): void {
   const candidate = object(value, path);
-  keys(candidate, path, ["provider", "includedSourceIds", "omittedSourceIds"]);
+  keys(candidate, path, ["provider", "origin", "includedSourceIds", "omittedSourceIds"]);
   oneOf(candidate.provider, `${path}.provider`, ["none", "confluence"]);
+  optional(candidate, "origin", path, httpsOrigin);
   stringValues(candidate.includedSourceIds, `${path}.includedSourceIds`);
+  if ((candidate.includedSourceIds as readonly string[]).length > 0 && (candidate.provider !== "confluence" || candidate.origin === undefined)) {
+    fail(`${path}.includedSourceIds`, "included edit links require the confluence provider and its trusted origin");
+  }
   stringValues(candidate.omittedSourceIds, `${path}.omittedSourceIds`);
 }
 

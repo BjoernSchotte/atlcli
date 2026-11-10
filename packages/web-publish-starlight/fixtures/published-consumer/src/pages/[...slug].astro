@@ -3,6 +3,7 @@ import {
   createPublicationSeoHeadTagsV1,
   createPublicationSeoPlanV1,
   createPublicationRenderContextV1,
+  publicationEditLinkV1,
   publicationLocaleRoutePathV1,
   publicationStaticPathsV1,
   readPublicationNavigationV1,
@@ -106,4 +107,5 @@ const pageContext = page === undefined
   sidebar={navigation.sidebar}
   context={pageContext!}
   seoHead={seoHead}
+  editLink={publicationEditLinkV1(loaded.bundle, page!.sourceId)}
 /> : <StarlightPublicationLabelLanding landing={landing!} sidebar={navigation.sidebar} seoHead={seoHead} />}

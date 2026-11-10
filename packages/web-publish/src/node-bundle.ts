@@ -15,6 +15,7 @@ import type {
   PublicationAssetEntryV1,
   PublicationAssetPolicyV1,
   PublicationBundleV1,
+  PublicationBundleEditLinksV1,
   PublicationChartRenderPolicyV1,
   PublicationIssueV1,
   PublicationPageV1,
@@ -29,10 +30,6 @@ import {
   digestPublicationPageV1,
   digestPublicationRefreshPlanV1,
 } from "./digests.js";
-import {
-  DEFAULT_PUBLICATION_CACHE_ASSET_BYTES_V1,
-  DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1,
-} from "./node-cache.js";
 import { validatePublicationOutputPathV1 } from "./routes.js";
 import {
   parsePublicationBundleV1,
@@ -41,6 +38,8 @@ import {
   parseStaticPublicationManifestV1,
 } from "./schema.js";
 
+const DEFAULT_MAX_PAGE_BYTES_V1 = 16 * 1024 * 1024;
+const DEFAULT_MAX_ASSET_BYTES_V1 = 128 * 1024 * 1024;
 const CURRENT_SCHEMA_V1 = "atlcli.publication-current/1" as const;
 const SHA256_HEX = /^[a-f0-9]{64}$/u;
 const ACTIVATION_LOCK_SCHEMA_V1 = "atlcli.publication-activation-lock/1" as const;
@@ -66,6 +65,7 @@ export interface NodePublicationBundleMaterializationRequestV1 {
   createdBy: PublicationBundleV1["createdBy"];
   sourcePolicyDigest: string;
   chartPolicy?: PublicationChartRenderPolicyV1;
+  editLinks?: PublicationBundleEditLinksV1;
   rootIds: readonly string[];
   pages: readonly PublicationPageV1[];
   routes: readonly PublicationRouteRecordV1[];
@@ -639,6 +639,7 @@ async function buildBundle(
     sourceSnapshot: request.refreshPlan.sourceSnapshot,
     sourcePolicyDigest: request.sourcePolicyDigest,
     ...(request.chartPolicy === undefined ? {} : { chartPolicy: request.chartPolicy }),
+    ...(request.editLinks === undefined ? {} : { editLinks: request.editLinks }),
     complete: true,
     rootIds: [...request.rootIds],
     pages: pageEntries.sort((left, right) => left.sourceId.localeCompare(right.sourceId)),
@@ -795,8 +796,8 @@ function validateRetentionRequest(request: NodePublicationRetentionRequestV1): {
   }
   return {
     workspaceDirectory: resolve(request.workspaceDirectory),
-    maxPageBytes: requirePositiveSafeInteger(request.maxPageBytes ?? DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1, "maxPageBytes"),
-    maxAssetBytes: requirePositiveSafeInteger(request.maxAssetBytes ?? DEFAULT_PUBLICATION_CACHE_ASSET_BYTES_V1, "maxAssetBytes"),
+    maxPageBytes: requirePositiveSafeInteger(request.maxPageBytes ?? DEFAULT_MAX_PAGE_BYTES_V1, "maxPageBytes"),
+    maxAssetBytes: requirePositiveSafeInteger(request.maxAssetBytes ?? DEFAULT_MAX_ASSET_BYTES_V1, "maxAssetBytes"),
     graceMilliseconds,
     now: request.now,
   };

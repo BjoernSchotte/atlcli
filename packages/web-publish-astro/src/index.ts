@@ -1,3 +1,5 @@
+// The page template's entry point for the frozen, origin-checked edit action.
+export { publicationEditLinkV1 } from "@atlcli/web-publish";
 export {
   atlcliPublicationLoader,
   readPublicationBundlePagesV1,
@@ -38,7 +40,6 @@ export {
 } from "./builder.js";
 export {
   buildPagefindIndexV1,
-  PAGEFIND_VERSION_V1,
   type BuildPagefindIndexOptionsV1,
 } from "./pagefind.js";
 export {
@@ -68,10 +69,6 @@ export {
   type PublicationSeoPlanOptionsV1,
 } from "./seo.js";
 export {
-  planPublicationPrefetchLinksV1,
-  type PublicationPrefetchOptionsV1,
-} from "./prefetch.js";
-export {
   PLAUSIBLE_TRACKER_VERSION_V1,
   createPublicationAnalyticsCspV1,
   createPublicationAnalyticsPrivacyDeclarationV1,
@@ -80,11 +77,6 @@ export {
   type PlausibleAnalyticsConfigV1,
   type PublicationAnalyticsPrivacyDeclarationV1,
 } from "./analytics.js";
-export {
-  resolveConfluenceEditLinkV1,
-  type ConfluenceEditRelationV1,
-  type PublicationEditLinkV1,
-} from "./edit-links.js";
 export {
   assertAstroStaticPerformanceBudgetV1,
   measureAstroStaticPerformanceV1,

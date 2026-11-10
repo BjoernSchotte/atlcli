@@ -27,9 +27,12 @@ beforeAll(async () => {
   if (exitCode !== 0) throw new Error(`web-publish-astro package build failed: ${stderr}`);
 }, 120_000);
 
+// The fixture bundle is sealed: the loader recomputes its digest.
+const fixtureBundleDigest = (JSON.parse(await readFile(resolve(fixtureDirectory, "publication/bundle.json"), "utf8")) as { bundleDigest: string }).bundleDigest;
+
 const request = {
   bundle: {
-    bundleDigest: "bundle-digest",
+    bundleDigest: fixtureBundleDigest,
     complete: true,
     pages: [{ sourceId: "guide", path: "pages/guide.json", pageDigest: "guide-page" }],
     routes: [{ sourceId: "guide", route: "/guide/", state: "active" }],
@@ -105,7 +108,7 @@ test("builder runs the trusted Astro project and consumes only its fresh private
       byteLength: expect.any(Number),
     }]);
     expect(result.manifest).toMatchObject({
-      bundleDigest: "bundle-digest",
+      bundleDigest: fixtureBundleDigest,
       builder: { id: "astro-static", astroVersion: "7.1.6" },
       projectDigest: "project-digest",
       configDigest: "config-digest",

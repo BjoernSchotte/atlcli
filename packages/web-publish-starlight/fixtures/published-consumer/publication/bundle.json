@@ -1,6 +1,6 @@
 {
   "schema": "atlcli.publication-bundle/1",
-  "bundleDigest": "starlight-published-consumer-bundle-digest",
+  "bundleDigest": "86f72c68b4bd091e27c25b9447d40a1611a55ac1e794dfdb75cabe1f65716c2b",
   "createdBy": { "name": "atlcli", "version": "0.1.0" },
   "sourceSnapshot": {
     "sourceDigest": "source-digest",
@@ -34,11 +34,18 @@
     }]
   },
   "sourcePolicyDigest": "policy-digest",
+  "editLinks": {
+    "origin": "https://confluence.example.test",
+    "label": "Edit in Confluence",
+    "placement": "page-actions",
+    "fallback": "omit",
+    "links": [{ "sourceId": "guide", "href": "https://confluence.example.test/wiki/pages/resumedraft.action?draftId=1" }]
+  },
   "complete": true,
   "rootIds": ["guide", "guide-ar"],
   "pages": [
-    { "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "page-digest" },
-    { "sourceId": "guide-ar", "path": "pages/guide-ar.json", "pageDigest": "page-digest-ar" }
+    { "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "e84c066419ecccccf4fbed4d7bcc8ae0f98d0accd0398bc4d65ba14b689f5612" },
+    { "sourceId": "guide-ar", "path": "pages/guide-ar.json", "pageDigest": "e6878d47070995c0ea97bf74dc38c00dc4b2cde45c5bdb383042477546b6c835" }
   ],
   "routes": [
     { "sourceId": "guide", "route": "/guide/", "state": "active", "assignedBy": "generated", "previousRoutes": [] },

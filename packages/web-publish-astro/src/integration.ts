@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants as fsConstants, createReadStream } from "node:fs";
-import { copyFile, lstat, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -267,16 +267,34 @@ export function publicationLocaleRoutePathV1(
 export async function readPublicationNavigationV1(
   options: AtlcliPublicationLoaderOptionsV1 & { labelRoutePrefix?: string },
 ): Promise<LoadedPublicationNavigationV1> {
-  const loaded = await readPublicationBundlePagesV1(options);
-  return {
-    ...loaded,
-    navigation: planPublicationNavigationV1({
-      pages: loaded.pages,
-      rootIds: loaded.bundle.rootIds,
-      ...(options.labelRoutePrefix === undefined ? {} : { labelRoutePrefix: options.labelRoutePrefix }),
-    }),
-  };
+  // A page route calls this once per rendered page. Without the memo every
+  // page would re-read, re-hash and re-plan the whole bundle. The bundle file
+  // identity invalidates it, so a rewritten bundle is loaded again.
+  const bundlePath = resolve(options.bundlePath);
+  const state = await stat(bundlePath);
+  const key = `${bundlePath}\u0000${options.labelRoutePrefix ?? ""}`;
+  const stamp = `${state.ino}:${state.size}:${state.mtimeMs}`;
+  const cached = loadedNavigation.get(key);
+  if (cached?.stamp === stamp) return cached.value;
+  const value = (async (): Promise<LoadedPublicationNavigationV1> => {
+    const loaded = await readPublicationBundlePagesV1(options);
+    return {
+      ...loaded,
+      navigation: planPublicationNavigationV1({
+        pages: loaded.pages,
+        rootIds: loaded.bundle.rootIds,
+        ...(options.labelRoutePrefix === undefined ? {} : { labelRoutePrefix: options.labelRoutePrefix }),
+      }),
+    };
+  })();
+  loadedNavigation.set(key, { stamp, value });
+  value.catch(() => {
+    if (loadedNavigation.get(key)?.value === value) loadedNavigation.delete(key);
+  });
+  return value;
 }
+
+const loadedNavigation = new Map<string, { stamp: string; value: Promise<LoadedPublicationNavigationV1> }>();
 
 function staticSlug(route: string): string | undefined {
   return route === "/" ? undefined : route.slice(1).replace(/\/$/u, "");
@@ -316,7 +334,8 @@ export async function publicationStaticPathsV1(
   ];
 }
 
-async function inventory(root: string): Promise<readonly OutputFileV1[]> {
+/** Sorted absolute paths of every regular file below the output root. */
+async function outputFiles(root: string): Promise<readonly string[]> {
   const files: string[] = [];
   const walk = async (directory: string): Promise<void> => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -327,7 +346,11 @@ async function inventory(root: string): Promise<readonly OutputFileV1[]> {
     }
   };
   await walk(root);
-  return Promise.all(files.sort().map(async (absolute) => {
+  return files.sort();
+}
+
+async function inventory(root: string): Promise<readonly OutputFileV1[]> {
+  return Promise.all((await outputFiles(root)).map(async (absolute) => {
     const bytes = await readFile(absolute);
     return {
       path: relative(root, absolute).replaceAll("\\", "/"),
@@ -480,8 +503,9 @@ async function assertSitemapCoverage(
   outputProfile: "directory" | "portable-file",
 ): Promise<void> {
   const expectedUrls = [...expectedSitemap.matchAll(/<loc>([^<]+)<\/loc>/gu)].map((match) => match[1]!);
-  const xmlFiles = (await inventory(outputRoot)).filter((entry) => /(?:^|\/)sitemap[^/]*\.xml$/u.test(entry.path));
-  const contents = await Promise.all(xmlFiles.map((entry) => readFile(resolve(outputRoot, entry.path), "utf8")));
+  // Only the sitemap files are read; the full output is hashed once, for the inventory.
+  const xmlFiles = (await outputFiles(outputRoot)).filter((absolute) => /[\\/]sitemap[^\\/]*\.xml$/u.test(absolute));
+  const contents = await Promise.all(xmlFiles.map((absolute) => readFile(absolute, "utf8")));
   for (const url of expectedUrls) {
     const acceptedUrls = outputProfile === "portable-file" && url.endsWith("/")
       ? [url, url.slice(0, -1)]
@@ -629,6 +653,7 @@ export function atlcliPublishingIntegration(
         const seo = options.expectedConfig.seo;
         const site = options.expectedConfig.site;
         if (seo !== undefined && i18n !== undefined && site !== undefined) {
+          const navigationBySourceId = new Map(loaded.navigation.pages.map((entry) => [entry.sourceId, entry]));
           const seoPlan = createPublicationSeoPlanV1({
             site,
             base: options.expectedConfig.base,
@@ -643,7 +668,7 @@ export function atlcliPublishingIntegration(
                 localizedRoute: publicationLocaleRoutePathV1(page.route, routePrefix, page.locale ?? defaultLocale, i18n),
                 ...(page.locale === undefined ? {} : { locale: page.locale }),
                 ...(page.translationKey === undefined ? {} : { translationKey: page.translationKey }),
-                breadcrumbs: loaded.navigation.pages.find((entry) => entry.sourceId === page.sourceId)?.breadcrumbs
+                breadcrumbs: navigationBySourceId.get(page.sourceId)?.breadcrumbs
                   .map((breadcrumb) => ({
                     title: breadcrumb.title,
                     route: publicationRoutePathV1(breadcrumb.route, routePrefix),

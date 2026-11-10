@@ -365,6 +365,12 @@ describe("planPublicationRoutesV1", () => {
       outputProfile: "portable-file",
       reservedOutputPathPrefixes: ["pagefind"],
     }).activeOutputs[0]?.outputPath).toBe("pagefind.html");
+    // No source id is exempt: a page id that merely looks like an internal
+    // owner must not be able to claim a path under a reserved prefix.
+    expectPlanningError(() => plan({
+      pages: [{ sourceId: "[reserved-prefix:pagefind]", title: "Pagefind" }],
+      reservedOutputPathPrefixes: ["pagefind"],
+    }), "output-path-collision");
   });
 
   test("rejects handwritten route collisions before generated allocation", () => {

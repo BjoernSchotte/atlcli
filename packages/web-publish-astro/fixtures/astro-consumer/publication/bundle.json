@@ -1,6 +1,6 @@
 {
   "schema": "atlcli.publication-bundle/1",
-  "bundleDigest": "bundle-digest",
+  "bundleDigest": "5598725d5f0581c12ae3d326a34699aed1d26b8a7bae3194decd6eea043b11b6",
   "createdBy": { "name": "atlcli", "version": "0.1.0" },
   "sourceSnapshot": {
     "sourceDigest": "source-digest",
@@ -24,7 +24,7 @@
   "sourcePolicyDigest": "policy-digest",
   "complete": true,
   "rootIds": ["guide"],
-  "pages": [{ "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "page-digest" }],
+  "pages": [{ "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "74fcecacffeff1cd998e255143d64836f952462a4c415030c7cc729e39cf035f" }],
   "routes": [{ "sourceId": "guide", "route": "/guide/", "state": "active", "assignedBy": "generated", "previousRoutes": [] }],
   "assets": [{
     "assetId": "fixture-asset",

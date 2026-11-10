@@ -103,6 +103,19 @@ interface Node {
   parent?: Node;
   children: Node[];
   rootId?: string;
+  /** Folded labels and linked page ids, computed once instead of per compared pair. */
+  labels: ReadonlySet<string>;
+  outbound: ReadonlySet<string>;
+}
+
+/** Lookups that let a page find its related candidates without scanning every page. */
+interface RelatedIndexV1 {
+  byId: ReadonlyMap<string, Node>;
+  roots: readonly Node[];
+  inbound: ReadonlyMap<string, readonly Node[]>;
+  byLabel: ReadonlyMap<string, readonly Node[]>;
+  /** Pages of one root in result order (title, then source id). */
+  byRoot: ReadonlyMap<string, readonly Node[]>;
 }
 
 const DEFAULT_MAX_RELATED_PAGES = 6;
@@ -139,13 +152,31 @@ function rootOf(node: Node): string {
   return node.rootId;
 }
 
-function pageLinksTo(page: PublicationPageV1, sourceId: string): boolean {
-  return page.links.some((link) => link.kind === "page" && link.sourceId === sourceId);
+function foldLabel(label: string): string {
+  return label.normalize("NFKC").toLowerCase();
 }
 
-function sharedLabelCount(left: PublicationPageV1, right: PublicationPageV1): number {
-  const labels = new Set(left.labels.map((label) => label.normalize("NFKC").toLowerCase()));
-  return right.labels.reduce((count, label) => count + (labels.has(label.normalize("NFKC").toLowerCase()) ? 1 : 0), 0);
+function compareRelated(left: { title: string; sourceId: string }, right: { title: string; sourceId: string }): number {
+  return left.title.localeCompare(right.title) || left.sourceId.localeCompare(right.sourceId);
+}
+
+function push<K>(map: Map<K, Node[]>, key: K, node: Node): void {
+  const list = map.get(key);
+  if (list === undefined) map.set(key, [node]);
+  else list.push(node);
+}
+
+function relatedIndex(byId: ReadonlyMap<string, Node>, roots: readonly Node[], ordered: readonly Node[]): RelatedIndexV1 {
+  const inbound = new Map<string, Node[]>();
+  const byLabel = new Map<string, Node[]>();
+  const byRoot = new Map<string, Node[]>();
+  for (const node of ordered) {
+    for (const sourceId of node.outbound) push(inbound, sourceId, node);
+    for (const label of node.labels) push(byLabel, label, node);
+    push(byRoot, rootOf(node), node);
+  }
+  for (const members of byRoot.values()) members.sort((left, right) => compareRelated(left.page, right.page));
+  return { byId, roots, inbound, byLabel, byRoot };
 }
 
 function routeFold(route: string): string {
@@ -162,22 +193,40 @@ function labelRoute(prefix: string, label: string): string {
 
 function relatedPages(
   page: Node,
-  nodes: readonly Node[],
+  index: RelatedIndexV1,
   limit: number,
 ): readonly PublicationRelatedPageV1[] {
-  const related = nodes.flatMap((candidate) => {
-    if (candidate === page) return [];
+  // Every page of the same root is related with the lowest score, so ranking
+  // all pairs is quadratic. Only pages reachable through a link, a label or
+  // the parent can score higher; the remaining places are filled from the
+  // root's pre-sorted member list.
+  // ponytail: a label or parent shared by most pages still yields that many
+  // candidates per page; cap per-label fan-out if such graphs get large.
+  const candidates = new Set<Node>();
+  for (const sourceId of page.outbound) {
+    const target = index.byId.get(sourceId);
+    if (target !== undefined) candidates.add(target);
+  }
+  for (const source of index.inbound.get(page.page.sourceId) ?? []) candidates.add(source);
+  for (const label of page.labels) {
+    for (const labelled of index.byLabel.get(label) ?? []) candidates.add(labelled);
+  }
+  for (const sibling of page.parent?.children ?? index.roots) candidates.add(sibling);
+  candidates.delete(page);
+
+  const pageRoot = rootOf(page);
+  const related = [...candidates].map((candidate): PublicationRelatedPageV1 => {
     const reasons: PublicationRelatedReasonV1[] = [];
     let score = 0;
-    if (pageLinksTo(page.page, candidate.page.sourceId)) {
+    if (page.outbound.has(candidate.page.sourceId)) {
       score += 100;
       reasons.push("outbound-link");
     }
-    if (pageLinksTo(candidate.page, page.page.sourceId)) {
+    if (candidate.outbound.has(page.page.sourceId)) {
       score += 75;
       reasons.push("inbound-link");
     }
-    if (sharedLabelCount(page.page, candidate.page) > 0) {
+    if ([...candidate.labels].some((label) => page.labels.has(label))) {
       score += 20;
       reasons.push("shared-label");
     }
@@ -185,17 +234,18 @@ function relatedPages(
       score += 10;
       reasons.push("same-parent");
     }
-    if (rootOf(page) === rootOf(candidate)) {
+    if (pageRoot === rootOf(candidate)) {
       score += 5;
       reasons.push("same-root");
     }
-    return score === 0 ? [] : [{
-      ...pageSummary(candidate), score, reasons: Object.freeze(reasons),
-    }];
-  });
-  return Object.freeze(related.sort((left, right) =>
-    right.score - left.score || left.title.localeCompare(right.title) || left.sourceId.localeCompare(right.sourceId),
-  ).slice(0, limit));
+    return { ...pageSummary(candidate), score, reasons: Object.freeze(reasons) };
+  }).sort((left, right) => right.score - left.score || compareRelated(left, right)).slice(0, limit);
+  for (const member of index.byRoot.get(pageRoot) ?? []) {
+    if (related.length >= limit) break;
+    if (member === page || candidates.has(member)) continue;
+    related.push({ ...pageSummary(member), score: 5, reasons: Object.freeze(["same-root" as const]) });
+  }
+  return Object.freeze(related);
 }
 
 /**
@@ -228,7 +278,12 @@ export function planPublicationNavigationV1(
     if (route !== page.route || byRoute.has(identity)) {
       fail("duplicate-route", `Duplicate or non-canonical navigation route '${page.route}' in locale '${page.locale ?? "default"}'`);
     }
-    const node: Node = { page, children: [] };
+    const node: Node = {
+      page,
+      children: [],
+      labels: new Set(page.labels.map(foldLabel)),
+      outbound: new Set(page.links.flatMap((link) => link.kind === "page" ? [link.sourceId] : [])),
+    };
     byId.set(page.sourceId, node);
     byRoute.set(identity, node);
   }
@@ -294,6 +349,7 @@ export function planPublicationNavigationV1(
     node.children.forEach(visit);
   };
   roots.forEach(visit);
+  const related = relatedIndex(byId, roots, ordered);
 
   const pages = Object.freeze(ordered.map((node, index): PublicationPageNavigationV1 => {
     const breadcrumbs: PublicationBreadcrumbV1[] = [];
@@ -306,14 +362,14 @@ export function planPublicationNavigationV1(
       toc: Object.freeze(headingToc(planPublicationAnchorsV1(node.page.blocks))),
       ...(index > 0 ? { previous: pageSummary(ordered[index - 1]!) } : {}),
       ...(index + 1 < ordered.length ? { next: pageSummary(ordered[index + 1]!) } : {}),
-      related: relatedPages(node, ordered, maxRelatedPages),
+      related: relatedPages(node, related, maxRelatedPages),
     });
   }));
 
   const labelGroups = new Map<string, { label: string; sourceIds: string[] }>();
   for (const node of ordered) {
     for (const label of node.page.labels) {
-      const key = label.normalize("NFKC").toLowerCase();
+      const key = foldLabel(label);
       const group = labelGroups.get(key) ?? { label, sourceIds: [] };
       group.sourceIds.push(node.page.sourceId);
       labelGroups.set(key, group);

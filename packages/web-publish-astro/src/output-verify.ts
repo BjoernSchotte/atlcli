@@ -3,16 +3,21 @@ import { lstat, readFile, readdir } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import {
   digestPublicationJsonV1,
+  trustedConfluenceEditUrlV1,
   validatePublicationOutputPathV1,
+  type PublicationBundleEditLinksV1,
   type PublicationOutputProfileV1,
   type StaticPublicationManifestV1,
 } from "@atlcli/web-publish";
+import { scanHtmlV1 } from "./html-scan.js";
 import type { AstroBuildInventoryV1 } from "./manifest.js";
 
 export interface VerifyAstroStaticPublicationOutputOptionsV1 {
   manifest: StaticPublicationManifestV1;
   inventory: AstroBuildInventoryV1;
   outputDirectory: string;
+  /** The active bundle's frozen edit links; when given, each page's edit action must be exactly its frozen URL. */
+  editLinks?: PublicationBundleEditLinksV1;
 }
 
 export interface VerifiedAstroStaticPublicationOutputV1 {
@@ -120,30 +125,80 @@ function outputCandidates(pathname: string, profile: PublicationOutputProfileV1)
   return [relativePath, `${relativePath}/index.html`, `${relativePath}.html`];
 }
 
+/** Attributes whose URL a browser loads or navigates to; each is resolved against the owned output. */
+const REFERENCE_ATTRIBUTES: Readonly<Record<string, "href" | "src" | "action" | "srcset">> = {
+  href: "href", "xlink:href": "href", src: "src", poster: "src", action: "action", formaction: "action", srcset: "srcset",
+};
+/** Further attributes that can carry a script URL (legacy URL attributes and SVG animation targets). */
+const SCRIPT_URL_ATTRIBUTES = new Set([
+  ...Object.keys(REFERENCE_ATTRIBUTES), "data", "ping", "background", "cite", "longdesc", "manifest", "codebase", "values", "to", "from", "by",
+]);
+const ACTIVE_CONTENT_ELEMENTS = new Set(["iframe", "object", "embed"]);
+/** The digest- and id-keyed private workspace layout; a plain `/cache/` or `/bundles/` route is ordinary content. */
+const WORKSPACE_REFERENCE = /\.atlcli\/|(?:bundles|builds)\/[a-f0-9]{64}|staging\/[a-f0-9]{8}-[a-f0-9]{4}-|(?:^|[\/"'\s=])(?:publication|current|build-inventory)\.json/iu;
+
+interface HtmlMarkupV1 {
+  references: readonly { kind: "href" | "src" | "action" | "srcset"; value: string }[];
+  /** Every tag with its attributes plus script bodies; page text is excluded. */
+  markup: string;
+  /** `markup` without the reference attributes, whose targets are verified by ownership instead. */
+  nonReferenceMarkup: string;
+}
+
+/**
+ * Reject active markup and split the rest into what later checks need. Only
+ * real elements and attributes count: page text or inline code that merely
+ * mentions `onclick=` or `javascript:` is content, not markup.
+ */
+function inspectHtmlMarkup(htmlPath: string, html: string): HtmlMarkupV1 {
+  const scanned = scanHtmlV1(html);
+  const references: { kind: "href" | "src" | "action" | "srcset"; value: string }[] = [];
+  const markup: string[] = [];
+  const nonReferenceMarkup: string[] = [];
+  for (const tag of scanned.tags) {
+    if (ACTIVE_CONTENT_ELEMENTS.has(tag.name)) fail(`active-content element in '${htmlPath}'`);
+    markup.push(`<${tag.name}`);
+    nonReferenceMarkup.push(`<${tag.name}`);
+    for (const [name, value] of tag.attributes) {
+      if (/^on[a-z]+$/u.test(name)) fail(`event-handler attribute in '${htmlPath}'`);
+      const serialized = ` ${name}="${value}"`;
+      markup.push(serialized);
+      const kind = REFERENCE_ATTRIBUTES[name];
+      if (kind === undefined) nonReferenceMarkup.push(serialized);
+      else references.push({ kind, value });
+      if (
+        (SCRIPT_URL_ATTRIBUTES.has(name) || (name === "content" && tag.attributes.has("http-equiv"))) &&
+        // A browser ignores whitespace and control characters inside a scheme.
+        /(?:^|[;,=])javascript:/iu.test(value.replace(/[\u0000-\u0020]/gu, ""))
+      ) {
+        fail(`javascript URL in '${htmlPath}'`);
+      }
+    }
+  }
+  for (const script of scanned.scripts) {
+    markup.push(script);
+    nonReferenceMarkup.push(script);
+  }
+  return { references, markup: markup.join("\n"), nonReferenceMarkup: nonReferenceMarkup.join("\n") };
+}
+
 async function assertHtmlReferences(
   outputRoot: string,
   htmlPath: string,
-  html: string,
+  attributes: HtmlMarkupV1["references"],
   files: ReadonlyMap<string, string>,
   profile: PublicationOutputProfileV1,
   base: string,
+  anchorIds: Map<string, ReadonlySet<string>>,
 ): Promise<{ links: number; anchors: number }> {
-  if (/\b(?:on[a-z]+)\s*=/iu.test(html)) fail(`event-handler attribute in '${htmlPath}'`);
-  if (/javascript\s*:/iu.test(html)) fail(`javascript URL in '${htmlPath}'`);
-  if (/<\s*(?:iframe|object|embed)\b/iu.test(html)) fail(`active-content element in '${htmlPath}'`);
   const sourceUrl = outputUrl(htmlPath, profile, base);
   const source = new URL(sourceUrl, "https://atlcli.invalid");
-  const references = [
-    ...html.matchAll(/\b(href|src|action)=["']([^"']+)["']/giu),
-    ...html.matchAll(/\b(srcset)=["']([^"']+)["']/giu),
-  ].flatMap((match) => {
-    const kind = match[1]!.toLowerCase();
-    const values = kind === "srcset" ? match[2]!.split(",") : [match[2]!];
-    return values.map((value) => ({ kind, value: value.trim().split(/\s+/u)[0]! }));
+  const references = attributes.flatMap(({ kind, value }) => {
+    const values = kind === "srcset" ? value.split(",") : [value];
+    return values.map((entry) => ({ kind, value: entry.trim().split(/\s+/u)[0]! }));
   });
   let links = 0;
   let anchors = 0;
-  const cache = new Map<string, string>();
   for (const reference of references) {
     const { kind, value } = reference;
     if (value === "" || value === "#") continue;
@@ -155,6 +210,8 @@ async function assertHtmlReferences(
     } catch {
       fail(`invalid URL '${value}' in '${htmlPath}'`);
     }
+    if (target.protocol === "javascript:") fail(`javascript URL in '${htmlPath}'`);
+    if (target.protocol === "file:") fail(`local file URL '${value}' in '${htmlPath}'`);
     if (target.origin !== "https://atlcli.invalid") {
       if (kind === "src" || kind === "srcset" || kind === "action") fail(`external resource/action '${value}' in '${htmlPath}'`);
       continue;
@@ -174,13 +231,13 @@ async function assertHtmlReferences(
     if (target.hash.length > 1) {
       const fragment = decodeURIComponent(target.hash.slice(1));
       if (fragment.length > 200 || /[\u0000-\u001f\u007f]/u.test(fragment)) fail(`unsafe fragment in '${value}'`);
-      let targetHtml = cache.get(targetPath);
-      if (targetHtml === undefined) {
-        targetHtml = await readFile(resolve(outputRoot, targetPath), "utf8");
-        cache.set(targetPath, targetHtml);
+      let ids = anchorIds.get(targetPath);
+      if (ids === undefined) {
+        ids = new Set(scanHtmlV1(await readFile(resolve(outputRoot, targetPath), "utf8")).tags.flatMap((tag) =>
+          [tag.attributes.get("id"), tag.attributes.get("name")].filter((id): id is string => id !== undefined)));
+        anchorIds.set(targetPath, ids);
       }
-      const idPattern = new RegExp(`(?:id|name)=["']${escapeRegExp(fragment)}["']`, "u");
-      if (!idPattern.test(targetHtml)) fail(`missing fragment '#${fragment}' in '${value}'`);
+      if (!ids.has(fragment)) fail(`missing fragment '#${fragment}' in '${value}'`);
       anchors += 1;
     }
   }
@@ -223,6 +280,40 @@ function assertManifestReferences(
   if (manifest.editLinks.provider === "none" && editIncluded.size > 0) {
     fail("manifest declares included edit links while the provider is disabled");
   }
+  if (editIncluded.size > 0 && manifest.editLinks.origin === undefined) {
+    fail("manifest declares included edit links without their trusted origin");
+  }
+}
+
+const EDIT_LINK_MARKERS = ["data-atlcli-edit-link", "data-confluence-edit-link"] as const;
+
+/**
+ * An edit action is the one sanctioned link to the private source site. It
+ * must be an anchor to the manifest's trusted Confluence origin, on a page
+ * the manifest declares it for, and nowhere a page is declared without one.
+ */
+function assertEditLinks(
+  manifest: StaticPublicationManifestV1,
+  path: string,
+  html: string,
+  declaredBySourcePage: ReadonlyMap<string, boolean>,
+  frozenHrefByPage: ReadonlyMap<string, string> | undefined,
+): void {
+  const marked = scanHtmlV1(html).tags.filter((tag) => EDIT_LINK_MARKERS.some((marker) => tag.attributes.has(marker)));
+  const declared = declaredBySourcePage.get(path);
+  if (marked.length > 0 && (manifest.editLinks.provider === "none" || declared === false)) {
+    fail(`edit-link marker in ${manifest.editLinks.provider === "none" ? "disabled build" : "page without a declared edit link"} '${path}'`);
+  }
+  if (declared === true && marked.length === 0) fail(`edit-link marker missing in enabled build '${path}'`);
+  for (const tag of marked) {
+    const href = tag.attributes.get("href");
+    if (tag.name !== "a" || trustedConfluenceEditUrlV1(href, manifest.editLinks.origin ?? "") === undefined) {
+      fail(`edit link outside the trusted Confluence origin in '${path}'`);
+    }
+    if (frozenHrefByPage !== undefined && declared === true && href !== frozenHrefByPage.get(path)) {
+      fail(`edit link differs from the bundle's provider URL in '${path}'`);
+    }
+  }
 }
 
 /** Verify a built Astro directory against the private inventory and public manifest. */
@@ -253,28 +344,36 @@ export async function verifyAstroStaticPublicationOutputV1(
   if (await digestPublicationJsonV1(manifestIdentity) !== manifest.buildDigest) fail("manifest build digest mismatch");
   if (!manifest.verification.valid || manifest.verification.issues.length > 0) fail("manifest is not valid");
 
+  const editIncluded = new Set(manifest.editLinks.includedSourceIds);
+  const editLinkDeclaredByPage = new Map(manifest.pages.map((entry) => [entry.outputPath, editIncluded.has(entry.sourceId)]));
+  const frozenHrefBySourceId = options.editLinks === undefined ? undefined : new Map(options.editLinks.links.map((link) => [link.sourceId, link.href]));
+  const frozenHrefByPage = frozenHrefBySourceId === undefined ? undefined : new Map(manifest.pages.flatMap((entry) => {
+    const href = frozenHrefBySourceId.get(entry.sourceId);
+    return href === undefined ? [] : [[entry.outputPath, href] as const];
+  }));
   let checkedLinks = 0;
   let checkedAnchors = 0;
+  const anchorIds = new Map<string, ReadonlySet<string>>();
   for (const [path, absolute] of files) {
     if (!path.endsWith(".html")) continue;
     const html = await readFile(absolute, "utf8");
-    if (manifest.analytics.provider === "none" && /(?:data-atlcli-analytics|atlcli:analytics-csp|atlcli:analytics-privacy)/iu.test(html)) fail(`analytics marker in disabled build '${path}'`);
+    const { references, markup, nonReferenceMarkup } = inspectHtmlMarkup(path, html);
+    if (manifest.analytics.provider === "none" && /(?:data-atlcli-analytics|atlcli:analytics-csp|atlcli:analytics-privacy)/iu.test(markup)) fail(`analytics marker in disabled build '${path}'`);
     if (manifest.analytics.provider === "plausible") {
-      if (!/data-atlcli-analytics="plausible"/iu.test(html)) fail(`analytics marker missing in enabled build '${path}'`);
-      if (!/atlcli:analytics-csp/iu.test(html)) fail(`analytics CSP declaration missing in '${path}'`);
-      if (!/default-src\s+'self'/iu.test(html) || !/script-src\s+'self'/iu.test(html) || !/object-src\s+'none'/iu.test(html)) {
+      if (!/data-atlcli-analytics="plausible"/iu.test(markup)) fail(`analytics marker missing in enabled build '${path}'`);
+      if (!/atlcli:analytics-csp/iu.test(markup)) fail(`analytics CSP declaration missing in '${path}'`);
+      if (!/default-src\s+'self'/iu.test(markup) || !/script-src\s+'self'/iu.test(markup) || !/object-src\s+'none'/iu.test(markup)) {
         fail(`analytics CSP is not self-contained in '${path}'`);
       }
       const escapedOrigin = escapeRegExp(manifest.analytics.endpointOrigin);
-      if (!new RegExp(`connect-src[^<]*${escapedOrigin}`, "iu").test(html)) fail(`analytics CSP endpoint is missing in '${path}'`);
+      if (!new RegExp(`connect-src[^<]*${escapedOrigin}`, "iu").test(markup)) fail(`analytics CSP endpoint is missing in '${path}'`);
     }
-    if (manifest.editLinks.provider === "none" && /(?:data-atlcli-edit-link|data-confluence-edit-link)/iu.test(html)) fail(`edit-link marker in disabled build '${path}'`);
-    if (manifest.editLinks.provider === "confluence" && manifest.editLinks.includedSourceIds.length > 0 && !/(?:data-atlcli-edit-link|data-confluence-edit-link)/iu.test(html)) {
-      fail(`edit-link marker missing in enabled build '${path}'`);
-    }
-    if (/api\.atlassian\.com|\/wiki\/rest\//iu.test(html)) fail(`private Confluence URL in '${path}'`);
-    if (/(?:\.atlcli\/|(?:^|[\/"'])(?:bundles|cache|staging)\/|(?:publication|current|build-inventory)\.json)/iu.test(html)) fail(`bundle-internal reference in '${path}'`);
-    const result = await assertHtmlReferences(resolve(options.outputDirectory), path, html, files, manifest.outputProfile, basePrefix(manifest.base));
+    assertEditLinks(manifest, path, html, editLinkDeclaredByPage, frozenHrefByPage);
+    if (/api\.atlassian\.com|\/wiki\/rest\//iu.test(markup)) fail(`private Confluence URL in '${path}'`);
+    // Links and resources are excluded here: the ownership check below proves
+    // that each internal one resolves to an inventoried output file.
+    if (WORKSPACE_REFERENCE.test(nonReferenceMarkup)) fail(`bundle-internal reference in '${path}'`);
+    const result = await assertHtmlReferences(resolve(options.outputDirectory), path, references, files, manifest.outputProfile, basePrefix(manifest.base), anchorIds);
     checkedLinks += result.links;
     checkedAnchors += result.anchors;
   }

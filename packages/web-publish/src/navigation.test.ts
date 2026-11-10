@@ -116,3 +116,50 @@ test("fails closed for unsafe graph ownership, depth, and route ambiguity", () =
     ],
   }), "label-route-collision");
 });
+
+test("ranks related pages exactly as an exhaustive pairwise comparison would", () => {
+  // Deterministic pseudo-random graph: three roots, nested children, shared
+  // labels, cross links, duplicate titles and a self link.
+  let seed = 7;
+  const random = (bound: number): number => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed % bound;
+  };
+  const pages: PublicationPageV1[] = [];
+  for (let index = 0; index < 60; index += 1) {
+    const parent = index < 3 ? undefined : pages[random(index)]!;
+    pages.push(page({
+      sourceId: `p${index}`,
+      title: `Title ${random(12)}`,
+      route: `/p${index}/`,
+      position: random(4),
+      ...(parent === undefined ? {} : { parentId: parent.sourceId, depth: parent.depth + 1 }),
+      labels: [["Alpha", "alpha", "Beta", "Gamma", "Delta"][random(5)]!].slice(0, random(3) === 0 ? 0 : 1),
+      links: Array.from({ length: random(3) }, (_, link) => ({ referenceId: `l${link}`, kind: "page" as const, sourceId: `p${random(60)}` })),
+    }));
+  }
+  const byId = new Map(pages.map((entry) => [entry.sourceId, entry]));
+  const rootOf = (entry: PublicationPageV1): string => entry.parentId === undefined ? entry.sourceId : rootOf(byId.get(entry.parentId)!);
+  const fold = (label: string): string => label.normalize("NFKC").toLowerCase();
+  const linksTo = (from: PublicationPageV1, to: PublicationPageV1): boolean => from.links.some((link) => link.kind === "page" && link.sourceId === to.sourceId);
+  const expected = (current: PublicationPageV1, limit: number): { sourceId: string; score: number; reasons: string[] }[] => pages.flatMap((candidate) => {
+    if (candidate === current) return [];
+    const reasons: string[] = [];
+    let score = 0;
+    if (linksTo(current, candidate)) { score += 100; reasons.push("outbound-link"); }
+    if (linksTo(candidate, current)) { score += 75; reasons.push("inbound-link"); }
+    if (candidate.labels.some((label) => current.labels.map(fold).includes(fold(label)))) { score += 20; reasons.push("shared-label"); }
+    if (current.parentId === candidate.parentId) { score += 10; reasons.push("same-parent"); }
+    if (rootOf(current) === rootOf(candidate)) { score += 5; reasons.push("same-root"); }
+    return score === 0 ? [] : [{ sourceId: candidate.sourceId, title: candidate.title, score, reasons }];
+  }).sort((left, right) => right.score - left.score || left.title.localeCompare(right.title) || left.sourceId.localeCompare(right.sourceId))
+    .slice(0, limit).map(({ sourceId, score, reasons }) => ({ sourceId, score, reasons }));
+
+  for (const limit of [1, 6, 100]) {
+    const plan = planPublicationNavigationV1({ rootIds: ["p0", "p1", "p2"], pages, maxRelatedPages: limit });
+    for (const entry of plan.pages) {
+      expect(entry.related.map(({ sourceId, score, reasons }) => ({ sourceId, score, reasons: [...reasons] as string[] })))
+        .toEqual(expected(byId.get(entry.sourceId)!, limit));
+    }
+  }
+});

@@ -20,11 +20,6 @@ export interface CreateStarlightPublicationNavigationOptionsV1 {
 // export: createStarlightPublicationNavigationV1
 export declare function createStarlightPublicationNavigationV1(options: CreateStarlightPublicationNavigationOptionsV1): StarlightPublicationNavigationModelV1;
 
-// export: createStarlightPublishingExperienceRuntimeV1
-export declare function createStarlightPublishingExperienceRuntimeV1(input?: {
-    slots?: readonly StarlightPublishingSemanticSlotV1[];
-}): Readonly<StarlightPublishingExperienceRuntimeV1>;
-
 // export: STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1
 export declare const STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1 = "atlcli.starlight";
 
@@ -112,25 +107,6 @@ export type StarlightPublicationSidebarEntryV1 = {
 
 // export: StarlightPublishingExperienceDescriptorV1
 export type StarlightPublishingExperienceDescriptorV1 = PublicationExperienceDescriptorV1;
-
-// export: StarlightPublishingExperienceErrorV1
-export declare class StarlightPublishingExperienceErrorV1 extends Error {
-}
-
-// export: StarlightPublishingExperienceRuntimeV1
-export interface StarlightPublishingExperienceRuntimeV1 {
-    schema: "atlcli.web-publish-starlight-runtime/1";
-    descriptor: PublicationExperienceDescriptorV1;
-    slots: readonly StarlightPublishingSemanticSlotV1[];
-    tokens: readonly string[];
-    features: Readonly<{
-        navigation: true;
-        search: true;
-        toc: true;
-        colorModes: true;
-        print: true;
-    }>;
-}
 
 // export: StarlightPublishingSemanticSlotV1
 export type StarlightPublishingSemanticSlotV1 = (typeof STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1)[number];

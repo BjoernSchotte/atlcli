@@ -16,11 +16,11 @@ export declare function applyPublicationChartDiagnosticPolicyV1(project: Publica
 // export: assertPublicationBundleReferencesV1
 export declare function assertPublicationBundleReferencesV1(bundle: PublicationBundleV1, pages: readonly PublicationPageV1[]): void;
 
-// export: assertPublicationCacheKeyV1
-export declare function assertPublicationCacheKeyV1(cacheKey: PublicationCacheKeyV1): void;
-
 // export: assertPublicationChartBuildPolicyV1
 export declare function assertPublicationChartBuildPolicyV1(project: PublicationProjectV1, issues: readonly PublicationIssueV1[]): void;
+
+// export: assertPublicationEditLinkBuildPolicyV1
+export declare function assertPublicationEditLinkBuildPolicyV1(project: EditLinkProjectV1, bundle: Pick<PublicationBundleV1, "editLinks">): void;
 
 // export: AstroAtlcliIntegrationOptionsV1
 export interface AstroAtlcliIntegrationOptionsV1 {
@@ -65,6 +65,7 @@ export interface BuiltAssetV1 {
 // export: BuiltEditLinkSummaryV1
 export interface BuiltEditLinkSummaryV1 {
     provider: "none" | "confluence";
+    origin?: string;
     includedSourceIds: readonly string[];
     omittedSourceIds: readonly string[];
 }
@@ -108,6 +109,13 @@ export declare function collectPublicationChartBudgetIssuesV1(project: Publicati
 // export: collectPublicationChartIssuesV1
 export declare function collectPublicationChartIssuesV1(project: PublicationProjectV1, pages: readonly PublicationPageV1[]): readonly PublicationIssueV1[];
 
+// export: ConfluenceEditRelationV1
+export interface ConfluenceEditRelationV1 {
+    sourceId: string;
+    editui?: string;
+    webui?: string;
+}
+
 // export: createPublicationChartRenderPolicyV1
 export declare function createPublicationChartRenderPolicyV1(project: PublicationProjectV1): PublicationChartRenderPolicyV1;
 
@@ -148,9 +156,6 @@ export declare function digestPublicationBundleV1(bundle: PublicationBundleV1, p
 
 // export: digestPublicationJsonV1
 export declare function digestPublicationJsonV1(value: unknown): Promise<string>;
-
-// export: digestPublicationPageCacheKeyV1
-export declare function digestPublicationPageCacheKeyV1(input: PublicationPageCacheKeyInputV1): Promise<PublicationCacheKeyV1>;
 
 // export: digestPublicationPageV1
 export declare function digestPublicationPageV1(page: PublicationPageV1): Promise<string>;
@@ -218,14 +223,18 @@ export declare function parsePublicationRendererDescriptorV1(value: unknown, bud
 // export: parsePublicationSearchProviderDescriptorV1
 export declare function parsePublicationSearchProviderDescriptorV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationSearchProviderDescriptorV1;
 
-// export: parsePublishRunRequestV1
-export declare function parsePublishRunRequestV1(value: unknown, budget?: PublicationValidationBudgetV1): PublishRunRequestV1;
-
 // export: parseStaticPublicationManifestV1
 export declare function parseStaticPublicationManifestV1(value: unknown, budget?: PublicationValidationBudgetV1): StaticPublicationManifestV1;
 
 // export: planPublicationAnchorsV1
 export declare function planPublicationAnchorsV1(blocks: readonly ExportBlock[]): readonly PublicationAnchorV1[];
+
+// export: planPublicationEditLinksV1
+export declare function planPublicationEditLinksV1(options: {
+    project: EditLinkProjectV1;
+    trustedOrigin: string;
+    relations: readonly ConfluenceEditRelationV1[];
+}): PublicationBundleEditLinksV1 | undefined;
 
 // export: PlanPublicationNavigationRequestV1
 export interface PlanPublicationNavigationRequestV1 {
@@ -261,9 +270,6 @@ export declare function planPublicationRefreshV1(request: PlanPublicationRefresh
 
 // export: planPublicationRoutesV1
 export declare function planPublicationRoutesV1(request: PublicationRoutePlanRequestV1): PublicationRoutePlanV1;
-
-// export: planPublicationWebQualityV1
-export declare function planPublicationWebQualityV1(projectValue: unknown, experienceValue: unknown): PublicationWebQualityPlanV1;
 
 // export: PUBLICATION_BUNDLE_SCHEMA_V1
 export declare const PUBLICATION_BUNDLE_SCHEMA_V1: "atlcli.publication-bundle/1";
@@ -355,11 +361,6 @@ export interface PublicationBreadcrumbV1 {
     translationKey?: string;
 }
 
-// export: PublicationBuilderContractErrorV1
-export declare class PublicationBuilderContractErrorV1 extends Error {
-    constructor(message: string);
-}
-
 // export: PublicationBuilderV1
 export interface PublicationBuilderV1 {
     readonly id: string;
@@ -385,6 +386,18 @@ export interface PublicationBuildResultV1 {
 // export: publicationBundleDigestInputV1
 export declare function publicationBundleDigestInputV1(bundle: PublicationBundleV1): Omit<PublicationBundleV1, "bundleDigest" | "createdBy">;
 
+// export: PublicationBundleEditLinksV1
+export interface PublicationBundleEditLinksV1 {
+    origin: string;
+    label: string;
+    placement: "page-footer" | "page-actions";
+    fallback: "open-page" | "omit";
+    links: readonly {
+        sourceId: string;
+        href: string;
+    }[];
+}
+
 // export: PublicationBundleV1
 export interface PublicationBundleV1 {
     schema: typeof PUBLICATION_BUNDLE_SCHEMA_V1;
@@ -396,31 +409,13 @@ export interface PublicationBundleV1 {
     sourceSnapshot: PublicationSourceSnapshotV1;
     sourcePolicyDigest: string;
     chartPolicy?: PublicationChartRenderPolicyV1;
+    editLinks?: PublicationBundleEditLinksV1;
     complete: boolean;
     rootIds: readonly string[];
     pages: readonly PublicationPageEntryV1[];
     routes: readonly PublicationRouteRecordV1[];
     assets: readonly PublicationAssetEntryV1[];
     issues: readonly PublicationIssueV1[];
-}
-
-// export: PublicationCachedAssetV1
-export interface PublicationCachedAssetV1 {
-    cacheKey: PublicationCacheKeyV1;
-    mediaType: string;
-    sha256: string;
-    bytes: Uint8Array;
-}
-
-// export: PublicationCacheKeyV1
-export type PublicationCacheKeyV1 = string;
-
-// export: PublicationCacheStoreV1
-export interface PublicationCacheStoreV1 {
-    readPage(cacheKey: PublicationCacheKeyV1): Promise<PublicationPageV1 | undefined>;
-    writePage(cacheKey: PublicationCacheKeyV1, page: PublicationPageV1): Promise<void>;
-    readAsset(cacheKey: PublicationCacheKeyV1): Promise<PublicationCachedAssetV1 | undefined>;
-    writeAsset(asset: PublicationCachedAssetV1): Promise<void>;
 }
 
 // export: PublicationChangeKindV1
@@ -523,6 +518,20 @@ export type PublicationEditLinkOptionsV1 = {
     fallback: "open-page" | "omit";
     publicTenantDisclosureAcknowledged?: true;
 };
+
+// export: publicationEditLinkV1
+export declare function publicationEditLinkV1(bundle: Pick<PublicationBundleV1, "editLinks">, sourceId: string): {
+    href: string;
+    label: string;
+    placement: "page-footer" | "page-actions";
+} | undefined;
+
+// export: PublicationEditLinkV1
+export interface PublicationEditLinkV1 {
+    sourceId: string;
+    href: string;
+    label: string;
+}
 
 // export: PublicationExperienceCapabilityV1
 export type PublicationExperienceCapabilityV1 = "responsive-navigation" | "light-dark-system" | "search-modal" | "search-page" | "faceted-search" | "table-of-contents" | "breadcrumbs" | "previous-next" | "chart-islands" | "i18n" | "print-styles" | "seo" | "analytics-slot" | "edit-link";
@@ -693,23 +702,6 @@ export interface PublicationNegotiationIssueV1 {
 
 // export: PublicationOutputProfileV1
 export type PublicationOutputProfileV1 = "directory" | "portable-file";
-
-// export: PublicationPageCacheKeyInputV1
-export interface PublicationPageCacheKeyInputV1 {
-    sourceId: string;
-    sourceVersion: string;
-    sourceRepresentation: "atlas_doc_format" | "storage";
-    sourcePolicyDigest: string;
-    decoderSchemaVersion: string;
-    exportBlockSchemaVersion: string;
-    macroCatalogVersion: string;
-    webTargetVersion: string;
-    macroPolicyDigest: string;
-    macroDependencyDigest: string;
-    assetMetadataDigest: string;
-    routeLinkPolicyDigest: string;
-    navigationDependencyDigest: string;
-}
 
 // export: publicationPageDigestInputV1
 export declare function publicationPageDigestInputV1(page: PublicationPageV1): Omit<PublicationPageV1, "pageDigest">;
@@ -1121,38 +1113,16 @@ export interface PublicationVerificationSummaryV1 {
     issues: readonly PublicationIssueV1[];
 }
 
-// export: PublicationWebQualityIssueCodeV1
-export type PublicationWebQualityIssueCodeV1 = "site-required" | "invalid-site" | "internal-indexing" | "feed-requires-public" | "locale-set-invalid" | "locale-fallback-invalid" | "media-profile-mismatch" | "analytics-endpoint-invalid" | "analytics-domain-invalid" | "public-edit-link-disclosure-required" | "experience-capability-required";
-
-// export: PublicationWebQualityIssueV1
-export interface PublicationWebQualityIssueV1 {
-    code: PublicationWebQualityIssueCodeV1;
-    path: string;
-    message: string;
-}
-
-// export: PublicationWebQualityPlanV1
-export interface PublicationWebQualityPlanV1 {
-    compatible: boolean;
-    issues: readonly PublicationWebQualityIssueV1[];
-    canonicalSite?: string;
-    locales: readonly string[];
-    requiredExperienceCapabilities: readonly PublicationExperienceCapabilityV1[];
-    analytics: PublicationAnalyticsOptionsV1;
-    editLink: PublicationEditLinkOptionsV1;
-}
-
-// export: PUBLISH_RUN_REQUEST_SCHEMA_V1
-export declare const PUBLISH_RUN_REQUEST_SCHEMA_V1: "atlcli.publish-run-request/1";
-
-// export: PublishRunRequestV1
-export interface PublishRunRequestV1 {
-    schema: typeof PUBLISH_RUN_REQUEST_SCHEMA_V1;
-    projectRef: string;
-    operation: "plan" | "refresh" | "build" | "verify" | "run";
-    expectedActiveBundleDigest?: string;
-    dryRun: boolean;
-}
+// export: resolveConfluenceEditLinkV1
+export declare function resolveConfluenceEditLinkV1(options: {
+    relation: ConfluenceEditRelationV1;
+    trustedOrigin: string;
+    label: string;
+    fallback: "open-page" | "omit";
+    visibility: "internal" | "all";
+    publicationVisibility: "internal" | "public";
+    publicTenantDisclosureAcknowledged?: true;
+}): PublicationEditLinkV1 | undefined;
 
 // export: ResolvedHeadingV1
 export interface ResolvedHeadingV1 {
@@ -1196,9 +1166,6 @@ export type ResolvedPublicationLinkV1 = {
     label: string;
 };
 
-// export: runPublicationBuildV1
-export declare function runPublicationBuildV1(builder: PublicationBuilderV1, requestValue: unknown): Promise<PublicationBuildResultV1>;
-
 // export: runWithPublicationChartAcquisitionDeadlineV1
 export declare function runWithPublicationChartAcquisitionDeadlineV1<T>(operation: (signal: AbortSignal) => Promise<T>, options: {
     maxDurationMs: number;
@@ -1238,6 +1205,9 @@ export interface StaticPublicationManifestV1 {
     buildDigest: string;
 }
 
+// export: trustedConfluenceEditUrlV1
+export declare function trustedConfluenceEditUrlV1(value: string | undefined, origin: string): string | undefined;
+
 // export: validatePublicationOutputPathV1
 export declare function validatePublicationOutputPathV1(path: string): string;
 ```
@@ -1249,15 +1219,6 @@ export declare function validatePublicationOutputPathV1(path: string): string;
 export interface BoundedPublicationJsonReadOptionsV1 {
     maxBytes: number;
 }
-
-// export: createNodePublicationCacheStoreV1
-export declare function createNodePublicationCacheStoreV1(options: NodePublicationCacheStoreOptionsV1): PublicationCacheStoreV1;
-
-// export: DEFAULT_PUBLICATION_CACHE_ASSET_BYTES_V1
-export declare const DEFAULT_PUBLICATION_CACHE_ASSET_BYTES_V1: number;
-
-// export: DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1
-export declare const DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1: number;
 
 // export: DEFAULT_PUBLICATION_JSON_MAX_BYTES_V1
 export declare const DEFAULT_PUBLICATION_JSON_MAX_BYTES_V1: number;
@@ -1281,6 +1242,7 @@ export interface NodePublicationBundleMaterializationRequestV1 {
     createdBy: PublicationBundleV1["createdBy"];
     sourcePolicyDigest: string;
     chartPolicy?: PublicationChartRenderPolicyV1;
+    editLinks?: PublicationBundleEditLinksV1;
     rootIds: readonly string[];
     pages: readonly PublicationPageV1[];
     routes: readonly PublicationRouteRecordV1[];
@@ -1297,13 +1259,6 @@ export interface NodePublicationBundleMaterializationResultV1 {
     bundle: PublicationBundleV1;
     bundleDirectory: string;
     activated: true;
-}
-
-// export: NodePublicationCacheStoreOptionsV1
-export interface NodePublicationCacheStoreOptionsV1 {
-    workspaceDirectory: string;
-    maxPageBytes?: number;
-    maxAssetBytes?: number;
 }
 
 // export: NodePublicationRetentionRequestV1
@@ -1327,15 +1282,6 @@ export interface NodePublicationRetentionResultV1 {
 export interface PublicationBundleAssetBytesV1 {
     entry: PublicationAssetEntryV1;
     bytes: Uint8Array;
-}
-
-// export: PublicationCacheStoreErrorCodeV1
-export type PublicationCacheStoreErrorCodeV1 = "invalid-options" | "unsafe-path" | "not-regular-file" | "too-large" | "corrupt";
-
-// export: PublicationCacheStoreErrorV1
-export declare class PublicationCacheStoreErrorV1 extends Error {
-    readonly code: PublicationCacheStoreErrorCodeV1;
-    constructor(code: PublicationCacheStoreErrorCodeV1, message: string);
 }
 
 // export: PublicationFileReadErrorV1

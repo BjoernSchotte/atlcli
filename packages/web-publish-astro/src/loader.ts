@@ -1,12 +1,14 @@
-import { readFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import {
-  assertPublicationBundleReferencesV1,
+  digestPublicationBundleV1,
+  digestPublicationPageV1,
   parsePublicationBundleV1,
   parsePublicationPageV1,
+  validatePublicationOutputPathV1,
   type PublicationBundleV1,
   type PublicationPageV1,
 } from "@atlcli/web-publish";
+import { readBoundedPublicationJsonV1 } from "@atlcli/web-publish/node";
 
 export interface AtlcliPublicationLoaderOptionsV1 {
   /** Absolute or project-relative path of the complete bundle JSON document. */
@@ -36,7 +38,12 @@ function assertBundlePath(path: string): void {
 
 function pagePath(bundlePath: string, relativePagePath: string): string {
   const root = resolve(dirname(bundlePath));
-  const candidate = resolve(root, relativePagePath);
+  let candidate: string;
+  try {
+    candidate = resolve(root, validatePublicationOutputPathV1(relativePagePath));
+  } catch {
+    throw new TypeError(`publication page path escapes bundle directory: ${relativePagePath}`);
+  }
   const fromRoot = relative(root, candidate);
   if (fromRoot === "" || fromRoot === ".." || fromRoot.startsWith(`..${sep}`)) {
     throw new TypeError(`publication page path escapes bundle directory: ${relativePagePath}`);
@@ -44,31 +51,34 @@ function pagePath(bundlePath: string, relativePagePath: string): string {
   return candidate;
 }
 
-async function readJson(path: string): Promise<unknown> {
-  return JSON.parse(await readFile(path, "utf8")) as unknown;
-}
-
 /**
  * Read a closed bundle and every referenced page document. The bundle is
- * rejected before it reaches Astro when it is partial, malformed, references a
- * missing/outside file, or does not agree with its page documents.
+ * rejected before it reaches Astro when it is partial, malformed, oversized,
+ * references a missing/outside file, or when a page or the bundle itself does
+ * not hash to the digest it declares.
  */
 export async function readPublicationBundlePagesV1(
   options: AtlcliPublicationLoaderOptionsV1,
 ): Promise<LoadedPublicationBundleV1> {
   assertBundlePath(options.bundlePath);
-  const bundle = parsePublicationBundleV1(await readJson(options.bundlePath));
+  const bundle = parsePublicationBundleV1(await readBoundedPublicationJsonV1(options.bundlePath));
   if (!bundle.complete) {
     throw new TypeError("Astro publication loader requires a complete bundle");
   }
   const pages = await Promise.all(bundle.pages.map(async (entry) => {
-    const page = parsePublicationPageV1(await readJson(pagePath(options.bundlePath, entry.path)));
+    const page = parsePublicationPageV1(await readBoundedPublicationJsonV1(pagePath(options.bundlePath, entry.path)));
     if (page.sourceId !== entry.sourceId || page.pageDigest !== entry.pageDigest) {
       throw new TypeError(`publication page '${entry.sourceId}' does not match its bundle entry`);
     }
+    if (await digestPublicationPageV1(page) !== page.pageDigest) {
+      throw new TypeError(`publication page '${entry.sourceId}' does not match its digest`);
+    }
     return page;
   }));
-  assertPublicationBundleReferencesV1(bundle, pages);
+  // Also proves that the bundle index agrees with its page documents.
+  if (await digestPublicationBundleV1(bundle, pages) !== bundle.bundleDigest) {
+    throw new TypeError("publication bundle does not match its digest");
+  }
   return { bundle, pages };
 }
 
