@@ -137,6 +137,7 @@ import {
   type StatusCategoryResolver,
 } from "@atlcli/jira";
 import { unknownSubcommand } from "./unknown-subcommand.js";
+import { webhookSettings } from "./sync.js";
 import { completeTemplateValues, parseTemplateFlags, TEMPLATE_FLAGS_HELP, templateValuesFrom } from "./template-flags.js";
 
 export async function handleJira(
@@ -5674,7 +5675,15 @@ async function handleWebhookServe(
 ): Promise<void> {
   const port = Number(getFlag(flags, "port") ?? 8080);
   const path = getFlag(flags, "path") ?? "/webhook";
-  const secret = getFlag(flags, "secret");
+  const settings = webhookSettings(
+    { host: getFlag(flags, "host"), secret: getFlag(flags, "secret") },
+    process.env,
+    { host: "--host", secret: "--secret" }
+  );
+  if ("error" in settings) {
+    fail(opts, 1, ERROR_CODES.USAGE, settings.error);
+    return;
+  }
   const projectsStr = getFlag(flags, "projects");
   const eventsStr = getFlag(flags, "events");
 
@@ -5684,7 +5693,8 @@ async function handleWebhookServe(
   const server = new JiraWebhookServer({
     port,
     path,
-    secret,
+    secret: settings.secret,
+    hostname: settings.host,
     filterProjects,
     filterEvents,
   });
@@ -5720,7 +5730,7 @@ async function handleWebhookServe(
     }, opts);
   } else {
     output(`Webhook server started at ${url}`, opts);
-    output(`Health check: http://localhost:${port}/health`, opts);
+    output(`Health check: ${new URL("/health", url!)}`, opts);
     if (filterProjects) {
       output(`Filtering projects: ${projectsStr}`, opts);
     }
@@ -5728,6 +5738,11 @@ async function handleWebhookServe(
       output(`Filtering events: ${eventsStr}`, opts);
     }
     output("Press Ctrl+C to stop...", opts);
+  }
+  if (!settings.secret) {
+    process.stderr.write(
+      "Warning: no webhook secret is set. The webhook server accepts unauthenticated events from this machine only (loopback). Set ATLCLI_WEBHOOK_SECRET to authenticate callers.\n"
+    );
   }
 
   // Keep running until interrupted
@@ -5847,7 +5862,7 @@ function webhookHelp(): string {
   return `atlcli jira webhook <command>
 
 Commands:
-  serve [--port <n>] [--path <path>] [--secret <s>] [--projects <p1,p2>] [--events <e1,e2>]
+  serve [--port <n>] [--host <addr>] [--path <path>] [--secret <s>] [--projects <p1,p2>] [--events <e1,e2>]
       Start local webhook server to receive Jira events
 
   list
@@ -5867,7 +5882,10 @@ Options:
   --json             JSON output
   --port <n>         Server port (default: 8080)
   --path <path>      Webhook endpoint path (default: /webhook)
-  --secret <s>       Shared secret for HMAC validation
+  --host <addr>      Interface to bind (default: 127.0.0.1). A non-loopback
+                     address requires a secret
+  --secret <s>       Shared secret for HMAC validation. Prefer env
+                     ATLCLI_WEBHOOK_SECRET
   --projects <list>  Filter by project keys (comma-separated)
   --events <list>    Filter/register event types (comma-separated)
   --url <url>        Your webhook endpoint URL (for registration)

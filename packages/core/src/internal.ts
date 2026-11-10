@@ -4,19 +4,23 @@
  * module here carries no compatibility promise).
  *
  * Modules land here when they must be SHARED between sibling packages but must
- * not become public API. Today that is two things, both needed by BOTH REST
+ * not become public API. Today that is three things, all needed by BOTH REST
  * clients while neither package may depend on the other:
  *
  * - the `Retry-After` parser, previously copied verbatim into
  *   `packages/confluence/src/retry-after.ts` and `packages/jira/src/retry-after.ts`;
  * - the session-mode redirect destination policy (`./session-redirect.js`), which
  *   is what lets an attachment download follow Atlassian's media-CDN bounce while
- *   a login bounce still fails as a session expiry.
+ *   a login bounce still fails as a session expiry;
+ * - the loopback test both webhook servers use to refuse a secretless bind on a
+ *   reachable interface.
  *
  * Everything exported here must stay isomorphic — `packages/confluence/src/client.ts`
  * and `packages/jira/src/client.ts` are both browser-build entrypoints and both
  * reach this module.
  */
+export { isLoopbackHost } from "./loopback-host.js";
+
 export {
   abortableSleep,
   parseRetryAfterMs,

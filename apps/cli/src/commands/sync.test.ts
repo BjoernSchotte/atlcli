@@ -113,6 +113,13 @@ describe("sync webhook server settings", () => {
     // An empty value is no secret.
     expect(webhookSettings({ host: "0.0.0.0", secret: "" }, { ATLCLI_WEBHOOK_SECRET: "" })).toHaveProperty("error");
   });
+
+  // `jira webhook serve` shares the rule under its own flag names.
+  test("the usage error names the caller's flags", () => {
+    expect(webhookSettings({ host: "0.0.0.0" }, {}, { host: "--host", secret: "--secret" })).toEqual({
+      error: expect.stringContaining("--host 0.0.0.0 needs a webhook secret (ATLCLI_WEBHOOK_SECRET or --secret)"),
+    });
+  });
 });
 
 describe("sync webhook scope check", () => {

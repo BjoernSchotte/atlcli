@@ -106,14 +106,15 @@ interface SyncOptions {
  */
 export function webhookSettings(
   flags: { host?: string; secret?: string },
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
+  flagNames: { host: string; secret: string } = { host: "--webhook-host", secret: "--webhook-secret" }
 ): { host: string; secret?: string } | { error: string } {
   const secret = flags.secret || env.ATLCLI_WEBHOOK_SECRET || undefined;
   const host = flags.host ?? "127.0.0.1";
   if (!secret && !isLoopbackHost(host)) {
     return {
       error:
-        `--webhook-host ${host} needs a webhook secret (ATLCLI_WEBHOOK_SECRET or --webhook-secret). ` +
+        `${flagNames.host} ${host} needs a webhook secret (ATLCLI_WEBHOOK_SECRET or ${flagNames.secret}). ` +
         "Without a secret the webhook server only binds a loopback address.",
     };
   }
@@ -924,7 +925,9 @@ class SyncEngine {
     const rawId: unknown = payload.page?.id;
     const pageId = typeof rawId === "number" ? String(rawId) : rawId;
     if (typeof pageId !== "string" || !/^\d+$/.test(pageId)) return;
+    // Only known event types are echoed or acted on; the string is the caller's.
     const { eventType } = payload;
+    if (!["page_created", "page_updated", "page_removed", "page_trashed"].includes(eventType)) return;
 
     this.emit({
       type: "status",
@@ -940,7 +943,6 @@ class SyncEngine {
       }
       return;
     }
-    if (eventType !== "page_updated" && eventType !== "page_created") return;
 
     if (!this.state?.pages[pageId]) {
       let inScope: boolean;

@@ -22,7 +22,7 @@
 
 ### Entry point `./internal` — internal
 
-- exported symbols (18): ATLASSIAN_LOGIN_HOSTS, ATLASSIAN_MEDIA_HOST, AtlassianSessionRedirectPolicyOptions, RETRY_AFTER_MAX_MS, RETRY_AFTER_MIN_MS, SESSION_REDIRECT_MAX_HOPS, SessionBinaryFetchLike, SessionBinaryFetchOptions, SessionRedirectBlockedError, SessionRedirectPolicy, abortableSleep, createAtlassianSessionRedirectPolicy, fetchSessionBinaryFollowingRedirects, isAtlassianLoginTarget, isAtlassianMediaTarget, isSessionRedirectBlockedError, parseRetryAfterMs, redactRedirectTarget
+- exported symbols (19): ATLASSIAN_LOGIN_HOSTS, ATLASSIAN_MEDIA_HOST, AtlassianSessionRedirectPolicyOptions, RETRY_AFTER_MAX_MS, RETRY_AFTER_MIN_MS, SESSION_REDIRECT_MAX_HOPS, SessionBinaryFetchLike, SessionBinaryFetchOptions, SessionRedirectBlockedError, SessionRedirectPolicy, abortableSleep, createAtlassianSessionRedirectPolicy, fetchSessionBinaryFollowingRedirects, isAtlassianLoginTarget, isAtlassianMediaTarget, isLoopbackHost, isSessionRedirectBlockedError, parseRetryAfterMs, redactRedirectTarget
 
 ### Entry point `./node` — experimental
 

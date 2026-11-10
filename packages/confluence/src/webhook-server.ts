@@ -1,4 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isLoopbackHost } from "@atlcli/core/internal";
+
+export { isLoopbackHost };
+
+/** Largest request body the server reads (1 MiB); Bun answers 413 beyond it. */
+const MAX_BODY_BYTES = 1 << 20;
 
 /** Confluence webhook event types */
 export type WebhookEventType =
@@ -48,10 +54,8 @@ export interface WebhookServerOptions {
   filterSpaceKeys?: Set<string>; // Only process events for these spaces
 }
 
-/** Whether `hostname` only accepts connections from this machine. */
-export function isLoopbackHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  return host === "localhost" || host === "::1" || /^127(\.\d{1,3}){3}$/.test(host);
+function isJsonRequest(req: Request): boolean {
+  return req.headers.get("Content-Type")?.split(";")[0]!.trim().toLowerCase() === "application/json";
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -103,6 +107,7 @@ export class WebhookServer {
     this.server = Bun.serve({
       port: this.options.port,
       hostname: this.options.hostname,
+      maxRequestBodySize: MAX_BODY_BYTES,
       async fetch(req) {
         const url = new URL(req.url);
 
@@ -115,6 +120,9 @@ export class WebhookServer {
 
         // Webhook endpoint
         if (url.pathname === self.options.path && req.method === "POST") {
+          // A page in the user's browser can POST form or text bodies to a
+          // loopback port without a preflight, but not JSON.
+          if (!isJsonRequest(req)) return new Response("Unsupported Media Type", { status: 415 });
           return self.handleWebhook(req);
         }
 

@@ -9,7 +9,7 @@ import {
   type PublicationOutputProfileV1,
   type StaticPublicationManifestV1,
 } from "@atlcli/web-publish";
-import { scanHtmlV1 } from "./html-scan.js";
+import { scanHtmlV1, type ScannedHtmlTagV1 } from "./html-scan.js";
 import type { AstroBuildInventoryV1 } from "./manifest.js";
 
 export interface VerifyAstroStaticPublicationOutputOptionsV1 {
@@ -129,6 +129,22 @@ function outputCandidates(pathname: string, profile: PublicationOutputProfileV1)
 const REFERENCE_ATTRIBUTES: Readonly<Record<string, "href" | "src" | "action" | "srcset">> = {
   href: "href", "xlink:href": "href", src: "src", poster: "src", action: "action", formaction: "action", srcset: "srcset",
 };
+/** `<link>` relations that name another document without loading anything from it. */
+const NAVIGATION_LINK_RELS = new Set(["canonical", "alternate"]);
+
+/**
+ * How a browser uses the URL in `attribute` of `tag`. `href` navigates only on
+ * `<a>`/`<area>` and on a `<link>` whose relations all just name a document;
+ * anywhere else (`<link rel=stylesheet>`, SVG `<image>`/`<use>`) it loads a
+ * resource and follows the `src` rule.
+ */
+function referenceKind(tag: ScannedHtmlTagV1, attribute: string): "href" | "src" | "action" | "srcset" | undefined {
+  const kind = REFERENCE_ATTRIBUTES[attribute];
+  if (kind !== "href" || tag.name === "a" || tag.name === "area") return kind;
+  const rels = tag.name === "link" ? (tag.attributes.get("rel") ?? "").toLowerCase().split(/[\t\n\f\r ]+/u).filter(Boolean) : [];
+  return rels.length > 0 && rels.every((rel) => NAVIGATION_LINK_RELS.has(rel)) ? "href" : "src";
+}
+
 /** Further attributes that can carry a script URL (legacy URL attributes and SVG animation targets). */
 const SCRIPT_URL_ATTRIBUTES = new Set([
   ...Object.keys(REFERENCE_ATTRIBUTES), "data", "ping", "background", "cite", "longdesc", "manifest", "codebase", "values", "to", "from", "by",
@@ -157,13 +173,15 @@ function inspectHtmlMarkup(htmlPath: string, html: string): HtmlMarkupV1 {
   const nonReferenceMarkup: string[] = [];
   for (const tag of scanned.tags) {
     if (ACTIVE_CONTENT_ELEMENTS.has(tag.name)) fail(`active-content element in '${htmlPath}'`);
+    // `<base>` would re-point every relative URL the checks below resolve against the page.
+    if (tag.name === "base") fail(`base element in '${htmlPath}'`);
     markup.push(`<${tag.name}`);
     nonReferenceMarkup.push(`<${tag.name}`);
     for (const [name, value] of tag.attributes) {
       if (/^on[a-z]+$/u.test(name)) fail(`event-handler attribute in '${htmlPath}'`);
       const serialized = ` ${name}="${value}"`;
       markup.push(serialized);
-      const kind = REFERENCE_ATTRIBUTES[name];
+      const kind = referenceKind(tag, name);
       if (kind === undefined) nonReferenceMarkup.push(serialized);
       else references.push({ kind, value });
       if (
@@ -173,6 +191,14 @@ function inspectHtmlMarkup(htmlPath: string, html: string): HtmlMarkupV1 {
       ) {
         fail(`javascript URL in '${htmlPath}'`);
       }
+    }
+    // A refresh with only a delay reloads the page; one with a target navigates away unchecked.
+    if (
+      tag.name === "meta" &&
+      (tag.attributes.get("http-equiv") ?? "").trim().toLowerCase() === "refresh" &&
+      !/^[\s\d.;,]*$/u.test(tag.attributes.get("content") ?? "")
+    ) {
+      fail(`meta refresh redirect in '${htmlPath}'`);
     }
   }
   for (const script of scanned.scripts) {
@@ -193,23 +219,26 @@ async function assertHtmlReferences(
 ): Promise<{ links: number; anchors: number }> {
   const sourceUrl = outputUrl(htmlPath, profile, base);
   const source = new URL(sourceUrl, "https://atlcli.invalid");
+  // Only a srcset candidate ends at whitespace. Elsewhere a browser removes
+  // tabs and newlines from the URL, so `https:<tab>//host/` is one URL.
   const references = attributes.flatMap(({ kind, value }) => {
-    const values = kind === "srcset" ? value.split(",") : [value];
-    return values.map((entry) => ({ kind, value: entry.trim().split(/\s+/u)[0]! }));
+    const values = kind === "srcset" ? value.split(",").map((entry) => entry.trim().split(/\s+/u)[0]!) : [value.trim()];
+    return values.map((entry) => ({ kind, value: entry }));
   });
   let links = 0;
   let anchors = 0;
   for (const reference of references) {
     const { kind, value } = reference;
     if (value === "" || value === "#") continue;
-    if (/^data:/iu.test(value)) fail(`data URL in '${htmlPath}'`);
-    if (/^(?:mailto|tel):/iu.test(value)) continue;
     let target: URL;
     try {
       target = new URL(value, source);
     } catch {
       fail(`invalid URL '${value}' in '${htmlPath}'`);
     }
+    // Checked on the parsed URL: a browser drops leading control characters and inner tabs or newlines.
+    if (target.protocol === "data:") fail(`data URL in '${htmlPath}'`);
+    if (target.protocol === "mailto:" || target.protocol === "tel:") continue;
     if (target.protocol === "javascript:") fail(`javascript URL in '${htmlPath}'`);
     if (target.protocol === "file:") fail(`local file URL '${value}' in '${htmlPath}'`);
     if (target.origin !== "https://atlcli.invalid") {

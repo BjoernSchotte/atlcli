@@ -663,6 +663,74 @@ describe("collectFieldInstructions — audit, not rejection (spec 011)", () => {
     }
   });
 
+  // The matcher knew one spelling (`w:` prefix, double quotes, plain text). An
+  // XML parser reads all of these as the same DDE field.
+  it("REJECTS a DDE field however the XML spells it", () => {
+    const complex = (instrText: string): string =>
+      `<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r>${instrText}</w:r>` +
+      `<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>result</w:t></w:r>` +
+      `<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
+    const X = `xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main"`;
+    for (const [name, body] of [
+      ["single-quoted attribute", `<w:p><w:fldSimple w:instr=' DDEAUTO cmd.exe "/k calc.exe" '/></w:p>`],
+      ["whitespace around =", `<w:p><w:fldSimple w:instr = " DDE Excel Sheet1 R1C1 "/></w:p>`],
+      ["newline before the value", `<w:p><w:fldSimple w:instr=\n' DDE Excel Sheet1 R1C1 '/></w:p>`],
+      ["another namespace prefix on fldSimple", `<w:p ${X}><x:fldSimple x:instr=" DDE Excel Sheet1 R1C1 "/></w:p>`],
+      ["decoy instr text in an earlier attribute", `<w:p><w:fldSimple w:rsidR=' w:instr=" QUOTE x " ' w:instr=" DDE Excel Sheet1 R1C1 "/></w:p>`],
+      ["another namespace prefix on instrText", `<w:p ${X}>${complex(`<x:instrText xml:space="preserve"> DDEAUTO cmd.exe </x:instrText>`)}</w:p>`],
+      ["CDATA split", complex(`<w:instrText> DD<![CDATA[E]]>AUTO cmd.exe </w:instrText>`)],
+      ["whole keyword in CDATA", complex(`<w:instrText><![CDATA[ DDE Excel Sheet1 R1C1 ]]></w:instrText>`)],
+      ["comment inside the keyword", complex(`<w:instrText> DD<!-- x -->E Excel Sheet1 R1C1 </w:instrText>`)],
+      ["comment quoting the end tag", complex(`<w:instrText> DD<!-- </w:instrText> -->E Excel Sheet1 R1C1 </w:instrText>`)],
+      ["processing instruction inside the keyword", complex(`<w:instrText> DD<?x y?>EAUTO cmd.exe </w:instrText>`)],
+      ["whitespace in the end tag", complex(`<w:instrText > DDE Excel Sheet1 R1C1 </w:instrText >`)],
+      [
+        "runs split between begin and separate",
+        complex(`<w:instrText xml:space='preserve'> D</w:instrText></w:r><w:r><w:instrText>D</w:instrText></w:r><w:r><w:instrText>E Excel Sheet1 R1C1 </w:instrText>`),
+      ],
+    ] as const) {
+      const err = (() => {
+        try {
+          unzipDocx(buildDocx({ body }));
+        } catch (e) {
+          return e as { kind?: string };
+        }
+        return undefined;
+      })();
+      expect(err?.kind, name).toBe("active-content");
+    }
+  });
+
+  it("reads other fields through the same spellings", () => {
+    expect(fieldKeywords(`<x:fldSimple x:instr = ' TOC \\o "1-3" '/>`)).toEqual(["TOC"]);
+    expect(fieldKeywords(`<w:fldChar w:fldCharType='begin'/><x:instrText> T<![CDATA[O]]>C </x:instrText><w:fldChar w:fldCharType='end'/>`)).toEqual(["TOC"]);
+    expect(collectStylerefFields(`<w:instrText> STYLEREF <!-- x -->"Heading 1" </w:instrText>`)).toEqual(["Heading 1"]);
+    expect(collectFieldInstructions(`<w:fldSimple w:instr=' INCLUDETEXT "x.docx" '/>`)).toEqual(["INCLUDETEXT"]);
+    // CDATA text is literal: `&#79;` inside it is not the letter O.
+    expect(fieldKeywords(`<w:instrText><![CDATA[ T&#79;C ]]></w:instrText>`)).toEqual(["T"]);
+    // A self-closing instrText opens nothing; the next one is its own field text.
+    expect(fieldKeywords(`<w:instrText/><w:t>DDE</w:t><w:instrText> PAGE </w:instrText>`)).toEqual(["PAGE"]);
+  });
+
+  // Word opens UTF-16 parts; as UTF-8 text they are letters separated by NULs
+  // and passed every sweep, DDE and altChunk included.
+  it("REJECTS a part that is not UTF-8, which no sweep can read", () => {
+    const xml =
+      `<?xml version="1.0" encoding="UTF-16"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+      `<w:footnote w:id="1"><w:p><w:fldSimple w:instr=" DDEAUTO cmd.exe "/></w:p></w:footnote></w:footnotes>`;
+    for (const [part, bom] of [
+      ["word/footnotes.xml", [0xff, 0xfe]],
+      ["word/footnotes.xml", []],
+      ["word/_rels/footnotes.xml.rels", [0xff, 0xfe]],
+    ] as const) {
+      const zip = new PizZip(buildDocx({ body: para("x") }));
+      zip.file(part, new Uint8Array([...bom, ...Buffer.from(xml, "utf16le")]));
+      const bytes = zip.generate({ type: "uint8array" }) as unknown as Uint8Array;
+      const err = expectDocxError(() => unzipDocx(bytes), "corrupt-entry");
+      expect(err.message).toContain(part);
+    }
+  });
+
   it("POSITIVE CONTROL: DDE as body text, or as escaped reference text in a field, is accepted", () => {
     expect(() =>
       unzipDocx(buildDocx({ body: para("DDE and DDEAUTO fields are refused; D&#68;E too.") }))

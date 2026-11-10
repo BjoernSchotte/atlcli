@@ -3122,6 +3122,7 @@ export interface JiraWebhookServerOptions {
     port: number;
     path?: string;
     secret?: string;
+    hostname?: string;
     filterProjects?: Set<string>;
     filterEvents?: Set<string>;
 }
@@ -6872,6 +6873,7 @@ export interface JiraWebhookServerOptions {
     port: number;
     path?: string;
     secret?: string;
+    hostname?: string;
     filterProjects?: Set<string>;
     filterEvents?: Set<string>;
 }

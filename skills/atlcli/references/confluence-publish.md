@@ -102,6 +102,12 @@ build), `--dry-run`, `--json`. Here `--confirm` is only the gate for `prune`.
 - `verify` judges markup (elements, attributes, link targets, inline scripts),
   not page text. A failure names a real sink in the built HTML; fix the
   template or content, do not look for a way around the verifier.
+- Off-site targets are allowed only on `<a>`/`<area>` and on
+  `<link rel="canonical|alternate">`. Any other `<link href>` (stylesheet,
+  preload, icon, font), SVG `<image>`/`<use>` target, `src` or form action must
+  be a file the build owns (`external resource/action` otherwise): self-host
+  fonts and CSS. `<base>`, a `<meta http-equiv="refresh">` with a target and
+  `data:` URLs fail too.
 
 Related: [confluence-export.md](confluence-export.md),
 [safety.md](safety.md).

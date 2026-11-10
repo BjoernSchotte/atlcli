@@ -54,6 +54,14 @@ into an issue.
   targets, and inline scripts. Page text or inline code that mentions
   `onclick=`, `javascript:`, or a Confluence REST path is content and passes,
   and so does a page whose route is `/cache/`, `/bundles/`, or `/staging/`.
+- **`external resource/action`, `base element`, `meta refresh redirect`, or
+  `data URL`:** a template loads something from another origin or redirects
+  away. Only `<a>`/`<area>` links and `<link rel="canonical">` or
+  `<link rel="alternate">` may point off-site. Every other `<link href>`
+  (stylesheet, preload, icon, manifest, font) and every SVG `<image>`/`<use>`
+  target must be a file the build owns, like `src`: self-host fonts and
+  stylesheets instead of linking a CDN. `<base>` is not allowed at all, and a
+  `<meta http-equiv="refresh">` may carry a delay but no target.
 - **Edit link outside the trusted Confluence origin:** a template rendered an
   `data-atlcli-edit-link` element that is not an `<a>` to the Confluence site
   the bundle was refreshed from. Render the value of
