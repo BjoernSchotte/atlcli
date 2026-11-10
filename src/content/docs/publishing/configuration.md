@@ -199,10 +199,99 @@ Both are off by default in the example:
 ```
 
 Plausible requires an HTTPS `/api/event` endpoint, site domain, pathname-only
-pageviews, DNT, no search terms, and an allowlisted event set. Confluence edit
-links require a label, placement, visibility, and fallback. Public/all links
-also require `publicTenantDisclosureAcknowledged: true`. The renderer accepts
-only provider-returned relations on the trusted tenant origin.
+pageviews, DNT, no search terms, and an allowlisted event set.
+
+### Edit links
+
+`editLink.provider: "confluence"` adds one link back to the Confluence page on
+every published page that originates from one. All fields are required unless
+noted:
+
+| Field | Type | Default | Constraints |
+| --- | --- | --- | --- |
+| `provider` | enum | none | `none` or `confluence` |
+| `label` | non-empty string | none | Link text, for example `Edit in Confluence` |
+| `placement` | enum | none | `page-actions` (above the content) or `page-footer` (below it) |
+| `visibility` | enum | none | `all`, or `internal` to emit links only when the project `visibility` is `internal` |
+| `fallback` | enum | none | `open-page` links to the page view when Confluence returns no edit URL; `omit` emits no link for that page |
+| `publicTenantDisclosureAcknowledged` | literal `true` | optional | Required when project `visibility` is `public` and `editLink.visibility` is `all`; otherwise the project file is rejected when it is loaded |
+
+`refresh` resolves the links and freezes them in the bundle. It uses only the
+edit or view URL that Confluence returned for the page, and only when that URL
+is `https` on the Confluence site of the profile that ran the refresh. It never
+builds a URL from a page ID, title, or page content. A page without a usable
+URL is published without a link.
+
+Minimal example, for an internal site:
+
+```json
+{
+  "visibility": "internal",
+  "editLink": {
+    "provider": "confluence",
+    "label": "Edit in Confluence",
+    "placement": "page-actions",
+    "visibility": "all",
+    "fallback": "omit"
+  }
+}
+```
+
+Realistic example, for a public site that deliberately shows where its source
+lives and links to the page view when the reader cannot get an edit URL:
+
+```json
+{
+  "visibility": "public",
+  "editLink": {
+    "provider": "confluence",
+    "label": "Suggest a change in Confluence",
+    "placement": "page-footer",
+    "visibility": "all",
+    "fallback": "open-page",
+    "publicTenantDisclosureAcknowledged": true
+  }
+}
+```
+
+A public site with `"visibility": "internal"` edit links publishes no links and
+keeps the Confluence site address out of the output.
+
+The page template renders the link. With the Starlight experience, pass the
+frozen link of the page to `StarlightPublicationPage`:
+
+```astro
+---
+import { publicationEditLinkV1, readPublicationNavigationV1 } from "@atlcli/web-publish-astro";
+import StarlightPublicationPage from "@atlcli/web-publish-starlight/components/StarlightPublicationPage.astro";
+
+const loaded = await readPublicationNavigationV1({ bundlePath });
+---
+
+<StarlightPublicationPage
+  page={page}
+  navigation={navigation}
+  sidebar={sidebar}
+  context={context}
+  editLink={publicationEditLinkV1(loaded.bundle, page.sourceId)}
+/>
+```
+
+A plain Astro template renders the same value itself. Keep the
+`data-atlcli-edit-link` marker on the anchor; `verify` uses it to find the link:
+
+```astro
+{editLink && (
+  <a href={editLink.href} rel="external" data-atlcli-edit-link data-pagefind-ignore>
+    {editLink.label}
+  </a>
+)}
+```
+
+`publicationEditLinkV1` returns `undefined` for a page without a link, so the
+same template works with edit links on or off. After you change `editLink` or
+the project `visibility`, run `refresh` again: `build` rejects a bundle that was
+refreshed under a different edit-link policy.
 
 ## Builder and Astro handoff
 
@@ -253,8 +342,10 @@ environment and no Atlassian token. Keep the private workspace outside
 - `directory`: `/guide/index.html`, for a directory-index host;
 - `portable-file`: `/guide.html`, for a simple file host.
 
-The CLI currently pins the verified builder contract to Astro `7.1.6`; the
-packages declare compatibility with the tested Astro 7.x range.
+`build` records the Astro version installed in `projectDir` and requires it to
+be within the tested range (`>=7.1.6 <8`, the packages' peer range). `verify`
+rejects a build whose recorded Astro version differs from the one installed
+now; rebuild after upgrading Astro.
 
 ## Retention
 
@@ -275,6 +366,8 @@ atlcli wiki publish prune --project .atlcli/publish.json --confirm
 | Build inventory is missing | Integration writes somewhere other than the CLI-owned private path | Use `ATLCLI_PUBLICATION_INVENTORY_PATH` as `manifestPath` |
 | Public acknowledgement error | `visibility` is `public` | Review the scope and pass `--confirm-public` deliberately |
 | Partial acknowledgement error | `completeness` is `allow-partial` | Review reported omissions and pass `--allow-partial` deliberately |
+| `different edit-link policy` | `editLink` or `visibility` changed after the last `refresh` | Run `refresh` (or `run`), then build |
+| Edit links are configured but no page shows one | The template does not pass `editLink`, or Confluence returned no usable URL and `fallback` is `omit` | Pass `publicationEditLinkV1(...)` in the page template; check `editLinks.includedSourceIds` in the build manifest |
 | Chart budget diagnostic | Authored data exceeds an admission/render limit | See the [chart guide](./charts.md); prefer reducing source data over raising limits |
 
 ## Related topics

@@ -23,8 +23,10 @@ metadata:
 
 Every `jira bulk` verb selects issues with exactly one of `--jql <query>` or
 `--issues K1,K2,...` (the keys become `key in (...)`). Giving both, or
-neither, is a usage error. The selection is the blast radius. Every verb
-applies to at most `--limit` matches (default **1000**).
+neither, is a usage error. The selection is the blast radius. Without
+`--limit`, a selection of more than **1000** matches is a usage error and
+nothing is changed; `--limit <n>` works on the first `<n>` matches and warns
+on stderr when more matched.
 
 Always run `--dry-run` first and show the user the matches:
 
@@ -257,7 +259,7 @@ the user first.
 ## Anti-patterns
 
 - Running a `jira bulk` verb without a preceding `--dry-run` on the identical
-  selection. The default `--limit` is 1000.
+  selection. More than 1000 matches without `--limit` is an error.
 - Using `--set labels=…` to add a label. It replaces every label on every
   matching issue; `jira bulk label add <label>` is the additive form.
 - Passing both `--jql` and `--issues`, or `--sprint` together with

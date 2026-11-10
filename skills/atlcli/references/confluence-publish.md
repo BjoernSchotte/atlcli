@@ -37,6 +37,9 @@ Fields that decide risk:
 - `completeness`: `strict` or `allow-partial`. `allow-partial` requires
   `--allow-partial`.
 - `builder.projectDir`: the Astro project that `build` runs.
+- `editLink`: `{provider:"none"}`, or `provider:"confluence"` with `label`,
+  `placement`, `visibility` and `fallback`, which publishes a link to each
+  page's Confluence source and so reveals the Confluence site address.
 
 Read the file and show the user `source`, `visibility` and `builder.projectDir`
 before running anything beyond `plan`.
@@ -84,6 +87,21 @@ build), `--dry-run`, `--json`. Here `--confirm` is only the gate for `prune`.
 - Public output is public once the user deploys it. Do not set
   `visibility: "public"` or pass `--confirm-public` on your own.
 - `prune` is the only stage that deletes. It needs `--confirm`; ask first.
+- Never edit files under the workspace `bundles/` directory. `build` recomputes
+  every page and bundle digest and fails with `does not match its digest`;
+  the fix is another `refresh`.
+- Edit links (`editLink.provider: "confluence"`) are resolved at `refresh` from
+  the URLs Confluence returns, on the profile's `https` site only, and frozen
+  in the bundle. After changing `editLink` or `visibility`, `build` fails with
+  `different edit-link policy` until the next `refresh`. They put the
+  Confluence site address into the output: on a public project do not add
+  `publicTenantDisclosureAcknowledged` on your own. The page template must
+  pass `publicationEditLinkV1(bundle, page.sourceId)` to
+  `StarlightPublicationPage`; without it no link is rendered and `verify`
+  fails with `edit-link marker missing`.
+- `verify` judges markup (elements, attributes, link targets, inline scripts),
+  not page text. A failure names a real sink in the built HTML; fix the
+  template or content, do not look for a way around the verifier.
 
 Related: [confluence-export.md](confluence-export.md),
 [safety.md](safety.md).

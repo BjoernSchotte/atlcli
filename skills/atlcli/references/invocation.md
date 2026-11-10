@@ -127,9 +127,9 @@ Structured commands print pretty-printed JSON **with or without** `--json`:
 
 Under `--json`, stdout carries only JSON documents; prose such as help,
 progress lines and `Would delete: ...` goes to stderr. A command prints one
-document, except `jira sprint review ... --export` and
-`jira version notes ... --export`, which follow the page result with the
-export report as a second document. Always pass `--json`: it is the way to get
+document; `jira sprint review ... --export` and
+`jira version notes ... --export` carry the export report as `export` of the
+page result. Always pass `--json`: it is the way to get
 a machine-readable result and the way to get a structured error.
 
 `jira issue get` and `jira search` return a **flattened** issue, not the raw

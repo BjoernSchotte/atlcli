@@ -192,15 +192,20 @@ atlcli wiki docs sync ./docs --no-poll
 For instant remote change detection without polling overhead, use webhooks:
 
 ```bash
+export ATLCLI_WEBHOOK_SECRET="<secret>"
 atlcli wiki docs sync ./docs \
   --webhook-port 8080 \
-  --webhook-url https://your-server.com:8080/webhook
+  --webhook-url https://sync.example.com/webhook
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--webhook-port` | Local webhook server port |
+| `--webhook-host` | Interface to bind (default: `127.0.0.1`). Any other interface requires a secret |
+| `--webhook-secret` | Shared secret callers must prove. Prefer the `ATLCLI_WEBHOOK_SECRET` environment variable |
 | `--webhook-url` | Public URL to register with Confluence |
+
+Without a secret the server listens on loopback only and prints a warning. Every event is checked against Confluence: a page outside the sync scope is never pulled, whatever the request claims.
 
 **Webhook Events**:
 
@@ -208,12 +213,12 @@ The webhook server handles these Confluence events:
 
 | Event | Description |
 |-------|-------------|
-| `page_created` | New page created |
-| `page_updated` | Page content changed |
-| `page_removed` | Page deleted |
-| `page_trashed` | Page moved to trash |
-| `page_restored` | Page restored from trash |
-| `page_moved` | Page moved to different parent |
+| `page_created` | New page created: pulled |
+| `page_updated` | Page content changed: pulled |
+| `page_removed` | Page deleted: reported, the local file stays |
+| `page_trashed` | Page moved to trash: reported, the local file stays |
+
+See [Webhooks](webhooks.md) for the endpoint, registration and security notes.
 
 **Webhooks vs Polling:**
 
@@ -223,7 +228,7 @@ The webhook server handles these Confluence events:
 | Setup | None | Requires public URL |
 | API usage | Regular requests | On-demand only |
 | Reliability | Always works | Requires connectivity |
-| Filtering | By scope | By page ID and space |
+| Filtering | By scope | By scope, verified against Confluence |
 
 For local development, use polling. For production servers with public URLs, webhooks provide better performance.
 

@@ -184,7 +184,8 @@ is given. It is a user decision.
 checks are `config_exists`, `config_valid`, `profile_exists`,
 `active_profile`, `confluence_api`, `jira_api` and `log_directory`. The two API
 checks run only when the config checks before them pass, and each reports its
-latency and warns above 2000 ms.
+latency and warns above 2000 ms. `--profile <name>` checks that profile
+instead of the current one.
 
 A failed API check carries the raw error in `details.error`. For a Confluence
 401 that is the HTML of the login page; read `message` and `suggestion`

@@ -34,13 +34,15 @@ atlcli plugin enable git
 
 | Command | What it does |
 |---------|--------------|
-| `atlcli git hook install [dir] [--force]` | Install the `post-commit` hook in the repository of `dir` (default: current directory). `--force` replaces an existing hook that atlcli did not write |
+| `atlcli git hook install [dir] [--force]` | Install the `post-commit` hook in the repository of `dir` (default: current directory). `--force` (or `-f`) replaces an existing hook that atlcli did not write and keeps it as `post-commit.backup` |
 | `atlcli git hook status [dir]` | Show whether the hook is installed |
 | `atlcli git hook remove [dir]` | Remove the hook |
 
 The commit after pull needs no command; it runs whenever the plugin is enabled and the docs directory is inside a Git repository.
 
 ## The post-commit hook
+
+atlcli asks Git where hooks live, so the hook lands in `.git/hooks`, in the main repository's hooks directory when `dir` is a linked worktree (the hook then runs for commits in every worktree that contains the docs directory), or in `core.hooksPath` when the repository sets it. `atlcli git hook status` prints the path.
 
 After each commit, the hook pushes the docs directory to Confluence. It never blocks a commit:
 

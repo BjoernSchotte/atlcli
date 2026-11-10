@@ -69,6 +69,12 @@ page content already fetched.
 Any macro not claimed by a specific renderer falls through to the `export_view`
 catch-all, then to the placeholder floor.
 
+The `toc` entries link to their headings in DOCX and PDF, in single-page and
+multi-page exports alike. A heading whose text repeats an earlier heading on
+the same single page is listed without a link. `include`, `excerpt-include` and
+`multiexcerpt-include` expand every occurrence, also when one page is included
+more than once.
+
 ## Datasource smart links
 
 Since **2026-05-22** the Confluence Cloud editor no longer inserts a
@@ -204,6 +210,8 @@ atlcli wiki export 12345 -t corporate.docx -o out.docx --no-live-macros
 
 - It suppresses **only** the Live renderers; Pure renderers (TOC,
   scroll-tablelayout, `excerpt`, transparent passthroughs) still run.
+- It applies to DOCX and PDF alike and is stored with the export job, so
+  `wiki export jobs retry` / `rerun` of that job stay deterministic.
 - It is **not** an offline mode: the page body and its own attachments still
   fetch over the network. The guarantee is "no additional
   Jira/`export_view`/attachment-lookup calls".

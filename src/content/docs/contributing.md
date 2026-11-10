@@ -12,7 +12,7 @@ Guidelines for contributing to atlcli.
 ### Prerequisites
 
 - [Bun](https://bun.sh), the version declared as `packageManager` in `package.json`
-- Node.js 22.23.4+ (for documentation tooling)
+- Node.js 26.13.0+ (for documentation tooling)
 - An Atlassian Cloud account for testing
 
 ### Clone and Build
@@ -41,19 +41,17 @@ changes deliberately fail open to the complete product proof. The
 always-present **required** job aggregates the selected results and is the
 single check that branch protection should require.
 
-The required test topology remains the legacy four-shard suite while three
-duration-aware candidates collect same-SHA comparison evidence:
-`general-2x1`, `general-3x1`, and `general-2x2-workers`. Worker count is fixed
-at one or two; CI never uses global `--concurrent`. Real Typst/PDF and
-package-contract tests are explicit serial lanes, and stateful isolation probes
-remain serial.
+The required test suite runs as six duration-balanced lanes (`general-6x1`,
+one worker each) plus a serial `pdf-typst` lane. CI never uses global
+`--concurrent`. Real Typst/PDF and package-contract tests are explicit serial
+lanes, and stateful isolation probes remain serial.
 
 | Cadence | Gates |
 |---------|-------|
 | Pull request | Selected product/platform gates, pinned consumer smoke, and documentation build |
 | Push to `main` | Affected product/platform gates, security attestation, and documentation deployment when relevant |
 | Daily | Blocking M1 cross-host acceptance, performance trend, and floating-Bun consumer canary |
-| Weekly | Full unfiltered CI matrix, one rotating topology comparison, and a non-required system-Chrome compatibility signal |
+| Weekly | Full unfiltered CI matrix and a non-required system-Chrome compatibility signal |
 | Release tag | Shared SHA-bound quality preflight and attestation before binary publication |
 
 Superseded pull-request runs and Pages deployments are cancelled. Product CI
@@ -99,10 +97,8 @@ Rules for tests that must survive this:
 - Don't run CLI starts one after another under one test timeout; start them
   together, as `wiki-mount.test.ts` does.
 
-Start **CI topology comparison** manually in GitHub Actions to compare one
-duration-aware candidate with all four legacy shards on the same SHA. The
-workflow is non-required and cannot replace **required**. Timing JSON is
-available from the `ci-timing-<attempt>-<sha>` artifact and the run summary.
+Timing JSON is available from the `ci-timing-<attempt>-<sha>` artifact and the
+run summary.
 The system Google Chrome job is also a compatibility canary only; required
 packed MV3 proof continues to use Playwright-matched Chromium.
 

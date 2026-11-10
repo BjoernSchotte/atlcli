@@ -16,6 +16,9 @@ atlcli doctor
 # Auto-fix safe issues
 atlcli doctor --fix
 
+# Check a profile other than the current one
+atlcli doctor --profile work
+
 # JSON output for scripting
 atlcli doctor --json
 ```

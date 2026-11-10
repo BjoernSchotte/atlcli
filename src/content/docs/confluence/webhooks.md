@@ -1,311 +1,194 @@
 ---
 title: "Webhooks"
-description: "Webhooks - atlcli documentation"
+description: "Receive Confluence page events in the sync daemon"
 ---
 
 # Webhooks
 
-Set up webhooks to receive real-time notifications when Confluence content changes.
+The sync daemon can receive Confluence page events over HTTP, so remote changes arrive without waiting for the next poll.
+
+atlcli has no standalone Confluence webhook command. Webhooks are an option of `atlcli wiki docs sync`. For Jira events, see [Jira webhooks](../jira/webhooks.md).
 
 ## Prerequisites
 
-- Authenticated profile with admin permissions (`atlcli auth login`)
-- **For receiving webhooks**: Public URL accessible from Atlassian servers
-- **Space permission**: Space Admin to register webhooks
+- Authenticated profile (`atlcli auth login`)
+- A directory that syncs with Confluence (see [Sync](sync.md))
+- A URL that Confluence can reach and that forwards to the daemon's port (a reverse proxy or a tunnel such as ngrok or a Cloudflare tunnel)
+- A shared secret, if anything but a process on the same machine delivers the events (see [Security](#security))
 
-## Overview
-
-Webhooks allow external systems to be notified when events occur in Confluence:
-
-- Page created, updated, or deleted
-- Page moved or renamed
-- Page trashed or restored
-- Comments added
-
-atlcli supports both registering webhooks with Confluence and running a local webhook server.
-
-## Register Webhook
-
-Register a webhook to receive events:
+## Start sync with a webhook server
 
 ```bash
-atlcli webhook register --url https://your-server.com/webhook --events page_created,page_updated
+atlcli wiki docs sync ./docs --space DEV --webhook-port 3000
 ```
 
-Options:
+The daemon then listens on `127.0.0.1:3000`. A tunnel or reverse proxy on the same machine reaches it there; other machines do not.
 
-| Flag | Description |
-|------|-------------|
-| `--url` | Webhook endpoint URL (required) |
-| `--events` | Comma-separated event types |
-| `--space` | Filter to specific space key |
-| `--pages` | Filter to specific page IDs |
-| `--secret` | HMAC secret for signature verification |
+| Request | Result |
+|---------|--------|
+| `POST /webhook` | Processes a page event, answers `{"status":"ok"}` |
+| `GET /health` | Answers `{"status":"ok"}` |
+| anything else | `404` |
 
-### Event Types
+Polling and file watching keep running next to the webhook server. Add `--no-poll` to rely on webhooks alone.
 
-| Event | Description |
-|-------|-------------|
-| `page_created` | New page created |
-| `page_updated` | Page content updated |
-| `page_removed` | Page permanently deleted |
-| `page_trashed` | Page moved to trash |
-| `page_restored` | Page restored from trash |
-| `page_moved` | Page moved to new location |
-| `comment_created` | Comment added to page |
-| `comment_updated` | Comment edited |
-| `comment_removed` | Comment deleted |
+## Options
 
-### Examples
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--webhook-port <port>` | integer, 1–65535 | none (server off) | Start the webhook server on this port |
+| `--webhook-host <addr>` | IP address or `localhost` | `127.0.0.1` | Interface the server binds. Optional. Any address that is not loopback (`0.0.0.0`, `::`, a LAN address) requires a secret |
+| `--webhook-secret <value>` | string | none | Shared secret that every event must prove. Optional. Prefer the environment variable, which keeps the secret out of the shell history and the process list |
+| `--webhook-url <url>` | URL | none | Public URL to register with Confluence. Only used together with `--webhook-port` |
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `ATLCLI_WEBHOOK_SECRET` | The shared secret. `--webhook-secret` wins when both are set |
+
+All other flags are those of [`wiki docs sync`](sync.md).
+
+## Register the webhook with Confluence
+
+With `--webhook-url`, the daemon registers a webhook named `atlcli-sync` for `page_created`, `page_updated`, `page_removed` and `page_trashed` when it starts:
 
 ```bash
-# All page events in a space
-atlcli webhook register \
-  --url https://ci.company.com/confluence-hook \
-  --events page_created,page_updated,page_removed \
-  --space DOCS
-
-# Specific pages only
-atlcli webhook register \
-  --url https://notify.company.com/hook \
-  --events page_updated \
-  --pages 12345,67890
-
-# With HMAC signature verification
-atlcli webhook register \
-  --url https://secure.company.com/hook \
-  --events page_updated \
-  --secret "your-webhook-secret"
+atlcli wiki docs sync ./docs --space DEV \
+  --webhook-port 3000 \
+  --webhook-url https://sync.example.com/webhook
 ```
 
-## List Webhooks
+The URL must end in `/webhook` and reach the daemon's port. When a secret is set, it is sent with the registration (`configuration.secret`). Whether your Confluence then signs each delivery depends on the deployment: send a test event and check that it is accepted before relying on it.
 
-View registered webhooks:
+If Confluence rejects the registration, the daemon reports `Failed to register webhook: ...` and keeps running with polling. The registration is not removed when the daemon stops; delete it in Confluence when you no longer need it.
 
-```bash
-atlcli webhook list
-```
+Without `--webhook-url`, create the webhook yourself and point it at the server.
 
-Output:
+## Events
 
-```
-ID        URL                                    EVENTS                 SPACE
-wh-001    https://ci.company.com/hook           page_created,updated   DOCS
-wh-002    https://notify.company.com/hook       page_updated           (all)
-```
-
-Use `--json` for JSON output.
-
-## Delete Webhook
-
-Remove a registered webhook:
-
-```bash
-atlcli webhook delete wh-001 --confirm
-```
-
-## Local Webhook Server
-
-Run a local server to receive and process webhook events:
-
-```bash
-atlcli webhook server --port 8080
-```
-
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--port` | Port to listen on (default: 8080) |
-| `--secret` | HMAC secret for verification |
-| `--handler` | Custom handler script path |
-
-### Server Output
-
-The server logs incoming events:
-
-```
-[2025-01-14 10:30:00] Webhook server started on :8080
-[2025-01-14 10:30:15] page_updated: "API Reference" (12345) by alice@company.com
-[2025-01-14 10:31:22] page_created: "New Guide" (12346) by bob@company.com
-```
-
-### Custom Handler
-
-Process events with a custom script:
-
-```bash
-atlcli webhook server --port 8080 --handler ./process-event.sh
-```
-
-Handler receives JSON via stdin:
-
-```bash
-#!/bin/bash
-# process-event.sh
-EVENT=$(cat)
-TYPE=$(echo $EVENT | jq -r '.eventType')
-PAGE_ID=$(echo $EVENT | jq -r '.page.id')
-
-case $TYPE in
-  page_updated)
-    echo "Page $PAGE_ID was updated"
-    # Trigger rebuild, notification, etc.
-    ;;
-esac
-```
-
-## Sync Integration
-
-Use webhooks with `docs sync` for real-time updates:
-
-```bash
-# Start sync with webhook support
-atlcli wiki docs sync ./docs --watch --webhook-port 8080
-```
-
-When a page is updated in Confluence:
-1. Webhook receives the event
-2. Sync automatically pulls the changed page
-3. Local file is updated
-
-### Register Sync Webhook
-
-```bash
-# Register webhook and start sync
-atlcli wiki docs sync ./docs \
-  --watch \
-  --webhook-port 8080 \
-  --webhook-url https://your-server.com:8080/webhook
-```
-
-## Webhook Payload
-
-Event payloads contain:
+The server expects a JSON body of this shape:
 
 ```json
 {
   "eventType": "page_updated",
-  "timestamp": "2025-01-14T10:30:15Z",
-  "user": {
-    "accountId": "abc123",
-    "displayName": "Alice",
-    "email": "alice@company.com"
-  },
-  "page": {
-    "id": "12345",
-    "title": "API Reference",
-    "spaceKey": "DOCS",
-    "version": 5,
-    "url": "https://company.atlassian.net/wiki/spaces/DOCS/pages/12345"
-  }
+  "timestamp": "2025-01-14T10:00:00Z",
+  "page": { "id": "12345", "title": "API Guide", "spaceKey": "DEV", "version": 5 }
 }
 ```
 
-## Signature Verification
+| `eventType` | What the daemon does |
+|-------------|----------------------|
+| `page_created`, `page_updated` | Pulls the page, as a detected remote change |
+| `page_removed`, `page_trashed` | Reports `Remote page deleted: <title>` for a tracked page. The local file stays |
+| other | Nothing |
 
-When using `--secret`, atlcli signs payloads with HMAC-SHA256:
+Events without a `page` object or with a page id that is not numeric are ignored.
 
-```
-X-Atlcli-Signature: sha256=abc123...
-```
+Only the page id is taken from an event. Title, space and version in the body are not used.
 
-Verify in your handler:
+## Security
 
-```python
-import hmac
-import hashlib
+### Scope
 
-def verify_signature(payload, signature, secret):
-    expected = 'sha256=' + hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(signature, expected)
-```
+The daemon never pulls a page because a request says so. For a page it does not track yet, it asks Confluence where the page is and pulls it only when it lies inside the sync scope:
 
-## Health Check
+| Scope | A page is pulled when |
+|-------|-----------------------|
+| `--page-id` | It is that page |
+| `--ancestor` (page tree) | It is the root page or Confluence lists the root among its ancestors |
+| `--space` | Confluence reports that space for it |
 
-The webhook server exposes a health endpoint:
+An event for any other page is answered with `{"status":"ok"}` and reported as `Webhook ignored: page <id> is outside the sync scope`. Nothing is written. If the lookup fails (page deleted, no permission, network error), the event is ignored with an error line.
 
-```bash
-curl http://localhost:8080/health
-```
+A request cannot write to Confluence or choose what is written locally; the content always comes from Confluence.
 
-```json
-{"status": "ok", "uptime": 3600}
-```
+### Authentication
 
-## Use Cases
-
-### CI/CD Documentation Build
+Set a shared secret whenever events come from another machine:
 
 ```bash
-# In your CI/CD pipeline
-atlcli webhook register \
-  --url https://ci.company.com/trigger/docs-build \
-  --events page_updated \
-  --space DOCS
+export ATLCLI_WEBHOOK_SECRET="$(openssl rand -hex 32)"
+atlcli wiki docs sync ./docs --space DEV --webhook-port 3000
 ```
 
-When documentation changes, trigger a rebuild.
+With a secret, `POST /webhook` answers `401` unless the request proves it in one of two ways:
 
-### Slack Notifications
+| Header | Value | Sent by |
+|--------|-------|---------|
+| `X-Hub-Signature` | `sha256=<hex HMAC-SHA256 of the raw body, keyed with the secret>` | Senders that sign the body with the shared secret |
+| `Authorization` | `Bearer <secret>` | Senders that cannot sign a body, such as an automation rule's web request with a custom header |
+
+A request that carries an `X-Hub-Signature` header is judged by that signature alone. `GET /health` needs no secret.
+
+Not every sender can sign. If your Confluence does not send `X-Hub-Signature` (a test delivery answered with `401` shows it), deliver the events through a sender that can set a header, such as an automation rule's **Send web request** action, and add the `Authorization` header there.
+
+### Bind address
+
+| Secret | `--webhook-host` | Result |
+|--------|------------------|--------|
+| not set | not set or loopback | Listens on loopback only and prints a warning. Any local process can post events |
+| not set | any other address | Usage error, the daemon does not start |
+| set | not set | Listens on `127.0.0.1` |
+| set | `0.0.0.0` or another address | Listens there |
+
+A tunnel client or reverse proxy on the same machine connects through loopback and needs no `--webhook-host`. A proxy on another host or in another container needs `--webhook-host` and therefore a secret. A tunnel forwards requests from the internet to loopback, so set a secret for tunnels as well.
+
+:::caution
+Use HTTPS on the public side. A bearer secret sent over plain HTTP can be read in transit.
+:::
+
+## Examples
+
+Minimal: webhook server for a single page, events delivered by a webhook you created yourself.
 
 ```bash
-# Custom handler for Slack
-atlcli webhook server --port 8080 --handler ./slack-notify.sh
+atlcli wiki docs sync ./docs --page-id 12345 --webhook-port 8080
 ```
 
-```bash
-#!/bin/bash
-# slack-notify.sh
-EVENT=$(cat)
-TITLE=$(echo $EVENT | jq -r '.page.title')
-USER=$(echo $EVENT | jq -r '.user.displayName')
-URL=$(echo $EVENT | jq -r '.page.url')
-
-curl -X POST -H 'Content-type: application/json' \
-  --data "{\"text\": \"$USER updated <$URL|$TITLE>\"}" \
-  $SLACK_WEBHOOK_URL
-```
-
-### Audit Logging
+Realistic: a space synced by webhooks only, authenticated, registered on start, with JSON output for a log collector.
 
 ```bash
-# Log all changes to file
-atlcli webhook server --port 8080 --handler ./audit-log.sh
-```
-
-```bash
-#!/bin/bash
-# audit-log.sh
-cat >> /var/log/confluence-audit.jsonl
+export ATLCLI_WEBHOOK_SECRET="<secret>"
+atlcli wiki docs sync ./docs --space DEV \
+  --webhook-port 8080 \
+  --webhook-url https://sync.example.com/webhook \
+  --no-poll --json
 ```
 
 ## Troubleshooting
 
-### Webhook Not Receiving Events
+### No events arrive
 
-**Symptom**: Registered webhook doesn't receive events.
+**Symptom**: Remote edits only appear after the poll interval.
 
-**Causes**:
-- URL not publicly accessible
-- Firewall blocking incoming requests
-- Webhook registration failed silently
+**Causes**: The public URL does not reach the daemon's port, the path is not `/webhook`, the registration failed, or the sender connects from another host while the daemon listens on loopback.
 
-**Fix**: Verify URL is reachable from the internet. Check `atlcli webhook list` to confirm registration.
+**Fix**: Request `GET /health` through the public URL. Check the daemon output for `Webhook registered with Confluence` or `Failed to register webhook`. If the proxy runs on another host, set a secret and `--webhook-host`.
 
-### Signature Verification Failing
+### Events are answered with `401`
 
-**Symptom**: `X-Atlcli-Signature` header doesn't match.
+**Cause**: A secret is set and the request carries neither a matching `X-Hub-Signature` nor `Authorization: Bearer <secret>`.
 
-**Cause**: Secret mismatch between registration and verification code.
+**Fix**: Configure the same secret on the sender. For a signature, the HMAC must cover the exact bytes of the body.
 
-**Fix**: Ensure the same secret is used when registering and verifying. Check for encoding issues.
+### Events arrive but nothing is pulled
 
-## Related Topics
+**Symptom**: The daemon prints `Webhook ignored: page <id> is outside the sync scope`.
 
-- [Sync](sync.md) - Use webhooks with sync for real-time updates
-- [Configuration](../configuration.md) - Webhook configuration options
+**Cause**: Confluence places the page outside the sync scope.
+
+**Fix**: Start the daemon with the scope (`--space`, `--ancestor` or `--page-id`) that contains the page.
+
+### `--webhook-host ... needs a webhook secret`
+
+**Cause**: The server was asked to bind a non-loopback address without a secret.
+
+**Fix**: Set `ATLCLI_WEBHOOK_SECRET`, or drop `--webhook-host` and reach the daemon through loopback.
+
+### `Invalid --webhook-port`
+
+**Cause**: The value is not an integer between 1 and 65535.
+
+## Related topics
+
+- [Sync](sync.md) - the daemon and its options
+- [Jira webhooks](../jira/webhooks.md) - `atlcli jira webhook`

@@ -154,10 +154,9 @@ Only synced pages are fixed. Confluence archives in the background, so an archiv
 | Option | Description |
 |---|---|
 | `--refresh-users` | Refresh users' active/inactive status from the API (needs a profile) |
-| `--rebuild-graph` | Re-extract links from the synced Markdown files |
 | `--export-graph` | Print the link graph as JSON |
 
-Run alone, `--refresh-users` and `--rebuild-graph` do only their job; add a check flag or `--checks` to audit in the same run.
+Run alone, `--refresh-users` does only its job; add a check flag or `--checks` to audit in the same run.
 
 ## Configuration
 

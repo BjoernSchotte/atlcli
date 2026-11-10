@@ -38,11 +38,36 @@ their analytics provider's terms.
 
 ## Edit links
 
-An “Edit in Confluence” action is optional. It accepts only a provider-returned
-Cloud `editui` or Data Center edit/web relation on the trusted tenant origin.
-Missing or unsafe relations omit the action. Public/all visibility requires an
-explicit tenant-disclosure acknowledgement. Edit URLs are excluded from
-Pagefind, SEO, feeds, analytics, and unrelated public metadata.
+An “Edit in Confluence” link is optional and off by default. See
+[edit-link configuration](./configuration.md#edit-links) for the fields.
+
+- **Source of the URL:** `refresh` takes the edit URL (Cloud `editui`, Data
+  Center `edit`) or, with `fallback: "open-page"`, the page view URL (`webui`)
+  that Confluence returned for the page. It never builds a URL from a page ID,
+  title, or page content.
+- **Trusted origin:** a URL is kept only when it is `https`, on the Confluence
+  site of the profile that ran the refresh, and free of credentials, fragments,
+  secret-bearing query parameters, and REST API paths. Anything else is
+  dropped and the page is published without a link. A profile whose site is
+  not `https` cannot enable edit links.
+- **Scope:** only pages in the bundle get a link. Excluded, out-of-scope, and
+  unreadable pages, label landings, and the 404 page get none.
+- **Tenant disclosure:** an edit link reveals the address of your Confluence
+  site. A project with `visibility: "public"` and edit-link visibility `all`
+  must set `publicTenantDisclosureAcknowledged: true`; otherwise the project
+  file is rejected. With edit-link visibility `internal`, a public site
+  publishes no links and no site address.
+- **Frozen policy:** the links and the policy they were resolved under are part
+  of the digest-bound bundle. `build` rejects a bundle refreshed under a
+  different edit-link policy.
+- **Verification:** `verify` requires the link on exactly the pages the bundle
+  holds one for, as an `<a data-atlcli-edit-link>` whose target is the frozen
+  URL on the trusted origin. A link on any other page, to another origin, or in
+  a build with edit links off fails verification. Confluence REST and
+  `api.atlassian.com` URLs in markup stay forbidden everywhere.
+
+The link carries `data-pagefind-ignore`, so its label is not indexed. Edit URLs
+are not written to SEO metadata, feeds, the sitemap, or analytics events.
 
 ## CSP and no-JS behavior
 

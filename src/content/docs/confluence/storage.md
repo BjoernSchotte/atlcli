@@ -138,10 +138,7 @@ Configure storage in `~/.atlcli/config.json`:
 ```json
 {
   "storage": {
-    "adapter": "sqlite",
-    "sqlite": {
-      "enableVectors": false
-    }
+    "adapter": "sqlite"
   }
 }
 ```
@@ -149,7 +146,6 @@ Configure storage in `~/.atlcli/config.json`:
 | Option | Description | Default |
 |--------|-------------|---------|
 | `adapter` | Storage backend: `sqlite`, `json` | `sqlite` |
-| `sqlite.enableVectors` | Enable vector search (experimental) | `false` |
 
 ## Sync Behavior
 
@@ -204,14 +200,6 @@ rm .atlcli/sync.db
 
 # Re-sync from Confluence
 atlcli wiki docs pull
-```
-
-### Link Graph Rebuild
-
-Re-extract links from local markdown files:
-
-```bash
-atlcli audit wiki --rebuild-graph
 ```
 
 ## Future: PostgreSQL Support

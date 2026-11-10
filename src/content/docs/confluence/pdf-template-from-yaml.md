@@ -158,9 +158,16 @@ Two versions of `atlcli.editorial` are installed, both targeting Typst
 | `version` | `catalogVersion` | `digest` | Canonical revision | Adds |
 |---|---|---|---|---|
 | `1` | `3` | `46e27e8828ff22f6ac5f6750d8b054c566c3378e7fd960f64be85251cad11f6a` | 5 | — |
-| `2` | `4` | `0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a` | 6 | [Cover and closing-page toggles, title block](#cover-and-closing-page) |
+| `2` | `4` | `0265a7ae9b996cd85cfb1f87c393e928a7e874d6b8d9eeecb674233bedbc458a` | 7 | [Cover and closing-page toggles, title block](#cover-and-closing-page) |
 
-Existing recipes stay on version 1 and build unchanged packs. Move a recipe to
+Existing recipes stay on version 1 and build unchanged packs. Version 2 builds
+canonical revision 7, which scopes `first` / `odd` / `even` decorations by the
+physical page, the same page the running header and footer use. Revisions 5
+and 6 scope them by the page counter, so a `navigation.pageNumbers.start`
+(or a body restart) that changes the counter's parity puts `odd` / `even`
+decorations on the opposite pages. Packs already
+built as revision 6 keep loading and render exactly as before; rebuild the
+recipe to pick up revision 7. Move a recipe to
 version 2 by changing all three pinned values; every version-1 design override
 remains valid.
 

@@ -139,6 +139,28 @@ The server binds to `127.0.0.1` on a random port and is unauthenticated there,
 because anything that can reach it can already read your files. Binding anywhere
 else **requires** a bearer token and is refused without one.
 
+A `--mode ro` mount is read-only for the OS as well (macOS mounts it with the
+kernel read-only option, and the printed Linux command carries `ro`), so a local
+write fails at once instead of looking saved in a client cache.
+
+Editors work without frontmatter: `vim newpage.md` creates a page titled after
+the file. Vim `~` backups and TextEdit `.sb-*` staging files stay local to the
+mount session and never become pages. TextEdit's own document-version history
+is not available on a mount; Confluence page versions are.
+
+On Linux, use the mount command atlcli prints. Its `conf=` option selects a
+per-mount davfs2 configuration with `delay_upload 0`, which removes davfs2's
+extra ten-second upload delay (atlcli still bundles rapid saves for 500 ms). The
+file sits beside the mount state, holds no credentials and leaves the
+system-wide davfs2 settings alone. A hand-written mount must set
+`delay_upload 0` itself. davfs2 uploads asynchronously, so keep the mount
+running until its uploads have finished.
+
+A mount warns once per session when 50 different files are read within 10
+seconds without a recent listing of their directories: that pattern usually
+means a desktop indexer is crawling the volume. The warning carries counts
+only and blocks nothing.
+
 :::caution[Search over a mount is slow]
 Recursive search over an OS mount is controlled by the calling tool and can
 read history and attachments. Use `atlcli wiki sh` for bounded current-page search.
@@ -236,6 +258,19 @@ atlcli wiki sh --space DOCSY --mode rw --allow-delete -c '
 
 After creating a page, the name you used keeps working for the rest of the
 session even though the canonical name now carries the new ID.
+
+The space homepage cannot be moved, renamed or deleted through the filesystem;
+its `_index.md` stays editable. On Confluence Cloud the space root lists the
+homepage's children and pages without a parent.
+
+Rapid saves of one page are bundled until 500 ms after the latest write, and
+only one update per page runs at a time; `--sync-writes` turns the bundling off.
+A save whose title and content already match the page creates no new version.
+
+Before a page goes to the trash, the VFS re-reads its metadata and checks page
+ID and space, so a stale path left by a move elsewhere fails instead of
+trashing the wrong location. Creating a page is not repeated after an HTTP 5xx,
+because Confluence may already have created it.
 
 ### Conflicts
 

@@ -28,7 +28,7 @@ Options:
 | `--issues` | Comma-separated issue keys (instead of `--jql`) |
 | `--set` | Set field value: `field=value` (repeatable). Commas inside a value, as in `labels=a,b`, stay part of that value. |
 | `--dry-run` | Preview changes without applying |
-| `--limit` | Maximum issues to update (default 1000) |
+| `--limit` | Work on the first `<n>` matches; without it, more than 1000 matches is an error |
 
 Every bulk command takes either `--jql` or `--issues`, not both.
 
@@ -86,7 +86,7 @@ Options:
 | `--issues` | Comma-separated issue keys (instead of `--jql`) |
 | `--to` | Target status name (required) |
 | `--dry-run` | Preview changes |
-| `--limit` | Maximum issues to process (default 1000) |
+| `--limit` | Work on the first `<n>` matches; without it, more than 1000 matches is an error |
 
 ### Examples
 
@@ -126,7 +126,7 @@ Options:
 | `--sprint` | Target sprint ID (numeric) |
 | `--backlog` | Move to the backlog |
 | `--dry-run` | List the issues and the target without moving anything |
-| `--limit` | Maximum issues to move (default 1000) |
+| `--limit` | Work on the first `<n>` matches; without it, more than 1000 matches is an error |
 
 Give exactly one of `--sprint` or `--backlog`. Issues are moved 50 at a time, the Jira Agile API maximum per request; a failed chunk is reported in `result.errors` and the remaining chunks still run. Moving issues between projects is not supported. For a single sprint, `atlcli jira sprint add` and `sprint remove` do the same job.
 
@@ -148,7 +148,7 @@ Options:
 | `--page` | Confluence page ID (required) |
 | `--comment [text]` | Also post a comment on each issue: bare, "Linked to Confluence page: <link>" (as `jira issue link-page` posts); with text, that text as Markdown. `--dry-run` shows it as `comment` (`null` when none) |
 | `--dry-run` | Show the page and the matching issues without linking |
-| `--limit` | Maximum issues to link (default 1000) |
+| `--limit` | Work on the first `<n>` matches; without it, more than 1000 matches is an error |
 
 ## Bulk Delete
 
@@ -166,7 +166,7 @@ Options:
 | `--issues` | Comma-separated keys |
 | `--confirm` | Required for destructive operation |
 | `--dry-run` | Preview what would be deleted |
-| `--limit` | Maximum issues to delete (default 1000) |
+| `--limit` | Work on the first `<n>` matches; without it, more than 1000 matches is an error |
 
 :::caution
 Bulk delete is irreversible. Always use `--dry-run` first.
@@ -229,6 +229,7 @@ Issues are processed in parallel batches of 10. A failing issue does not stop th
 Bulk operations automatically handle rate limiting:
 
 - Requests are batched
+- The selection is read in full, page by page, before the first change
 - Automatic retry with backoff on 429 errors
 - Progress continues after transient failures
 
@@ -252,7 +253,7 @@ atlcli jira bulk edit --jql "..." --set "priority=High" --json
 
 1. **Always dry-run first** - Preview before making changes
 2. **Use specific JQL** - Narrow your query to avoid unintended updates
-3. **Batch appropriately** - Use `--limit` for very large result sets
+3. **Batch appropriately** - Use `--limit` for very large result sets. Without `--limit`, a query that matches more than 1000 issues is an error and nothing is changed; with `--limit <n>`, the first `<n>` matches are processed and a warning on stderr says that more matched
 4. **Check permissions** - Ensure you have edit rights for all matched issues
 
 ## Related Topics

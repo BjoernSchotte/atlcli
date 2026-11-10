@@ -38,6 +38,8 @@ Options:
 | `--label` | Filter by label |
 | `--limit` | Maximum results (default: 25) |
 
+When more pages match than `--limit` allows, the output has `"truncated": true` and a note on stderr says so. Raise `--limit` to see the rest.
+
 ## Get Page
 
 View a specific page:

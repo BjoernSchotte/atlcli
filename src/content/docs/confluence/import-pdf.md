@@ -560,6 +560,9 @@ by that run, children before parents.
 - The current hard limits include 100 MiB input, 500 pages, 120 seconds total,
   10 seconds per page, bounded object/text/structure counts, 300 DPI, and
   bounded decoded/rendered pixels and bytes.
+- Geometry is normalized to the page as displayed: `/Rotate` and a `CropBox`
+  that does not start at the origin are applied before reading order, table
+  detection, and rendered crops.
 - PDF JavaScript, launch/remote actions, embedded files, forms/XFA, and unsafe
   links are not executed. External links are scheme-allowlisted.
 - Encrypted input is rejected; no password flag exists.

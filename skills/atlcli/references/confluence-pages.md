@@ -90,6 +90,8 @@ Markdown file.
 `wiki page list --label` adds its labels (repeated or comma-separated, all
 must match) to `--cql` or `--space`: `--label api --cql 'space = DOCS'` asks
 for `(space = DOCS) AND label = "api"`. `--cql` replaces `--space`.
+`--limit` (default 25) caps the list; `"truncated": true` in the output means
+more pages match, so raise `--limit` before treating the list as complete.
 
 ## Creating and updating
 

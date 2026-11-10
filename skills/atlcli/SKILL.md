@@ -29,11 +29,12 @@ metadata:
 # atlcli
 
 `atlcli` is installed and authenticated against the user's Atlassian site.
-This skill was checked against the atlcli source at commit f3ccf080 plus
-`atlcli skill`, after release v2026.10.4. v2026.10.4 does not have
-`atlcli skill`, and it still has argument-parsing, `--help` and exit-code
-behaviour that this skill no longer warns about. On any version other than
-that source, follow rule 7 before relying on a detail here. The skill ships
+This skill was checked against the atlcli source at commit 6bf0cf10, after
+release v2026.11.1: every command group, verb and flag named here exists in
+that source. `atlcli skill` exists since v2026.10.5; older releases also have
+argument-parsing, `--help` and exit-code behaviour that this skill no longer
+warns about. On any version other than that source, follow rule 7 before
+relying on a detail here. The skill ships
 with atlcli: `atlcli skill` prints the copy built from the same source as the
 installed binary. A copy installed with `atlcli skill --install` or from the
 repository stays as it was installed; when unsure whether this copy is
@@ -126,13 +127,13 @@ for them by name.
 
 ```
 jira  project issue board sprint worklog epic analyze bulk filter export
-      import search me my watch unwatch watchers webhook subtask component
-      version field template
-wiki  page space docs search my recent template export import publish
+      import search open me my watch unwatch watchers webhook subtask
+      component version field template
+wiki  page blog space docs search my recent template export import publish
       sh mount vfs
 top   auth completion config doctor flag log models plugin update version
       release-info research chat pdf-template digest audit skill tui
-      script
+      script template
 ```
 
 `atlcli tui` is an interactive fullscreen browser for people; it fails without
