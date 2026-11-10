@@ -270,9 +270,6 @@ export declare function resolveImportReference(reference: ImportReferenceLink, r
 export interface StorageEncodeOptions {
     references?: ReadonlyMap<string, string>;
 }
-
-// export: storageTagSequence
-export declare function storageTagSequence(storage: string): string[];
 ```
 
 ### Entry point `. (default)`
@@ -541,7 +538,4 @@ export declare function resolveImportReference(reference: ImportReferenceLink, r
 export interface StorageEncodeOptions {
     references?: ReadonlyMap<string, string>;
 }
-
-// export: storageTagSequence
-export declare function storageTagSequence(storage: string): string[];
 ```

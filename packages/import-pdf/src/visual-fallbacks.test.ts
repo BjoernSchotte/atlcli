@@ -4,20 +4,17 @@ import { IMPORT_DOCUMENT_SCHEMA_V2, type ImportDocumentV2 } from "@atlcli/import
 import {
   PDF_ASSET_MATERIALIZER_REVISION,
   PDF_TAGGED_POLICY_REVISION_V2,
-  type PdfDecisionEvidenceV1,
   type PdfDecisionEvidenceV2,
-  type PdfFactsAdapter,
   type PdfFactsAdapterV2,
 } from "./contracts.js";
 import { encodeRgbaPng } from "./fallbacks.js";
 import type { PdfPageFallbackAssessmentV1 } from "./fallback-policy.js";
 import {
-  materializePdfVisualFallbacks,
   materializePdfVisualFallbacksV2,
   pdfVisualFallbackRegions,
 } from "./visual-fallbacks.js";
 
-function evidence(sourceId: string, targetNodeId: string, y: number): PdfDecisionEvidenceV1 {
+function evidenceV2(sourceId: string, targetNodeId: string, y: number): PdfDecisionEvidenceV2 {
   return {
     sourceId,
     targetNodeId,
@@ -26,26 +23,8 @@ function evidence(sourceId: string, targetNodeId: string, y: number): PdfDecisio
     confidence: 1,
     decisionCode: "pdf/tagged-paragraph-native",
     outcome: "native",
-    analyzerRevision: "atlcli.pdf-tagged-policy/1",
-  };
-}
-
-async function adapter(): Promise<PdfFactsAdapter> {
-  const png = encodeRgbaPng(2, 2, new Uint8Array(16).fill(120));
-  const digest = await sha256Hex(png);
-  return {
-    analyze: () => Promise.reject(new Error("not used")),
-    materialize: async (_source, requests) => requests.map((request) => ({
-      requestId: request.id,
-      pageIndex: request.pageIndex,
-      sourceKind: "rendered-region" as const,
-      mediaType: "image/png" as const,
-      width: 2,
-      height: 2,
-      bytes: png,
-      sha256: digest,
-      materializerRevision: PDF_ASSET_MATERIALIZER_REVISION,
-    })),
+    analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
+    boundaryDecisionIds: [],
   };
 }
 
@@ -65,14 +44,6 @@ async function adapterV2(): Promise<PdfFactsAdapterV2> {
       sha256: digest,
       materializerRevision: PDF_ASSET_MATERIALIZER_REVISION,
     })),
-  };
-}
-
-function evidenceV2(sourceId: string, targetNodeId: string, y: number): PdfDecisionEvidenceV2 {
-  return {
-    ...evidence(sourceId, targetNodeId, y),
-    boundaryDecisionIds: [],
-    analyzerRevision: PDF_TAGGED_POLICY_REVISION_V2,
   };
 }
 
@@ -121,12 +92,12 @@ describe("PDF visual fallback materialization", () => {
 
   it("inserts a labeled region image in source order and closes its issue", async () => {
     const baseEvidence = [
-      evidence("source:before", "block:before", 0.1),
-      evidence("source:after", "block:after", 0.8),
+      evidenceV2("source:before", "block:before", 0.1),
+      evidenceV2("source:after", "block:after", 0.8),
     ];
-    const result = await materializePdfVisualFallbacks(
+    const result = await materializePdfVisualFallbacksV2(
       new Uint8Array([1, 2, 3]),
-      await adapter(),
+      await adapterV2(),
       document(),
       baseEvidence,
       [regionAssessment()],
@@ -195,11 +166,11 @@ describe("PDF visual fallback materialization", () => {
       regionLocators: [],
       unclaimedCharacterCount: 4,
     };
-    const result = await materializePdfVisualFallbacks(
+    const result = await materializePdfVisualFallbacksV2(
       new Uint8Array([1]),
-      await adapter(),
+      await adapterV2(),
       document(),
-      [evidence("source:before", "block:before", 0.1), evidence("source:after", "block:after", 0.8)],
+      [evidenceV2("source:before", "block:before", 0.1), evidenceV2("source:after", "block:after", 0.8)],
       [assessment],
     );
     expect(result.document.blocks.at(-2)).toMatchObject({ type: "image", presentation: "page-fallback" });

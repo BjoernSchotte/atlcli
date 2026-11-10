@@ -312,25 +312,54 @@ function rawCharacterRect(
   });
 }
 
+/**
+ * How a page's user space maps onto the displayed page: the visible box's
+ * origin (a CropBox need not start at 0,0), the displayed size, and `/Rotate`
+ * in quarter turns clockwise.
+ */
+interface PageFrame {
+  originX: number;
+  originY: number;
+  /** Displayed (post-rotation) size, as `FPDF_GetPageWidthF/HeightF` report it. */
+  width: number;
+  height: number;
+  rotation: number;
+}
+
+/**
+ * Normalize a user-space rectangle to the DISPLAYED page (top-left origin,
+ * 0..1), the space rendered regions and reading order work in. PDFium reports
+ * character, object and annotation boxes in unrotated user space.
+ */
 function normalizeRect(
   source: { left: number; bottom: number; right: number; top: number } | null,
-  pageWidth: number,
-  pageHeight: number,
+  frame: PageFrame,
 ): PdfNormalizedRect | null {
-  if (!source || pageWidth <= 0 || pageHeight <= 0) return null;
-  const left = Math.min(source.left, source.right);
-  const right = Math.max(source.left, source.right);
-  const bottom = Math.min(source.bottom, source.top);
-  const top = Math.max(source.bottom, source.top);
+  if (!source || frame.width <= 0 || frame.height <= 0) return null;
+  const quarterTurn = (frame.rotation & 1) === 1;
+  const pageWidth = quarterTurn ? frame.height : frame.width;
+  const pageHeight = quarterTurn ? frame.width : frame.height;
+  const left = Math.min(source.left, source.right) - frame.originX;
+  const right = Math.max(source.left, source.right) - frame.originX;
+  const bottom = Math.min(source.bottom, source.top) - frame.originY;
+  const top = Math.max(source.bottom, source.top) - frame.originY;
   const values = [left, right, bottom, top, pageWidth, pageHeight];
   if (values.some((value) => !Number.isFinite(value))) return null;
   const clamp = (value: number): number => Math.max(0, Math.min(1, round(value, 6)));
-  return {
-    x: clamp(left / pageWidth),
-    y: clamp((pageHeight - top) / pageHeight),
-    width: clamp((right - left) / pageWidth),
-    height: clamp((top - bottom) / pageHeight),
-  };
+  const x = left / pageWidth;
+  const y = (pageHeight - top) / pageHeight;
+  const width = (right - left) / pageWidth;
+  const height = (top - bottom) / pageHeight;
+  switch (frame.rotation & 3) {
+    case 1:
+      return { x: clamp(1 - y - height), y: clamp(x), width: clamp(height), height: clamp(width) };
+    case 2:
+      return { x: clamp(1 - x - width), y: clamp(1 - y - height), width: clamp(width), height: clamp(height) };
+    case 3:
+      return { x: clamp(y), y: clamp(1 - x - width), width: clamp(height), height: clamp(width) };
+    default:
+      return { x: clamp(x), y: clamp(y), width: clamp(width), height: clamp(height) };
+  }
 }
 
 function safeExternalTarget(raw: string): string | null {
@@ -466,7 +495,6 @@ function structureNodeV2(
     control.counters.structureNodes,
     control.budgets.maxStructureNodesTotal,
   );
-  countEvidence(control);
 
   const directMcids: number[] = [];
   const markedCount = Math.max(0, module.FPDF_StructElement_GetMarkedContentIdCount(element));
@@ -542,8 +570,7 @@ function extractTextV2(
   module: WrappedPdfiumModule,
   page: number,
   pageIndex: number,
-  pageWidth: number,
-  pageHeight: number,
+  frame: PageFrame,
   control: Control,
 ): { text: string; characters: PdfTextCharacterFactV2[] } {
   const textPage = module.FPDFText_LoadPage(page);
@@ -565,7 +592,9 @@ function extractTextV2(
       control.counters.textItems,
       control.budgets.maxTextItemsTotal,
     );
-    countEvidence(control, count);
+    // Characters, page objects and structure nodes each have a dedicated
+    // budget above; counting them as evidence entries too capped a whole
+    // document at maxEvidenceEntries characters (about 100 pages of text).
     const characters: PdfTextCharacterFactV2[] = [];
     const textRunIds = new Map<number, string>();
     const boldByTextObject = new Map<number, boolean>();
@@ -598,7 +627,7 @@ function extractTextV2(
         index,
         unicode,
         value: unicode > 0 && unicode <= 0x10ffff ? String.fromCodePoint(unicode) : "",
-        bbox: normalizeRect(raw, pageWidth, pageHeight),
+        bbox: normalizeRect(raw, frame),
         fontSizePoints: round(effectiveFontSize(module, textPage, index)),
         fontWeight,
         ...(boldFontName ? { boldFontName: true as const } : {}),
@@ -622,8 +651,7 @@ function extractAnnotations(
   document: number,
   page: number,
   pageIndex: number,
-  pageWidth: number,
-  pageHeight: number,
+  frame: PageFrame,
   control: Control,
   issues: PdfFactsIssue[],
 ): PdfAnnotationFact[] {
@@ -669,8 +697,7 @@ function extractAnnotations(
         subtype: module.FPDFAnnot_GetSubtype(annotation),
         bbox: normalizeRect(
           rawFsRect(module, (pointer) => module.FPDFAnnot_GetRect(annotation, pointer)),
-          pageWidth,
-          pageHeight,
+          frame,
         ),
         actionType,
         safeExternalTarget: safeTarget,
@@ -687,8 +714,7 @@ function extractObjects(
   module: WrappedPdfiumModule,
   page: number,
   pageIndex: number,
-  pageWidth: number,
-  pageHeight: number,
+  frame: PageFrame,
   control: Control,
 ): Pick<PdfPageFactsV1, "objectTypeCounts" | "operatorSummary" | "images" | "paths"> {
   const objectTypeCounts: Record<string, number> = {};
@@ -729,7 +755,6 @@ function extractObjects(
       control.counters.pageObjects,
       control.budgets.maxPageObjectsTotal,
     );
-    countEvidence(control);
     if ((pageObjectCount & 1023) === 1) check(control, "page-objects");
     const type = module.FPDFPageObj_GetType(object);
     objectTypeCounts[String(type)] = (objectTypeCounts[String(type)] ?? 0) + 1;
@@ -762,8 +787,7 @@ function extractObjects(
           rawRect(module, (pointer) =>
             module.FPDFPageObj_GetBounds(object, pointer, pointer + 4, pointer + 8, pointer + 12),
           ),
-          pageWidth,
-          pageHeight,
+          frame,
         ),
         segmentCount: Math.max(0, module.FPDFPath_CountSegments(object)),
         ...drawMode,
@@ -820,8 +844,7 @@ function extractObjects(
         rawRect(module, (pointer) =>
           module.FPDFPageObj_GetBounds(object, pointer, pointer + 4, pointer + 8, pointer + 12),
         ),
-        pageWidth,
-        pageHeight,
+        frame,
       ),
       pixelWidth: dimensions.width,
       pixelHeight: dimensions.height,
@@ -1079,14 +1102,22 @@ async function analyzePdfiumV2(
             pageIndex,
           });
         }
+        const rotation = module.FPDFPage_GetRotation(page);
+        const visibleBox = rawFsRect(module, (pointer) => module!.FPDF_GetPageBoundingBox(page, pointer));
+        const frame: PageFrame = {
+          originX: visibleBox ? Math.min(visibleBox.left, visibleBox.right) : 0,
+          originY: visibleBox ? Math.min(visibleBox.bottom, visibleBox.top) : 0,
+          width: widthPoints,
+          height: heightPoints,
+          rotation,
+        };
         const pageBox = (
           getter: (pointer: number) => boolean,
-        ): PdfNormalizedRect | null => normalizeRect(rawRect(module!, getter), widthPoints, heightPoints);
+        ): PdfNormalizedRect | null => normalizeRect(rawRect(module!, getter), frame);
         const boxes = {
           bounding: normalizeRect(
-            rawFsRect(module, (pointer) => module!.FPDF_GetPageBoundingBox(page, pointer)),
-            widthPoints,
-            heightPoints,
+            visibleBox,
+            frame,
           ),
           media: pageBox((pointer) =>
             module!.FPDFPage_GetMediaBox(page, pointer, pointer + 4, pointer + 8, pointer + 12),
@@ -1104,16 +1135,15 @@ async function analyzePdfiumV2(
             module!.FPDFPage_GetArtBox(page, pointer, pointer + 4, pointer + 8, pointer + 12),
           ),
         };
-        const text = extractTextV2(module, page, pageIndex, widthPoints, heightPoints, control);
+        const text = extractTextV2(module, page, pageIndex, frame, control);
         const structures = extractStructuresV2(module, page, pageIndex, control);
-        const objects = extractObjects(module, page, pageIndex, widthPoints, heightPoints, control);
+        const objects = extractObjects(module, page, pageIndex, frame, control);
         const annotations = extractAnnotations(
           module,
           document,
           page,
           pageIndex,
-          widthPoints,
-          heightPoints,
+          frame,
           control,
           issues,
         );
@@ -1139,7 +1169,7 @@ async function analyzePdfiumV2(
           widthPoints,
           heightPoints,
           boxes,
-          rotation: module.FPDFPage_GetRotation(page),
+          rotation,
           kind,
           ...text,
           structures,

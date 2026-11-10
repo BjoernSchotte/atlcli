@@ -436,6 +436,8 @@ describe("PDF figure and rendered fallback preservation", () => {
     expect(first.map((asset) => asset.sha256)).toEqual(second.map((asset) => asset.sha256));
     expect(first.map((asset) => asset.bytes)).toEqual(second.map((asset) => asset.bytes));
     expect(first.map((asset) => asset.sourceKind)).toEqual(["image-object", "rendered-region"]);
+    // Rendered pixels are compressed: far below the 4 bytes per pixel of a stored PNG.
+    expect(first[1]!.bytes.byteLength).toBeLessThan(first[1]!.width * first[1]!.height * 2);
     expect(first.every((asset) => asset.width > 0 && asset.height > 0)).toBe(true);
     expect(progress.map((event) => event.phase)).toEqual([
       "start",

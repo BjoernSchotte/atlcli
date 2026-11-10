@@ -46,19 +46,6 @@ export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvena
 // export: auditPdfCharacterOwnershipV2
 export declare function auditPdfCharacterOwnershipV2(facts: Pick<PdfFactsV2, "pages">, evidence: readonly PdfDecisionEvidenceV2[]): PdfCharacterOwnershipAuditV2;
 
-// export: buildPdfImportReview
-export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
-    target: PdfReviewTargetV1;
-    splitPolicy: PdfSplitPolicyV1;
-    titleConflict?: "fail" | "rename";
-    readingOrder?: PdfReadingOrderModeV1;
-    scanPolicy?: PdfScanPolicyV1;
-    visualFallback?: PdfVisualFallbackModeV1;
-    unsupported?: "report" | "fail";
-    attachSource?: boolean;
-    overrides?: ParsedPdfImportOverridesV1;
-}): Promise<PdfImportReviewV1>;
-
 // export: buildPdfImportReviewV2
 export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: PdfImportReviewBuildOptionsV2): Promise<PdfImportReviewV2>;
 
@@ -367,9 +354,6 @@ export declare const PDF_IMPORT_OVERRIDES_MAX_OPERATIONS = 200;
 
 // export: PDF_IMPORT_OVERRIDES_SCHEMA_V1
 export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-overrides/1";
-
-// export: PDF_IMPORT_PLAN_SCHEMA_V1
-export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
 
 // export: PDF_IMPORT_PLAN_SCHEMA_V2
 export declare const PDF_IMPORT_PLAN_SCHEMA_V2: "atlcli.pdf-import-plan/2";
@@ -975,7 +959,7 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
 
 // export: PdfImportOverrideOperationV1
 export type PdfImportOverrideOperationV1 = {
@@ -1020,7 +1004,6 @@ export interface PdfImportReviewBuildOptionsV2 {
 }
 
 // export: pdfImportReviewReport
-export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
 export declare function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 export declare function pdfImportReviewReport(review: PdfImportReviewV3): Record<string, unknown>;
 
@@ -1678,7 +1661,6 @@ export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
 // export: renderPdfImportReview
-export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
 export declare function renderPdfImportReview(review: PdfImportReviewV2): string;
 export declare function renderPdfImportReview(review: PdfImportReviewV3): string;
 
@@ -1821,19 +1803,6 @@ export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1 | PdfFac
 // export: auditPdfCharacterOwnershipV2
 export declare function auditPdfCharacterOwnershipV2(facts: Pick<PdfFactsV2, "pages">, evidence: readonly PdfDecisionEvidenceV2[]): PdfCharacterOwnershipAuditV2;
 
-// export: buildPdfImportReview
-export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
-    target: PdfReviewTargetV1;
-    splitPolicy: PdfSplitPolicyV1;
-    titleConflict?: "fail" | "rename";
-    readingOrder?: PdfReadingOrderModeV1;
-    scanPolicy?: PdfScanPolicyV1;
-    visualFallback?: PdfVisualFallbackModeV1;
-    unsupported?: "report" | "fail";
-    attachSource?: boolean;
-    overrides?: ParsedPdfImportOverridesV1;
-}): Promise<PdfImportReviewV1>;
-
 // export: buildPdfImportReviewV2
 export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: PdfImportReviewBuildOptionsV2): Promise<PdfImportReviewV2>;
 
@@ -1968,12 +1937,6 @@ export declare function isSemanticContainer(role: string): boolean;
 
 // export: markedCharacterIndexesV2
 export declare function markedCharacterIndexesV2(characters: readonly PdfTextCharacterFactV2[], annotations: readonly PdfAnnotationFact[]): number[];
-
-// export: materializePdfVisualFallbacks
-export declare function materializePdfVisualFallbacks(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV1[], assessments: readonly PdfPageFallbackAssessmentV1[]): Promise<{
-    document: ImportDocumentV2;
-    evidence: PdfDecisionEvidenceV1[];
-}>;
 
 // export: materializePdfVisualFallbacksV2
 export declare function materializePdfVisualFallbacksV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV2[], assessments: readonly PdfPageFallbackAssessmentV1[]): Promise<{
@@ -2172,9 +2135,6 @@ export declare const PDF_IMPORT_OVERRIDES_MAX_OPERATIONS = 200;
 
 // export: PDF_IMPORT_OVERRIDES_SCHEMA_V1
 export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-overrides/1";
-
-// export: PDF_IMPORT_PLAN_SCHEMA_V1
-export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
 
 // export: PDF_IMPORT_PLAN_SCHEMA_V2
 export declare const PDF_IMPORT_PLAN_SCHEMA_V2: "atlcli.pdf-import-plan/2";
@@ -2808,7 +2768,7 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
 
 // export: PdfImportOverrideOperationV1
 export type PdfImportOverrideOperationV1 = {
@@ -2853,7 +2813,6 @@ export interface PdfImportReviewBuildOptionsV2 {
 }
 
 // export: pdfImportReviewReport
-export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
 export declare function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 export declare function pdfImportReviewReport(review: PdfImportReviewV3): Record<string, unknown>;
 
@@ -3527,7 +3486,6 @@ export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
 // export: renderPdfImportReview
-export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
 export declare function renderPdfImportReview(review: PdfImportReviewV2): string;
 export declare function renderPdfImportReview(review: PdfImportReviewV3): string;
 
@@ -3663,19 +3621,6 @@ export declare function assertPdfAnalysisProvenance(expected: PdfAnalysisProvena
 
 // export: auditPdfCharacterOwnershipV2
 export declare function auditPdfCharacterOwnershipV2(facts: Pick<PdfFactsV2, "pages">, evidence: readonly PdfDecisionEvidenceV2[]): PdfCharacterOwnershipAuditV2;
-
-// export: buildPdfImportReview
-export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
-    target: PdfReviewTargetV1;
-    splitPolicy: PdfSplitPolicyV1;
-    titleConflict?: "fail" | "rename";
-    readingOrder?: PdfReadingOrderModeV1;
-    scanPolicy?: PdfScanPolicyV1;
-    visualFallback?: PdfVisualFallbackModeV1;
-    unsupported?: "report" | "fail";
-    attachSource?: boolean;
-    overrides?: ParsedPdfImportOverridesV1;
-}): Promise<PdfImportReviewV1>;
 
 // export: buildPdfImportReviewV2
 export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: PdfImportReviewBuildOptionsV2): Promise<PdfImportReviewV2>;
@@ -3985,9 +3930,6 @@ export declare const PDF_IMPORT_OVERRIDES_MAX_OPERATIONS = 200;
 
 // export: PDF_IMPORT_OVERRIDES_SCHEMA_V1
 export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-overrides/1";
-
-// export: PDF_IMPORT_PLAN_SCHEMA_V1
-export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
 
 // export: PDF_IMPORT_PLAN_SCHEMA_V2
 export declare const PDF_IMPORT_PLAN_SCHEMA_V2: "atlcli.pdf-import-plan/2";
@@ -4593,7 +4535,7 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
 
 // export: PdfImportOverrideOperationV1
 export type PdfImportOverrideOperationV1 = {
@@ -4638,7 +4580,6 @@ export interface PdfImportReviewBuildOptionsV2 {
 }
 
 // export: pdfImportReviewReport
-export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
 export declare function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 export declare function pdfImportReviewReport(review: PdfImportReviewV3): Record<string, unknown>;
 
@@ -5296,7 +5237,6 @@ export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
 // export: renderPdfImportReview
-export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
 export declare function renderPdfImportReview(review: PdfImportReviewV2): string;
 export declare function renderPdfImportReview(review: PdfImportReviewV3): string;
 
@@ -5438,19 +5378,6 @@ export declare function assessPdfVisualFallbacks(facts: Pick<PdfFactsV1 | PdfFac
 
 // export: auditPdfCharacterOwnershipV2
 export declare function auditPdfCharacterOwnershipV2(facts: Pick<PdfFactsV2, "pages">, evidence: readonly PdfDecisionEvidenceV2[]): PdfCharacterOwnershipAuditV2;
-
-// export: buildPdfImportReview
-export declare function buildPdfImportReview(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, options: {
-    target: PdfReviewTargetV1;
-    splitPolicy: PdfSplitPolicyV1;
-    titleConflict?: "fail" | "rename";
-    readingOrder?: PdfReadingOrderModeV1;
-    scanPolicy?: PdfScanPolicyV1;
-    visualFallback?: PdfVisualFallbackModeV1;
-    unsupported?: "report" | "fail";
-    attachSource?: boolean;
-    overrides?: ParsedPdfImportOverridesV1;
-}): Promise<PdfImportReviewV1>;
 
 // export: buildPdfImportReviewV2
 export declare function buildPdfImportReviewV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, options: PdfImportReviewBuildOptionsV2): Promise<PdfImportReviewV2>;
@@ -5596,12 +5523,6 @@ export declare function loadPackagedPdfiumWasm(): Promise<Uint8Array>;
 // export: markedCharacterIndexesV2
 export declare function markedCharacterIndexesV2(characters: readonly PdfTextCharacterFactV2[], annotations: readonly PdfAnnotationFact[]): number[];
 
-// export: materializePdfVisualFallbacks
-export declare function materializePdfVisualFallbacks(sourceBytes: Uint8Array, adapter: PdfFactsAdapter, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV1[], assessments: readonly PdfPageFallbackAssessmentV1[]): Promise<{
-    document: ImportDocumentV2;
-    evidence: PdfDecisionEvidenceV1[];
-}>;
-
 // export: materializePdfVisualFallbacksV2
 export declare function materializePdfVisualFallbacksV2(sourceBytes: Uint8Array, adapter: PdfFactsAdapterV2, document: ImportDocumentV2, evidence: readonly PdfDecisionEvidenceV2[], assessments: readonly PdfPageFallbackAssessmentV1[]): Promise<{
     document: ImportDocumentV2;
@@ -5799,9 +5720,6 @@ export declare const PDF_IMPORT_OVERRIDES_MAX_OPERATIONS = 200;
 
 // export: PDF_IMPORT_OVERRIDES_SCHEMA_V1
 export declare const PDF_IMPORT_OVERRIDES_SCHEMA_V1: "atlcli.pdf-import-overrides/1";
-
-// export: PDF_IMPORT_PLAN_SCHEMA_V1
-export declare const PDF_IMPORT_PLAN_SCHEMA_V1: "atlcli.pdf-import-plan/1";
 
 // export: PDF_IMPORT_PLAN_SCHEMA_V2
 export declare const PDF_IMPORT_PLAN_SCHEMA_V2: "atlcli.pdf-import-plan/2";
@@ -6435,7 +6353,7 @@ export declare class PdfImportError extends Error {
 }
 
 // export: PdfImportErrorCode
-export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/load-rejected" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
+export type PdfImportErrorCode = "pdf/input-type-invalid" | "pdf/adapter-busy" | "pdf/input-empty" | "pdf/input-too-large" | "pdf/signature-invalid" | "pdf/wasm-digest-mismatch" | "pdf/page-count-invalid" | "pdf/budget-exceeded" | "pdf/deadline-exceeded" | "pdf/cancelled" | "pdf/engine-failure" | "pdf/provenance-drift" | "pdf/asset-request-invalid" | "pdf/override-invalid" | "pdf/split-policy-invalid" | "pdf/incomplete";
 
 // export: PdfImportOverrideOperationV1
 export type PdfImportOverrideOperationV1 = {
@@ -6480,7 +6398,6 @@ export interface PdfImportReviewBuildOptionsV2 {
 }
 
 // export: pdfImportReviewReport
-export declare function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
 export declare function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 export declare function pdfImportReviewReport(review: PdfImportReviewV3): Record<string, unknown>;
 
@@ -7154,7 +7071,6 @@ export declare function proposeUntaggedTablesV2(sourceBytes: Uint8Array, adapter
 export declare function rectsTouch(a: PdfNormalizedRect, b: PdfNormalizedRect, gap?: number): boolean;
 
 // export: renderPdfImportReview
-export declare function renderPdfImportReview(review: PdfImportReviewV1): string;
 export declare function renderPdfImportReview(review: PdfImportReviewV2): string;
 export declare function renderPdfImportReview(review: PdfImportReviewV3): string;
 

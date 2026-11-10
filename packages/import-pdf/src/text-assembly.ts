@@ -1,6 +1,7 @@
 import type { PdfNormalizedRect, PdfTextCharacterFactV2 } from "./contracts.js";
 import { digestPdfCanonical } from "./canonical.js";
 import type { PdfTextDirection } from "./text.js";
+import { median, textDirection, unionRects } from "./text-geometry.js";
 
 export const PDF_TEXT_ASSEMBLY_POLICY_REVISION_V2 =
   "atlcli.pdf-text-assembly-policy/10" as const;
@@ -187,46 +188,6 @@ export function canonicalizePdfTextSourceFragmentV2(value: string): string {
     .normalize("NFC");
 }
 
-function median(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1]! + sorted[middle]!) / 2
-    : sorted[middle]!;
-}
-
-function round(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000;
-}
-
-function unionRects(characters: readonly PdfTextCharacterFactV2[]): PdfNormalizedRect | null {
-  const rects = characters.flatMap((character) => character.bbox ? [character.bbox] : []);
-  if (rects.length === 0) return null;
-  const left = Math.min(...rects.map((rect) => rect.x));
-  const top = Math.min(...rects.map((rect) => rect.y));
-  const right = Math.max(...rects.map((rect) => rect.x + rect.width));
-  const bottom = Math.max(...rects.map((rect) => rect.y + rect.height));
-  return {
-    x: round(left),
-    y: round(top),
-    width: round(Math.max(0, right - left)),
-    height: round(Math.max(0, bottom - top)),
-  };
-}
-
-function textDirection(value: string): PdfTextDirection {
-  let ltr = 0;
-  let rtl = 0;
-  for (const character of value) {
-    if (/\p{Script=Arabic}|\p{Script=Hebrew}/u.test(character)) rtl += 1;
-    else if (/\p{Letter}|\p{Number}/u.test(character)) ltr += 1;
-  }
-  if (rtl > ltr) return "rtl";
-  if (ltr > 0) return "ltr";
-  return "neutral";
-}
-
 function script(value: string): string {
   if (/\p{Script=Arabic}/u.test(value)) return "arabic";
   if (/\p{Script=Hebrew}/u.test(value)) return "hebrew";
@@ -401,7 +362,7 @@ function finishSourceAssembly(
     transformations: state.transformations,
     issues: [],
     unresolvedBoundaryCount: state.boundaries.filter((boundary) => boundary.action === "unresolved").length,
-    bbox: unionRects(input.characters),
+    bbox: unionRects(input.characters.map((character) => character.bbox)),
     direction: textDirection(text),
     hasUnicodeError: input.characters.some((character) => character.unicodeMapError),
     usedActualText: false,

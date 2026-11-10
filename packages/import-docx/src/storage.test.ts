@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { documentToStorage, storageTagSequence } from "@atlcli/import-core";
+import { documentToStorage } from "@atlcli/import-core";
 import { parseDocx } from "./parse.js";
 import {
   DEFAULT_STYLES,
@@ -72,12 +72,5 @@ describe("documentToStorage", () => {
       }),
     );
     expect(documentToStorage(doc)).toContain("<h1>1 Einleitung</h1>");
-  });
-
-  it("storageTagSequence fingerprints the structural tag order", () => {
-    const seq = storageTagSequence(
-      '<h1>t</h1><p>x</p><ul><li><p>i</p></li></ul><ac:image ac:alt="a"><ri:attachment ri:filename="f.png"/></ac:image>',
-    );
-    expect(seq).toEqual(["h1", "p", "ul", "p", "ac:image"]);
   });
 });

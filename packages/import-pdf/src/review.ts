@@ -3,11 +3,8 @@ import { proposeUntaggedTablesV2, type PdfTableStructureProposerV1 } from "./tab
 import type { ImportBlock, ImportDocumentV2, ImportIssue } from "@atlcli/import-core";
 import { digestPdfCanonical } from "./canonical.js";
 import {
-  PDF_GEOMETRY_POLICY_REVISION,
-  PDF_TAGGED_POLICY_REVISION,
   type PdfDecisionEvidenceV1,
   type PdfDecisionEvidenceV2,
-  type PdfFactsAdapter,
   type PdfFactsAdapterV2,
   type PdfFactsV1,
   type PdfFactsV2,
@@ -16,7 +13,7 @@ import {
   type PdfTaggedPageOutcomeV2,
   type PdfUntaggedPageOutcomeV2,
 } from "./contracts.js";
-import { preservePdfFigures, preservePdfFiguresV2 } from "./figures.js";
+import { preservePdfFiguresV2 } from "./figures.js";
 import {
   PDF_FALLBACK_PRESENTATION_REVISION,
   applyPdfFallbackPresentation,
@@ -31,7 +28,7 @@ import {
 } from "./fallback-policy.js";
 import { PdfImportError } from "./issues.js";
 import { auditPdfCharacterOwnershipV2, normalizeHybridPdfFactsV2 } from "./hybrid.js";
-import { normalizeTaggedPdfFacts, normalizeTaggedPdfFactsV2 } from "./normalize.js";
+import { normalizeTaggedPdfFactsV2 } from "./normalize.js";
 import {
   applyPdfImportOverrides,
   type AppliedPdfImportOverridesV1,
@@ -44,11 +41,10 @@ import {
   type PdfSplitPolicyV1,
 } from "./split.js";
 import type { PdfTextBoundaryDecisionV2, PdfTextTransformationV2 } from "./text-assembly.js";
-import { normalizeUntaggedPdfFacts, normalizeUntaggedPdfFactsV2 } from "./untagged.js";
-import { materializePdfVisualFallbacks, materializePdfVisualFallbacksV2 } from "./visual-fallbacks.js";
+import { normalizeUntaggedPdfFactsV2 } from "./untagged.js";
+import { materializePdfVisualFallbacksV2 } from "./visual-fallbacks.js";
 
 export const PDF_IMPORT_REVIEW_SCHEMA_V1 = "atlcli.pdf-import-review/1" as const;
-export const PDF_IMPORT_PLAN_SCHEMA_V1 = "atlcli.pdf-import-plan/1" as const;
 export const PDF_IMPORT_REVIEW_SCHEMA_V2 = "atlcli.pdf-import-review/2" as const;
 export const PDF_IMPORT_PLAN_SCHEMA_V2 = "atlcli.pdf-import-plan/2" as const;
 export const PDF_IMPORT_REVIEW_SCHEMA_V3 = "atlcli.pdf-import-review/3" as const;
@@ -172,7 +168,7 @@ export interface PdfImportReviewBuildOptionsV2 {
   tableStructureProposer?: PdfTableStructureProposerV1;
 }
 
-type PdfImportReview = PdfImportReviewV1 | PdfImportReviewV2 | PdfImportReviewV3;
+type PdfImportReview = PdfImportReviewV2 | PdfImportReviewV3;
 
 function reviewInvalid(message: string): never {
   throw new PdfImportError("pdf/override-invalid", message);
@@ -293,152 +289,6 @@ function standardIssue(issue: ImportIssue): Record<string, unknown> {
     message: issue.message,
     sourceRefs: issue.sourceRefs,
     context: issue.context,
-  };
-}
-
-export async function buildPdfImportReview(
-  sourceBytes: Uint8Array,
-  adapter: PdfFactsAdapter,
-  options: {
-    target: PdfReviewTargetV1;
-    splitPolicy: PdfSplitPolicyV1;
-    titleConflict?: "fail" | "rename";
-    readingOrder?: PdfReadingOrderModeV1;
-    scanPolicy?: PdfScanPolicyV1;
-    visualFallback?: PdfVisualFallbackModeV1;
-    unsupported?: "report" | "fail";
-    attachSource?: boolean;
-    overrides?: ParsedPdfImportOverridesV1;
-  },
-): Promise<PdfImportReviewV1> {
-  const readingOrder = options.readingOrder ?? "auto";
-  const scanPolicy = options.scanPolicy ?? "fail";
-  const visualFallback = options.visualFallback ?? (scanPolicy === "page-image" ? "inline" : "auto");
-  const visualFallbackPlacement: PdfVisualFallbackPlacementV1 = visualFallback === "auto" ? "collapsed" : visualFallback;
-  const unsupported = options.unsupported ?? "report";
-  if (!["auto", "tags", "geometry"].includes(readingOrder)) reviewInvalid("readingOrder must be auto, tags, or geometry.");
-  if (!["fail", "page-image", "report"].includes(scanPolicy)) reviewInvalid("scanPolicy must be fail, page-image, or report.");
-  if (!["auto", "inline", "collapsed", "appendix"].includes(visualFallback)) {
-    reviewInvalid("visualFallback must be auto, inline, collapsed, or appendix.");
-  }
-  if (!["report", "fail"].includes(unsupported)) reviewInvalid("unsupported must be report or fail.");
-  const analyzed = await adapter.analyze(sourceBytes);
-  if (readingOrder === "tags" && !analyzed.facts.tagged) {
-    throw new PdfImportError("pdf/incomplete", "--reading-order tags requires a tagged PDF.");
-  }
-  const normalizeWithTags = readingOrder === "tags" || (readingOrder === "auto" && analyzed.facts.tagged);
-  const base = normalizeWithTags
-    ? await normalizeTaggedPdfFacts(analyzed.facts, analyzed.factsDigest)
-    : await normalizeUntaggedPdfFacts(analyzed.facts, analyzed.factsDigest, { allowTagged: readingOrder === "geometry" });
-  const visual = await preservePdfFigures(
-    analyzed.facts,
-    analyzed.factsDigest,
-    sourceBytes,
-    adapter,
-    base,
-  );
-  const fallbackAssessments = assessPdfVisualFallbacks(analyzed.facts, {
-    ...base,
-    evidence: visual.evidence,
-  });
-  const pagesRequiringFallback = fallbackAssessmentPageIndexes(fallbackAssessments);
-  const withPageImages = scanPolicy === "page-image"
-    ? await materializePdfVisualFallbacks(sourceBytes, adapter, visual.document, visual.evidence, fallbackAssessments)
-    : { document: visual.document, evidence: visual.evidence };
-  const appliedOverride = await applyPdfImportOverrides(withPageImages.document, options.overrides);
-  const override: AppliedPdfImportOverridesV1 = {
-    ...appliedOverride,
-    document: applyPdfFallbackPresentation(appliedOverride.document, visualFallbackPlacement),
-  };
-  const semanticDigest = await digestPdfCanonical({
-    factsDigest: analyzed.factsDigest,
-    policyRevision: normalizeWithTags ? PDF_TAGGED_POLICY_REVISION : PDF_GEOMETRY_POLICY_REVISION,
-    visualFallbackPolicyRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
-    fallbackPresentationRevision: PDF_FALLBACK_PRESENTATION_REVISION,
-    visualFallback,
-    visualFallbackPlacement,
-    overrideDigest: override.digest,
-    document: sanitizedDocument(override.document),
-    evidence: withPageImages.evidence,
-  });
-  const resolvedTitle = override.titleCandidate ?? options.target.title;
-  const split = await planPdfSplit(analyzed.facts, override.document, withPageImages.evidence, {
-    rootTitle: resolvedTitle,
-    policy: options.splitPolicy,
-    titleConflict: options.titleConflict,
-  });
-  const blockers = [...split.blockers];
-  if (scanPolicy === "fail") {
-    for (const pageIndex of pagesRequiringFallback) blockers.push(`Source page ${pageIndex + 1} requires a fallback; --scan-policy fail blocks publication.`);
-  }
-  if (unsupported === "fail") {
-    const reported = override.document.issues.filter((issue) =>
-      issue.severity !== "info" && (issue.outcome === "reported" || issue.outcome === "rejected")
-    );
-    if (reported.length > 0) blockers.push(`--unsupported fail rejects ${reported.length} reported or rejected outcome(s).`);
-  }
-  const issueDigest = await digestPdfCanonical(override.document.issues.map(standardIssue));
-  const sourceSha256 = await sha256Hex(sourceBytes);
-  const assetDigests = await Promise.all(override.document.assets.map((asset) => sha256Hex(asset.bytes)));
-  const target = { ...options.target, title: resolvedTitle };
-  const planInput = {
-    schema: PDF_IMPORT_PLAN_SCHEMA_V1,
-    source: { sha256: sourceSha256, byteLength: sourceBytes.byteLength },
-    factsDigest: analyzed.factsDigest,
-    semanticDigest,
-    overrideDigest: override.digest,
-    target,
-    options: {
-      readingOrder,
-      scanPolicy,
-      visualFallback,
-      visualFallbackPlacement,
-      unsupported,
-      attachSource: options.attachSource ?? false,
-    },
-    visualFallbackPolicyRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
-    fallbackPresentationRevision: PDF_FALLBACK_PRESENTATION_REVISION,
-    fallbackAssessments,
-    splitDigest: split.digest,
-    issueDigest,
-    assetDigests: [...assetDigests].sort(),
-    blockers,
-  };
-  return {
-    schema: PDF_IMPORT_REVIEW_SCHEMA_V1,
-    source: {
-      sha256: sourceSha256,
-      byteLength: sourceBytes.byteLength,
-      pageCount: analyzed.facts.pageCount,
-      classification: analyzed.facts.classification,
-    },
-    facts: analyzed.facts,
-    factsDigest: analyzed.factsDigest,
-    document: override.document,
-    evidence: withPageImages.evidence,
-    semanticDigest,
-    override,
-    options: {
-      readingOrder,
-      scanPolicy,
-      visualFallback,
-      visualFallbackPlacement,
-      unsupported,
-      attachSource: options.attachSource ?? false,
-    },
-    target,
-    pages: pageSummaries(
-      analyzed.facts,
-      withPageImages.evidence,
-      override.document.issues,
-      fallbackAssessments,
-      scanPolicy,
-    ),
-    split,
-    blockers,
-    assetDigests,
-    issueDigest,
-    planDigest: await digestPdfCanonical(planInput),
   };
 }
 
@@ -773,7 +623,6 @@ export async function buildPdfImportReviewV3(
   return upgradePdfImportReviewV3(await buildPdfImportReviewV2(sourceBytes, adapter, options));
 }
 
-export function pdfImportReviewReport(review: PdfImportReviewV1): Record<string, unknown>;
 export function pdfImportReviewReport(review: PdfImportReviewV2): Record<string, unknown>;
 export function pdfImportReviewReport(review: PdfImportReviewV3): Record<string, unknown>;
 export function pdfImportReviewReport(review: PdfImportReview): Record<string, unknown> {
@@ -900,7 +749,6 @@ export function pdfImportReviewReport(review: PdfImportReview): Record<string, u
   };
 }
 
-export function renderPdfImportReview(review: PdfImportReviewV1): string;
 export function renderPdfImportReview(review: PdfImportReviewV2): string;
 export function renderPdfImportReview(review: PdfImportReviewV3): string;
 export function renderPdfImportReview(review: PdfImportReview): string {

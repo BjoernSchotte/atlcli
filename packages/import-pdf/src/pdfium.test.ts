@@ -468,4 +468,72 @@ describe("PDFium V2 facts adapter", () => {
     const recovered = await createPdfiumFactsAdapterV2({ wasmBinary }).analyze(bytes);
     expect(recovered.factsDigest).toBe(expected.factsDigest);
   });
+
+  /** One page, one glyph near the top-left of a 400x200 MediaBox. */
+  function onePagePdf(pageEntries: string): Uint8Array {
+    const stream = "BT /F1 20 Tf 40 150 Td (A) Tj ET";
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] ${pageEntries} /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>`,
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ];
+    let pdf = "%PDF-1.4\n";
+    const offsets = objects.map((body, index) => {
+      const offset = pdf.length;
+      pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+      return offset;
+    });
+    const xref = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+      + offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")
+      + `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    return new TextEncoder().encode(pdf);
+  }
+
+  it("normalizes geometry to the displayed page on rotated and cropped pages", async () => {
+    const adapter = createPdfiumFactsAdapterV2({ wasmBinary: await wasm() });
+    const glyph = async (pageEntries: string) => {
+      const page = (await adapter.analyze(onePagePdf(pageEntries))).facts.pages[0]!;
+      return { page, bbox: page.characters.find((character) => character.value === "A")!.bbox! };
+    };
+    const plain = (await glyph("")).bbox;
+    expect(plain.x).toBeCloseTo(0.1, 1);
+    expect(plain.y).toBeLessThan(0.3);
+
+    // /Rotate 90 shows the page turned clockwise: the top-left glyph lands top-right.
+    const rotated = await glyph("/Rotate 90");
+    expect([rotated.page.widthPoints, rotated.page.heightPoints, rotated.page.rotation]).toEqual([200, 400, 1]);
+    expect(rotated.bbox.x).toBeCloseTo(1 - plain.y - plain.height, 4);
+    expect(rotated.bbox.y).toBeCloseTo(plain.x, 4);
+    expect(rotated.bbox.width).toBeCloseTo(plain.height, 4);
+    expect(rotated.bbox.height).toBeCloseTo(plain.width, 4);
+
+    const upsideDown = (await glyph("/Rotate 180")).bbox;
+    expect(upsideDown.x).toBeCloseTo(1 - plain.x - plain.width, 4);
+    expect(upsideDown.y).toBeCloseTo(1 - plain.y - plain.height, 4);
+
+    const counterClockwise = (await glyph("/Rotate 270")).bbox;
+    expect(counterClockwise.x).toBeCloseTo(plain.y, 4);
+    expect(counterClockwise.y).toBeCloseTo(1 - plain.x - plain.width, 4);
+
+    // A CropBox that does not start at the origin: 200x100 at (20, 100).
+    const cropped = await glyph("/CropBox [20 100 220 200]");
+    expect([cropped.page.widthPoints, cropped.page.heightPoints]).toEqual([200, 100]);
+    expect(cropped.page.boxes.bounding).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+    expect(cropped.bbox.x).toBeCloseTo((plain.x * 400 - 20) / 200, 4);
+    expect(cropped.bbox.y).toBeCloseTo(plain.y * 2, 4);
+    expect(cropped.bbox.width).toBeCloseTo(plain.width * 2, 4);
+  });
+
+  it("does not count characters, page objects or structure nodes as evidence entries", async () => {
+    const bytes = await fixture("heading-rich-100.pdf");
+    const adapter = createPdfiumFactsAdapterV2({ wasmBinary: await wasm() });
+    const characters = (await adapter.analyze(bytes)).facts.pages
+      .reduce((total, page) => total + page.characters.length, 0);
+    const result = await adapter.analyze(bytes, { budgets: { maxEvidenceEntries: 1_000 } });
+    expect(characters).toBeGreaterThan(1_000);
+    expect(result.facts.completeness.complete).toBe(true);
+  });
 });

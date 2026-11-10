@@ -624,8 +624,11 @@ function taggedGridLayoutV2(
     if (!ordered || cells.some((cell) => (spans(cell).rowspan ?? 1) > 1)) {
       return { valid: false, reason: "grid-hole" };
     }
-    for (const cell of cells) {
-      for (const key of [...occupied.keys()]) if (occupied.get(key) === cell.id) occupied.delete(key);
+    // No cell of this row spans rows (checked above), so its claims all sit in this row.
+    const rowCellIds = new Set(cells.map((cell) => cell.id));
+    for (let column = 0; column < width; column += 1) {
+      const key = `${row}:${column}`;
+      if (rowCellIds.has(occupied.get(key)!)) occupied.delete(key);
     }
     placed[row] = [];
     for (const cellIndex of cells.keys()) {

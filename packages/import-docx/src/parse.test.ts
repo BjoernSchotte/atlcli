@@ -267,6 +267,33 @@ describe("parseDocx", () => {
     expect(labels).toEqual(["1", "2"]);
   });
 
+  it("keeps w:gridSpan as a column span so later cells stay in their column", () => {
+    const cell = (inner: string, span?: number) =>
+      `<w:tc>${span ? `<w:tcPr><w:gridSpan w:val="${span}"/></w:tcPr>` : ""}${inner}</w:tc>`;
+    const bytes = buildDocxFixture({
+      body:
+        `<w:tbl><w:tr>${cell(p(r("wide")), 2)}${cell(p(r("C")))}</w:tr>` +
+        `<w:tr>${cell(p(r("a")))}${cell(p(r("b")))}${cell(p(r("c")), 100000)}</w:tr></w:tbl>`,
+    });
+    const table = parseDocx(bytes).blocks[0];
+    if (table.type !== "table") throw new Error("expected table");
+    expect(table.rows[0].cells.map((c) => c.colspan)).toEqual([2, undefined]);
+    // An untrusted span is clamped to Word's column limit.
+    expect(table.rows[1].cells.map((c) => c.colspan)).toEqual([undefined, undefined, 63]);
+  });
+
+  it("imports a long document whose document.xml exceeds the template-intake XML limit", () => {
+    const paragraph = p(r("x".repeat(1000)));
+    const count = Math.ceil((3 * 1024 * 1024) / paragraph.length);
+    const doc = parseDocx(buildDocxFixture({ body: paragraph.repeat(count) }));
+    expect(doc.blocks).toHaveLength(count);
+  });
+
+  it("still bounds the XML part size for document import", () => {
+    const bytes = buildDocxFixture({ body: p(r("x".repeat(33 * 1024 * 1024))) });
+    expect(() => parseDocx(bytes)).toThrow(/XML/);
+  });
+
   it("rejects packages that are not DOCX", () => {
     expect(() => parseDocx(new TextEncoder().encode("not a zip"))).toThrow();
   });

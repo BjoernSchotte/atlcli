@@ -4,9 +4,7 @@ import {
   PDF_ASSET_MATERIALIZER_REVISION,
   PDF_VISUAL_FALLBACK_POLICY_REVISION,
   type PdfAssetMaterializationRequestV1,
-  type PdfDecisionEvidenceV1,
   type PdfDecisionEvidenceV2,
-  type PdfFactsAdapter,
   type PdfFactsAdapterV2,
   type PdfMaterializedAssetV1,
   type PdfNormalizedRect,
@@ -116,17 +114,13 @@ function verifiedMaterialized(
   return asset;
 }
 
-type PdfVisualFallbackEvidence = PdfDecisionEvidenceV1 | PdfDecisionEvidenceV2;
-type PdfVisualFallbackAdapter = PdfFactsAdapter | PdfFactsAdapterV2;
-
-async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbackEvidence>(
+export async function materializePdfVisualFallbacksV2(
   sourceBytes: Uint8Array,
-  adapter: PdfVisualFallbackAdapter,
+  adapter: PdfFactsAdapterV2,
   document: ImportDocumentV2,
-  evidence: readonly E[],
+  evidence: readonly PdfDecisionEvidenceV2[],
   assessments: readonly PdfPageFallbackAssessmentV1[],
-  v2: boolean,
-): Promise<{ document: ImportDocumentV2; evidence: E[] }> {
+): Promise<{ document: ImportDocumentV2; evidence: PdfDecisionEvidenceV2[] }> {
   const candidates = fallbackCandidates(assessments);
   if (candidates.length === 0) return { document, evidence: [...evidence] };
   const materialized = await adapter.materialize(sourceBytes, candidates.map((candidate) => candidate.request));
@@ -221,7 +215,7 @@ async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbac
       x: candidate.bbox.x,
       height: 0,
     });
-    const attachedEvidence: PdfDecisionEvidenceV1 = {
+    nextEvidence.push({
       sourceId: candidate.id,
       targetNodeId: blockId,
       locator: { pageIndex: candidate.pageIndex, bbox: candidate.bbox },
@@ -232,10 +226,8 @@ async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbac
         : "pdf/region-image-fallback-attached",
       outcome: "attached",
       analyzerRevision: PDF_VISUAL_FALLBACK_POLICY_REVISION,
-    };
-    nextEvidence.push((v2
-      ? { ...attachedEvidence, boundaryDecisionIds: [] }
-      : attachedEvidence) as E);
+      boundaryDecisionIds: [],
+    });
     issues.push({
       code: candidate.kind === "page"
         ? "pdf-import/page-image-fallback-attached"
@@ -252,46 +244,10 @@ async function materializePdfVisualFallbackCandidates<E extends PdfVisualFallbac
   return {
     document: {
       ...document,
-      blocks: v2
-        ? mergePdfBlocksByEvidence(document.blocks, additions, nextEvidence as PdfDecisionEvidenceV2[])
-        : mergePdfBlocksByEvidence(document.blocks, additions, nextEvidence as PdfDecisionEvidenceV1[]),
+      blocks: mergePdfBlocksByEvidence(document.blocks, additions, nextEvidence),
       assets: [...assets.values()],
       issues,
     },
     evidence: nextEvidence,
   };
-}
-
-export function materializePdfVisualFallbacks(
-  sourceBytes: Uint8Array,
-  adapter: PdfFactsAdapter,
-  document: ImportDocumentV2,
-  evidence: readonly PdfDecisionEvidenceV1[],
-  assessments: readonly PdfPageFallbackAssessmentV1[],
-): Promise<{ document: ImportDocumentV2; evidence: PdfDecisionEvidenceV1[] }> {
-  return materializePdfVisualFallbackCandidates(
-    sourceBytes,
-    adapter,
-    document,
-    evidence,
-    assessments,
-    false,
-  );
-}
-
-export function materializePdfVisualFallbacksV2(
-  sourceBytes: Uint8Array,
-  adapter: PdfFactsAdapterV2,
-  document: ImportDocumentV2,
-  evidence: readonly PdfDecisionEvidenceV2[],
-  assessments: readonly PdfPageFallbackAssessmentV1[],
-): Promise<{ document: ImportDocumentV2; evidence: PdfDecisionEvidenceV2[] }> {
-  return materializePdfVisualFallbackCandidates(
-    sourceBytes,
-    adapter,
-    document,
-    evidence,
-    assessments,
-    true,
-  );
 }

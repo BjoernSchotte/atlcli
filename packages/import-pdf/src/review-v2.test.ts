@@ -2,12 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ImportBlock } from "@atlcli/import-core";
-import { createNodePdfiumFactsAdapter, createNodePdfiumFactsAdapterV2 } from "./node.js";
+import { createNodePdfiumFactsAdapterV2 } from "./node.js";
 import {
-  PDF_IMPORT_REVIEW_SCHEMA_V1,
   PDF_IMPORT_REVIEW_SCHEMA_V2,
   PDF_IMPORT_REVIEW_SCHEMA_V3,
-  buildPdfImportReview,
   buildPdfImportReviewV2,
   buildPdfImportReviewV3,
   pdfImportReviewReport,
@@ -17,7 +15,6 @@ import {
 import { parsePdfSplitPolicy } from "./split.js";
 
 const fixtureRoot = resolve(import.meta.dir, "../../../specs/pdf-import-quality/fixtures");
-const mvpFixtureRoot = resolve(import.meta.dir, "../../../specs/import-pdf-mvp/fixtures");
 
 function blockText(block: ImportBlock): string {
   if (block.type === "heading" || block.type === "paragraph") {
@@ -27,29 +24,6 @@ function blockText(block: ImportBlock): string {
 }
 
 describe("PDF import review V2", () => {
-  it("retains the explicit V1 review contract for existing consumers", async () => {
-    const sourceBytes = new Uint8Array(await readFile(resolve(mvpFixtureRoot, "simple-untagged.pdf")));
-    const review = await buildPdfImportReview(
-      sourceBytes,
-      await createNodePdfiumFactsAdapter(),
-      {
-        target: {
-          spaceKey: "DOCSY",
-          title: "Neutral PDF Review V1",
-          deployment: "cloud",
-          supportsPageTree: true,
-          evidence: "profile",
-        },
-        splitPolicy: parsePdfSplitPolicy("off"),
-      },
-    );
-
-    expect(review.schema).toBe(PDF_IMPORT_REVIEW_SCHEMA_V1);
-    expect(review.facts.schema).toBe("atlcli.pdf-facts/1");
-    expect("boundaries" in review).toBe(false);
-    expect(pdfImportReviewReport(review)).not.toHaveProperty("quality");
-  });
-
   it("drives the production review pipeline through the V2 geometry contract", async () => {
     const sourceBytes = new Uint8Array(await readFile(resolve(fixtureRoot, "producer-word.pdf")));
     const review = await buildPdfImportReviewV2(

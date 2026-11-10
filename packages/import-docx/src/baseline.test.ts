@@ -97,6 +97,22 @@ describe("diffAdfBlocks", () => {
     ]);
   });
 
+  it("diffs a long page with one edit without a full LCS table", () => {
+    const blocks = Array.from({ length: 40_000 }, (_, i) => para(`block ${i}`));
+    const edited = blocks.map((b, i) => (i === 20_000 ? para("EDITED") : b));
+    const diff = diffAdfBlocks(blocks, edited);
+    expect(diff.unchanged).toBe(39_999);
+    expect(diff.entries).toEqual([{ op: "changed", index: 20_000, type: "paragraph", summary: "EDITED" }]);
+  });
+
+  it("reports an oversized differing core as removed and added instead of allocating its table", () => {
+    const oldBlocks = Array.from({ length: 5_000 }, (_, i) => para(`old ${i}`));
+    const newBlocks = Array.from({ length: 5_000 }, (_, i) => para(`new ${i}`));
+    const diff = diffAdfBlocks(oldBlocks, newBlocks);
+    expect(diff.unchanged).toBe(0);
+    expect(diff.entries.filter((e) => e.op !== "changed")).toHaveLength(9_998);
+  });
+
   it("ignores media identity differences (re-uploaded fileIds)", () => {
     const media = (id: string): AdfNode => ({
       type: "mediaSingle",
