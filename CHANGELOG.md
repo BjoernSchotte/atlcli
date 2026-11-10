@@ -2,7 +2,7 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [Unreleased]
+## [2026.11.3] - 2026-11-10
 
 2026.11.2 was tagged but never published: a release-only Windows canary failed on a path check that read a file on another drive as inside the build output. Everything it contained ships in this release.
 
@@ -94,6 +94,11 @@ All notable changes to atlcli will be documented in this file.
 ### Build
 
 - Require Node 26.13.0 as the runtime floor ([71ee415](https://github.com/bjoernschotte/atlcli/commit/71ee415c0780ec86d5e190019b1a2c9fccee05d6))
+
+### Bug Fixes
+
+- **publish:** A build inventory on another Windows drive is outside the output directory ([2010f4c](https://github.com/bjoernschotte/atlcli/commit/2010f4c512440ed1be6419782b33f246e3becd21))
+
 ## [2026.11.1] - 2026-11-05
 
 ### Bug Fixes
