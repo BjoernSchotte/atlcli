@@ -31,12 +31,15 @@ import {
 } from "./design-catalog.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 
+/** Canonical revisions whose manifest carries a complete Catalog-V3-shaped design. */
+export type PdfCompleteDesignRevision = "5" | "6" | "7";
+
 export interface PdfCatalogAuthoringTargetV1 {
   reference: TemplateCapabilityCatalogReferenceV1;
   catalog: TemplateCapabilityCatalogV2;
   canonicalSource: {
     api: "wiki.pdf-canonical-typst";
-    revision: "5" | "6";
+    revision: PdfCompleteDesignRevision;
   };
   compilerVersion: "0.15.1";
   compilerRange: string;
@@ -75,8 +78,10 @@ export interface PdfCatalogRuntimeV3 {
 export type AnyPdfCatalogRuntime = PdfCatalogRuntime | PdfCatalogRuntimeV3;
 
 /** Canonical revisions whose manifest carries a complete Catalog-V3-shaped design. */
-export function isCompleteDesignPdfRevision(revision: string | undefined): boolean {
-  return revision === "5" || revision === "6";
+export function isCompleteDesignPdfRevision(
+  revision: string | undefined,
+): revision is PdfCompleteDesignRevision {
+  return revision === "5" || revision === "6" || revision === "7";
 }
 
 export class PdfCatalogRuntimeError extends Error {
@@ -199,7 +204,7 @@ const V3_RUNTIMES_BY_IDENTITY = new Map<string, PdfCatalogRuntimeV3>(
 
 function authoringTarget(
   runtime: PdfCatalogRuntimeV3,
-  revision: "5" | "6",
+  revision: PdfCompleteDesignRevision,
 ): PdfCatalogAuthoringTargetV1 {
   return Object.freeze({
     reference: runtime.reference,
@@ -216,7 +221,9 @@ function authoringTarget(
 
 const PDF_CATALOG_AUTHORING_TARGETS = [
   authoringTarget(PDF_CATALOG_RUNTIME_V3, "5"),
-  authoringTarget(PDF_CATALOG_RUNTIME_V4, "6"),
+  // New Catalog-V4 packs are authored as revision 7; revision-6 packs keep
+  // loading and rendering through their own pinned source.
+  authoringTarget(PDF_CATALOG_RUNTIME_V4, "7"),
 ] as const;
 
 const AUTHORING_TARGETS_BY_IDENTITY = new Map<
@@ -248,7 +255,7 @@ export function resolvePdfCatalogRuntime(
   return runtime;
 }
 
-/** Exact complete-design catalog lookup (V3 for revision 5, V4 for revision 6). */
+/** Exact complete-design catalog lookup (V3 for revision 5, V4 for revisions 6/7). */
 export function resolvePdfCatalogRuntimeV3(
   reference: TemplateCapabilityCatalogReferenceV1,
 ): PdfCatalogRuntimeV3 {
@@ -277,10 +284,6 @@ export function resolvePdfCatalogAuthoringTarget(
     );
   }
   return target;
-}
-
-export function listPdfCatalogAuthoringTargets(): readonly PdfCatalogAuthoringTargetV1[] {
-  return PDF_CATALOG_AUTHORING_TARGETS;
 }
 
 export function pdfCatalogRuntimeReference(

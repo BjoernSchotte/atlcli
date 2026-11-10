@@ -246,7 +246,7 @@ safeguard.
 - `chat` and `research` send Atlassian content to the Anthropic API and need
   `ANTHROPIC_API_KEY` in the environment. Run them only when the user asked.
 - The built-in `git` plugin is disabled by default. `atlcli git hook install`
-  writes a `.git/hooks/post-commit` hook that runs `wiki docs push`, so every
+  writes a `post-commit` hook (in `.git/hooks`, or `core.hooksPath`) that runs `wiki docs push`, so every
   commit in that repository writes to Confluence, and `plugin disable git`
   does not remove the hook. `atlcli git hook remove` does, but only exists while the plugin is enabled. Never enable the
   plugin or install the hook unless the user asks.

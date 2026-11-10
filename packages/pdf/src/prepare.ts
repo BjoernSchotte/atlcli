@@ -1,7 +1,6 @@
 import { renderDiagram } from "@atlcli/diagram";
 import {
   ASSET_MAX_BYTES,
-  ASSET_MAX_TOTAL_BYTES,
   AssetBudget,
   AssetBudgetExceededError,
   AssetPipelineError,
@@ -20,7 +19,7 @@ import {
   type ExportImageQualityV1,
   type RasterNormalizerPortV1,
 } from "@atlcli/export-media";
-import { LANDSCAPE_TEXT_WIDTH_PT, PORTRAIT_TEXT_WIDTH_PT } from "./serialize.js";
+import { BUILTIN_TEXT_WIDTHS_PT, type PdfTextWidthsPt } from "./serialize.js";
 import type {
   PdfAssetResolver,
   PdfResolvedAsset,
@@ -43,6 +42,7 @@ import {
   type CodeHighlightRuntime,
   type CodeHighlightRuntimeLoader,
 } from "@atlcli/code-highlight/contract";
+import { isAbortError } from "./shared.js";
 
 const EXTENSIONS: Record<string, string> = {
   "image/png": "png",
@@ -52,10 +52,10 @@ const EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
 };
 
-// The per-file and total caps are the SHARED contract with the DOCX engine
-// (spec 002): both engines import the same constants so the caps never drift.
+// The per-file cap is the SHARED contract with the DOCX engine (spec 002):
+// both engines import the same constant so the caps never drift. The total
+// cap lives in the shared `AssetBudget`.
 export const PDF_MAX_ASSET_BYTES = ASSET_MAX_BYTES;
-export const PDF_MAX_TOTAL_ASSET_BYTES = ASSET_MAX_TOTAL_BYTES;
 export const PDF_ASSET_CONCURRENCY = 4;
 
 // Benchmark-only budget seam (issue #118 Phase 0): the ≥100 MiB image-heavy
@@ -196,24 +196,36 @@ export interface PreparePdfOptions {
    * decode/resize execution; target geometry and output codec remain shared.
    */
   rasterNormalizer?: RasterNormalizerPortV1;
+  /**
+   * Text widths of the active template's page geometry, the render envelope
+   * for profile normalization. Omitted means the built-in A4 portrait page.
+   */
+  textWidthsPt?: PdfTextWidthsPt;
 }
 
 /**
- * Conservative render-envelope cap for profile normalization: the portrait
- * usable text width, or the landscape width when the document contains ANY
- * landscape orientation block. A per-use envelope propagated from layout is
- * the finer future refinement; this v1 heuristic only ever OVER-estimates
- * the rendered size, so it can never downscale below what layout shows.
+ * Conservative render-envelope cap for profile normalization: the widest
+ * usable text width any image can land in — the document's own, or that of
+ * an orientation region. A per-use envelope propagated from layout is the
+ * finer future refinement; this v1 heuristic only ever OVER-estimates the
+ * rendered size, so it can never downscale below what layout shows.
  */
-function renderEnvelopeWidthPt(blocks: ExportBlock[]): number {
-  const containsLandscape = (value: unknown): boolean => {
-    if (!value || typeof value !== "object") return false;
-    if (Array.isArray(value)) return value.some(containsLandscape);
+export function renderEnvelopeWidthPt(
+  blocks: ExportBlock[],
+  widths: PdfTextWidthsPt = BUILTIN_TEXT_WIDTHS_PT,
+): number {
+  let envelope = widths.initial;
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) return value.forEach(visit);
     const record = value as Record<string, unknown>;
-    if (record.type === "orientation" && record.landscape === true) return true;
-    return Object.values(record).some(containsLandscape);
+    if (record.type === "orientation" && typeof record.landscape === "boolean") {
+      envelope = Math.max(envelope, record.landscape ? widths.landscape : widths.portrait);
+    }
+    Object.values(record).forEach(visit);
   };
-  return containsLandscape(blocks) ? LANDSCAPE_TEXT_WIDTH_PT : PORTRAIT_TEXT_WIDTH_PT;
+  visit(blocks);
+  return envelope;
 }
 
 /**
@@ -269,14 +281,6 @@ function collectPdfCodeHighlightLanguages(
   return [...languages];
 }
 
-/** True for a cancellation error, from either the DOM or Node abort surface. */
-function isAbortError(error: unknown): boolean {
-  return (
-    (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
-}
-
 export async function preparePdfDocument(
   blocks: ExportBlock[],
   resolver: PdfAssetResolver,
@@ -326,7 +330,7 @@ export async function preparePdfDocument(
   // once (throws on an invalid request BEFORE any asset is fetched) and track
   // aggregate-only diagnostics — counts and bytes, never media or names.
   const effectivePpi = options.imageQuality ? resolveEffectivePpi(options.imageQuality) : null;
-  const envelopePt = effectivePpi === null ? 0 : renderEnvelopeWidthPt(blocks);
+  const envelopePt = effectivePpi === null ? 0 : renderEnvelopeWidthPt(blocks, options.textWidthsPt);
   const normalizeRaster = options.rasterNormalizer
     ? (request: Parameters<RasterNormalizerPortV1["normalize"]>[0]) =>
         options.rasterNormalizer!.normalize(request)

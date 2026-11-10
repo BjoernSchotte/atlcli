@@ -118,8 +118,3 @@ export function overlayKey(ctx: Ctx, key: string, commands: Command[]): boolean 
       return true;
   }
 }
-
-/** Keys the focused text input consumes itself while an overlay with one is open. */
-export function overlayTakesText(o: Overlay | undefined): boolean {
-  return o?.kind === "palette" || o?.kind === "picker" || o?.kind === "prompt" || o?.kind === "compose";
-}

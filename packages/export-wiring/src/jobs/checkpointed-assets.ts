@@ -14,6 +14,7 @@ import type {
   PdfAssetResolver,
   PdfResolvedAsset,
 } from "@atlcli/pdf";
+import { canonicalJson, sha256Hex } from "./job-internals.js";
 
 const CHECKPOINT_PREFIX = "atlcli.export-asset-spool/1:";
 const CHECKPOINT_MAX_BYTES = 64 * 1024;
@@ -136,23 +137,6 @@ async function collectBytes(
   return bytes;
 }
 
-async function sha256Hex(
-  bytes: Uint8Array,
-  signal: AbortSignal,
-): Promise<string> {
-  signal.throwIfAborted();
-  // WebCrypto snapshots its input synchronously at call time, and digesting a
-  // typed-array VIEW hashes exactly the view's range — the old copy-then-
-  // digest-the-buffer dance doubled every asset transiently for nothing.
-  // Only a SharedArrayBuffer-backed view (which WebCrypto rejects) still
-  // needs one owned copy.
-  const source: Uint8Array<ArrayBuffer> =
-    bytes.buffer instanceof ArrayBuffer ? (bytes as Uint8Array<ArrayBuffer>) : bytes.slice();
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", source));
-  signal.throwIfAborted();
-  return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
-}
-
 function validateSpoolRef(
   value: unknown,
   context: ExportJobExecutionContext,
@@ -213,16 +197,6 @@ function validatePayload(
   const payload = value as AssetCheckpointPayloadV1;
   validateSpoolRef(payload.dataRef, context);
   return payload;
-}
-
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as Record<string, unknown>)
-    .filter(([, entry]) => entry !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-    .join(",")}}`;
 }
 
 function assetPipelineError(error: unknown): AssetPipelineError {
@@ -442,7 +416,7 @@ function createCheckpointedAssetCacheV1<
       try {
         await recover(signal);
         referenceSha256 = await sha256Hex(
-          new TextEncoder().encode(canonical(reference)),
+          new TextEncoder().encode(canonicalJson(reference)),
           signal,
         );
         const cached = byReference.get(referenceSha256);

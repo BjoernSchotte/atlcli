@@ -201,7 +201,7 @@ export function analyzeFixture(fixture: string, bytes: Uint8Array): FixtureAnaly
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const entries = Object.values(zip.files)
     .filter((entry) => !entry.dir)
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => left.name.localeCompare(right.name, "en"));
 
   const parts: XmlPartMetricsV1[] = [];
   const raster: RasterMetricsV1[] = [];
@@ -338,7 +338,7 @@ function sortJson(value: unknown): unknown {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => left.localeCompare(right, "en"))
         .map(([key, child]) => [key, sortJson(child)])
     );
   }

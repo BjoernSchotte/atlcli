@@ -7,7 +7,7 @@
  * `H`, `m` single/short forms and literal quoting), and the quarter tokens
  * `Q`/`QQ`/`QQQ`/`QQQQ` with `java.time.DateTimeFormatter` semantics
  * (`3`, `03`, `Q3`, `3rd quarter`). Any token we don't recognize
- * makes the whole format fall back to ISO (`toISOString`) and records a report
+ * makes the whole format fall back to the ISO date (`yyyy-MM-dd`) and records a report
  * note so the export surface stays honest (PLAN §2.2: "unknown format tokens
  * fall back to ISO + report line").
  *
@@ -15,26 +15,6 @@
  * behaviour on the reader's machine is impossible; export-time local is the
  * pragmatic PoC choice and is deterministic in tests that pin the zone).
  */
-
-/** Tokens we support, longest-first so `yyyy` matches before `yy`. */
-const SUPPORTED_TOKENS = [
-  "yyyy",
-  "yy",
-  "MM",
-  "M",
-  "dd",
-  "d",
-  "HH",
-  "H",
-  "mm",
-  "m",
-  "ss",
-  "s",
-  "QQQQ",
-  "QQQ",
-  "QQ",
-  "Q",
-];
 
 const QUARTER_ORDINALS = ["1st", "2nd", "3rd", "4th"];
 
@@ -46,6 +26,15 @@ export interface DateFormatResult {
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
+}
+
+/**
+ * `yyyy-MM-dd` in the LOCAL zone, like every pattern token. `toISOString()` is
+ * UTC: near midnight the default and the ISO fallback named a different day
+ * than `("yyyy-MM-dd")` did for the same instant.
+ */
+function isoLocalDate(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
 /**
@@ -116,17 +105,8 @@ export function formatSimpleDate(date: Date, pattern: string): DateFormatResult 
       i = j;
       continue;
     }
-    // Try the longest supported token that is a prefix (defensive; the
-    // same-letter run already isolates fields, so this only helps mixed lengths).
-    const match = SUPPORTED_TOKENS.find((t) => t === token);
-    if (match) {
-      out += values[match];
-      i = j;
-      continue;
-    }
-
     // Unknown alphabetic token → ISO fallback for the whole value.
-    return { text: date.toISOString().slice(0, 10), unknownToken: token };
+    return { text: isoLocalDate(date), unknownToken: token };
   }
 
   return { text: out };
@@ -138,7 +118,7 @@ export function formatSimpleDate(date: Date, pattern: string): DateFormatResult 
  */
 export function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult {
   if (argument == null || argument.trim() === "") {
-    return { text: date.toISOString().slice(0, 10) };
+    return { text: isoLocalDate(date) };
   }
   return formatSimpleDate(date, argument);
 }

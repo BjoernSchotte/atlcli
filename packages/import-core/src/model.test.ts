@@ -6,7 +6,6 @@ import {
   documentToAdf,
   documentToStorage,
   importReferenceKey,
-  storageTagSequence,
   type ImportDocumentV2,
 } from "./index.js";
 
@@ -107,7 +106,8 @@ describe("ImportDocumentV2 target projections", () => {
     expect(storage).toContain('ri:filename="neutral.png"');
     expect(storage).toContain('<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">Original view</ac:parameter>');
     expect(storage).not.toContain("source:figure");
-    expect(storageTagSequence(storage)).toEqual(["h1", "table", "p", "ac:image", "ac:structured-macro", "p"]);
+    expect([...storage.matchAll(/<(h1|table|p|ac:image|ac:structured-macro)[\s/>]/g)].map((m) => m[1]))
+      .toEqual(["h1", "table", "p", "ac:image", "ac:structured-macro", "p"]);
   });
 
   it("previews deterministically without serializing source evidence", async () => {

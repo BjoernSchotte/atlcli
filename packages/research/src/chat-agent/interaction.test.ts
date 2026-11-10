@@ -367,6 +367,8 @@ describe("durable Chat interaction state", () => {
         resume,
         at: at(index + 1),
       });
+      // The resumed graph needs the host-private anchor bindings back.
+      expect(pending.pendingQuestion?.resume.exactAnchors).toEqual(resume.exactAnchors);
       if (responseKind === "free_text") {
         const legacy = JSON.parse(JSON.stringify(pending));
         delete legacy.pendingQuestion.continuation;

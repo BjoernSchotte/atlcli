@@ -35,6 +35,39 @@ describe("tocFromHeadings", () => {
     expect(nested?.items.length).toBe(1);
   });
 
+  const links = (blocks: ExportBlock[]): string => JSON.stringify(blocks);
+
+  test("single-page DOCX/PDF: links by heading text, the anchor both engines resolve", () => {
+    const out = tocFromHeadings([h(1, "Über Größe!")], {});
+    expect(links(out)).toContain('"target":{"kind":"anchor","anchor":"Über Größe!"}');
+  });
+
+  test("a repeated anchor-less heading is listed but not linked to its namesake", () => {
+    const out = tocFromHeadings([h(1, "Example"), h(1, "Example")], {});
+    const list = out[0] as Extract<ExportBlock, { type: "list" }>;
+    const first = (item: (typeof list.items)[number]) =>
+      (item.content[0] as Extract<ExportBlock, { type: "paragraph" }>).content[0];
+    expect(first(list.items[0]).type).toBe("link");
+    expect(first(list.items[1])).toEqual({ type: "text", text: "Example" });
+  });
+
+  test("composed and web documents keep their own anchors", () => {
+    const composed: ExportBlock = { ...h(1, "One"), explicitAnchor: "p1-one" } as ExportBlock;
+    expect(links(tocFromHeadings([composed], {}))).toContain('"anchor":"p1-one"');
+    expect(links(tocFromHeadings([h(1, "Über Größe!")], { target: "web" }))).toContain('"anchor":"uber-grosse"');
+  });
+
+  test("an unresolved mention never prints its account id", () => {
+    const heading: ExportBlock = {
+      type: "heading",
+      level: 1,
+      content: [{ type: "text", text: "Owner " }, { type: "mention", accountId: "acc-123" }],
+    };
+    const text = links(tocFromHeadings([heading], {}));
+    expect(text).not.toContain("acc-123");
+    expect(text).toContain("Owner @Unknown user");
+  });
+
   test("slug is stable and ASCII-safe", () => {
     expect(slugifyHeading("Über Größe!")).toBe("uber-grosse");
     expect(slugifyHeading("")).toBe("anchor");

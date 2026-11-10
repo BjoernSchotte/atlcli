@@ -29,6 +29,22 @@ describe("extractDocxEntriesFromZip", () => {
     expect(parseDocx(entries[0].bytes).blocks).toHaveLength(1);
   });
 
+  it("skips macOS resource-fork entries", () => {
+    const entries = extractDocxEntriesFromZip(
+      outerZip({ "a.docx": docx, "__MACOSX/._a.docx": "fork", "sub/._b.docx": "fork" }),
+    );
+    expect(entries.map((e) => e.path)).toEqual(["a.docx"]);
+  });
+
+  it("accepts a batch that inflates past the single-document archive budget", () => {
+    // Incompressible members: 9 x 16 MiB declares 144 MiB (> 128 MiB).
+    const blob = new Uint8Array(16 * 1024 * 1024);
+    for (let i = 0; i < blob.length; i += 65536) crypto.getRandomValues(blob.subarray(i, i + 65536));
+    const members = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`media-${i}.bin`, blob]));
+    const entries = extractDocxEntriesFromZip(outerZip({ "a.docx": docx, ...members }));
+    expect(entries.map((e) => e.path)).toEqual(["a.docx"]);
+  });
+
   it("rejects traversal entry names, non-zip bytes, and docx-free archives", () => {
     expect(() => extractDocxEntriesFromZip(outerZip({ "../escape.docx": docx }))).toThrow();
     expect(() => extractDocxEntriesFromZip(new TextEncoder().encode("nope"))).toThrow(/valid ZIP/);

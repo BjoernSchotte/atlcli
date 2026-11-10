@@ -2607,10 +2607,9 @@ export function presentPdfTemplateResult(
   return `\u001b[${color}m${heading}\u001b[0m${remainder}`;
 }
 
-function errorResult(
+export function pdfTemplateErrorResult(
   command: string,
   error: unknown,
-  locale: string,
   projectPath?: string
 ): PdfTemplateCliResultV1 {
   if (error instanceof PdfTemplateCliError) {
@@ -2727,7 +2726,7 @@ function errorResult(
         `${message}. The active draft was retained.`,
         [],
         "error",
-        locale
+        error instanceof Error ? error.name : undefined
       ),
     ],
     nextActions: [],
@@ -2756,12 +2755,7 @@ export async function handlePdfTemplate(
         : !["analyze", "import", "reanalyze"].includes(command)
           ? args[1]
           : undefined;
-    result = errorResult(
-      command,
-      error,
-      dependencies.locale,
-      projectPath
-    );
+    result = pdfTemplateErrorResult(command, error, projectPath);
   }
   if (opts.json) {
     output(result, opts);

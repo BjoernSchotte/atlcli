@@ -43,7 +43,6 @@ const RELATIONSHIP_URIS = new Set([
 ]);
 const MCE_URI =
   "http://schemas.openxmlformats.org/markup-compatibility/2006";
-const VML_URI = "urn:schemas-microsoft-com:vml";
 
 export interface MarkupCompatibilityProfileV1 {
   schema: "atlcli.docx-markup-compatibility-profile/1";
@@ -452,7 +451,6 @@ function scanSemanticPart(
   let section = 0;
   let elementIndex = 0;
   let deletionDepth = 0;
-  let insertionDepth = 0;
   let format:
     | { depth: number; tokens: string[]; kind: "pPr" | "rPr" }
     | undefined;
@@ -540,7 +538,6 @@ function scanSemanticPart(
         deletionDepth += 1;
         facts.deletions += 1;
       } else if (isWord(event) && event.local === "ins") {
-        insertionDepth += 1;
         facts.insertions += 1;
       }
       const visible = deletionDepth === 0;
@@ -659,7 +656,6 @@ function scanSemanticPart(
         );
         sectionPages.set(section, page);
       }
-      void insertionDepth;
     },
     close(event) {
       const branch = branches[branches.length - 1];
@@ -703,7 +699,6 @@ function scanSemanticPart(
         format = undefined;
       }
       if (isWord(event) && event.local === "del") deletionDepth -= 1;
-      if (isWord(event) && event.local === "ins") insertionDepth -= 1;
       if (isWord(event) && event.local === "sectPr") {
         facts.sections.push({
           story,
@@ -740,7 +735,7 @@ async function portableUsage(
   }
   return result.sort((left, right) =>
     `${left.story}:${left.section}:${left.kind}:${left.fingerprint}`.localeCompare(
-      `${right.story}:${right.section}:${right.kind}:${right.fingerprint}`
+      `${right.story}:${right.section}:${right.kind}:${right.fingerprint}`, "en"
     )
   );
 }
@@ -768,7 +763,7 @@ async function portableAlternates(
   }
   return result.sort((left, right) =>
     `${left.story}:${left.locator}`.localeCompare(
-      `${right.story}:${right.locator}`
+      `${right.story}:${right.locator}`, "en"
     )
   );
 }
@@ -789,7 +784,7 @@ export async function analyzeDocxTemplateArchive(
         allowlist.has(name) &&
         semanticPartKind(name) !== undefined
     )
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => left.name.localeCompare(right.name, "en"));
 
   emitProgress(options.progress, 0, entries.length);
   const parts: DocxSemanticPartFactV1[] = [];
@@ -857,7 +852,7 @@ export async function analyzeDocxTemplateArchive(
   }
   diagnostics.sort((left, right) =>
     `${left.code}:${canonicalIntakeJson(left.params)}`.localeCompare(
-      `${right.code}:${canonicalIntakeJson(right.params)}`
+      `${right.code}:${canonicalIntakeJson(right.params)}`, "en"
     )
   );
 

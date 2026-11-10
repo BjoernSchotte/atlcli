@@ -24,6 +24,7 @@ import {
   DEFAULT_PDF_TEMPLATE_CLI_COPY,
   PdfTemplateCliError,
   executePdfTemplateCommand,
+  pdfTemplateErrorResult,
   pdfTemplateHelp,
   presentPdfTemplateResult,
   renderPdfTemplateMessage,
@@ -1587,4 +1588,10 @@ describe("pdf-template CLI expert validation", () => {
       rendering: { kind: "slot-default" },
     });
   });
+});
+
+test("an unexpected error reports its error name, not the locale, as the technical detail", () => {
+  const [diagnostic] = pdfTemplateErrorResult("status", new RangeError("boom")).diagnostics;
+  expect(diagnostic).toMatchObject({ code: "ATLCLI_ERR_IO", technical: "RangeError" });
+  expect(pdfTemplateErrorResult("status", "boom").diagnostics[0]).not.toHaveProperty("technical");
 });

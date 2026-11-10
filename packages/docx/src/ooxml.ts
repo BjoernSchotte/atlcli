@@ -90,7 +90,7 @@ export const LIST_PARAGRAPH_STYLE_ID = "ListParagraph";
 /**
  * Resolve the paragraph style id for a list level against a template's
  * style-name map (spec 006 G2). The real Scroll naming convention is
- * asymmetric (`spec/scroll-word-exporter-features.md` §3): level 1 (`ilvl 0`)
+ * asymmetric (`specs/confluence-docx-export/scroll-word-exporter-features.md` §3): level 1 (`ilvl 0`)
  * is SUFFIXLESS — `Scroll List Bullet` / `Scroll List Number` — and only
  * levels 2–8 (`ilvl 1–7`) carry the numeric suffix `2`…`8`. Fallback chain:
  *   `Scroll List {Bullet|Number}[ N]` → builtin `List {Bullet|Number}[ N]`

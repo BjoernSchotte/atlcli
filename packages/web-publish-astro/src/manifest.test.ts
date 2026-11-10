@@ -111,3 +111,33 @@ test("accepts only explicitly inventoried trusted project pages", async () => {
     inventory: { ...options.inventory, output: [options.inventory.output[0]!, { path: "404.html", sha256: "c".repeat(64), byteLength: 9 }, { path: "favicon.svg", sha256: "d".repeat(64), byteLength: 9 }] },
   })).resolves.toMatchObject({ pages: [{ sourceId: "guide" }] });
 });
+
+test("declares exactly the pages whose bundle froze an edit link, with the trusted origin", async () => {
+  const origin = "https://confluence.example.test";
+  const inventory = {
+    schema: "atlcli.astro-build-inventory/1" as const, bundleDigest: "bundle",
+    pages: [
+      { kind: "page" as const, sourceId: "guide", route: "/guide/", pathname: "publish/guide/" },
+      { kind: "page" as const, sourceId: "other", route: "/other/", pathname: "publish/other/" },
+    ],
+    output: [{ path: "publish/guide/index.html", sha256: "a".repeat(64), byteLength: 7 }, { path: "publish/other/index.html", sha256: "b".repeat(64), byteLength: 7 }],
+  };
+  const bundle = {
+    bundleDigest: "bundle", assets: [],
+    pages: [{ sourceId: "guide", path: "pages/guide.json", pageDigest: "page" }, { sourceId: "other", path: "pages/other.json", pageDigest: "page" }],
+    routes: [{ sourceId: "guide", route: "/guide/", state: "active" }, { sourceId: "other", route: "/other/", state: "active" }],
+  };
+  const editLink = { provider: "confluence", label: "Edit", placement: "page-actions", visibility: "all", fallback: "omit" };
+  const build = (candidate: unknown) => createAstroStaticPublicationManifestV1({
+    request: candidate as PublicationBuildRequestV1, inventory, builderVersion: "1", astroVersion: "7.1.6", experience: { id: "test", version: "1", digest: "x" },
+  });
+  const frozen = { origin, label: "Edit", placement: "page-actions", fallback: "omit", links: [{ sourceId: "guide", href: `${origin}/wiki/pages/resumedraft.action?draftId=1` }] };
+  expect((await build({ ...request, bundle: { ...bundle, editLinks: frozen }, project: { ...request.project, editLink } })).editLinks)
+    .toEqual({ provider: "confluence", origin, includedSourceIds: ["guide"], omittedSourceIds: ["other"] });
+  // Enabled, but no page had a usable relation: nothing included and no tenant origin in the manifest.
+  expect((await build({ ...request, bundle: { ...bundle, editLinks: { ...frozen, links: [] } }, project: { ...request.project, editLink } })).editLinks)
+    .toEqual({ provider: "confluence", includedSourceIds: [], omittedSourceIds: ["guide", "other"] });
+  expect((await build({ ...request, bundle })).editLinks).toEqual({ provider: "none", includedSourceIds: [], omittedSourceIds: ["guide", "other"] });
+  await expect(build({ ...request, bundle: { ...bundle, editLinks: frozen } })).rejects.toThrow("different edit-link policy");
+  await expect(build({ ...request, bundle, project: { ...request.project, editLink } })).rejects.toThrow("different edit-link policy");
+});

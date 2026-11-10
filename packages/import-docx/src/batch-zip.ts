@@ -13,6 +13,7 @@ import {
   DOCX_ARCHIVE_BUDGET,
   assertArchiveBudget,
   assertSafeDocxEntryName,
+  type ArchiveBudget,
 } from "@atlcli/docx/scan";
 
 export interface BatchZipEntry {
@@ -22,6 +23,18 @@ export interface BatchZipEntry {
 }
 
 const MAX_OUTER_ZIP_BYTES = 200 * 1024 * 1024;
+
+/**
+ * Budget for the OUTER batch archive. `DOCX_ARCHIVE_BUDGET` is sized for one
+ * 20 MB document (128 MiB inflated) and rejects an ordinary batch: DOCX
+ * members are already compressed, so a 200 MB batch declares about 200 MB.
+ * 512 MiB leaves headroom over the compressed cap and still stops a bomb.
+ */
+const BATCH_ZIP_BUDGET: ArchiveBudget = {
+  ...DOCX_ARCHIVE_BUDGET,
+  maxEntryCount: 10_000,
+  maxUncompressedBytes: 512 * 1024 * 1024,
+};
 
 /** Extract every `.docx` member of an outer batch ZIP, sorted by path. */
 export function extractDocxEntriesFromZip(bytes: Uint8Array): BatchZipEntry[] {
@@ -34,7 +47,7 @@ export function extractDocxEntriesFromZip(bytes: Uint8Array): BatchZipEntry[] {
   } catch (err) {
     throw new Error(`Not a valid ZIP archive: ${(err as Error).message}`);
   }
-  assertArchiveBudget(zip, DOCX_ARCHIVE_BUDGET);
+  assertArchiveBudget(zip, BATCH_ZIP_BUDGET);
 
   const entries: BatchZipEntry[] = [];
   for (const [name, file] of Object.entries(zip.files) as Array<
@@ -44,6 +57,9 @@ export function extractDocxEntriesFromZip(bytes: Uint8Array): BatchZipEntry[] {
     assertSafeDocxEntryName(name);
     const normalized = name.replace(/\\/g, "/");
     const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+    // macOS archives carry an AppleDouble twin (`__MACOSX/…/._name.docx`) per
+    // file: resource-fork metadata, not a document.
+    if (base.startsWith("._") || normalized.split("/").includes("__MACOSX")) continue;
     if (!base.toLowerCase().endsWith(".docx") || base.startsWith("~$")) continue;
     entries.push({ path: normalized, bytes: new Uint8Array(file.asUint8Array()) });
   }

@@ -12,21 +12,28 @@ import type {
   ResearchAcceptedPacketV1,
   ResearchTaskAttemptV1,
 } from "./workflow-contracts.js";
+import {
+  MAXIMUM_ARTIFACTS_PER_SESSION_V1,
+  MAXIMUM_EVENTS_PER_SESSION_V1,
+  MAXIMUM_SESSIONS_V1,
+  RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1,
+  RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
+  RESEARCH_SESSION_EVENT_SCHEMA_V1,
+  sessionEventFor as eventFor,
+  validateArtifact,
+  validateSourceRefs,
+} from "./session-store-validation.js";
 
-export const RESEARCH_SESSION_EVENT_SCHEMA_V1 = "atlcli.research-session-event/v1" as const;
-export const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1 = "atlcli.research-session-artifact/v1" as const;
-export const RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1 = "atlcli.research-opaque-source-ref/v1" as const;
+export {
+  RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1,
+  RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
+  RESEARCH_SESSION_EVENT_SCHEMA_V1,
+};
 
-const MAXIMUM_SESSIONS_V1 = 128;
-const MAXIMUM_EVENTS_PER_SESSION_V1 = 2_000;
 const MAXIMUM_CHECKPOINTS_PER_TURN_V1 = 256;
 const MAXIMUM_TURNS_PER_SESSION_V1 = 64;
 const MAXIMUM_TASKS_PER_TURN_V1 = 512;
 const MAXIMUM_PACKETS_PER_TURN_V1 = 512;
-// A retained session may contain one canonical Markdown report per allowed
-// turn, plus the bounded latest query/gap/draft operating projections.
-const MAXIMUM_ARTIFACTS_PER_SESSION_V1 = 72;
-const MAXIMUM_SOURCE_REFS_PER_SESSION_V1 = 4_096;
 
 export interface ResearchSessionEventV1 {
   schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
@@ -138,14 +145,6 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
-function boundedId(value: string, prefix: string, maximum = 180): boolean {
-  return new RegExp(`^${prefix}[A-Za-z0-9._:-]{1,${maximum}}$`).test(value);
-}
-
-function activeTurnId(session: ResearchSessionV1): string | undefined {
-  return session.activeTurnId ?? session.turns.at(-1)?.id;
-}
-
 function turn(session: ResearchSessionV1, turnId: string): ResearchSessionTurnV1 | undefined {
   return session.turns.find((candidate) => candidate.id === turnId);
 }
@@ -157,32 +156,6 @@ function assertStoredBounds(session: ResearchSessionV1): void {
       invalid("Research session turn exceeds a bounded store limit.");
     }
   }
-}
-
-function eventFor(session: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionEventV1 {
-  return {
-    schema: RESEARCH_SESSION_EVENT_SCHEMA_V1,
-    sessionId: session.sessionId,
-    sessionRevision: session.revision,
-    leaseEpoch: session.lease.epoch,
-    kind: update.kind,
-    status: session.status,
-    ...(activeTurnId(session) ? { turnId: activeTurnId(session) } : {}),
-    at: update.at,
-  };
-}
-
-function validateSourceRefs(refs: readonly ResearchOpaqueSourceRefV1[]): void {
-  if (!Array.isArray(refs) || refs.length > MAXIMUM_SOURCE_REFS_PER_SESSION_V1) invalid("Research source references exceed the bounded limit.");
-  const seen = new Set<string>();
-  for (const ref of refs) {
-    if (!ref || ref.schema !== RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1 || !boundedId(ref.id, "source:") || !["jira", "confluence"].includes(ref.product) || typeof ref.sourceRef !== "string" || !ref.sourceRef.trim() || ref.sourceRef.length > 512 || !Number.isFinite(Date.parse(ref.capturedAt)) || seen.has(ref.id)) invalid("Research opaque source reference is invalid or duplicated.");
-    seen.add(ref.id);
-  }
-}
-
-function validateArtifact(artifact: ResearchSessionArtifactV1, contents: string): void {
-  if (!artifact || artifact.schema !== RESEARCH_SESSION_ARTIFACT_SCHEMA_V1 || !boundedId(artifact.id, "artifact:") || !/^\/artifacts\/[A-Za-z0-9._/-]{1,240}$/.test(artifact.path) || !["text/markdown", "application/json"].includes(artifact.contentType) || !Number.isSafeInteger(artifact.bytes) || artifact.bytes < 0 || !Number.isFinite(Date.parse(artifact.createdAt)) || typeof contents !== "string" || new TextEncoder().encode(contents).byteLength !== artifact.bytes || artifact.bytes > 2_000_000) invalid("Research artifact is invalid.");
 }
 
 /**

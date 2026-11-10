@@ -10,10 +10,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   assertDisjointLaneOwnership,
-  compareTopologyTimings,
   createTimingSnapshot,
   parseBunJUnit,
-  topologyComparisonMarkdown,
 } from "./test-timings.js";
 
 function junit(testcases: string): string {
@@ -124,55 +122,6 @@ describe("Bun JUnit timings", () => {
     ).toThrow("baseline SHA");
   });
 
-  test("compares exact legacy and candidate testcase identities and timings", () => {
-    const legacy = parseBunJUnit(
-      junit(
-        '<testcase name="a" classname="suite" time="2" file="pkg/a.test.ts" />' +
-          '<testcase name="b" classname="suite" time="1" file="pkg/b.test.ts"><skipped /></testcase>',
-      ),
-      { namespace: "legacy-4-shard", lane: "legacy-1" },
-    );
-    const candidate = parseBunJUnit(
-      junit(
-        '<testcase name="b" classname="suite" time="0.5" file="pkg/b.test.ts"><skipped /></testcase>' +
-          '<testcase name="a" classname="suite" time="1" file="pkg/a.test.ts" />',
-      ),
-      { namespace: "general-3x1", lane: "candidate-1" },
-    );
-    const comparison = compareTopologyTimings({ legacy: [legacy], candidate: [candidate] });
-    expect(comparison).toMatchObject({
-      schema: 1,
-      files: 2,
-      testcases: 2,
-      legacyDurationSeconds: 3,
-      candidateDurationSeconds: 1.5,
-      deltaSeconds: -1.5,
-      ratio: 0.5,
-    });
-    expect(topologyComparisonMarkdown(comparison)).toContain("Identity proof: 2 files / 2 testcases");
-  });
-
-  test("rejects topology coverage and outcome drift before comparing speed", () => {
-    const legacy = parseBunJUnit(
-      junit('<testcase name="a" time="1" file="pkg/a.test.ts" />'),
-      { namespace: "legacy", lane: "one" },
-    );
-    const missing = parseBunJUnit(
-      junit('<testcase name="b" time="1" file="pkg/b.test.ts" />'),
-      { namespace: "candidate", lane: "one" },
-    );
-    expect(() => compareTopologyTimings({ legacy: [legacy], candidate: [missing] })).toThrow(
-      "identity mismatch",
-    );
-    const failed = parseBunJUnit(
-      junit('<testcase name="a" time="1" file="pkg/a.test.ts"><failure /></testcase>'),
-      { namespace: "candidate", lane: "one" },
-    );
-    expect(() => compareTopologyTimings({ legacy: [legacy], candidate: [failed] })).toThrow(
-      "outcome mismatch",
-    );
-  });
-
   test("writes reviewable snapshot and comparison JSON from JUnit directories", () => {
     const directory = mkdtempSync(join(tmpdir(), "atlcli-test-timings-"));
     try {
@@ -208,24 +157,6 @@ describe("Bun JUnit timings", () => {
       ]);
       expect(snapshotRun.exitCode).toBe(0);
       expect(JSON.parse(readFileSync(snapshot, "utf8"))).toMatchObject({ samples: 1 });
-      const compareRun = Bun.spawnSync([
-        "bun",
-        script,
-        "compare",
-        "--legacy-junit",
-        legacy,
-        "--legacy-namespace",
-        "legacy",
-        "--candidate-junit",
-        candidate,
-        "--candidate-namespace",
-        "candidate",
-        "--out",
-        comparison,
-      ]);
-      expect(compareRun.exitCode).toBe(0);
-      expect(JSON.parse(readFileSync(comparison, "utf8"))).toMatchObject({ ratio: 0.5 });
-      expect(compareRun.stdout.toString()).toContain("Identity proof: 1 files / 1 testcases");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -241,4 +241,24 @@ describe("restrictions", () => {
       await db.close();
     }
   });
+
+  test("--include-remote lists a large space in full and does not call it partial", async () => {
+    const db = await createSyncDb(join(docs, ".atlcli"), { autoMigrate: false });
+    try {
+      const calls: unknown[] = [];
+      const client = {
+        getAllPages: async (params: unknown) => {
+          calls.push(params);
+          return Array.from({ length: 600 }, (_, i) => ({ id: String(1000 + i), title: `Remote ${i}`, version: 1 }));
+        },
+      } as unknown as ConfluenceClient;
+      const { pages, partial } = await buildPageSnapshots(db, { needs: new Set(["remote"]), spaceKey: "TEST", client });
+      expect(pages.filter((p) => !p.synced).length).toBe(600);
+      expect(partial).toEqual([]);
+      // No page size above what the API accepts (250), and none meant as a cap.
+      expect(calls).toEqual([{ scope: { type: "space", spaceKey: "TEST" } }]);
+    } finally {
+      await db.close();
+    }
+  });
 });

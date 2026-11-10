@@ -58,11 +58,11 @@ export function describeError(err: unknown): { code: string; message: string; de
  */
 const SWITCHES = new Set([
   "all", "all-projects", "all-results", "confirm", "csv", "debug", "delete-folders", "details", "dry-run", "edit",
-  "force", "help", "history", "internal", "json", "list", "markdown", "no-color", "no-headers", "no-log", "plain", "quiet",
+  "force", "help", "history", "include-text", "internal", "json", "keep-session", "list", "list-rules", "markdown", "no-color", "no-headers", "no-log", "plain", "plan-only", "quiet",
   "refresh-users", "skip-user-check", "system", "validate", "verbose", "watching", "yes",
   // audit wiki checks
   "archived", "broken-links", "check-external", "drafts", "export-graph", "external-links", "fix", "folders",
-  "inactive-contributors", "include-remote", "no-baseline", "orphans", "prune-baseline", "rebuild-graph", "restricted",
+  "inactive-contributors", "include-remote", "no-baseline", "orphans", "prune-baseline", "restricted",
   "single-contributor", "update-baseline",
 ]);
 
@@ -116,7 +116,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       } else {
         addFlag(key, true);
       }
-    } else if (token.startsWith("-") && token.length > 1 && !token.startsWith("--")) {
+    } else if (isFlagToken(token)) {
       // Short flag: -x or -x value or -xyz (multiple boolean flags)
       const flags_part = token.slice(1);
       // Check if it's a single letter followed by =
@@ -128,7 +128,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       // Check if single letter with next arg as value
       if (flags_part.length === 1) {
         const next = argv[i + 1];
-        if (next && !next.startsWith("-")) {
+        if (next && !isFlagToken(next)) {
           addFlag(flags_part, next);
           i += 1;
         } else {

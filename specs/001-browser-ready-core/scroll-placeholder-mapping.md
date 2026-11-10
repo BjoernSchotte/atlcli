@@ -6,7 +6,7 @@ Verification date: **2026-07-14**
 
 This document is the implementation template for **Phase 1 Task 1.3 (DOCX export)** and a hard
 prerequisite for it. It (1) verifies the placeholder catalog in
-`spec/scroll-word-exporter-features.md` against the current K15t docs, (2) maps every placeholder
+`specs/confluence-docx-export/scroll-word-exporter-features.md` against the current K15t docs, (2) maps every placeholder
 onto an atlcli data-model field with a status, and (3) enumerates the data-model gaps that become
 Phase 1 inputs.
 
@@ -14,7 +14,7 @@ Phase 1 inputs.
 
 ## 1. Verification summary
 
-The catalog in `spec/scroll-word-exporter-features.md` was checked placeholder-by-placeholder
+The catalog in `specs/confluence-docx-export/scroll-word-exporter-features.md` was checked placeholder-by-placeholder
 against the current K15t Help Center (Scroll Word Exporter 5.16/5.17, Cloud). The placeholder
 reference page renders as versioned tables; the `latest` alias 404s, so the newest reachable
 concrete version (`5.16/cloud`) was used as the source of record.
@@ -53,7 +53,7 @@ Primary sources (all reachable, fetched 2026-07-14):
   Word feature, not a Scroll placeholder. Page numbers use standard Word page-number fields.
   Source: `.../creating-a-header-or-footer`.
 
-### 1.4 Deviations from `spec/scroll-word-exporter-features.md`
+### 1.4 Deviations from `specs/confluence-docx-export/scroll-word-exporter-features.md`
 
 **New / expanded placeholders present in current docs but missing (or under-specified) in the spec:**
 
@@ -307,6 +307,6 @@ safe.
 - Creating a Table of Contents: <https://help.k15t.com/scroll-word-exporter/5.16/cloud/creating-a-table-of-contents>
 - Creating a header or footer: <https://help.k15t.com/scroll-word-exporter/5.16/cloud/creating-a-header-or-footer>
 - atlcli data model: `packages/confluence/src/client.ts` (`ConfluencePage`, `ConfluencePageDetails`, `ConfluenceUser`, `ConfluenceSpace`)
-- Input catalog: `spec/scroll-word-exporter-features.md`
+- Input catalog: `specs/confluence-docx-export/scroll-word-exporter-features.md`
 </content>
 </invoke>

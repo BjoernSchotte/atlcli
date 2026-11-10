@@ -153,6 +153,19 @@ function assertSafeSegment(segment: string, kind: "route" | "output"): void {
 }
 
 /**
+ * Put a bundle route into the site's route namespace.
+ *
+ * A bundle refreshed with `routes.prefix` already carries that namespace in
+ * its routes, while a bundle with bare routes does not. Prefixing blindly
+ * publishes `/publish/publish/...` for the first kind.
+ */
+export function publicationNamespacedRouteV1(route: string, routePrefix: string): string {
+  const prefix = normalizePublicationRoutePrefixV1(routePrefix);
+  const bare = route.replace(/\/+$/u, "");
+  return prefix !== "" && (bare === prefix || route.startsWith(`${prefix}/`)) ? route : `${prefix}${route}`;
+}
+
+/**
  * Normalize and validate a route prefix. The root spellings `""` and `"/"`
  * both normalize to `""`; non-root prefixes have no trailing slash.
  */
@@ -376,7 +389,7 @@ function claimOutput(
   const matchingPrefix = reservedPrefixes.find((prefix) =>
     normalizedOwnerPath === outputPathFold(prefix) || normalizedOwnerPath.startsWith(`${outputPathFold(prefix)}/`)
   );
-  if (matchingPrefix !== undefined && !owner.sourceId.startsWith("[reserved-prefix:")) {
+  if (matchingPrefix !== undefined) {
     throw new PublicationRoutePlanningErrorV1(
       "output-path-collision",
       `Output path "${owner.path}" is reserved under "${matchingPrefix}/".`,

@@ -17,6 +17,7 @@ import {
 import type { ResearchGraphCapabilityV1 } from "../graph.js";
 import type { ResearchWorkspace } from "../workspace.js";
 import { z } from "zod/v4";
+import { fnv1a32Utf16Hex } from "../hash.js";
 
 export const CHAT_RETRIEVAL_PLAN_SCHEMA_V1 =
   "atlcli.chat-retrieval-plan/v1" as const;
@@ -287,13 +288,7 @@ function identifier(value: unknown, label: string): string {
 }
 
 function stableFingerprint(value: unknown): string {
-  const input = typeof value === "string" ? value : JSON.stringify(value);
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < input.length; index += 1) {
-    hash ^= input.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  return `fnv1a32:${fnv1a32Utf16Hex(typeof value === "string" ? value : JSON.stringify(value))}`;
 }
 
 function canonicalQuery(query: ChatSearchQueryV1): ChatSearchQueryV1 {
@@ -446,6 +441,7 @@ function retainHostRequiredQueryVariants(
 
 function ensureConciseCoreTermVariant(
   question: string,
+  product: ResearchProduct,
   variants: ChatSearchVariantProposalV1[],
 ): ChatSearchVariantProposalV1[] {
   // Explicit quoted titles are already the highest-precision default strategy.
@@ -509,13 +505,21 @@ function ensureConciseCoreTermVariant(
   for (let suffix = 2; ids.has(variantId); suffix += 1) {
     variantId = `host-core-term-${suffix}`;
   }
+  // The injected term may displace model-proposed variants, never a
+  // host-required one: an explicitly named issue key must stay searchable.
+  const requiredIds = new Set(
+    hostRequiredQueryVariants(question, product).map((variant) => variant.variantId),
+  );
+  const required = variants.filter((variant) => requiredIds.has(variant.variantId));
+  const optional = variants.filter((variant) => !requiredIds.has(variant.variantId));
   return [
+    ...required,
     {
       variantId,
       query: { text: core },
       expectedInformationGain: "high",
     },
-    ...variants.slice(0, 2),
+    ...optional.slice(0, Math.max(0, 2 - required.length)),
   ];
 }
 
@@ -574,6 +578,7 @@ function canonicalSearches(input: {
     const gainRank = { high: 0, medium: 1, low: 2 } as const;
     const variants = ensureConciseCoreTermVariant(
       input.question,
+      search.product,
       retainHostRequiredQueryVariants(input.question, search.product, search.variants),
     )
       // At least one page is required to execute a variant. Keep only the
@@ -1377,18 +1382,6 @@ export class ChatCandidateLedgerControllerV1 {
       candidate.discoveries.push(discovery);
     }
     return candidate;
-  }
-
-  markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void {
-    if (!this.#plan.relationshipTraversals.some((entry) => entry.kind === kind)) {
-      invalid("Chat relationship traversal was not admitted by the plan.");
-    }
-    if (!this.#ledger.relationshipTraversalsChecked.includes(kind)) {
-      this.#ledger.relationshipTraversalsChecked.push(kind);
-      this.#ledger.relationshipTraversalsChecked.sort((left, right) =>
-        left.localeCompare(right, "en-US")
-      );
-    }
   }
 
   async finalize(reason = "retrieval-boundary-reached"): Promise<ChatRetrievalAssessmentV1> {

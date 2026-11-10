@@ -618,6 +618,46 @@ describe("real QuickJS Chat strategy trajectory", () => {
     expect(completedInteractions.snapshot().acceptedSteering).toBeUndefined();
   });
 
+  test("records the max-duration abort as a failure, not as a user stop", async () => {
+    const input = request("Answer this simple conversational question.");
+    const maxRunMs = 29_999;
+    input.turn = { ...input.turn, limits: { ...input.turn.limits, maxRunMs } };
+    const workspace = createMemoryResearchWorkspace();
+    // Capture the turn's own duration timer and fire it mid-model-call
+    // instead of waiting out the smallest admissible limit.
+    const realSetTimeout = globalThis.setTimeout;
+    let expire: (() => void) | undefined;
+    globalThis.setTimeout = ((handler: () => void, delay?: number, ...rest: unknown[]) => {
+      if (delay === maxRunMs) {
+        expire = handler;
+        return realSetTimeout(() => undefined, 0);
+      }
+      return realSetTimeout(handler, delay, ...rest);
+    }) as typeof globalThis.setTimeout;
+    try {
+      await expect(runtime.runChatAgent({
+        ...input,
+        model: fakeModel().respond(() => {
+          expire!();
+          return new AIMessage("too late");
+        }),
+        providers,
+        workspace,
+        qualityPolicy: chatQualityPolicyV1("quick"),
+      })).rejects.toMatchObject({ code: "limit-exceeded" });
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+    const session = JSON.parse(
+      (await workspace.readFile(CHAT_SESSION_PATH_V1))!,
+    ) as ChatSessionV1;
+    expect(session.conversation.recentTurns.at(-1)?.status).toBe("failed");
+    const interaction = JSON.parse(
+      (await workspace.readFile(CHAT_INTERACTION_STATE_PATH_V1))!,
+    ) as ChatInteractionStateV1;
+    expect(interaction.stop).toBeUndefined();
+  });
+
   test("resumes a failed model stream from the same durable checkpoint", async () => {
     const input = request("Answer this simple conversational question.");
     const workspace = createMemoryResearchWorkspace();

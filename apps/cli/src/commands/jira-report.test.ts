@@ -4,7 +4,7 @@ import { TemplateEngine, parseTemplate } from "@atlcli/core";
 import { extractPageTasks, markdownToStorage } from "@atlcli/confluence";
 import { buildReportData, type JiraIssue } from "@atlcli/jira";
 import { BUNDLED_REPORT_TEMPLATES } from "./jira-report-templates.js";
-import { REPORT_EXPORT_TEMPLATE, REPORT_TOC_MIN_HEADINGS, decideReportTarget, reportExportFlags, reportNeedsToc } from "./jira-report.js";
+import { REPORT_EXPORT_TEMPLATE, REPORT_TOC_MIN_HEADINGS, decideReportTarget, foldExportReport, reportExportFlags, reportNeedsToc } from "./jira-report.js";
 
 beforeAll(() => initJinja());
 
@@ -125,5 +125,30 @@ describe("reportExportFlags", () => {
 
   test("DOCX: overwrite only", () => {
     expect(reportExportFlags("notes.docx", "## One")).toEqual({ output: "notes.docx", format: "docx", force: true });
+  });
+});
+
+describe("--json with --export prints one document", () => {
+  const sink = () => {
+    const written: string[] = [];
+    return { written, write: (chunk: string) => written.push(chunk) > 0 };
+  };
+
+  test("the export report becomes `export` of the page result", () => {
+    const stdout = sink();
+    foldExportReport({ pageId: "1" }, stdout);
+    stdout.write(`${JSON.stringify({ schema: "atlcli.export-report/1", ok: true })}\n`);
+    stdout.write("later\n");
+    expect(stdout.written.length).toBe(2);
+    expect(JSON.parse(stdout.written[0]!)).toEqual({ pageId: "1", export: { schema: "atlcli.export-report/1", ok: true } });
+    expect(stdout.written[1]).toBe("later\n");
+  });
+
+  test("the page result is still printed when the export writes nothing", () => {
+    const stdout = sink();
+    const flush = foldExportReport({ pageId: "1" }, stdout);
+    flush();
+    flush();
+    expect(stdout.written.map((doc) => JSON.parse(doc))).toEqual([{ pageId: "1" }]);
   });
 });

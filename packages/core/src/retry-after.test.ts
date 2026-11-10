@@ -92,3 +92,18 @@ describe("parseRetryAfterMs", () => {
     expect(parseRetryAfterMs("-1")).toBeUndefined();
   });
 });
+
+describe("abortableSleep", () => {
+  test("resolves after the delay and rejects with the abort reason", async () => {
+    const { abortableSleep } = await import("./retry-after.js");
+    await abortableSleep(1);
+
+    const reason = new Error("cancelled");
+    await expect(abortableSleep(60_000, AbortSignal.abort(reason))).rejects.toBe(reason);
+
+    const controller = new AbortController();
+    const pending = abortableSleep(60_000, controller.signal);
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+  });
+});

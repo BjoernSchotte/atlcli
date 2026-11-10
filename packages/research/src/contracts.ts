@@ -1,5 +1,4 @@
 import {
-  CHAT_QUALITY_MODES_V1,
   chatQualityPolicyV1,
   type ChatQualityModeV1,
   type ChatQualityPolicyV1,

@@ -15,6 +15,7 @@ import type {
   PdfFactsV1,
   PdfFactsV2,
 } from "./contracts.js";
+import { evidenceForBlock, indexEvidenceByRef, type EvidenceIndex } from "./evidence-index.js";
 import { PdfImportError } from "./issues.js";
 
 export const PDF_SPLIT_POLICY_SCHEMA_V1 = "atlcli.pdf-split-policy/1" as const;
@@ -136,11 +137,9 @@ function text(block: ImportBlock): string {
   return block.runs.map((run) => run.kind === "text" ? run.text : " ").join("").replace(/\s+/gu, " ").trim();
 }
 
-function matchingPages(block: ImportBlock, evidence: readonly PdfSplitEvidence[]): number[] {
-  const ids = new Set([block.id, ...(block.sourceRefs ?? [])]);
-  return [...new Set(evidence.filter((item) =>
-    ids.has(item.sourceId) || (item.targetNodeId ? ids.has(item.targetNodeId) : false)
-  ).map((item) => item.locator.pageIndex))].sort((a, b) => a - b);
+function matchingPages(block: ImportBlock, evidence: EvidenceIndex<PdfSplitEvidence>): number[] {
+  return [...new Set(evidenceForBlock(evidence, block).map((item) => item.locator.pageIndex))]
+    .sort((a, b) => a - b);
 }
 
 function assignBlocks(
@@ -149,9 +148,10 @@ function assignBlocks(
   pageCount: number,
 ): AssignedBlock[] {
   let inferredPage = 0;
+  const evidenceIndex = indexEvidenceByRef(evidence);
   return document.blocks.map((block) => {
     if (block.pageBoundaryBefore) inferredPage = Math.min(inferredPage + 1, Math.max(0, pageCount - 1));
-    const pages = matchingPages(block, evidence);
+    const pages = matchingPages(block, evidenceIndex);
     if (pages.length > 0) inferredPage = pages[0]!;
     return { block, pages: pages.length > 0 ? pages : [inferredPage] };
   });

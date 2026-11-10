@@ -36,6 +36,20 @@ describe("ChartModelV1", () => {
     }
   });
 
+  test("a validated model is frozen and passes later boundaries without a second validation", () => {
+    const input = model("bar");
+    const validated = validateChartModelV1(input);
+    expect(validated).not.toBe(input);
+    expect(validateChartModelV1(validated)).toBe(validated);
+    expect(chartModelDigestV1(validated)).toBe(chartModelDigestV1(input));
+    // Frozen all the way down: a validated model cannot be made invalid later.
+    expect(() => { (validated as { kind: string }).kind = "bogus"; }).toThrow(TypeError);
+    expect(Object.isFrozen(validated.data)).toBe(true);
+    // The caller's own object stays theirs, and is validated on every call.
+    input.title = "x".repeat(100_000);
+    expect(() => validateChartModelV1(input)).toThrow();
+  });
+
   test("rejects misaligned series and unsafe colors", () => {
     expect(() => validateChartModelV1({
       ...model("bar"),

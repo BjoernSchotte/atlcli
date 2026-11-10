@@ -72,9 +72,10 @@ against the local file: carry the remote changes into the file until the diff
 contains only your intended edits, show it to the user, then push that file
 with `--force`.
 
-`push` also has no dry run. It re-uploads every tracked file in the target, so
-push the single file you edited (`push ./docs/api.md`) instead of the whole
-directory.
+`push` also has no dry run. A directory push writes every tracked file whose
+content, title, position or attachments changed since the last sync and skips
+the rest (`--force` writes them all). Push the single file you edited
+(`push ./docs/api.md`) so that no other local change goes out with it.
 
 ## Initialising a workspace
 
@@ -305,7 +306,7 @@ errors (and on warnings with `--strict`).
 ```bash
 atlcli wiki docs push ./docs/api.md --json            # one file (preferred)
 atlcli wiki docs push --page-id 12345 --json          # one page, found by its id
-atlcli wiki docs push ./docs --validate --json        # every tracked file in the tree
+atlcli wiki docs push ./docs --validate --json        # every changed tracked file in the tree
 atlcli wiki docs add ./docs/new-page.md --title 'New Page' --parent 12345 --json
 ```
 
@@ -383,7 +384,13 @@ by file watching, and merges when both changed. Options:
 | `--auto-create` | Creates Confluence pages for new local files. |
 | `--label <l>` | Only pages with that label. |
 | `--dry-run` | Reports the plan and exits. Writes nothing, deletes nothing, creates no `.atlcli/`. |
-| `--webhook-port`, `--webhook-url` | Real-time updates through a webhook. |
+| `--webhook-port`, `--webhook-url` | Real-time updates through a webhook. Listens on `127.0.0.1`. |
+| `--webhook-host <addr>` | Bind another interface. Usage error without a secret. |
+| `--webhook-secret <s>` / env `ATLCLI_WEBHOOK_SECRET` | Callers must send `X-Hub-Signature: sha256=<HMAC of body>` or `Authorization: Bearer <secret>`, else 401. Use the env var, not the flag. Without a secret: loopback only, with a warning. |
+
+A webhook event only names a page id. The daemon pulls an untracked page only
+after Confluence confirms it is inside the scope (page, tree or space);
+anything else is logged as `Webhook ignored: page <id> is outside the sync scope`.
 
 Both run until interrupted (apart from `sync --dry-run`) and emit JSON lines
 with `--json`. They are long-running foreground processes: start them only
@@ -397,7 +404,7 @@ enable it or install its hook unless the user asks.
 
 - Enabled, it commits the pulled files after each `wiki docs pull` into a
   directory that is a git repository.
-- `atlcli git hook install [dir]` writes a `.git/hooks/post-commit` script that
+- `atlcli git hook install [dir]` writes a `post-commit` script into the repository's hooks directory (`.git/hooks`, or `core.hooksPath`) that
   runs `atlcli wiki docs push <dir> --quiet` after every git commit in that
   repository.
   A commit then writes to Confluence. The script skips the push when a `sync`
@@ -428,7 +435,8 @@ equivalent against the API is `wiki page convert` in
 
 - Passing `--force` to `push` or `watch` to get past a refused page. It
   overwrites the newer Confluence version; `sync` merges it instead.
-- Pushing a whole directory to publish one edit. Every tracked file is sent.
+- Pushing a whole directory to publish one edit. Every changed tracked file
+  is sent, including edits the user did not ask to publish.
 - Treating a clean `status` as proof the remote has not changed. `status` is
   local only.
 - Using `--force` on `pull` to clear a conflict. It overwrites local edits

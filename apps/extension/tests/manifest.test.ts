@@ -54,7 +54,7 @@ describe("built manifest.json", () => {
     // without this host permission the redirect hop falls back to normal CORS
     // and its wildcard ACAO rejects the credentialed session fetch (spec 005).
     expect(manifest.host_permissions).toEqual([
-      "*://*.atlassian.net/*",
+      "https://*.atlassian.net/*",
       "https://api.media.atlassian.com/*",
       "https://api.anthropic.com/*",
     ]);

@@ -20,9 +20,9 @@ import {
   type PdfPageFactsV1,
   type PdfPageFactsV2,
   type PdfStructureNodeFactV2,
-  type PdfStructureNodeFact,
 } from "./contracts.js";
 import { digestPdfCanonical, digestPdfFacts, digestPdfFactsV2 } from "./canonical.js";
+import { evidenceForBlock, indexEvidenceByRef, type EvidenceIndex } from "./evidence-index.js";
 import { expandNormalizedRect, rectsTouch } from "./fallbacks.js";
 import { PdfImportError } from "./issues.js";
 import { correlateTaggedTextWithLinksV2, taggedRuns, taggedRunsV2 } from "./links.js";
@@ -476,12 +476,9 @@ function tableFallbackCandidates(base: PdfFigureBaseSemantics): VisualCandidate[
 
 function blockLocation(
   block: ImportBlock,
-  evidence: readonly PdfFigureEvidence[],
+  evidence: EvidenceIndex<PdfFigureEvidence>,
 ): { pageIndex: number; y: number; x: number; height: number } {
-  const refs = new Set([block.id, ...(block.sourceRefs ?? [])]);
-  const matches = evidence.filter((item) =>
-    refs.has(item.sourceId) || (item.targetNodeId ? refs.has(item.targetNodeId) : false)
-  );
+  const matches = evidenceForBlock(evidence, block);
   // A block that spans pages (a continued table) sits where it starts.
   const pageIndex = matches.length > 0 ? Math.min(...matches.map((item) => item.locator.pageIndex)) : 0;
   const box = unionRects(matches.filter((item) => item.locator.pageIndex === pageIndex).map((item) => item.locator.bbox));
@@ -498,10 +495,11 @@ function mergePdfBlocksByEvidenceInternal(
   additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }>,
   evidence: readonly PdfFigureEvidence[],
 ): ImportBlock[] {
+  const evidenceIndex = indexEvidenceByRef(evidence);
   const tokens = [
     ...baseBlocks.map((block, index) => ({
       block: { ...block },
-      ...blockLocation(block, evidence),
+      ...blockLocation(block, evidenceIndex),
       order: index,
       kind: 1,
     })),

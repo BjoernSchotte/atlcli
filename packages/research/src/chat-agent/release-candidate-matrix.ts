@@ -1,4 +1,5 @@
 import { CHAT_RECOVERY_GOLD_SCENARIOS_V1 } from "./testing/gold-scenarios.js";
+import { sha256Hex } from "../hash.js";
 
 export const CHAT_RELEASE_CANDIDATE_MATRIX_SCHEMA_V1 =
   "atlcli.chat-release-candidate-matrix/v1" as const;
@@ -350,9 +351,8 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-async function sha256(value: unknown): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(stableJson(value)));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+function sha256(value: unknown): Promise<string> {
+  return sha256Hex(stableJson(value));
 }
 
 function withoutFingerprint<T extends { evidenceFingerprint: string }>(value: T): Omit<T, "evidenceFingerprint"> {

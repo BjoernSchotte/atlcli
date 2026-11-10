@@ -182,7 +182,7 @@ function canonicalWrites(
   const targets = new Set<string>();
   const sorted = [...writes]
     .map((write) => canonicalClone(write))
-    .sort((left, right) => left.target.localeCompare(right.target));
+    .sort((left, right) => left.target.localeCompare(right.target, "en"));
   if (sorted.length === 0 && !allowEmpty) {
     throw new TemplateAuthoringError("candidate-invalid", "Candidate must write at least one target");
   }
@@ -254,7 +254,7 @@ export async function createTemplateCandidate(
       ...(themeRef === undefined ? {} : { themeRef }),
     }))
     .sort((left, right) =>
-      canonicalCapabilityJson(left).localeCompare(canonicalCapabilityJson(right))
+      canonicalCapabilityJson(left).localeCompare(canonicalCapabilityJson(right), "en")
     );
   const sourceFingerprint = await digest({
     analysisDigest: input.analysisDigest,
@@ -692,7 +692,7 @@ export function reduceTemplateDecision(
 
   const result: TemplateDecisionStateV1 = {
     schema: TEMPLATE_DECISION_STATE_SCHEMA_V1,
-    decisions: nextDecisions.sort((left, right) => left.id.localeCompare(right.id)),
+    decisions: nextDecisions.sort((left, right) => left.id.localeCompare(right.id, "en")),
     preview: canonicalClone(preview),
     ...(builtFromDigest === undefined ? {} : { builtFromDigest }),
   };
@@ -799,7 +799,7 @@ async function acceptPolicyCandidates(
   policy: "recommended" | "safe"
 ): Promise<TemplateDecisionStateV1> {
   const sorted = [...candidates].sort((left, right) =>
-    left.candidateFingerprint.localeCompare(right.candidateFingerprint)
+    left.candidateFingerprint.localeCompare(right.candidateFingerprint, "en")
   );
   const ambiguous = ambiguousCandidates(
     sorted.filter((candidate) =>
@@ -847,7 +847,7 @@ async function acceptPolicyCandidates(
   }
   let next = state;
   for (const candidate of [...selectedBySemantic.values()].sort((left, right) =>
-    left.candidateFingerprint.localeCompare(right.candidateFingerprint)
+    left.candidateFingerprint.localeCompare(right.candidateFingerprint, "en")
   )) {
     next = reduceTemplateDecision(
       next,
@@ -882,7 +882,7 @@ export function deriveSafeCandidates(
       policyEligible(candidate, state, context, ambiguous, "safe")
     )
     .sort((left, right) =>
-      left.candidateFingerprint.localeCompare(right.candidateFingerprint)
+      left.candidateFingerprint.localeCompare(right.candidateFingerprint, "en")
     );
 }
 
@@ -901,7 +901,7 @@ export function deriveRecommendedCandidates(
       policyEligible(candidate, state, context, ambiguous, "recommended")
     )
     .sort((left, right) =>
-      left.candidateFingerprint.localeCompare(right.candidateFingerprint)
+      left.candidateFingerprint.localeCompare(right.candidateFingerprint, "en")
     );
 }
 
@@ -917,7 +917,7 @@ export function analyzeCandidatesAgainstCatalog(
   recommendedCandidateIds: readonly string[];
 } {
   const sorted = [...candidates].sort((left, right) =>
-    left.candidateFingerprint.localeCompare(right.candidateFingerprint)
+    left.candidateFingerprint.localeCompare(right.candidateFingerprint, "en")
   );
   const valid = sorted.filter((candidate) =>
     candidateTypeValid(candidate, context)
@@ -985,12 +985,12 @@ function acceptedWriteConflicts(
         target,
         decisionIds: top.map(({ decision }) => decision.id).sort(),
         values: [...values.entries()]
-          .sort(([left], [right]) => left.localeCompare(right))
+          .sort(([left], [right]) => left.localeCompare(right, "en"))
           .map(([, value]) => value),
       });
     }
   }
-  return conflicts.sort((left, right) => left.target.localeCompare(right.target));
+  return conflicts.sort((left, right) => left.target.localeCompare(right.target, "en"));
 }
 
 export interface ResolveTemplateLayersInputV1 {
@@ -1034,7 +1034,7 @@ export async function resolveTemplateLayers(
     { decision: AcceptedCandidateDecisionV1; value: unknown }
   >();
   for (const decision of [...accepted].sort((left, right) =>
-    left.id.localeCompare(right.id)
+    left.id.localeCompare(right.id, "en")
   )) {
     for (const write of decision.frozenWrites) {
       const existing = winners.get(write.target);
@@ -1044,7 +1044,7 @@ export async function resolveTemplateLayers(
     }
   }
   for (const [target, { decision, value }] of [...winners].sort(([left], [right]) =>
-    left.localeCompare(right)
+    left.localeCompare(right, "en")
   )) {
     flat[target] = canonicalClone(value);
     trace[target] = {
@@ -1075,7 +1075,7 @@ export async function resolveTemplateLayers(
   const assets = Object.fromEntries(
     input.decisions.decisions
       .filter((decision) => decision.kind === "accept-asset")
-      .sort((left, right) => left.role.localeCompare(right.role))
+      .sort((left, right) => left.role.localeCompare(right.role, "en"))
       .map((decision) => [decision.role, canonicalClone(decision)])
   );
   const baselineDigest = await digest(baseline);
@@ -1154,6 +1154,9 @@ export function reconcileTemplateDecisions(
   decisions: TemplateDecisionStateV1;
   staleness: readonly TemplateDecisionStalenessEntryV1[];
 } {
+  const sortedCandidates = [...input.candidates].sort((left, right) =>
+    left.candidateFingerprint.localeCompare(right.candidateFingerprint, "en")
+  );
   const staleness = state.decisions
     .filter(
       (
@@ -1169,9 +1172,6 @@ export function reconcileTemplateDecisions(
       if (decision.mappingVersion !== input.mappingVersion) {
         return { decisionId: decision.id, state: "mapping-changed" };
       }
-      const sortedCandidates = [...input.candidates].sort((left, right) =>
-        left.candidateFingerprint.localeCompare(right.candidateFingerprint)
-      );
       const sameFingerprint = sortedCandidates.find(
         (candidate) =>
           candidate.candidateFingerprint === decision.candidateFingerprint
@@ -1207,7 +1207,7 @@ export function reconcileTemplateDecisions(
       }
       return { decisionId: decision.id, state: "current" };
     })
-    .sort((left, right) => left.decisionId.localeCompare(right.decisionId));
+    .sort((left, right) => left.decisionId.localeCompare(right.decisionId, "en"));
   return { decisions: state, staleness: immutable(staleness) };
 }
 
@@ -1490,9 +1490,9 @@ export function projectTemplateImportView(
     ])
   );
   const candidates = [...input.candidates].sort((left, right) => {
-    const semantic = left.semanticKey.localeCompare(right.semanticKey);
+    const semantic = left.semanticKey.localeCompare(right.semanticKey, "en");
     return semantic === 0
-      ? left.candidateFingerprint.localeCompare(right.candidateFingerprint)
+      ? left.candidateFingerprint.localeCompare(right.candidateFingerprint, "en")
       : semantic;
   });
   const ambiguous = ambiguousCandidates(candidates);
@@ -1623,10 +1623,10 @@ export function projectTemplateImportView(
     };
     });
   items.sort((left, right) => {
-    const section = left.section.localeCompare(right.section);
+    const section = left.section.localeCompare(right.section, "en");
     if (section !== 0) return section;
     const order = left.order - right.order;
-    return order !== 0 ? order : left.item.id.localeCompare(right.item.id);
+    return order !== 0 ? order : left.item.id.localeCompare(right.item.id, "en");
   });
   const sections = [...new Set(items.map(({ section }) => section))].map((id) => {
     const sectionItems = items
@@ -1740,7 +1740,8 @@ export function projectTemplateImportView(
     sections,
     diagnostics: [...input.diagnostics].sort((left, right) =>
       `${left.code}:${canonicalCapabilityJson(left.params)}`.localeCompare(
-        `${right.code}:${canonicalCapabilityJson(right.params)}`
+        `${right.code}:${canonicalCapabilityJson(right.params)}`,
+        "en",
       )
     ),
     availableActions,

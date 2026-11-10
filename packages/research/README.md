@@ -18,6 +18,9 @@ Use the package through one of five explicit surfaces:
 - `@atlcli/research/bun` adds Bun-only host storage, currently
   `SqliteResearchSessionStoreV1`, on top of the Node runtime. The CLI selects
   this surface explicitly; browser and Node consumers never load `bun:sqlite`.
+- `@atlcli/research/testing` holds the reusable conformance suites for hosts
+  that implement a session store, a data namespace, or a chat retrieval
+  workspace. Test code only; no runtime entry point re-exports it.
 
 The package exposes two explicit agent runtimes. `runChatAgent` owns ordinary
 multi-turn Chat with Quick/Auto/Deep strategies, durable conversation memory,

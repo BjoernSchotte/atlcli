@@ -9,7 +9,7 @@ import {
   statusHookHandler,
 } from "./git-hooks.js";
 import { gitExec } from "./utils.js";
-import type { CommandContext } from "./types.js";
+import type { CommandContext } from "@atlcli/plugin-api";
 
 describe("git hooks", () => {
   let tempDir: string;
@@ -67,6 +67,31 @@ describe("git hooks", () => {
       // Check file has executable permissions
       const stats = await stat(hookPath);
       expect(stats.mode & 0o111).toBeGreaterThan(0); // Has some execute bit
+    });
+
+    test("installs into core.hooksPath when the repository sets one", async () => {
+      await gitExec(tempDir, ["config", "core.hooksPath", ".githooks"]);
+
+      await installHookHandler(createContext());
+
+      expect(existsSync(hookPath)).toBe(false);
+      const custom = join(tempDir, ".githooks", "post-commit");
+      expect(await readFile(custom, "utf-8")).toContain("atlcli-plugin-git hook");
+
+      await removeHookHandler(createContext({ command: ["git", "hook", "remove"] }));
+      expect(existsSync(custom)).toBe(false);
+    });
+
+    test("installs into the shared hooks directory from a linked worktree", async () => {
+      await gitExec(tempDir, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--allow-empty", "-m", "init"]);
+      const worktree = join(tempDir, "linked");
+      await gitExec(tempDir, ["worktree", "add", worktree]);
+      await mkdir(join(worktree, ".atlcli"));
+
+      await installHookHandler(createContext({ args: [worktree] }));
+
+      expect(process.exitCode ?? 0).toBe(0);
+      expect(await readFile(hookPath, "utf-8")).toContain("atlcli-plugin-git hook");
     });
 
     test("fails on non-git directory", async () => {

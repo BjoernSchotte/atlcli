@@ -5,16 +5,12 @@ import {
 } from "@atlcli/pdf/browser";
 import { PDF_SETTINGS_BLOCKS, PDF_SETTINGS_METADATA } from "@atlcli/export-fixtures";
 import { MemoryOutputSink } from "./memory-output.js";
-import { deterministicClock as clock, failingPdfAssets } from "./pdf-run.js";
+import { deterministicClock as clock, noPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 import { buildPdfV5RuntimeFixture } from "./pdf-v5-runtime-fixture.js";
 import { sha256Hex } from "./digest.js";
 
 const compiler = new HarnessPdfWorkerClient();
-const noAssets = failingPdfAssets(
-  "The revision-5 browser fixture has no document assets.",
-);
-
 
 async function compile(runtime: Awaited<ReturnType<typeof buildPdfV5RuntimeFixture>>["runtime"]) {
   const output = new MemoryOutputSink();
@@ -26,7 +22,7 @@ async function compile(runtime: Awaited<ReturnType<typeof buildPdfV5RuntimeFixtu
       profile: "tagged",
       filename: "Catalog V3 Browser Conformance.pdf",
     },
-    { assets: noAssets, compiler, output, now: clock() },
+    { assets: noPdfAssets, compiler, output, now: clock() },
   );
   return { bytes: output.single.bytes, report };
 }

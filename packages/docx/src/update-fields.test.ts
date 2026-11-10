@@ -1,7 +1,7 @@
 /**
  * `w:updateFields` is set only when a refresh would change something.
  *
- * The defect: `ensureUpdateFields` ran unconditionally, so a real 62-page tree
+ * The defect: the update-fields flag was set unconditionally, so a real 62-page tree
  * export with NO table of contents, 116 static `HYPERLINK` fields and one
  * caption `SEQ` asked its reader — on every single open, forever — to refresh
  * fields that mostly cannot change. The engine now decides per document, from
@@ -22,7 +22,7 @@ import type {
 } from "@atlcli/confluence";
 import { exportDocx } from "./export.js";
 import {
-  collectFieldKeywords,
+  collectFieldUses,
   collectSeqSequenceNames,
   DocxError,
   needsFieldRefresh,
@@ -30,6 +30,8 @@ import {
   unzipDocx,
 } from "./scan.js";
 import { buildDocx, headingStyle, para, readPart, stylesXml } from "./fixtures.js";
+
+const fieldKeywords = (xml: string): string[] => collectFieldUses(xml).map((use) => use.keyword);
 
 const template = { name: "fixture.docx", modificationDate: new Date(2026, 6, 14) };
 const deps = {
@@ -143,17 +145,17 @@ function captionedFigure(title: string): ExportBlock {
   };
 }
 
-describe("collectFieldKeywords (pure)", () => {
+describe("collectFieldUses keywords (pure)", () => {
   it("reads the keyword of a fldSimple and of a complex field", () => {
     const xml =
       fldSimpleField(' PAGE \\* MERGEFORMAT ', "1") +
       splitInstrField([' SEQ Figure \\* ARABIC '], "1");
-    expect(collectFieldKeywords(xml)).toEqual(["PAGE", "SEQ"]);
+    expect(fieldKeywords(xml)).toEqual(["PAGE", "SEQ"]);
   });
 
   it("reassembles an instruction split across runs (` TO` + `C \\o \"1-3\"`)", () => {
     const xml = splitInstrField([" TO", 'C \\o "1-3" ', "\\h \\z \\u "], "TOC placeholder");
-    expect(collectFieldKeywords(xml)).toEqual(["TOC"]);
+    expect(fieldKeywords(xml)).toEqual(["TOC"]);
   });
 
   it("does NOT match a keyword that appears inside another field's ARGUMENT", () => {
@@ -164,7 +166,7 @@ describe("collectFieldKeywords (pure)", () => {
       splitInstrField([' HYPERLINK "https://example.com/seq/123" '], "seq") +
       splitInstrField([' HYPERLINK "https://example.com/docs/index.html" '], "docs") +
       splitInstrField([' HYPERLINK "https://example.com/ref/date/time" '], "ref");
-    expect(collectFieldKeywords(xml)).toEqual(["HYPERLINK", "HYPERLINK", "HYPERLINK"]);
+    expect(fieldKeywords(xml)).toEqual(["HYPERLINK", "HYPERLINK", "HYPERLINK"]);
   });
 
   it("does not spell a keyword across the seam between two adjacent fields", () => {
@@ -173,7 +175,7 @@ describe("collectFieldKeywords (pure)", () => {
     const xml =
       splitInstrField([' HYPERLINK "https://example.com/x/TO" '], "x") +
       splitInstrField(["C_UNRELATED "], "y");
-    expect(collectFieldKeywords(xml)).not.toContain("TOC");
+    expect(fieldKeywords(xml)).not.toContain("TOC");
   });
 
   it("reports both fields of a nested construction, outer instruction intact", () => {
@@ -193,18 +195,18 @@ describe("collectFieldKeywords (pure)", () => {
       `<w:r><w:t>a</w:t></w:r>` +
       `<w:r><w:fldChar w:fldCharType="end"/></w:r>` +
       `</w:p>`;
-    expect(collectFieldKeywords(xml)).toEqual(["PAGE", "IF"]);
+    expect(fieldKeywords(xml)).toEqual(["PAGE", "IF"]);
   });
 
   it("classifies an unterminated field rather than dropping it", () => {
     const xml =
       `<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
       `<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" </w:instrText></w:r></w:p>`;
-    expect(collectFieldKeywords(xml)).toEqual(["TOC"]);
+    expect(fieldKeywords(xml)).toEqual(["TOC"]);
   });
 
   it("names no keyword for a formula field (documented gap)", () => {
-    expect(collectFieldKeywords(splitInstrField([" =SUM(ABOVE) "], "0"))).toEqual([]);
+    expect(fieldKeywords(splitInstrField([" =SUM(ABOVE) "], "0"))).toEqual([]);
   });
 });
 
@@ -287,7 +289,7 @@ describe("needsFieldRefresh scans every WordprocessingML part", () => {
     );
     expect(needsFieldRefresh(zip)).toBe(true);
     // …and the document part alone says nothing, which is the point.
-    expect(collectFieldKeywords(readPartText(zip, "word/document.xml"))).toEqual([]);
+    expect(fieldKeywords(readPartText(zip, "word/document.xml"))).toEqual([]);
   });
 
   it("finds a STYLEREF running head in a footer", () => {

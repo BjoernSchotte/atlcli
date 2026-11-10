@@ -32,7 +32,6 @@ import {
   type ChatEvaluationGapV1,
   type ChatEvaluationObservationV1,
   type ChatEvaluationScenarioV1,
-  type ChatReleaseEvaluationVariantV1,
 } from "../evaluation.js";
 import { ChatUserQuestionRequiredError } from "../interaction.js";
 import { createKiteweaveChatAgent } from "../runtime.js";

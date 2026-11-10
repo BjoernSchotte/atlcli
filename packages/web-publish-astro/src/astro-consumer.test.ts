@@ -5,6 +5,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import { digestPublicationBundleV1, type PublicationBuildRequestV1, type PublicationBundleV1, type PublicationPageV1 } from "@atlcli/web-publish";
+import { createAstroStaticPublicationManifestV1, type AstroBuildInventoryV1 } from "./manifest.js";
+import { verifyAstroStaticPublicationOutputV1 } from "./output-verify.js";
 
 const workspaceRoot = resolve(import.meta.dir, "../../..");
 const fixtureDirectory = resolve(import.meta.dir, "../fixtures/astro-consumer");
@@ -57,13 +60,16 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   expect(html).not.toContain("<img src=x onerror");
   expect(html).toContain("Structured blocks: 1");
   expect(html).not.toContain("bundle.json");
+  // The fixture bundle was refreshed without edit links: no action, no source-site URL.
+  expect(html).not.toContain("data-atlcli-edit-link");
   expect(await readFile(resolve(fixtureDirectory, "dist/assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt"), "utf8"))
     .toBe("fixture asset\n");
   const inventory = JSON.parse(
     await readFile(resolve(fixtureDirectory, "../evidence/build-inventory.json"), "utf8"),
   ) as { outputRoot: string; bundleDigest: string; pages: Array<{ kind: string; sourceId: string; route: string; pathname: string }>; output: Array<{ path: string }> };
   expect(inventory.outputRoot).toBe("<private>");
-  expect(inventory.bundleDigest).toBe("bundle-digest");
+  const fixtureBundle = JSON.parse(await readFile(resolve(fixtureDirectory, "publication/bundle.json"), "utf8")) as { bundleDigest: string };
+  expect(inventory.bundleDigest).toBe(fixtureBundle.bundleDigest);
   expect(inventory.pages).toEqual([{ kind: "page", sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }]);
   expect(inventory).toMatchObject({
     labelLandings: [{ kind: "label", label: "guide", slug: "guide", route: "/topics/guide/", pathname: "publish/topics/guide/" }],
@@ -82,6 +88,57 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   for (const text of runtimeText) {
     expect(text).not.toContain("/_image");
     expect(text).not.toMatch(/(?:atlassian\.net|confluence|cloudId|tenant)/iu);
+  }
+}, CONSUMER_BUILD_TIMEOUT_MS);
+
+test("an Astro consumer renders exactly the bundle's frozen edit link and the output verifier accepts it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "atlcli-astro-edit-link-"));
+  const outputDirectory = resolve(fixtureDirectory, "dist-root");
+  try {
+    await cp(resolve(fixtureDirectory, "publication"), join(root, "publication"), { recursive: true });
+    const bundlePath = join(root, "publication", "bundle.json");
+    const page = JSON.parse(await readFile(join(root, "publication", "pages", "guide.json"), "utf8")) as PublicationPageV1;
+    const href = "https://confluence.example.test/wiki/pages/resumedraft.action?draftId=1";
+    const editLinks = { origin: "https://confluence.example.test", label: "Edit in Confluence", placement: "page-actions", fallback: "omit", links: [{ sourceId: "guide", href }] } as const;
+    const draft: PublicationBundleV1 = { ...JSON.parse(await readFile(bundlePath, "utf8")) as PublicationBundleV1, editLinks };
+    const bundle = { ...draft, bundleDigest: await digestPublicationBundleV1(draft, [page]) };
+    await writeFile(bundlePath, JSON.stringify(bundle));
+    const inventoryPath = join(root, "inventory.json");
+    await run(["bun", "run", "build"], fixtureDirectory, {
+      ATLCLI_ASTRO_FIXTURE_PROFILE: "root-directory",
+      ATLCLI_PUBLICATION_BUNDLE_PATH: bundlePath,
+      ATLCLI_PUBLICATION_INVENTORY_PATH: inventoryPath,
+    });
+
+    const html = await readFile(join(outputDirectory, "publish/guide/index.html"), "utf8");
+    expect(html).toContain(`<a href="${href}" rel="external" data-atlcli-edit-link data-pagefind-ignore>Edit in Confluence</a>`);
+    expect(html.match(/data-atlcli-edit-link/gu)).toHaveLength(1);
+    // A generated landing is not a Confluence page and gets no action.
+    expect(await readFile(join(outputDirectory, "publish/topics/guide/index.html"), "utf8")).not.toContain("data-atlcli-edit-link");
+
+    const inventory = JSON.parse(await readFile(inventoryPath, "utf8")) as AstroBuildInventoryV1;
+    const manifest = await createAstroStaticPublicationManifestV1({
+      request: {
+        project: {
+          visibility: "internal",
+          builder: { base: "/", outputProfile: "directory" },
+          analytics: { provider: "none" },
+          search: { languages: ["en"] },
+          editLink: { provider: "confluence", label: "Edit in Confluence", placement: "page-actions", visibility: "all", fallback: "omit" },
+        },
+        bundle,
+        projectDigest: "project", configDigest: "config", lockfileDigest: "lock",
+      } as unknown as PublicationBuildRequestV1,
+      inventory,
+      builderVersion: "0.1.0",
+      astroVersion: "7.1.6",
+      experience: { id: "test", version: "1", digest: "experience" },
+    });
+    expect(manifest.editLinks).toEqual({ provider: "confluence", origin: editLinks.origin, includedSourceIds: ["guide"], omittedSourceIds: [] });
+    await expect(verifyAstroStaticPublicationOutputV1({ manifest, inventory, outputDirectory, editLinks })).resolves.toMatchObject({ outputFiles: inventory.output.length });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outputDirectory, { recursive: true, force: true });
   }
 }, CONSUMER_BUILD_TIMEOUT_MS);
 

@@ -57,15 +57,29 @@ export class FileExportArtifactStore implements ExportArtifactStore {
     return load(this);
   }
   async deleteStaged(ref: string): Promise<void> { const lease = await this.#lock.acquire({ label: "artifact-delete" }); try { const marker = await this.#find(ref); if (marker?.state === "staged") { await rm(this.#dataPath(ref), { force: true }); await rm(this.#markerPath(ref), { force: true }); } } finally { await lease.release(); } }
-  async deleteStagedEpoch(jobId: string, leaseEpoch: number): Promise<ExportByteCleanupResultV1> { return this.#cleanup(jobId, leaseEpoch, false); }
-  async cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1> { return this.#cleanup(jobId, undefined, true); }
-  async #cleanup(jobId: string, leaseEpoch: number | undefined, includeCommitted: boolean): Promise<ExportByteCleanupResultV1> {
+  async deleteStagedEpoch(jobId: string, leaseEpoch: number): Promise<ExportByteCleanupResultV1> { return this.#cleanup([jobId], leaseEpoch, false); }
+  async cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1> { return this.#cleanup([jobId], undefined, true); }
+  /** Batch form of `cleanupJob`: one lock and one directory scan for every job. */
+  async cleanupJobs(jobIds: readonly string[]): Promise<ExportByteCleanupResultV1> { return this.#cleanup(jobIds, undefined, true); }
+  /** True once the epoch is closed against late writers and holds no staged bytes. Reads computable marker paths; takes no lock. */
+  async isEpochSettled(jobId: string, leaseEpoch: number): Promise<boolean> {
+    return await this.#closed(jobId, leaseEpoch) && (await this.#find(refFor(jobId, leaseEpoch)))?.state !== "staged";
+  }
+  async #cleanup(jobIds: readonly string[], leaseEpoch: number | undefined, includeCommitted: boolean): Promise<ExportByteCleanupResultV1> {
+    if (jobIds.length === 0) return { objectsDeleted: 0, bytesDeleted: 0 };
     await ensurePrivateDirectory(this.rootDir);
     const lease = await this.#lock.acquire({ label: "artifact-cleanup" });
     try {
-      await ensurePrivateDirectory(this.#closedDir); await writeDurableAtomic(this.#closedPath(jobId, leaseEpoch), `${JSON.stringify({ schema: "atlcli.file-artifact-closed/1", jobId, ...(leaseEpoch === undefined ? {} : { leaseEpoch }), at: this.#now() } satisfies ClosedV1)}\n`);
+      await ensurePrivateDirectory(this.#closedDir);
+      for (const jobId of jobIds) {
+        // An existing marker already fences this scope; rewriting it would cost one fsync per historical job.
+        const path = this.#closedPath(jobId, leaseEpoch);
+        if ((await readJsonFile<ClosedV1>(path))?.jobId === jobId) continue;
+        await writeDurableAtomic(path, `${JSON.stringify({ schema: "atlcli.file-artifact-closed/1", jobId, ...(leaseEpoch === undefined ? {} : { leaseEpoch }), at: this.#now() } satisfies ClosedV1)}\n`);
+      }
+      const targets = new Set(jobIds);
       let objectsDeleted = 0, bytesDeleted = 0;
-      for (const entry of await readJsonFiles<ArtifactMarkerV1>(this.#objectsDir)) { const m = entry.value; if (m.metadata.jobId !== jobId || (leaseEpoch !== undefined && m.metadata.leaseEpoch !== leaseEpoch) || (!includeCommitted && m.state === "committed")) continue; await rm(this.#dataPath(m.metadata.ref), { force: true }); await rm(entry.path, { force: true }); objectsDeleted++; bytesDeleted += m.metadata.byteLength; }
+      for (const entry of await readJsonFiles<ArtifactMarkerV1>(this.#objectsDir)) { const m = entry.value; if (!targets.has(m.metadata.jobId) || (leaseEpoch !== undefined && m.metadata.leaseEpoch !== leaseEpoch) || (!includeCommitted && m.state === "committed")) continue; await rm(this.#dataPath(m.metadata.ref), { force: true }); await rm(entry.path, { force: true }); objectsDeleted++; bytesDeleted += m.metadata.byteLength; }
       return { objectsDeleted, bytesDeleted };
     } finally { await lease.release(); }
   }
@@ -79,5 +93,9 @@ export class FileExportArtifactStore implements ExportArtifactStore {
     } finally { await lease.release(); }
   }
   async #find(ref: string): Promise<ArtifactMarkerV1 | undefined> { const marker = await readJsonFile<ArtifactMarkerV1>(this.#markerPath(ref)); return marker?.metadata.ref === ref ? marker : undefined; }
-  async #closed(jobId: string, epoch: number): Promise<boolean> { return (await readJsonFiles<ClosedV1>(this.#closedDir)).some((e) => e.value.jobId === jobId && (e.value.leaseEpoch === undefined || e.value.leaseEpoch === epoch)); }
+  async #closed(jobId: string, epoch: number): Promise<boolean> {
+    // Both marker paths are digests of their scope: read them directly instead of parsing the whole directory.
+    for (const path of [this.#closedPath(jobId), this.#closedPath(jobId, epoch)]) if ((await readJsonFile<ClosedV1>(path))?.jobId === jobId) return true;
+    return false;
+  }
 }

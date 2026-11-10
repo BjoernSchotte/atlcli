@@ -79,6 +79,18 @@ describe("buildGovernance", () => {
     expect(governanceHasEffects(governance)).toBe(true);
   });
 
+  it("keeps identifier-like values as strings instead of coercing them to numbers", () => {
+    const { governance } = buildGovernance({
+      contentProperties: [
+        "atlcli.a=0012", "atlcli.b=0x1F", "atlcli.c=1e3", "atlcli.d= 7", "atlcli.e=1.50",
+        "atlcli.f=12345678901234567890", "atlcli.g=Infinity", "atlcli.h=-3.5", "atlcli.i=0",
+      ],
+    });
+    expect(governance.contentProperties.map((p) => p.value)).toEqual([
+      "0012", "0x1F", "1e3", " 7", "1.50", "12345678901234567890", "Infinity", -3.5, 0,
+    ]);
+  });
+
   it("bounds property values and count", () => {
     const big = `atlcli.big=${"x".repeat(3000)}`;
     expect(buildGovernance({ contentProperties: [big] }).errors[0]).toContain("exceeds 2048");

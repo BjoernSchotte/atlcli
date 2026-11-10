@@ -55,9 +55,12 @@ import {
   type SemanticCalloutIcon,
 } from "@atlcli/confluence";
 import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
+import { registerDocumentPart } from "./opc-parts.js";
+import { sha256Hex, throwIfAborted } from "./support.js";
 import {
   collectSeqSequenceNames,
   documentPartNames,
+  wordprocessingPartNames,
   needsFieldRefresh,
   PLACEHOLDER_RE,
   scanZip,
@@ -70,7 +73,6 @@ import {
 } from "./scan.js";
 import {
   resolvePlaceholders,
-  type CurrentUser,
   type ResolveDeps,
   type TemplateMeta,
 } from "./resolver.js";
@@ -97,7 +99,6 @@ import {
   isSvg,
   MAX_CONTENT_WIDTH_PX,
   parseSvgSize,
-  relsPathFor,
   resolveTargetSize,
 } from "./image.js";
 import { DOCX_CALLOUT_ICON_PNG } from "./callout-icon-assets.js";
@@ -124,7 +125,6 @@ import {
 } from "./font-embedding.js";
 import { NumberingAllocator } from "./numbering.js";
 import {
-  encodeXmlText,
   paragraphText,
   rewriteScrollText,
   splitParagraphs,
@@ -473,10 +473,6 @@ export function toDownloadFilename(title: string): string {
   return `${base || "export"}.docx`;
 }
 
-function throwIfAborted(signal?: AbortSignal): void {
-  signal?.throwIfAborted();
-}
-
 const ZIP_EPOCH_MS = Date.UTC(1980, 0, 1);
 
 /**
@@ -493,17 +489,6 @@ function pinZipEntryDates(zip: PizZip, requestedDateMs: number): void {
   for (const entry of Object.values(zip.files)) {
     entry.date = date;
   }
-}
-
-async function sha256Bytes(bytes: Uint8Array): Promise<string> {
-  const source =
-    bytes.buffer instanceof ArrayBuffer
-    && bytes.byteOffset === 0
-    && bytes.byteLength === bytes.buffer.byteLength
-      ? bytes.buffer
-      : bytes.slice().buffer;
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", source));
-  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -528,7 +513,7 @@ async function detachPreparedMediaParts(
     parts.push({
       path,
       byteLength: bytes.byteLength,
-      sha256: await sha256Bytes(bytes),
+      sha256: await sha256Hex(bytes),
       bytes,
     });
     write.call(zip, path, new Uint8Array(), {
@@ -2469,6 +2454,15 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
     return p;
   };
 
+  // Start the fetches up front: the loop below awaits one occurrence at a
+  // time, which on its own never has two fetches in flight. Capped at the page
+  // budget so a template over budget does not fetch what it will not render.
+  for (const occ of occurrences) {
+    if (fetchCache.size >= INCLUDE_BUDGET_MAX_PAGES) break;
+    const ref = parseIncludePageArgs(occ.raw);
+    if (ref && ref.pageId !== input.details.id) void fetchRef(ref);
+  }
+
   // 3. Render + budget state, keyed by the resolved pageId.
   const blocksCache = new Map<string, BlocksResult>();
   const acceptedPages = new Set<string>();
@@ -2724,9 +2718,11 @@ function injectContentTagAtEnd(zip: PizZip): void {
 }
 
 /**
- * Replace every `$scroll.*` / `$adhocState` occurrence across the document,
- * header/footer, and chart/SmartArt-diagram parts with its resolved value (empty
- * for unsupported/never).
+ * Replace every `$scroll.*` / `$adhocState` occurrence in EVERY WordprocessingML
+ * part — the document, headers/footers, footnotes, endnotes, comments, glossary
+ * and the chart/SmartArt-diagram parts — with its resolved value (empty for
+ * unsupported/never). A footnote is displayed text like any other; limiting the
+ * pass to the main story left its placeholders in the export as literals.
  *
  * {@link rewriteScrollText} run-normalizes each placeholder paragraph (merging
  * split runs), descends into text boxes (`mc:Choice` + `mc:Fallback`), replaces
@@ -2741,7 +2737,7 @@ function injectContentTagAtEnd(zip: PizZip): void {
  * literal placeholder survives in any displayed text.
  */
 export function preprocessScrollText(zip: PizZip, values: Map<string, string>): void {
-  for (const part of documentPartNames(zip)) {
+  for (const part of wordprocessingPartNames(zip)) {
     const xml = zip.file(part)?.asText();
     if (!xml) continue;
     if (!xml.includes("$scroll") && !xml.includes("$adhocState")) continue;
@@ -2817,68 +2813,14 @@ export function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator):
         `</w:numbering>`
     );
   }
-  // Content-type override (a specific part, not a default-by-extension).
-  const ctPath = "[Content_Types].xml";
-  const ct = zip.file(ctPath)?.asText();
-  if (ct && !ct.includes("word/numbering.xml")) {
-    zip.file(
-      ctPath,
-      ct.replace(
-        "</Types>",
-        `<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`
-      )
-    );
-  }
-  // Relationship from the main document part (reuse the image module's helper).
-  const relsPath = relsPathFor("word/document.xml");
-  const rels =
-    zip.file(relsPath)?.asText() ??
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
-  if (!/relationships\/numbering/.test(rels)) {
-    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((m) => Number(m[1]));
-    const rid = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
-    zip.file(
-      relsPath,
-      rels.replace(
-        "</Relationships>",
-        `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`
-      )
-    );
-  }
+  registerDocumentPart(zip, "numbering");
 }
 
 /** Register the native Word comment part emitted by ADF annotation ranges. */
 export function ensureCommentsPart(zip: PizZip, comments: WordCommentRegistry): void {
   if (!comments.isUsed) return;
   zip.file("word/comments.xml", comments.toXml());
-
-  const ctPath = "[Content_Types].xml";
-  const ct = zip.file(ctPath)?.asText();
-  if (ct && !ct.includes("word/comments.xml")) {
-    zip.file(
-      ctPath,
-      ct.replace(
-        "</Types>",
-        `<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>`,
-      ),
-    );
-  }
-
-  const relsPath = relsPathFor("word/document.xml");
-  const rels =
-    zip.file(relsPath)?.asText() ??
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
-  if (!/relationships\/comments/.test(rels)) {
-    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((match) => Number(match[1]));
-    const rid = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
-    zip.file(
-      relsPath,
-      rels.replace(
-        "</Relationships>",
-        `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`,
-      ),
-    );
-  }
+  registerDocumentPart(zip, "comments");
 }
 
 /** Add the fallback ListParagraph style to styles.xml if absent (spec 006 G2). */
@@ -3106,55 +3048,5 @@ function writeUpdateFields(zip: PizZip, value: boolean, opts: { create: boolean 
     `<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
     `${element}</w:settings>`;
   zip.file(path, settings);
-  registerSettingsPart(zip);
+  registerDocumentPart(zip, "settings");
 }
-
-/**
- * Force `word/settings.xml` to carry `<w:updateFields w:val="true"/>`, creating
- * settings.xml (+ content-type + relationship) when a bare template lacks it.
- *
- * This is the UNCONDITIONAL form, equivalent to `updateFields: "always"`. The
- * export flow itself no longer calls it: since the field-refresh policy landed,
- * `exportDocx` sets the flag only when a field in the finished document would
- * actually change on refresh (see {@link applyFieldRefreshPolicy}). Retained as
- * a named export for API stability, and as the primitive `"always"` uses.
- */
-export function ensureUpdateFields(zip: PizZip): void {
-  writeUpdateFields(zip, true, { create: true });
-}
-
-function registerSettingsPart(zip: PizZip): void {
-  const ctPath = "[Content_Types].xml";
-  const ct = zip.file(ctPath)?.asText();
-  if (ct && !ct.includes("word/settings.xml")) {
-    zip.file(
-      ctPath,
-      ct.replace(
-        "</Types>",
-        `<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/></Types>`
-      )
-    );
-  }
-  const relsPath = "word/_rels/document.xml.rels";
-  const rels =
-    zip.file(relsPath)?.asText() ??
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
-  if (!rels.includes("settings.xml")) {
-    // Parse existing rIds regardless of quote style (`Id="rId1"` or `Id='rId1'`),
-    // then allocate max+1 — matching only double-quoted ids could re-issue an id
-    // already used with single quotes and collide.
-    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((m) => Number(m[1]));
-    const rid = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
-    zip.file(
-      relsPath,
-      rels.replace(
-        "</Relationships>",
-        `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>`
-      )
-    );
-  }
-}
-
-// Re-export for the panel/tests: keep encode local usage referenced.
-export { encodeXmlText };
-export type { CurrentUser };

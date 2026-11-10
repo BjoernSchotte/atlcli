@@ -10,6 +10,7 @@ import type {
   ResearchEvidenceSpanV1,
   ResearchEvidenceStoreV1,
 } from "./evidence-store.js";
+import { sha256Hex as sha256 } from "./hash.js";
 
 const MAXIMUM_CANDIDATES = 20;
 const MAXIMUM_SUPPORTS_PER_CANDIDATE = 12;
@@ -46,11 +47,6 @@ function bounded(value: unknown, label: string, maximum: number): string {
     invalid(`${label} is invalid.`);
   }
   return value;
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function resolveQuoteToSpan(input: {

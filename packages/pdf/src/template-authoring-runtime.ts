@@ -41,8 +41,8 @@ import {
   PDF_DOCX_TEMPLATE_ASSET_IDENTITY_V1,
   materializePdfTemplateAssetFields,
   pdfTemplateAssetExtension,
-  sha256PdfTemplateBytes,
 } from "./template-assets.js";
+import { sha256Hex } from "./shared.js";
 
 const encoder = new TextEncoder();
 
@@ -219,7 +219,7 @@ export class PdfTemplateRuntimeMaterializer
               ]
             )
             .sort(([left], [right]) =>
-              String(left).localeCompare(String(right))
+              String(left).localeCompare(String(right), "en")
             )
         ),
       },
@@ -308,7 +308,7 @@ export class PdfGeneratedTemplateProofCompiler
         );
       }
       primary ??= {
-        digest: await sha256PdfTemplateBytes(result.pdf),
+        digest: await sha256Hex(result.pdf),
         pageCount: inspection.pageCount,
       };
     }

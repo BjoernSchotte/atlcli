@@ -9,7 +9,6 @@ export const EXTENSION_ACTION_CAPABILITIES_V1 = {
   docx: "atlcli.capability.export.docx",
   surface: "atlcli.capability.surface.sidebar",
   ai: "atlcli.capability.ai.quick-ask",
-  synthetic: "atlcli.capability.test.synthetic",
 } as const;
 
 const publishingModule: ActionModuleV1 = {
@@ -132,39 +131,8 @@ const navigationModule: ActionModuleV1 = {
   })),
 };
 
-/** Compile-time fixture; inert unless a host registers its exact capability and executor. */
-export const SYNTHETIC_EXTENSION_ACTION_MODULE_V1: ActionModuleV1 = {
-  schemaVersion: 1,
-  id: "atlcli.module.synthetic-fixture",
-  actions: [{
-    schemaVersion: 1,
-    id: "atlcli.test.synthetic-action",
-    moduleId: "atlcli.module.synthetic-fixture",
-    title: { key: "atlcli.action.synthetic.title", fallback: "Synthetic contribution" },
-    group: ACTION_GROUP_IDS.suggested,
-    icon: "extension",
-    intent: { kind: "contribution.extension-test", payload: { fixture: true } },
-    requirements: [{ kind: "capability", capability: EXTENSION_ACTION_CAPABILITIES_V1.synthetic }],
-    effect: "read",
-    input: {
-      schemaVersion: 1,
-      fields: [{
-        type: "select",
-        id: "fixture",
-        label: { key: "atlcli.action.synthetic.fixture", fallback: "Fixture" },
-        required: true,
-        options: [{ id: "yes", label: { key: "atlcli.action.synthetic.yes", fallback: "Yes" } }],
-      }],
-      submitLabel: { key: "atlcli.action.synthetic.submit", fallback: "Run fixture" },
-    },
-    order: 999,
-  }],
-};
-
 export const EXTENSION_ACTION_MODULES_V1: readonly ActionModuleV1[] = Object.freeze([
   publishingModule,
   aiModule,
   navigationModule,
 ]);
-
-export const EXTENSION_CONTRIBUTION_INTENT_KINDS_V1 = ["contribution.extension-test"] as const;

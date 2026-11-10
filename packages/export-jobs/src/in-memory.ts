@@ -69,6 +69,7 @@ import {
   type ExportArtifactFinalizationFaultHooks,
   type ExportArtifactFinalizationIntentV1,
 } from "./finalization.js";
+import { canonical, sha256Hex, throwIfAborted } from "./internal.js";
 
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_LIST_LIMIT = 500;
@@ -109,15 +110,6 @@ export interface InMemoryExportJobStoreOptions {
 
 function clone<T>(value: T): T {
   return structuredClone(value);
-}
-
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entry]) => entry !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b));
-  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}`;
 }
 
 function boundedLimit(limit: number | undefined, fallback: number, maximum: number): number {
@@ -945,9 +937,9 @@ async function collectBytes(
 ): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let length = 0;
-  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  throwIfAborted(signal);
   for await (const chunk of source) {
-    if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+    throwIfAborted(signal);
     if (!(chunk instanceof Uint8Array)) throw new TypeError("Byte stores accept Uint8Array chunks.");
     if (!Number.isSafeInteger(length + chunk.byteLength) || length + chunk.byteLength > maxBytes) {
       throw new InMemoryByteStoreConflict("object-limit", "Object byte limit exceeded.");
@@ -955,7 +947,7 @@ async function collectBytes(
     chunks.push(chunk.slice());
     length += chunk.byteLength;
   }
-  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  throwIfAborted(signal);
   const bytes = new Uint8Array(length);
   let offset = 0;
   for (const chunk of chunks) {
@@ -965,17 +957,8 @@ async function collectBytes(
   return bytes;
 }
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes).buffer);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
-}
-
 async function* bytesIterable(bytes: Uint8Array, signal?: AbortSignal): AsyncIterable<Uint8Array> {
-  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  throwIfAborted(signal);
   yield bytes.slice();
 }
 

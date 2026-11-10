@@ -23,7 +23,6 @@
     "./components/PagefindSearch.astro": "./dist/components/PagefindSearch.astro",
     "./components/PagefindSearchPage.astro": "./dist/components/PagefindSearchPage.astro",
     "./components/PublicationSeoHead.astro": "./dist/components/PublicationSeoHead.astro",
-    "./components/PublicationPrefetch.astro": "./dist/components/PublicationPrefetch.astro",
     "./components/PublicationAnalytics.astro": "./dist/components/PublicationAnalytics.astro"
   },
   "scripts": {
@@ -40,8 +39,5 @@
   },
   "peerDependencies": {
     "astro": ">=7.1.6 <8"
-  },
-  "devDependencies": {
-    "@atlcli/web-publish-starlight": "workspace:*"
   }
 }

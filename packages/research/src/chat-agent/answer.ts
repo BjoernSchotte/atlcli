@@ -88,6 +88,10 @@ function absenceScopeIsSupportedV2(input: {
       );
     });
   }
+  // bound-scope: only a run with ground truth (observedRecall, evaluation
+  // only) can show the whole scope was covered. Production retrieval is ranked
+  // and bounded, reports observedRecall=null, and so never passes; the prompts
+  // therefore tell the model not to use this scope at all.
   const retrieval = input.run.retrieval;
   return retrieval !== undefined &&
     retrieval.deferredCandidates === 0 &&

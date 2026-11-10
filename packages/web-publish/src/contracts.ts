@@ -1,7 +1,6 @@
 import type { ChartDiagnosticCodeV1, ExportBlock, ExportNote } from "@atlcli/export-blocks";
 
 export const PUBLICATION_PROJECT_SCHEMA_V1 = "atlcli.publication-project/1" as const;
-export const PUBLISH_RUN_REQUEST_SCHEMA_V1 = "atlcli.publish-run-request/1" as const;
 export const PUBLICATION_REFRESH_PLAN_SCHEMA_V1 = "atlcli.publication-refresh-plan/1" as const;
 export const PUBLICATION_BUNDLE_SCHEMA_V1 = "atlcli.publication-bundle/1" as const;
 export const PUBLICATION_PAGE_SCHEMA_V1 = "atlcli.publication-page/1" as const;
@@ -156,14 +155,6 @@ export interface PublicationProjectV1 {
   builder: AstroPublicationBuilderOptionsV1;
   retention: PublicationRetentionPolicyV1;
   activeBundleDigest?: string;
-}
-
-export interface PublishRunRequestV1 {
-  schema: typeof PUBLISH_RUN_REQUEST_SCHEMA_V1;
-  projectRef: string;
-  operation: "plan" | "refresh" | "build" | "verify" | "run";
-  expectedActiveBundleDigest?: string;
-  dryRun: boolean;
 }
 
 export interface PublicationIssueSourceV1 {
@@ -403,6 +394,17 @@ export interface PublicationAssetEntryV1 {
   downloadName?: string;
 }
 
+/** Edit actions frozen at refresh, when the trusted Confluence origin is known. */
+export interface PublicationBundleEditLinksV1 {
+  /** https origin of the Confluence site the bundle was refreshed from. */
+  origin: string;
+  label: string;
+  placement: "page-footer" | "page-actions";
+  fallback: "open-page" | "omit";
+  /** One provider-returned URL on `origin` per page that has one, by source ID. */
+  links: readonly { sourceId: string; href: string }[];
+}
+
 export interface PublicationBundleV1 {
   schema: typeof PUBLICATION_BUNDLE_SCHEMA_V1;
   bundleDigest: string;
@@ -411,6 +413,8 @@ export interface PublicationBundleV1 {
   sourcePolicyDigest: string;
   /** Frozen, ID-free chart admission/render limits for the selected build. */
   chartPolicy?: PublicationChartRenderPolicyV1;
+  /** Present only when the project's edit-link policy emits links. */
+  editLinks?: PublicationBundleEditLinksV1;
   complete: boolean;
   rootIds: readonly string[];
   pages: readonly PublicationPageEntryV1[];
@@ -650,6 +654,8 @@ export type BuiltAnalyticsDeclarationV1 =
 
 export interface BuiltEditLinkSummaryV1 {
   provider: "none" | "confluence";
+  /** Trusted Confluence origin of every emitted edit link; present when any page has one. */
+  origin?: string;
   includedSourceIds: readonly string[];
   omittedSourceIds: readonly string[];
 }

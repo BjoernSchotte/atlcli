@@ -1,6 +1,7 @@
 /// <reference path="./vendor.d.ts" />
 
-// The VENDORED, CSP-patched glue (spec 009 Special cases): a package
+// The VENDORED glue of the typst.ts fork, CSP-safe at its source and not
+// patched here (spec 009 Special cases): a package
 // self-reference so the same specifier works from workspace source, from
 // dist, and inside packed tarballs (see exports "./vendor/*").
 import initTypst, {

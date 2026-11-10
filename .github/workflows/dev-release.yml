@@ -43,6 +43,7 @@ jobs:
     name: Resolve immutable source from origin/main
     if: github.event_name != 'schedule' || vars.DEV_RELEASE_SCHEDULE_ENABLED == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       source_sha: ${{ steps.identity.outputs.source_sha }}
       source_ref: ${{ steps.identity.outputs.source_ref }}
@@ -61,7 +62,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Validate source against origin/main and freeze identity
         id: identity
@@ -132,6 +133,7 @@ jobs:
     name: Enforce immutable no-op or new-build decision
     needs: resolve-source
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       decision: ${{ steps.decision.outputs.decision }}
       selected_tag: ${{ steps.decision.outputs.selected_tag }}
@@ -145,7 +147,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Inspect existing immutable dev releases
         id: decision
@@ -175,6 +177,7 @@ jobs:
     needs: [resolve-source, publication-decision]
     if: needs.publication-decision.outputs.decision == 'noop'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Record immutable no-op
         run: echo "Source ${{ needs.resolve-source.outputs.source_sha }} is already proven by ${{ needs.publication-decision.outputs.selected_tag }}"
@@ -198,7 +201,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Require successful canonical main-push CI for exact SHA
         env:
@@ -261,6 +264,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.dry_run
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -272,10 +276,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Download this run's exact verified bundle
         uses: actions/download-artifact@v8
@@ -333,6 +337,7 @@ jobs:
             runner: windows-2025
             archive: atlcli-windows-x64.zip
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -344,7 +349,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Download this run's exact bundle
         uses: actions/download-artifact@v8
@@ -403,6 +408,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.dry_run
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - run: echo "Verified ${{ needs.resolve-source.outputs.build_id }} in shadow mode; no tag, release, or Tap formula was written."
 
@@ -413,6 +419,7 @@ jobs:
       needs.publication-decision.outputs.decision == 'create' &&
       (github.event_name == 'schedule' || inputs.dry_run == false)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     outputs:
@@ -427,10 +434,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Download this run's exact bundle
         uses: actions/download-artifact@v8
@@ -492,6 +499,7 @@ jobs:
       needs.publication-decision.outputs.decision == 'create' &&
       (github.event_name == 'schedule' || inputs.dry_run == false)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # GitHub exposes draft releases only to repository writers. The exact-SHA
     # script is read-only and receives the token only for the download step.
     permissions:
@@ -505,10 +513,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Download exact assets back from draft release API
         env:
@@ -572,6 +580,7 @@ jobs:
             runner: windows-2025
             archive: atlcli-windows-x64.zip
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     # GitHub exposes draft releases only to repository writers. The token is
     # not present while the downloaded CLI itself executes.
     permissions:
@@ -585,7 +594,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Download one exact native archive from the complete draft
         shell: bash
@@ -654,6 +663,7 @@ jobs:
       needs.publication-decision.outputs.decision == 'create' &&
       (github.event_name == 'schedule' || inputs.dry_run == false)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     outputs:
@@ -667,7 +677,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Publish complete draft without changing latest
         id: publish
@@ -700,6 +710,7 @@ jobs:
       needs.create-draft.result == 'success' &&
       needs.publish-draft.result != 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -711,7 +722,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Delete only the exact transaction-owned draft and tag
         env:
@@ -741,6 +752,7 @@ jobs:
       needs.publication-decision.outputs.decision == 'create' &&
       (github.event_name == 'schedule' || inputs.dry_run == false)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -752,10 +764,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Redownload and verify the published prerelease
         env:
@@ -813,7 +825,9 @@ jobs:
       needs.publication-decision.outputs.decision == 'create' &&
       (github.event_name == 'schedule' || inputs.dry_run == false) &&
       (github.event_name == 'schedule' || inputs.publish_homebrew)
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
+    # homebrew-dev-dispatch.ts polls the tap workflow for up to 60 minutes.
+    timeout-minutes: 75
     environment: dev-release
     permissions:
       contents: read
@@ -829,10 +843,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Resolve published control-asset digests
         id: release

@@ -935,16 +935,6 @@ export declare const MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES: number;
 // export: migratePdfTemplateRecipeToTypst0151V1
 export declare function migratePdfTemplateRecipeToTypst0151V1(value: unknown): WikiPdfTemplateRecipeV1;
 
-// export: PackIssue
-export interface PackIssue {
-    severity: PackIssueSeverity;
-    code: string;
-    message: string;
-}
-
-// export: PackIssueSeverity
-export type PackIssueSeverity = "error" | "warning";
-
 // export: packTemplate
 export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
@@ -1313,20 +1303,6 @@ export interface ValidateManifestOptions {
 
 // export: validateManifestV3
 export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
-
-// export: validatePack
-export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
-
-// export: ValidatePackOptions
-export type ValidatePackOptions = ValidateManifestOptions;
-
-// export: ValidatePackResult
-export interface ValidatePackResult {
-    ok: boolean;
-    manifest?: TemplateManifest;
-    scanReport?: ScanResult;
-    issues: PackIssue[];
-}
 
 // export: validatePdfTemplateDesignV3
 export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
@@ -2448,16 +2424,6 @@ export declare const MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES: number;
 // export: migratePdfTemplateRecipeToTypst0151V1
 export declare function migratePdfTemplateRecipeToTypst0151V1(value: unknown): WikiPdfTemplateRecipeV1;
 
-// export: PackIssue
-export interface PackIssue {
-    severity: PackIssueSeverity;
-    code: string;
-    message: string;
-}
-
-// export: PackIssueSeverity
-export type PackIssueSeverity = "error" | "warning";
-
 // export: packTemplate
 export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
@@ -2826,20 +2792,6 @@ export interface ValidateManifestOptions {
 
 // export: validateManifestV3
 export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
-
-// export: validatePack
-export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
-
-// export: ValidatePackOptions
-export type ValidatePackOptions = ValidateManifestOptions;
-
-// export: ValidatePackResult
-export interface ValidatePackResult {
-    ok: boolean;
-    manifest?: TemplateManifest;
-    scanReport?: ScanResult;
-    issues: PackIssue[];
-}
 
 // export: validatePdfTemplateDesignV3
 export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
@@ -3961,16 +3913,6 @@ export declare const MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES: number;
 // export: migratePdfTemplateRecipeToTypst0151V1
 export declare function migratePdfTemplateRecipeToTypst0151V1(value: unknown): WikiPdfTemplateRecipeV1;
 
-// export: PackIssue
-export interface PackIssue {
-    severity: PackIssueSeverity;
-    code: string;
-    message: string;
-}
-
-// export: PackIssueSeverity
-export type PackIssueSeverity = "error" | "warning";
-
 // export: packTemplate
 export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
@@ -4339,20 +4281,6 @@ export interface ValidateManifestOptions {
 
 // export: validateManifestV3
 export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
-
-// export: validatePack
-export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
-
-// export: ValidatePackOptions
-export type ValidatePackOptions = ValidateManifestOptions;
-
-// export: ValidatePackResult
-export interface ValidatePackResult {
-    ok: boolean;
-    manifest?: TemplateManifest;
-    scanReport?: ScanResult;
-    issues: PackIssue[];
-}
 
 // export: validatePdfTemplateDesignV3
 export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;
@@ -5474,16 +5402,6 @@ export declare const MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES: number;
 // export: migratePdfTemplateRecipeToTypst0151V1
 export declare function migratePdfTemplateRecipeToTypst0151V1(value: unknown): WikiPdfTemplateRecipeV1;
 
-// export: PackIssue
-export interface PackIssue {
-    severity: PackIssueSeverity;
-    code: string;
-    message: string;
-}
-
-// export: PackIssueSeverity
-export type PackIssueSeverity = "error" | "warning";
-
 // export: packTemplate
 export declare function packTemplate<TDesign extends WikiPdfTemplateDesignV1 | WikiPdfTemplateDesignV3>(contents: TemplatePackContents<TDesign>): Promise<Uint8Array>;
 
@@ -5852,20 +5770,6 @@ export interface ValidateManifestOptions {
 
 // export: validateManifestV3
 export declare function validateManifestV3(json: unknown, options?: ValidateManifestOptions): TemplateManifest<WikiPdfTemplateDesignV3>;
-
-// export: validatePack
-export declare function validatePack(bytes: Uint8Array, options?: ValidatePackOptions): ValidatePackResult;
-
-// export: ValidatePackOptions
-export type ValidatePackOptions = ValidateManifestOptions;
-
-// export: ValidatePackResult
-export interface ValidatePackResult {
-    ok: boolean;
-    manifest?: TemplateManifest;
-    scanReport?: ScanResult;
-    issues: PackIssue[];
-}
 
 // export: validatePdfTemplateDesignV3
 export declare function validatePdfTemplateDesignV3(value: unknown, path?: string, options?: ValidatePdfTemplateDesignV3Options): WikiPdfTemplateDesignV3;

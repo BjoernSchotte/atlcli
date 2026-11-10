@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { atlcliPublishingIntegration } from "@atlcli/web-publish-astro";
 import {
   STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1,
   STARLIGHT_PUBLISHING_EXPERIENCE_V1,
-  StarlightPublishingExperienceErrorV1,
-  createStarlightPublishingExperienceRuntimeV1,
+  STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1,
 } from "./index.js";
 
 test("exposes a presentation-only Starlight experience descriptor", () => {
@@ -19,16 +19,26 @@ test("exposes a presentation-only Starlight experience descriptor", () => {
 });
 
 test("exposes versioned semantic slots without Starlight DOM selectors", () => {
-  const runtime = createStarlightPublishingExperienceRuntimeV1();
-  expect(runtime).toMatchObject({
-    schema: "atlcli.web-publish-starlight-runtime/1",
-    features: { navigation: true, search: true, toc: true, colorModes: true, print: true },
+  expect(STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1).toContain("main-content");
+  expect(JSON.stringify(STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1)).not.toContain("sl-");
+});
+
+test("the publishing integration accepts the Starlight descriptor without dynamic package resolution", () => {
+  const selected = atlcliPublishingIntegration({
+    bundlePath: "/publication/bundle.json", manifestPath: "/publication/private/inventory.json", routePrefix: "/publish",
+    expectedConfig: { base: "/docs/", outputProfile: "directory", outDir: "/site/dist", publicDir: "/site/public" },
+    experience: {
+      selection: {
+        id: STARLIGHT_PUBLISHING_EXPERIENCE_V1.id,
+        expectedVersion: STARLIGHT_PUBLISHING_EXPERIENCE_V1.version,
+        requiredCapabilities: ["search-modal", "table-of-contents", "print-styles"],
+        designTokens: { accent: "#0052cc" }, componentOverrides: { search: "Search" },
+      },
+      descriptor: STARLIGHT_PUBLISHING_EXPERIENCE_V1,
+      tokenValidator: { schema: "atlcli.starlight.tokens/1", validate: () => [] },
+    },
   });
-  expect(runtime.slots).toContain("main-content");
-  expect(runtime.tokens).toContain("--atlcli-content-foreground");
-  expect(() => createStarlightPublishingExperienceRuntimeV1({ slots: ["header"] })).toThrow("main-content slot is required");
-  expect(() => createStarlightPublishingExperienceRuntimeV1({ slots: ["main-content", "main-content"] })).toThrow(StarlightPublishingExperienceErrorV1);
-  expect(JSON.stringify(runtime)).not.toContain("sl-");
+  expect(selected.name).toBe("atlcli-publishing");
 });
 
 test("does not own a build runner or duplicate ExportBlock rendering", async () => {

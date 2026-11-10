@@ -29,7 +29,6 @@ import {
   RESEARCH_RESUMABLE_SESSION_SCHEMA_V1,
   RESEARCH_RETAINED_SESSION_SCHEMA_V1,
   type ResearchRetainedSessionV1,
-  type ResearchSessionScopeClarificationV1,
   type ResearchResumableSessionV1,
   type ResearchSessionTurnV1,
   type ResearchSessionV1,

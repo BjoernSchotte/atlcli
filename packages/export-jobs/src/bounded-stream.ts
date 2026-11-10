@@ -1,3 +1,5 @@
+import { abortReason } from "./internal.js";
+
 /** Limits shared by all reservations admitted through one semaphore. */
 export interface ByteReservationLimitsV1 {
   /** Maximum bytes held by granted reservations at one time. */
@@ -24,8 +26,6 @@ export type BoundedByteErrorCodeV1 =
   | "invalid-limit"
   | "invalid-byte-length"
   | "reservation-too-large"
-  | "chunk-too-large"
-  | "stream-too-large"
   | "invalid-chunk";
 
 /** Stable, host-neutral failures for byte-budget enforcement. */
@@ -65,10 +65,6 @@ function reservationByteLength(value: number): number {
     );
   }
   return value;
-}
-
-function abortReason(signal: AbortSignal): unknown {
-  return signal.reason ?? new DOMException("Byte reservation aborted.", "AbortError");
 }
 
 /**
@@ -171,19 +167,6 @@ export class ByteReservationSemaphoreV1 {
   }
 }
 
-/** Limits checked incrementally when a source has no trusted total length. */
-export interface BoundedByteStreamLimitsV1 {
-  maxChunkBytes: number;
-  maxTotalBytes: number;
-}
-
-export interface BoundedByteChunkContextV1 {
-  /** Zero-based non-empty chunk index. */
-  index: number;
-  /** Total source bytes observed through this chunk. */
-  observedBytes: number;
-}
-
 /**
  * Copy a view into a minimally sized, exclusively owned ArrayBuffer.
  * This prevents retaining or persisting an oversized source backing buffer.
@@ -195,66 +178,4 @@ export function copyExactOwnedBytesV1(chunk: Uint8Array): Uint8Array {
   const owned = new Uint8Array(chunk.byteLength);
   owned.set(chunk);
   return owned;
-}
-
-function assertStreamLimits(limits: BoundedByteStreamLimitsV1): void {
-  positiveSafeInteger(limits.maxChunkBytes, "maxChunkBytes");
-  positiveSafeInteger(limits.maxTotalBytes, "maxTotalBytes");
-}
-
-/**
- * Consume unknown-length bytes with shared count/byte backpressure.
- *
- * Each callback receives an exact-owned chunk. Its reservation is held until
- * the callback settles and is then released deterministically, including on
- * copy, callback, limit, and cancellation failures. The callback must not keep
- * the chunk after it settles; durable consumers should copy it into their
- * backend before returning.
- */
-export async function consumeBoundedByteStreamV1(
-  source: AsyncIterable<Uint8Array>,
-  semaphore: ByteReservationSemaphoreV1,
-  limits: BoundedByteStreamLimitsV1,
-  consume: (chunk: Uint8Array, context: BoundedByteChunkContextV1) => void | Promise<void>,
-  options: { signal?: AbortSignal } = {},
-): Promise<{ byteLength: number; chunkCount: number }> {
-  assertStreamLimits(limits);
-  let observedBytes = 0;
-  let chunkCount = 0;
-
-  for await (const chunk of source) {
-    if (options.signal?.aborted) throw abortReason(options.signal);
-    if (!(chunk instanceof Uint8Array)) {
-      throw new BoundedByteErrorV1("invalid-chunk", "Byte sources must yield Uint8Array chunks.");
-    }
-    if (chunk.byteLength === 0) continue;
-    if (chunk.byteLength > limits.maxChunkBytes) {
-      throw new BoundedByteErrorV1(
-        "chunk-too-large",
-        `Chunk requires ${chunk.byteLength} bytes; limit is ${limits.maxChunkBytes}.`,
-      );
-    }
-    if (
-      !Number.isSafeInteger(observedBytes + chunk.byteLength) ||
-      observedBytes + chunk.byteLength > limits.maxTotalBytes
-    ) {
-      throw new BoundedByteErrorV1(
-        "stream-too-large",
-        `Stream exceeds its ${limits.maxTotalBytes}-byte limit.`,
-      );
-    }
-
-    const reservation = await semaphore.reserve(chunk.byteLength, { signal: options.signal });
-    try {
-      const owned = copyExactOwnedBytesV1(chunk);
-      observedBytes += owned.byteLength;
-      await consume(owned, { index: chunkCount, observedBytes });
-      chunkCount += 1;
-    } finally {
-      reservation.release();
-    }
-  }
-
-  if (options.signal?.aborted) throw abortReason(options.signal);
-  return { byteLength: observedBytes, chunkCount };
 }

@@ -74,3 +74,26 @@ function clampRetryAfterMs(ms: number): number {
   if (!Number.isFinite(ms)) return RETRY_AFTER_MIN_MS;
   return Math.min(Math.max(ms, RETRY_AFTER_MIN_MS), RETRY_AFTER_MAX_MS);
 }
+
+/**
+ * Resolves after `ms`, or rejects at once with the signal's reason when
+ * `signal` is or becomes aborted, so a cancel during a retry backoff is not
+ * held until the backoff ends.
+ */
+export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new Error("Aborted"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new Error("Aborted"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}

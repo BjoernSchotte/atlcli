@@ -1021,6 +1021,15 @@ retired and remains literal text; see
 Cloud has no Data Center username value. The `.name` variants for people are
 therefore empty with a report note; use `.fullName` or `.email`.
 
+Placeholders are filled wherever the template shows text: the body, headers and
+footers, text boxes, footnotes, endnotes and comments. `$scroll.content`, the
+logos and `$scroll.includepage` are placed in the body, headers and footers only.
+
+A date without a format argument prints as `yyyy-MM-dd` in the local time zone
+of the machine that runs the export, the same zone the format tokens use. A
+format argument may carry quoted literal text:
+`$scroll.exportdate.("dd 'de' MM yyyy")`.
+
 ## Examples
 
 ### Basic Export

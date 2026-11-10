@@ -67,6 +67,8 @@ export type {
 // --- Pre-compile asset resolution (prepare.ts) ---
 export { preparePdfDocument } from "./prepare.js";
 export type { PreparePdfOptions } from "./prepare.js";
+export type { PdfTextWidthsPt } from "./serialize.js";
+export type { PdfCompleteDesignRevision } from "./catalog-runtime.js";
 
 // --- Template settings resolution (settings.ts, spec 007/012) ---
 export { resolvePdfSettings } from "./settings.js";
@@ -131,6 +133,7 @@ export {
   PDF_CANONICAL_SOURCE_REVISION_4,
   PDF_CANONICAL_SOURCE_REVISION_5,
   PDF_CANONICAL_SOURCE_REVISION_6,
+  PDF_CANONICAL_SOURCE_REVISION_7,
   PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
   PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS,
   PDF_TEMPLATE_DECORATION_IDS_V1,

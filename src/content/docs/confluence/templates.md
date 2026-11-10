@@ -341,7 +341,7 @@ atlcli wiki template validate --all
 | Invalid (e.g. unclosed `{% if %}`, `Jinja syntax error: …`) | `1` |
 | Template or file not found | `1` |
 
-The report is written to stdout either way; with `--json` it stays a single JSON document whose `valid` field carries the verdict.
+The report is written to stdout either way; with `--json` it stays a single JSON document whose `valid` field carries the verdict. For `--all` that document is `{"valid": …, "templates": [{"name": …, "valid": …, "errors": […], "warnings": […]}]}`.
 
 ```bash
 # Fail a pipeline on any invalid template

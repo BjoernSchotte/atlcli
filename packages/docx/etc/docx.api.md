@@ -1704,17 +1704,11 @@ export declare function codeStyleXml(): string;
 // export: collectFieldInstructions
 export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
-// export: collectFieldKeywords
-export declare function collectFieldKeywords(xml: string): string[];
-
 // export: collectFieldUses
 export declare function collectFieldUses(xml: string): FieldUse[];
 
 // export: collectForeignPlaceholders
 export declare function collectForeignPlaceholders(text: string): string[];
-
-// export: collectRiskyFieldInstructions
-export declare function collectRiskyFieldInstructions(xml: string): string[];
 
 // export: collectSeqSequenceNames
 export declare function collectSeqSequenceNames(xml: string): string[];
@@ -1880,9 +1874,6 @@ export interface EmbedSvgOptions {
 // export: EMU_PER_PX
 export declare const EMU_PER_PX = 9525;
 
-// export: encodeXmlText
-export declare function encodeXmlText(text: string): string;
-
 // export: ensureCaptionStyle
 export declare function ensureCaptionStyle(zip: PizZip): void;
 
@@ -1903,9 +1894,6 @@ export declare function ensureListParagraphStyle(zip: PizZip): void;
 
 // export: ensureNumberingPart
 export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
-
-// export: ensureUpdateFields
-export declare function ensureUpdateFields(zip: PizZip): void;
 
 // export: esc
 export declare function esc(s: string): string;
@@ -2016,9 +2004,6 @@ export declare function formatDatePlaceholder(date: Date, argument?: string): Da
 
 // export: formatSimpleDate
 export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
-
-// export: hasAltChunkRelationship
-export declare function hasAltChunkRelationship(relsXml: string): boolean;
 
 // export: hyperlinkField
 export declare function hyperlinkField(url: string, innerRuns: string, tooltip?: string): string;
@@ -2604,6 +2589,9 @@ export declare class WordCommentRegistry {
     get isUsed(): boolean;
     toXml(): string;
 }
+
+// export: wordprocessingPartNames
+export declare function wordprocessingPartNames(zip: PizZip): string[];
 ```
 
 ### Entry point `./node`
@@ -3003,17 +2991,11 @@ export declare function assertSafeDocxEntryName(name: string): void;
 // export: collectFieldInstructions
 export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
-// export: collectFieldKeywords
-export declare function collectFieldKeywords(xml: string): string[];
-
 // export: collectFieldUses
 export declare function collectFieldUses(xml: string): FieldUse[];
 
 // export: collectForeignPlaceholders
 export declare function collectForeignPlaceholders(text: string): string[];
-
-// export: collectRiskyFieldInstructions
-export declare function collectRiskyFieldInstructions(xml: string): string[];
 
 // export: collectSeqSequenceNames
 export declare function collectSeqSequenceNames(xml: string): string[];
@@ -3057,9 +3039,6 @@ export declare function findActiveContentRelationship(relsXml: string): string |
 
 // export: FOREIGN_PLACEHOLDER_RE
 export declare const FOREIGN_PLACEHOLDER_RE: RegExp;
-
-// export: hasAltChunkRelationship
-export declare function hasAltChunkRelationship(relsXml: string): boolean;
 
 // export: MAX_FOREIGN_PLACEHOLDERS
 export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
@@ -3112,6 +3091,9 @@ export declare function seqSequenceName(instruction: string): string | undefined
 
 // export: unzipDocx
 export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
+
+// export: wordprocessingPartNames
+export declare function wordprocessingPartNames(zip: PizZip): string[];
 ```
 
 ### Entry point `./vite`

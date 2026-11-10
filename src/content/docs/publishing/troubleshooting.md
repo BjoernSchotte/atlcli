@@ -15,6 +15,7 @@ into an issue.
 | `page-version-changed` | page changed during discovery | rerun `refresh`; the version fence is working |
 | `page-ambiguous-404` | provider cannot distinguish deletion from restricted access | restore access or investigate before allowing deletion |
 | asset blocked/missing | unsafe scheme, invalid bytes, or missing attachment | inspect the structured asset issue; never allow an unverified URL |
+| `unowned internal URL '<base>/favicon.svg'` or `'<base>/'` during `verify` | the site template links to a file or page the build did not produce; Starlight links a favicon and the site root on every page | add `public/favicon.svg` and a root page (`src/pages/index.astro`) to the Astro project, or remove the link from the template |
 
 ## Astro build failures
 
@@ -27,6 +28,10 @@ into an issue.
   operator-owned output.
 - A failed build should leave the previous output untouched; if it does not,
   stop and preserve the workspace for investigation.
+- **`publication bundle does not match its digest`** (or `publication page
+  '<id>' does not match its digest`): a file under the active bundle directory
+  was edited after `refresh`. The build recomputes every page and bundle
+  digest before Astro reads them. Run `refresh` again; never edit a bundle.
 
 ## Search failures
 
@@ -44,9 +49,27 @@ into an issue.
 - **Digest mismatch:** output was edited after build or the wrong build digest
   was selected.
 - **Private URL/active content:** content or a plugin emitted a forbidden sink;
-  remove it or add a safe renderer, never suppress the verifier.
-- **Edit-link origin:** use the provider relation returned by Confluence; do not
-  reconstruct an URL from a page id.
+  remove it or add a safe renderer, never suppress the verifier. The verifier
+  inspects markup only: elements, attribute names and values, link and resource
+  targets, and inline scripts. Page text or inline code that mentions
+  `onclick=`, `javascript:`, or a Confluence REST path is content and passes,
+  and so does a page whose route is `/cache/`, `/bundles/`, or `/staging/`.
+- **Edit link outside the trusted Confluence origin:** a template rendered an
+  `data-atlcli-edit-link` element that is not an `<a>` to the Confluence site
+  the bundle was refreshed from. Render the value of
+  `publicationEditLinkV1(bundle, page.sourceId)` unchanged; do not build a URL
+  from a page ID.
+- **Edit-link marker missing / in a page without a declared edit link:** the
+  template renders the link on the wrong pages. Render it exactly when
+  `publicationEditLinkV1` returns a value.
+- **Edit-link marker in disabled build:** the template hard-codes a link while
+  `editLink.provider` is `none`.
+- **Different edit-link policy:** `editLink` or `visibility` changed after the
+  last `refresh`. Refresh, then build again.
+- **Edit links are enabled but a page has none:** Confluence returned no usable
+  URL for it. With `fallback: "omit"` a page without an edit URL gets no link;
+  `open-page` falls back to the page view URL. The build manifest lists the
+  pages under `editLinks.includedSourceIds` and `omittedSourceIds`.
 
 ## Chart failures
 

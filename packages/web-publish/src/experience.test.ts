@@ -1,23 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
-  PUBLICATION_BUNDLE_SCHEMA_V1,
   PUBLICATION_EXPERIENCE_SCHEMA_V1,
   PUBLICATION_PROJECT_SCHEMA_V1,
   PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1,
-  STATIC_PUBLICATION_MANIFEST_SCHEMA_V1,
-  PublicationBuilderContractErrorV1,
   PublicationRendererRegistryErrorV1,
   createPublicationRendererRegistryV1,
   negotiatePublicationExperienceV1,
   negotiatePublicationRenderersV1,
   negotiatePublicationSearchV1,
-  planPublicationWebQualityV1,
-  runPublicationBuildV1,
-  type PublicationBuilderV1,
   type PublicationExperienceDescriptorV1,
   type PublicationProjectV1,
   type PublicationSearchProviderDescriptorV1,
-  type StaticPublicationManifestV1,
 } from "./index.js";
 
 const project = {
@@ -194,73 +187,6 @@ const diagramRenderer = {
   externalRuntimeData: false,
 } as const;
 
-const sourceSnapshot = {
-  sourceDigest: "source-sha256",
-  complete: true,
-  deletionAuthority: "complete-scan",
-  rootIds: ["100"],
-  pages: [{
-    sourceId: "100",
-    sourceVersion: "1",
-    representation: "atlas_doc_format",
-    position: 0,
-    depth: 0,
-    title: "Guide",
-    contentDigest: "content-sha256",
-    metadataDigest: "metadata-sha256",
-    assetMetadataDigest: "assets-sha256",
-    macroDependencyDigest: "no-live-dependencies",
-    state: "included",
-  }],
-} as const;
-
-const bundle = {
-  schema: PUBLICATION_BUNDLE_SCHEMA_V1,
-  bundleDigest: "bundle-sha256",
-  createdBy: { name: "atlcli", version: "0.17.2" },
-  sourceSnapshot,
-  sourcePolicyDigest: "policy-sha256",
-  complete: true,
-  rootIds: ["100"],
-  pages: [{ sourceId: "100", path: "pages/100.json", pageDigest: "page-sha256" }],
-  routes: [{
-    sourceId: "100",
-    route: "/guide/",
-    state: "active",
-    assignedBy: "generated",
-    previousRoutes: [],
-  }],
-  assets: [],
-  issues: [],
-} as const;
-
-const manifest = {
-  schema: STATIC_PUBLICATION_MANIFEST_SCHEMA_V1,
-  bundleDigest: "bundle-sha256",
-  builder: { id: "astro-static", version: "1.0.0", astroVersion: "7.1.6" },
-  projectDigest: "project-sha256",
-  configDigest: "config-sha256",
-  lockfileDigest: "lockfile-sha256",
-  base: "/docs",
-  outputProfile: "directory",
-  pages: [],
-  assets: [],
-  experience: { id: "atlcli.starlight", version: "1.0.0", digest: "experience-sha256" },
-  search: {
-    provider: "pagefind",
-    digest: "search-sha256",
-    files: [],
-    languages: ["en", "de"],
-    indexedSourceIds: ["100"],
-  },
-  seo: { digest: "seo-sha256" },
-  analytics: { provider: "none" },
-  editLinks: { provider: "none", includedSourceIds: [], omittedSourceIds: ["100"] },
-  removedOwnedPaths: [],
-  verification: { valid: true, checkedPages: 0, checkedAssets: 0, issues: [] },
-  buildDigest: "build-sha256",
-} as const satisfies StaticPublicationManifestV1;
-
 describe("publication experience and adapter contracts", () => {
   test("negotiate a complete experience, Pagefind provider, and renderer set", () => {
     const negotiatedExperience = negotiatePublicationExperienceV1(
@@ -357,128 +283,5 @@ describe("publication experience and adapter contracts", () => {
       "renderer-island-capability-mismatch",
       "renderer-nondeterministic",
     ]));
-  });
-
-  test("validate builder input, output, and identity invariants around the port", async () => {
-    const request = {
-      project,
-      bundle,
-      projectDigest: "project-sha256",
-      configDigest: "config-sha256",
-      lockfileDigest: "lockfile-sha256",
-    } as const;
-    const builder: PublicationBuilderV1 = {
-      id: "astro-static",
-      version: "1.0.0",
-      async build() { return { manifest, outputDirectory: "/workspace/site/dist" }; },
-    };
-    expect(await runPublicationBuildV1(builder, request))
-      .toEqual({ manifest, outputDirectory: "/workspace/site/dist" });
-
-    await expect(runPublicationBuildV1({
-      ...builder,
-      async build() {
-        return {
-          manifest: { ...manifest, bundleDigest: "wrong" },
-          outputDirectory: "/workspace/site/dist",
-        };
-      },
-    }, request)).rejects.toThrow("requested bundle digest");
-    await expect(runPublicationBuildV1({ ...builder, id: "other" }, request))
-      .rejects.toBeInstanceOf(PublicationBuilderContractErrorV1);
-  });
-
-  test("plan SEO, i18n, media, privacy analytics, and public edit links together", () => {
-    const qualityExperience = {
-      ...experience,
-      capabilities: [
-        ...experience.capabilities,
-        "seo",
-        "i18n",
-        "analytics-slot",
-        "edit-link",
-      ],
-    } as const;
-    const qualityProject = {
-      ...project,
-      visibility: "public",
-      seo: { ...project.seo, robots: "index" },
-      builder: { ...project.builder, site: "https://docs.example.com/" },
-      analytics: {
-        provider: "plausible",
-        endpoint: "https://analytics.example.com/api/event",
-        siteDomain: "docs.example.com",
-        pageviews: true,
-        events: ["outbound-link", "download"],
-        respectDoNotTrack: true,
-        searchTerms: false,
-      },
-      editLink: {
-        provider: "confluence",
-        label: "Edit in Confluence",
-        placement: "page-actions",
-        visibility: "all",
-        fallback: "open-page",
-        publicTenantDisclosureAcknowledged: true,
-      },
-    } as const;
-    const result = planPublicationWebQualityV1(qualityProject, qualityExperience);
-    expect(result.compatible).toBe(true);
-    expect(result.canonicalSite).toBe("https://docs.example.com");
-    expect(result.requiredExperienceCapabilities).toEqual([
-      "seo", "i18n", "analytics-slot", "edit-link",
-    ]);
-  });
-
-  test("reject unsafe or contradictory web-quality configuration", () => {
-    const result = planPublicationWebQualityV1({
-      ...project,
-      seo: { ...project.seo, robots: "index", feed: "rss" },
-      i18n: {
-        ...project.i18n,
-        defaultLocale: "fr",
-        locales: ["en", "de", "de"],
-        fallback: { en: "de", de: "en" },
-      },
-      media: { ...project.media, formats: ["webp", "webp"] },
-      analytics: {
-        provider: "plausible",
-        endpoint: "http://user:pass@analytics.example.com/event?secret=yes",
-        siteDomain: "https://docs.example.com/path",
-        pageviews: true,
-        events: ["search-open"],
-        respectDoNotTrack: true,
-        searchTerms: false,
-      },
-    }, { ...experience, capabilities: [] });
-    expect(result.compatible).toBe(false);
-    expect(new Set(result.issues.map((entry) => entry.code))).toEqual(new Set([
-      "site-required",
-      "internal-indexing",
-      "feed-requires-public",
-      "locale-set-invalid",
-      "locale-fallback-invalid",
-      "media-profile-mismatch",
-      "analytics-endpoint-invalid",
-      "analytics-domain-invalid",
-      "experience-capability-required",
-    ]));
-  });
-
-  test("require an explicit tenant disclosure before public Confluence edit links", () => {
-    const result = planPublicationWebQualityV1({
-      ...project,
-      visibility: "public",
-      builder: { ...project.builder, site: "https://docs.example.com" },
-      editLink: {
-        provider: "confluence",
-        label: "Edit in Confluence",
-        placement: "page-footer",
-        visibility: "all",
-        fallback: "omit",
-      },
-    }, { ...experience, capabilities: [...experience.capabilities, "seo", "i18n", "edit-link"] });
-    expect(result.issues.map((entry) => entry.code))
-      .toContain("public-edit-link-disclosure-required");
   });
 });

@@ -436,44 +436,6 @@ function lastStatusChange(issue: JiraIssue, at: Date): Date | null {
 }
 
 /**
- * Format sprint metrics for display.
- */
-export function formatSprintMetrics(metrics: SprintMetrics): string {
-  const lines: string[] = [];
-
-  lines.push(`Sprint: ${metrics.sprintName}`);
-  lines.push(`State: ${metrics.state}`);
-
-  if (metrics.startDate && metrics.endDate) {
-    const start = new Date(metrics.startDate).toLocaleDateString();
-    const end = new Date(metrics.endDate).toLocaleDateString();
-    lines.push(`Dates: ${start} - ${end}`);
-  }
-
-  lines.push("");
-  lines.push("Points:");
-  lines.push(`  Committed: ${metrics.committedPoints}`);
-  lines.push(`  Completed: ${metrics.completedPoints}`);
-  lines.push(`  Say-Do Ratio: ${metrics.sayDoRatio}%`);
-
-  lines.push("");
-  lines.push("Issues:");
-  lines.push(`  Total: ${metrics.totalIssues}`);
-  lines.push(`  Completed: ${metrics.completedIssues}`);
-  lines.push(`  Incomplete: ${metrics.incompleteIssues}`);
-
-  if (metrics.addedDuringSprint > 0 || metrics.removedDuringSprint > 0) {
-    lines.push("");
-    lines.push("Scope Change:");
-    lines.push(`  Added: ${metrics.addedDuringSprint} points (${metrics.addedIssues} issues)`);
-    lines.push(`  Removed: ${metrics.removedDuringSprint} points (${metrics.removedIssues} issues)`);
-    lines.push(`  Change: ${metrics.scopeChangePercent}%`);
-  }
-
-  return lines.join("\n");
-}
-
-/**
  * Generate a simple ASCII progress bar.
  */
 export function generateProgressBar(

@@ -169,7 +169,7 @@ export async function handleWikiSh(
   let confirmMutation = promptConfirm;
   try {
     // Dynamic import so every other atlcli command stays off just-bash's path
-    // (WP6.8; the measured effect is in spikes/vfs-just-bash/README.md).
+    // (WP6.8; the measured effect is in specs/confluence-virtual-filesystem/SPIKE-JUST-BASH.md).
     const { createWikiShell } = await import("../vfs/wiki-shell.js");
     const shell = await createWikiShell({
       vfs,

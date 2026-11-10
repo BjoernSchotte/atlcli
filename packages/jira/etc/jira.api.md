@@ -290,7 +290,6 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
-// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
 // @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
@@ -777,7 +776,6 @@ export declare class JiraClient {
     }>;
     private plainBody;
     textToAdf(text: string): AdfDocument;
-    adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
 // export: JiraClientOptions
@@ -1729,10 +1727,6 @@ export declare const DEFAULT_COLUMNS: string[];
 // export: DEFAULT_JQL_FUNCTION_LIMITS
 export declare const DEFAULT_JQL_FUNCTION_LIMITS: JqlFunctionLimits;
 
-// export: deleteTemplate
-// @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
-export declare function deleteTemplate(name: string): Promise<void>;
-
 // export: descriptionExcerpt
 export declare function descriptionExcerpt(description: unknown, max?: number): string | undefined;
 
@@ -1904,9 +1898,6 @@ export declare function formatAttachmentsTable(attachments: readonly JiraAttachm
 // export: formatElapsed
 export declare function formatElapsed(seconds: number): string;
 
-// export: formatSprintMetrics
-export declare function formatSprintMetrics(metrics: SprintMetrics): string;
-
 // export: formatWebhookEvent
 export declare function formatWebhookEvent(payload: JiraWebhookPayload): string;
 
@@ -1930,10 +1921,6 @@ export declare function getStoryPoints(issue: JiraIssue, pointsField: string): n
 
 // export: getTemplateFieldNames
 export declare function getTemplateFieldNames(template: JiraTemplate): string[];
-
-// export: getTemplatesDir
-// @deprecated getTemplatesDir — Use GlobalJiraTemplateStorage instead
-export declare function getTemplatesDir(): string;
 
 // export: getTimerPath
 export declare function getTimerPath(): string;
@@ -2070,7 +2057,6 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
-// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
 // @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
@@ -2557,7 +2543,6 @@ export declare class JiraClient {
     }>;
     private plainBody;
     textToAdf(text: string): AdfDocument;
-    adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
 // export: JiraClientOptions
@@ -2932,14 +2917,6 @@ export interface JiraTemplateFilter {
     includeOverridden?: boolean;
 }
 
-// export: JiraTemplateInfo
-export interface JiraTemplateInfo {
-    name: string;
-    description?: string;
-    createdAt: string;
-    sourceIssue?: string;
-}
-
 // export: JiraTemplateResolver
 export declare class JiraTemplateResolver {
     private global;
@@ -3229,16 +3206,8 @@ export declare function jqlStatusNames(raw: string, statuses: Array<Pick<JiraSta
 // export: latestSprints
 export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "endDate" | "completeDate">>(sprints: T[], count: number): T[];
 
-// export: listTemplates
-// @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead
-export declare function listTemplates(): Promise<JiraTemplateInfo[]>;
-
 // export: loadSprintHistory
 export declare function loadSprintHistory(client: JiraClient, sprint: Pick<JiraSprint, "id" | "originBoardId">, fields: string[]): Promise<JiraIssue[]>;
-
-// export: loadTemplate
-// @deprecated loadTemplate — Use JiraTemplateResolver.resolve() instead
-export declare function loadTemplate(name: string): Promise<JiraTemplate>;
 
 // export: loadTimer
 export declare function loadTimer(): TimerState | null;
@@ -3512,12 +3481,6 @@ export declare function roundTime(seconds: number, intervalMinutes: number, mode
 // export: sanitizeAttachmentFilename
 export declare function sanitizeAttachmentFilename(filename: string, id: string): string;
 
-// export: saveTemplate
-// @deprecated saveTemplate — Use JiraTemplateStorage.save() instead
-export declare function saveTemplate(template: JiraTemplate, options?: {
-    force?: boolean;
-}): Promise<void>;
-
 // export: saveTimer
 export declare function saveTimer(state: TimerState): void;
 
@@ -3650,16 +3613,6 @@ export interface StatusTransition {
     toName: string | null;
 }
 
-// export: stopTimer
-// @deprecated stopTimer — Destructive read: the timer state is deleted before the caller
-has had any chance to persist the elapsed time, so any subsequent failure
-loses it. Use {@link peekTimer} and call {@link clearTimer} only after the
-worklog has been confirmed created.
-export declare function stopTimer(): {
-    timer: TimerState;
-    elapsedSeconds: number;
-};
-
 // export: stripOrderBy
 export declare function stripOrderBy(jql: string): string;
 
@@ -3672,10 +3625,6 @@ export type TableFormat = {
 } | {
     kind: "csv";
 };
-
-// export: templateExists
-// @deprecated templateExists — Use JiraTemplateStorage.exists() instead
-export declare function templateExists(name: string): Promise<boolean>;
 
 // export: templateToCreateInput
 export declare function templateToCreateInput(template: JiraTemplate, projectKey: string, overrides?: {
@@ -4091,7 +4040,6 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
-// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
 // @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
@@ -4578,7 +4526,6 @@ export declare class JiraClient {
     }>;
     private plainBody;
     textToAdf(text: string): AdfDocument;
-    adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
 // export: JiraClientOptions
@@ -5530,10 +5477,6 @@ export declare const DEFAULT_COLUMNS: string[];
 // export: DEFAULT_JQL_FUNCTION_LIMITS
 export declare const DEFAULT_JQL_FUNCTION_LIMITS: JqlFunctionLimits;
 
-// export: deleteTemplate
-// @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
-export declare function deleteTemplate(name: string): Promise<void>;
-
 // export: descriptionExcerpt
 export declare function descriptionExcerpt(description: unknown, max?: number): string | undefined;
 
@@ -5705,9 +5648,6 @@ export declare function formatAttachmentsTable(attachments: readonly JiraAttachm
 // export: formatElapsed
 export declare function formatElapsed(seconds: number): string;
 
-// export: formatSprintMetrics
-export declare function formatSprintMetrics(metrics: SprintMetrics): string;
-
 // export: formatWebhookEvent
 export declare function formatWebhookEvent(payload: JiraWebhookPayload): string;
 
@@ -5731,10 +5671,6 @@ export declare function getStoryPoints(issue: JiraIssue, pointsField: string): n
 
 // export: getTemplateFieldNames
 export declare function getTemplateFieldNames(template: JiraTemplate): string[];
-
-// export: getTemplatesDir
-// @deprecated getTemplatesDir — Use GlobalJiraTemplateStorage instead
-export declare function getTemplatesDir(): string;
 
 // export: getTimerPath
 export declare function getTimerPath(): string;
@@ -5871,7 +5807,6 @@ export interface JiraChangelogEntry {
 }
 
 // export: JiraClient
-// @deprecated JiraClient.adfToText — Drops all structure. Use `adfToMarkdown`.
 // @deprecated JiraClient.textToAdf — Wraps the whole string in one paragraph. Use `markdownToAdf` or `toJiraRichText`.
 export declare class JiraClient {
     private baseUrl;
@@ -6358,7 +6293,6 @@ export declare class JiraClient {
     }>;
     private plainBody;
     textToAdf(text: string): AdfDocument;
-    adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
 // export: JiraClientOptions
@@ -6733,14 +6667,6 @@ export interface JiraTemplateFilter {
     includeOverridden?: boolean;
 }
 
-// export: JiraTemplateInfo
-export interface JiraTemplateInfo {
-    name: string;
-    description?: string;
-    createdAt: string;
-    sourceIssue?: string;
-}
-
 // export: JiraTemplateResolver
 export declare class JiraTemplateResolver {
     private global;
@@ -7030,16 +6956,8 @@ export declare function jqlStatusNames(raw: string, statuses: Array<Pick<JiraSta
 // export: latestSprints
 export declare function latestSprints<T extends Pick<JiraSprint, "startDate" | "endDate" | "completeDate">>(sprints: T[], count: number): T[];
 
-// export: listTemplates
-// @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead
-export declare function listTemplates(): Promise<JiraTemplateInfo[]>;
-
 // export: loadSprintHistory
 export declare function loadSprintHistory(client: JiraClient, sprint: Pick<JiraSprint, "id" | "originBoardId">, fields: string[]): Promise<JiraIssue[]>;
-
-// export: loadTemplate
-// @deprecated loadTemplate — Use JiraTemplateResolver.resolve() instead
-export declare function loadTemplate(name: string): Promise<JiraTemplate>;
 
 // export: loadTimer
 export declare function loadTimer(): TimerState | null;
@@ -7313,12 +7231,6 @@ export declare function roundTime(seconds: number, intervalMinutes: number, mode
 // export: sanitizeAttachmentFilename
 export declare function sanitizeAttachmentFilename(filename: string, id: string): string;
 
-// export: saveTemplate
-// @deprecated saveTemplate — Use JiraTemplateStorage.save() instead
-export declare function saveTemplate(template: JiraTemplate, options?: {
-    force?: boolean;
-}): Promise<void>;
-
 // export: saveTimer
 export declare function saveTimer(state: TimerState): void;
 
@@ -7451,16 +7363,6 @@ export interface StatusTransition {
     toName: string | null;
 }
 
-// export: stopTimer
-// @deprecated stopTimer — Destructive read: the timer state is deleted before the caller
-has had any chance to persist the elapsed time, so any subsequent failure
-loses it. Use {@link peekTimer} and call {@link clearTimer} only after the
-worklog has been confirmed created.
-export declare function stopTimer(): {
-    timer: TimerState;
-    elapsedSeconds: number;
-};
-
 // export: stripOrderBy
 export declare function stripOrderBy(jql: string): string;
 
@@ -7473,10 +7375,6 @@ export type TableFormat = {
 } | {
     kind: "csv";
 };
-
-// export: templateExists
-// @deprecated templateExists — Use JiraTemplateStorage.exists() instead
-export declare function templateExists(name: string): Promise<boolean>;
 
 // export: templateToCreateInput
 export declare function templateToCreateInput(template: JiraTemplate, projectKey: string, overrides?: {

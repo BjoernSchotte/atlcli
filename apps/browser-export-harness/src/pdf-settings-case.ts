@@ -33,15 +33,11 @@ import {
 } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes, sha256Hex } from "./digest.js";
-import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
+import { deterministicClock, noPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 import { buildPdfV4RuntimeFixture } from "./pdf-v4-runtime-fixture.js";
 
 const compiler = new HarnessPdfWorkerClient();
-
-const noAssets = failingPdfAssets(
-  "The deterministic PDF settings fixture has no external assets.",
-);
 
 async function compileWith(
   settings: PdfTemplateSettings,
@@ -57,7 +53,7 @@ async function compileWith(
       profile: "tagged",
       filename: "PDF Settings Conformance.pdf",
     },
-    { assets: noAssets, compiler, output, now: deterministicClock() },
+    { assets: noPdfAssets, compiler, output, now: deterministicClock() },
   );
   return { report, bytes: output.single.bytes };
 }

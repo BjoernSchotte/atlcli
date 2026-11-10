@@ -30,8 +30,5 @@
     "clean": "rm -rf dist",
     "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
-  },
-  "devDependencies": {
-    "jsondiffpatch": "0.7.7"
   }
 }

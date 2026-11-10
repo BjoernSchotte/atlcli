@@ -2804,11 +2804,8 @@ async function handleWorklogReport(
   // Build JQL to find issues with worklogs by this user in date range
   const jql = `worklogAuthor = ${userJql} AND worklogDate >= "${sinceDateStr}" AND worklogDate <= "${untilDateStr}"`;
 
-  // Search for matching issues
-  const searchResult = await client.search(jql, {
-    maxResults: 1000,
-    fields: ["key", "summary"],
-  });
+  // Every matching issue: one search request returns at most 100.
+  const searchResult = await fetchIssuePages(client, jql, Infinity, ["key", "summary"]);
 
   if (searchResult.issues.length === 0) {
     output(
@@ -2840,10 +2837,9 @@ async function handleWorklogReport(
     targetAccountId = currentUser.accountId;
   }
 
-  for (const issue of searchResult.issues) {
-    const worklogsResult = await client.getWorklogs(issue.key, { maxResults: 1000 });
-
-    for (const worklog of worklogsResult.worklogs) {
+  const worklogsByIssue = await mapInBatches(searchResult.issues, (issue) => issueWorklogs(client, issue.key));
+  for (const [index, issue] of searchResult.issues.entries()) {
+    for (const worklog of worklogsByIssue[index]!) {
       const worklogDate = new Date(worklog.started);
 
       // Filter by date range
@@ -3325,8 +3321,7 @@ async function handleEpicGet(
   const issue = await client.getIssue(epicKey);
 
   // Get child issues for progress
-  const childResult = await client.getEpicIssues(epicKey, { maxResults: 1000 });
-  const children = childResult.issues || [];
+  const children = await epicIssues(client, epicKey);
   const done = children.filter(
     (i) => i.fields.status?.statusCategory?.key === "done"
   ).length;
@@ -3417,11 +3412,9 @@ async function handleEpicIssues(
   }
 
   const client = await getClient(flags, opts);
-  const limit = Number(getFlag(flags, "limit") ?? 50);
   const status = getFlag(flags, "status");
 
-  const result = await client.getEpicIssues(epicKey, { maxResults: limit });
-  let issues = result.issues || [];
+  let issues = await epicIssues(client, epicKey, agileLimit(flags, opts));
 
   // Filter by status if specified
   if (status) {
@@ -3518,8 +3511,7 @@ async function handleEpicProgress(
   const epic = await client.getIssue(epicKey);
 
   // Get all child issues
-  const result = await client.getEpicIssues(epicKey, { maxResults: 1000 });
-  const issues = result.issues || [];
+  const issues = await epicIssues(client, epicKey);
 
   // Calculate progress by status category
   const byCategory: Record<string, number> = {};
@@ -3699,11 +3691,12 @@ async function handleAnalyzeVelocity(
   const sprintMetrics: SprintMetrics[] = [];
   const resolve = await sprintStatusResolver(client, flags, opts);
 
-  for (const sprint of sprintsResult.values) {
-    const issues = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
-    const metrics = calculateSprintMetrics(sprint as JiraSprint, issues, pointsField, issues, resolve);
-    sprintMetrics.push(metrics);
-  }
+  sprintMetrics.push(
+    ...(await mapInBatches(sprintsResult.values, async (sprint) => {
+      const issues = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
+      return calculateSprintMetrics(sprint as JiraSprint, issues, pointsField, issues, resolve);
+    }, 4))
+  );
 
   // Calculate velocity trend
   const trend = calculateVelocityTrend(
@@ -3932,11 +3925,12 @@ async function handleAnalyzePredictability(
   const sprintMetrics: SprintMetrics[] = [];
   const resolve = await sprintStatusResolver(client, flags, opts);
 
-  for (const sprint of sprintsResult.values) {
-    const issues = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
-    const metrics = calculateSprintMetrics(sprint as JiraSprint, issues, pointsField, issues, resolve);
-    sprintMetrics.push(metrics);
-  }
+  sprintMetrics.push(
+    ...(await mapInBatches(sprintsResult.values, async (sprint) => {
+      const issues = await loadSprintHistory(client, sprint, ["status", "summary", pointsField]);
+      return calculateSprintMetrics(sprint as JiraSprint, issues, pointsField, issues, resolve);
+    }, 4))
+  );
 
   // Calculate average say-do ratio
   const totalSayDo = sprintMetrics.reduce((sum, m) => sum + m.sayDoRatio, 0);
@@ -4059,16 +4053,67 @@ async function handleBulk(
   }
 }
 
+/** Issues a bulk operation works on when `--limit` is not given. */
+const BULK_DEFAULT_LIMIT = 1000;
+
 /**
- * Fetch all issues matching JQL (with pagination).
+ * The issues a bulk operation works on. More matches than the default cap is
+ * an error, not a silent cut; more than an explicit `--limit` is the caller's
+ * own bound and only noted on stderr.
  */
 async function fetchAllIssues(
   client: JiraClient,
   jql: string,
-  maxResults: number = 1000,
-  fields: string[] = ["summary", "status", "labels", "priority", "assignee"]
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
 ): Promise<JiraIssue[]> {
-  return (await fetchIssuePages(client, jql, maxResults, fields)).issues;
+  const explicit = getFlag(flags, "limit");
+  const limit = explicit === undefined ? BULK_DEFAULT_LIMIT : Number(explicit);
+  if (!Number.isInteger(limit) || limit < 1) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--limit must be a positive integer.");
+  }
+  const { issues, hasMore } = await fetchIssuePages(client, jql, limit, ["summary", "status", "labels", "priority", "assignee"]);
+  if (hasMore && explicit === undefined) {
+    fail(opts, 1, ERROR_CODES.USAGE, `More than ${limit} issues match; nothing was changed. Narrow the query, or pass --limit <n> to work on the first <n>.`);
+  }
+  if (hasMore) process.stderr.write(`Warning: more than ${limit} issues match; only the first ${limit} are processed (--limit).\n`);
+  return issues;
+}
+
+/** `fn` over `items`, `size` at a time; results in input order. */
+export async function mapInBatches<T, R>(items: T[], fn: (item: T) => Promise<R>, size = 10): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    results.push(...(await Promise.all(items.slice(i, i + size).map(fn))));
+  }
+  return results;
+}
+
+/** Every worklog of an issue; the endpoint pages by `startAt` and `total`. */
+async function issueWorklogs(client: JiraClient, key: string): Promise<JiraWorklog[]> {
+  const worklogs: JiraWorklog[] = [];
+  for (;;) {
+    const page = await client.getWorklogs(key, { startAt: worklogs.length, maxResults: 1000 });
+    worklogs.push(...page.worklogs);
+    if (page.worklogs.length === 0 || worklogs.length >= page.total) return worklogs;
+  }
+}
+
+/** An epic's issues, all of them or the first `limit`; the Agile API pages whatever `maxResults` asks for. */
+async function epicIssues(client: JiraClient, epicKey: string, limit = Infinity): Promise<JiraIssue[]> {
+  try {
+    const { values } = await pageAgile(async (startAt, maxResults) => {
+      const page = await client.getEpicIssues(epicKey, { startAt, maxResults });
+      return { values: page.issues ?? [], total: page.total };
+    }, limit);
+    return values;
+  } catch (error) {
+    // The Agile epic endpoint rejects team-managed ("next-gen") projects with a
+    // 400; there the children are the issues whose parent is the epic.
+    if ((error as { status?: number }).status !== 400) throw error;
+    const { issues } = await fetchIssuePages(client, `parent = "${epicKey.replace(/["\\]/g, "")}"`, limit);
+    return issues;
+  }
 }
 
 /**
@@ -4139,7 +4184,6 @@ async function handleBulkMove(
   const sprint = getFlag(flags, "sprint");
   const backlog = hasFlag(flags, "backlog");
   const dryRun = hasFlag(flags, "dry-run");
-  const limit = Number(getFlag(flags, "limit") ?? 1000);
 
   if (Boolean(sprint) === backlog) {
     fail(opts, 1, ERROR_CODES.USAGE, "Give exactly one of --sprint <id> or --backlog.");
@@ -4151,7 +4195,7 @@ async function handleBulkMove(
   const target = backlog ? "backlog" : `sprint ${sprintId}`;
 
   const client = await getClient(flags, opts);
-  const issues = await fetchAllIssues(client, jql, limit);
+  const issues = await fetchAllIssues(client, jql, flags, opts);
   const keys = issues.map((issue) => issue.key);
 
   if (dryRun || keys.length === 0) {
@@ -4281,7 +4325,6 @@ async function handleBulkEdit(
   const jql = resolveBulkJql(flags, opts);
   const setFlags = getFlags(flags, "set");
   const dryRun = hasFlag(flags, "dry-run");
-  const limit = Number(getFlag(flags, "limit") ?? 1000);
 
   if (setFlags.length === 0) {
     fail(opts, 1, ERROR_CODES.USAGE, "--set is required. Use --set field=value.");
@@ -4303,7 +4346,7 @@ async function handleBulkEdit(
   if (typeof fieldUpdates.assignee === "string") {
     fieldUpdates.assignee = await userFlag(client, fieldUpdates.assignee, opts);
   }
-  const issues = await fetchAllIssues(client, jql, limit);
+  const issues = await fetchAllIssues(client, jql, flags, opts);
 
   if (issues.length === 0) {
     output(
@@ -4354,14 +4397,13 @@ async function handleBulkTransition(
   const jql = resolveBulkJql(flags, opts);
   const toStatus = getFlag(flags, "to");
   const dryRun = hasFlag(flags, "dry-run");
-  const limit = Number(getFlag(flags, "limit") ?? 1000);
 
   if (!toStatus) {
     fail(opts, 1, ERROR_CODES.USAGE, "--to is required. Specify target status.");
   }
 
   const client = await getClient(flags, opts);
-  const issues = await fetchAllIssues(client, jql, limit);
+  const issues = await fetchAllIssues(client, jql, flags, opts);
 
   if (issues.length === 0) {
     output(
@@ -4438,14 +4480,13 @@ async function handleBulkLabel(
   const label = labelArgs[0] || getFlag(flags, "label");
   const jql = resolveBulkJql(flags, opts);
   const dryRun = hasFlag(flags, "dry-run");
-  const limit = Number(getFlag(flags, "limit") ?? 1000);
 
   if (!label) {
     fail(opts, 1, ERROR_CODES.USAGE, "Label is required.");
   }
 
   const client = await getClient(flags, opts);
-  const issues = await fetchAllIssues(client, jql, limit);
+  const issues = await fetchAllIssues(client, jql, flags, opts);
 
   if (issues.length === 0) {
     output(
@@ -4504,11 +4545,10 @@ async function handleBulkDelete(
   const jql = resolveBulkJql(flags, opts);
   const confirm = hasFlag(flags, "confirm");
   const dryRun = hasFlag(flags, "dry-run");
-  const limit = Number(getFlag(flags, "limit") ?? 1000);
 
 
   const client = await getClient(flags, opts);
-  const issues = await fetchAllIssues(client, jql, limit);
+  const issues = await fetchAllIssues(client, jql, flags, opts);
 
   if (issues.length === 0) {
     output(
@@ -4568,7 +4608,6 @@ async function handleBulkLinkPage(
   const jql = resolveBulkJql(flags, opts);
   const pageId = getFlag(flags, "page");
   const dryRun = hasFlag(flags, "dry-run");
-  const limit = Number(getFlag(flags, "limit") ?? 1000);
 
   if (!pageId) {
     fail(opts, 1, ERROR_CODES.USAGE, "--page is required.");
@@ -4576,7 +4615,7 @@ async function handleBulkLinkPage(
 
   // Get Jira client and fetch issues
   const jiraClient = await getClient(flags, opts);
-  const issues = await fetchAllIssues(jiraClient, jql, limit);
+  const issues = await fetchAllIssues(jiraClient, jql, flags, opts);
 
   if (issues.length === 0) {
     output(
@@ -4686,7 +4725,8 @@ Options:
   --jql <query>      JQL query to select issues
   --issues <keys>    Comma-separated issue keys instead of --jql
   --dry-run          Preview changes without applying
-  --limit <n>        Max issues to process (default: 1000)
+  --limit <n>        Work on the first <n> matches. Without it, more than
+                     1000 matches is an error and nothing is changed
   --confirm          Required for delete operations
   --page <id>        Confluence page ID (for link-page)
   --comment [text]   Comment on each issue: the link, or this text (Markdown)

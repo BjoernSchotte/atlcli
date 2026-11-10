@@ -474,61 +474,6 @@ describe("DOCX-to-PDF matching", () => {
     expect(safe.map(({ id }) => id)).not.toContain(nonBundled?.id);
   });
 
-  test("freezes direct-formatting thresholds and keeps qualifying aggregates review-only", async () => {
-    const base = {
-      analysisDigest: "analysis",
-      catalog: PDF_TEMPLATE_CAPABILITIES_V1,
-      styles: await resolveDocxStyles({ styles: [], usage: [] }),
-      theme: THEME,
-      sections: await resolveDocxSections({
-        evenAndOddHeaders: false,
-        sections: [],
-      }),
-      bundledFontFamilies: bundledFamilies,
-      centralColors: [],
-    };
-    const result = await matchDocxTemplate({
-      ...base,
-      directFormatting: [
-        {
-          role: "h1",
-          properties: { sizeHalfPoints: 40, bold: true },
-          count: 7,
-          totalCount: 10,
-          evidence: {
-            id: "evidence:direct.h1",
-            partRef: "document",
-            locator: "direct.h1",
-          },
-        },
-        {
-          role: "h2",
-          properties: { sizeHalfPoints: 30 },
-          count: 4,
-          totalCount: 5,
-          evidence: {
-            id: "evidence:direct.h2",
-            partRef: "document",
-            locator: "direct.h2",
-          },
-        },
-      ],
-    });
-    const direct = result.candidates.filter(({ group }) =>
-      group.id.startsWith("group:direct.")
-    );
-    expect(direct).toHaveLength(1);
-    expect(direct[0]).toMatchObject({
-      adoption: "review",
-      confidence: "corroborated",
-      valueNature: "inferred",
-    });
-    expect(DOCX_PDF_MAPPING_RULE_V1.directFormatting).toEqual({
-      minimumOccurrences: 5,
-      minimumDominance: 0.7,
-    });
-  });
-
   test("emits complete explainable candidates and business-facing review items", async () => {
     const match = await matchDocxTemplate({
       analysisDigest: "analysis",

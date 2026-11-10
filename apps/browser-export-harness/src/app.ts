@@ -2,6 +2,7 @@ import { runExport } from "@atlcli/docx/browser-entry";
 import "./style.css";
 import "./highlight-benchmark.js";
 import { CONFORMANCE_CASES } from "./conformance-registry.js";
+import { disposeHarnessPdfWorkers } from "./pdf-worker-client.js";
 
 if (typeof runExport !== "function") {
   throw new Error("The canonical DOCX browser entry did not expose runExport.");
@@ -19,6 +20,9 @@ function required<T extends Element>(selector: string): T {
 function message(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
+
+/** Cases in flight; their Workers are released once the last one settles. */
+let runningCases = 0;
 
 function bindCase(
   container: HTMLElement,
@@ -53,6 +57,7 @@ function bindCase(
     button.disabled = true;
     state.textContent = "running";
     result.textContent = "";
+    runningCases += 1;
     void run()
       .then((value) => {
         state.textContent = "passed";
@@ -64,6 +69,8 @@ function bindCase(
       })
       .finally(() => {
         button.disabled = false;
+        runningCases -= 1;
+        if (runningCases === 0) disposeHarnessPdfWorkers();
       });
   });
 }

@@ -1,3 +1,5 @@
+import { throwIfAborted } from "./job-internals.js";
+
 const UTF8_CHUNK_CODE_UNITS = 64 * 1024;
 
 /** Browser-safe incremental SHA-256 for large checkpoint strings and streams. */
@@ -125,9 +127,7 @@ export function sha256Utf8(
   const hasher = new IncrementalSha256();
   let byteLength = 0;
   for (const chunk of utf8Chunks(value)) {
-    if (signal?.aborted) {
-      throw signal.reason ?? new DOMException("DOCX fingerprinting was cancelled.", "AbortError");
-    }
+    if (signal) throwIfAborted(signal);
     hasher.update(chunk);
     byteLength += chunk.byteLength;
   }

@@ -5,7 +5,6 @@ export type PdfImportErrorCode =
   | "pdf/input-too-large"
   | "pdf/signature-invalid"
   | "pdf/wasm-digest-mismatch"
-  | "pdf/load-rejected"
   | "pdf/page-count-invalid"
   | "pdf/budget-exceeded"
   | "pdf/deadline-exceeded"

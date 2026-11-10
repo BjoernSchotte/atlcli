@@ -77,14 +77,9 @@ function assetsFor(blocks: ImportBlock[], doc: ImportedDocument): ImportAsset[] 
   return doc.assets.filter((a) => ids.has(a.id));
 }
 
-function collectTitles(page: ImportPagePlan, into: string[]): void {
-  into.push(page.title);
-  for (const child of page.children) collectTitles(child, into);
-}
-
-/** Bookmarks carried by a block (headings and paragraphs). */
+/** Bookmarks carried by a top-level block. */
 function blockBookmarks(block: ImportBlock): string[] {
-  return block.type === "heading" || block.type === "paragraph" ? (block.bookmarks ?? []) : [];
+  return block.bookmarks ?? [];
 }
 
 /**

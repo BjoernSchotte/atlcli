@@ -18,6 +18,8 @@ import type { ParsePagePropertiesDep, StorageToBlocksDep } from "./deps.js";
 
 const DEFAULT_CAP = 50;
 const HARD_CAP = 200;
+/** Page fetches in flight at once; rows and columns are still built in title order. */
+const FETCH_CONCURRENCY = 6;
 
 /**
  * Build the CQL from the macro's label/cql parameters.
@@ -63,7 +65,13 @@ export function pagePropertiesReportRenderer(deps: {
       const notes: ExportNote[] = [];
 
       try {
-        const matches = await ctx.confluence.searchCql(cql, { limit: HARD_CAP + 1 });
+        // Only DEFAULT_CAP rows are shown, and they are the first by title. Let
+        // the server order them so cap+1 hits suffice; a query that brings its
+        // own ORDER BY cannot be re-ordered, so it still needs the wide fetch.
+        const ownOrder = /\border\s+by\b/i.test(cql);
+        const matches = await ctx.confluence.searchCql(ownOrder ? cql : `${cql} order by title`, {
+          limit: (ownOrder ? HARD_CAP : DEFAULT_CAP) + 1,
+        });
         if (matches.length === 0) return { kind: "skip" };
 
         // Deterministic sort by title so repeated exports are byte-identical.
@@ -83,10 +91,14 @@ export function pagePropertiesReportRenderer(deps: {
         const rows: { title: string; props: Map<string, string> }[] = [];
         const columnOrder: string[] = [];
         const seenColumns = new Set<string>();
-        for (const page of shown) {
-          const fetched = ctx.confluence.getPageStorageById
-            ? await ctx.confluence.getPageStorageById(page.id)
-            : undefined;
+        const getById = ctx.confluence.getPageStorageById?.bind(ctx.confluence);
+        const storages: ({ storage: string } | undefined)[] = [];
+        for (let i = 0; getById && i < shown.length; i += FETCH_CONCURRENCY) {
+          const batch = shown.slice(i, i + FETCH_CONCURRENCY);
+          storages.push(...(await Promise.all(batch.map((page) => getById(page.id)))));
+        }
+        for (const [index, page] of shown.entries()) {
+          const fetched = storages[index];
           const props = new Map<string, string>();
           if (fetched) {
             for (const macro of deps.parsePageProperties(fetched.storage)) {

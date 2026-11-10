@@ -722,6 +722,16 @@ export function requestChatSteeringV1(input: {
   });
 }
 
+/** One normalizer for every stored resume envelope, so no writer can drop a field. */
+function normalizeResumeEnvelope(resume: ChatResumeEnvelopeV1): ChatResumeEnvelopeV1 {
+  const exactAnchors = normalizeExactAnchorResumeV1(resume.exactAnchors);
+  return {
+    request: normalizeResearchRequestV1(resume.request),
+    qualityPolicy: normalizeChatQualityPolicyV1(resume.qualityPolicy),
+    ...(exactAnchors ? { exactAnchors } : {}),
+  };
+}
+
 /** Bind presenter-requested steering to the active host-owned turn envelope. */
 export function bindChatSteeringResumeV1(input: {
   state: ChatInteractionStateV1;
@@ -743,13 +753,7 @@ export function bindChatSteeringResumeV1(input: {
     pendingSteering: {
       ...steering,
       turnId: id(input.turnId, "Chat steering turn ID"),
-      resume: {
-        request: normalizeResearchRequestV1(input.resume.request),
-        qualityPolicy: normalizeChatQualityPolicyV1(input.resume.qualityPolicy),
-        ...(normalizeExactAnchorResumeV1(input.resume.exactAnchors)
-          ? { exactAnchors: normalizeExactAnchorResumeV1(input.resume.exactAnchors) }
-          : {}),
-      },
+      resume: normalizeResumeEnvelope(input.resume),
     },
   });
 }
@@ -832,7 +836,6 @@ export function recordChatStreamInterruptionV1(input: {
   if (existing && existing.turnId !== input.turnId) {
     throw new ChatContractError("invalid-request", "Another Chat stream checkpoint is already pending.");
   }
-  const exactAnchors = normalizeExactAnchorResumeV1(input.resume.exactAnchors);
   return next(input.state, input.at, {
     streamInterruption: {
       kind: "stream-interruption",
@@ -840,11 +843,7 @@ export function recordChatStreamInterruptionV1(input: {
       turnId: id(input.turnId, "Chat stream interruption turn ID"),
       interruptedAt: iso(input.at, "Chat stream interruption time"),
       resumeAttempts: existing ? existing.resumeAttempts + 1 : 0,
-      resume: {
-        request: normalizeResearchRequestV1(input.resume.request),
-        qualityPolicy: normalizeChatQualityPolicyV1(input.resume.qualityPolicy),
-        ...(exactAnchors ? { exactAnchors } : {}),
-      },
+      resume: normalizeResumeEnvelope(input.resume),
     },
   });
 }
@@ -958,10 +957,7 @@ export function recordChatUserQuestionV1(input: {
       question,
       askedAt: iso(input.at, "Chat question time"),
       continuation: "graph-interrupt",
-      resume: {
-        request: normalizeResearchRequestV1(input.resume.request),
-        qualityPolicy: normalizeChatQualityPolicyV1(input.resume.qualityPolicy),
-      },
+      resume: normalizeResumeEnvelope(input.resume),
     },
   });
 }

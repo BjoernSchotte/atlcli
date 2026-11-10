@@ -255,6 +255,36 @@ describe("atlcli-dir", () => {
       await writeState(tempDir, state);
       expect((await readState(tempDir)).pages["100"]?.contentType).toBe("folder");
     });
+
+    test("a write that fails part-way leaves the stored state untouched", async () => {
+      await initAtlcliDirV2(tempDir, {
+        scope: { type: "space" },
+        space: "TEAM",
+        baseUrl: "https://example.atlassian.net",
+      });
+      const entry = (path: string) => ({
+        path,
+        title: "T",
+        spaceKey: "TEAM",
+        version: 1,
+        lastSyncedAt: "2026-01-01T00:00:00.000Z",
+        localHash: "h",
+        remoteHash: "h",
+        baseHash: "h",
+        syncState: "synced" as const,
+        parentId: null,
+        ancestors: [],
+      });
+      const state = { schemaVersion: 1 as const, lastSync: null, pathIndex: {} };
+      await writeState(tempDir, { ...state, pages: { "100": entry("a.md") } });
+
+      // Page 100 is dropped and 200 added before 300 violates the unique path.
+      await expect(
+        writeState(tempDir, { ...state, pages: { "200": entry("b.md"), "300": entry("b.md") } })
+      ).rejects.toThrow();
+
+      expect(Object.keys((await readState(tempDir)).pages)).toEqual(["100"]);
+    });
   });
 
   describe("writeConfig and readConfig", () => {

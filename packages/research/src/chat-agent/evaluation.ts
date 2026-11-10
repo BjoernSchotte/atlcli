@@ -1,4 +1,5 @@
 import type { ChatQualityModeV1 } from "../quality-policy.js";
+import { fnv1a32Utf8Hex } from "../hash.js";
 
 export const CHAT_EVALUATION_SCHEMA_V1 = "atlcli.chat-evaluation/v1" as const;
 
@@ -165,64 +166,6 @@ export interface ChatEvaluationMetricsV1 {
   finalMarkdownChars: number;
 }
 
-export interface ChatEvaluationRunInputV1 {
-  schema: typeof CHAT_EVALUATION_SCHEMA_V1;
-  variant: ChatEvaluationVariantV1;
-  scenario: Readonly<ChatEvaluationScenarioV1>;
-  scenarioFingerprint: string;
-}
-
-export interface ChatEvaluationComparisonResultV1 {
-  schema: typeof CHAT_EVALUATION_SCHEMA_V1;
-  scenarioId: string;
-  scenarioFingerprint: string;
-  providerEffortOnlyWorkflowEquivalent: boolean;
-  runs: Readonly<
-    Record<
-      ChatEvaluationVariantV1,
-      { observation: ChatEvaluationObservationV1; metrics: ChatEvaluationMetricsV1 }
-    >
-  >;
-}
-
-export interface ChatReleaseEvaluationComparisonResultV1 {
-  schema: typeof CHAT_EVALUATION_SCHEMA_V1;
-  scenarioId: string;
-  scenarioFingerprint: string;
-  runs: Readonly<Record<
-    ChatReleaseEvaluationVariantV1,
-    { observation: ChatEvaluationObservationV1; metrics: ChatEvaluationMetricsV1 }
-  >>;
-}
-
-export type ChatEvaluationVariantRunnerV1 = (
-  input: ChatEvaluationRunInputV1,
-) => Promise<ChatEvaluationObservationV1>;
-
-export type ChatReleaseEvaluationVariantRunnerV1 = (input: Readonly<{
-  schema: typeof CHAT_EVALUATION_SCHEMA_V1;
-  variant: ChatReleaseEvaluationVariantV1;
-  scenario: Readonly<ChatEvaluationScenarioV1>;
-  scenarioFingerprint: string;
-}>) => Promise<ChatEvaluationObservationV1>;
-
-const QUALITY_BY_VARIANT = {
-  "legacy-chat": "auto",
-  "quick-effort-only": "quick",
-  "auto-effort-only": "auto",
-  "deep-effort-only": "deep",
-} as const satisfies Record<ChatEvaluationVariantV1, ChatQualityModeV1>;
-
-const REASONING_BY_VARIANT = {
-  "legacy-chat": "balanced",
-  "quick-effort-only": "fast",
-  "auto-effort-only": "balanced",
-  "deep-effort-only": "thorough",
-} as const satisfies Record<
-  ChatEvaluationVariantV1,
-  ChatEvaluationObservationV1["providerReasoningPreference"]
->;
-
 const OBSERVATION_KEYS = new Set([
   "schema",
   "scenarioId",
@@ -349,24 +292,7 @@ function stableJson(value: unknown): string {
 }
 
 function fnv1a32(value: string): string {
-  let hash = 0x811c9dc5;
-  for (const byte of new TextEncoder().encode(value)) {
-    hash ^= byte;
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
-}
-
-function deepFreeze<T>(value: T): T {
-  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value as Record<string, unknown>)) {
-    deepFreeze(child);
-  }
-  return Object.freeze(value);
-}
-
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  return `fnv1a32:${fnv1a32Utf8Hex(value)}`;
 }
 
 function intersectionSize(left: Set<string>, right: Set<string>): number {
@@ -585,13 +511,6 @@ export function chatEvaluationScenarioFingerprintV1(
 ): string {
   const normalized = normalizeChatEvaluationScenarioV1(scenario);
   return fnv1a32(stableJson(normalized));
-}
-
-function assertScenarioAlreadyNormalized(scenario: ChatEvaluationScenarioV1): void {
-  const normalized = normalizeChatEvaluationScenarioV1(scenario);
-  if (stableJson(scenario) !== stableJson(normalized)) {
-    invalid("scenario is not normalized");
-  }
 }
 
 /** Strictly decode one body-free observation; unknown fields fail closed. */
@@ -905,199 +824,5 @@ export function scoreChatEvaluationV1(
     peakSupervisorInputTokens: observation.peakSupervisorInputTokens,
     latencyMs: observation.latencyMs,
     finalMarkdownChars: observation.finalMarkdownChars,
-  };
-}
-
-function assertWithinBudget(
-  observation: ChatEvaluationObservationV1,
-  budget: ChatEvaluationBudgetV1,
-): void {
-  if (
-    observation.calls.model > budget.maxModelCalls ||
-    observation.calls.ptc > budget.maxPtcCalls ||
-    observation.calls.http > budget.maxHttpCalls ||
-    observation.tokens.input > budget.maxInputTokens ||
-    observation.tokens.output > budget.maxOutputTokens ||
-    observation.modelCostMicros > budget.maxModelCostMicros ||
-    observation.peakSupervisorInputTokens > budget.maxPeakSupervisorInputTokens ||
-    observation.latencyMs > budget.maxDurationMs
-  ) {
-    invalid("observation exceeds the frozen scenario budget");
-  }
-}
-
-function workflowFingerprint(observation: ChatEvaluationObservationV1): string {
-  return fnv1a32(stableJson({
-    strategy: observation.strategy,
-    workflow: observation.workflow,
-  }));
-}
-
-/**
- * Run the current legacy path and provider-effort-only variants serially.
- * Serial execution prevents shared rate limits or cache state from changing the
- * comparison envelope. The scenario is deeply frozen before every runner call.
- */
-export async function runChatLegacyEffortComparisonV1(input: {
-  scenario: ChatEvaluationScenarioV1;
-  runners: Readonly<Record<ChatEvaluationVariantV1, ChatEvaluationVariantRunnerV1>>;
-}): Promise<ChatEvaluationComparisonResultV1> {
-  assertScenarioAlreadyNormalized(input.scenario);
-  const scenarioFingerprint = chatEvaluationScenarioFingerprintV1(input.scenario);
-  const runs = {} as ChatEvaluationComparisonResultV1["runs"] & Record<
-    ChatEvaluationVariantV1,
-    { observation: ChatEvaluationObservationV1; metrics: ChatEvaluationMetricsV1 }
-  >;
-  const workflowFingerprints: string[] = [];
-  for (const variant of CHAT_EVALUATION_VARIANTS_V1) {
-    const runner = input.runners[variant];
-    if (typeof runner !== "function") invalid(`missing ${variant} runner`);
-    const runnerInput = deepFreeze({
-      schema: CHAT_EVALUATION_SCHEMA_V1,
-      variant,
-      scenario: cloneJson(input.scenario),
-      scenarioFingerprint,
-    } satisfies ChatEvaluationRunInputV1);
-    const observed = await runner(runnerInput);
-    const observation = normalizeChatEvaluationObservationV1(
-      observed,
-      input.scenario,
-    );
-    if (
-      observation.scenarioId !== input.scenario.id ||
-      observation.scenarioFingerprint !== scenarioFingerprint ||
-      observation.variant !== variant
-    ) {
-      invalid(`${variant} returned a foreign evaluation identity`);
-    }
-    if (
-      observation.qualityMode !== QUALITY_BY_VARIANT[variant] ||
-      observation.providerReasoningPreference !== REASONING_BY_VARIANT[variant]
-    ) {
-      invalid(`${variant} changed its provider-effort-only policy`);
-    }
-    if (
-      observation.workflow.runtimePath !== "legacy-chat-via-research" ||
-      observation.strategy.execution !== "direct" ||
-      observation.workflow.rootExecutions !== 1 ||
-      observation.workflow.subagentTasks !== 0 ||
-      observation.workflow.synthesizerTasks !== 0 ||
-      observation.workflow.researchReportFinalizations !== 1
-    ) {
-      invalid(`${variant} is not the frozen legacy direct workflow`);
-    }
-    assertWithinBudget(observation, input.scenario.budget);
-    workflowFingerprints.push(workflowFingerprint(observation));
-    runs[variant] = {
-      observation,
-      metrics: scoreChatEvaluationV1(input.scenario, observation),
-    };
-  }
-  return {
-    schema: CHAT_EVALUATION_SCHEMA_V1,
-    scenarioId: input.scenario.id,
-    scenarioFingerprint,
-    providerEffortOnlyWorkflowEquivalent:
-      new Set(workflowFingerprints).size === 1,
-    runs,
-  };
-}
-
-const RELEASE_QUALITY_BY_VARIANT_V1 = {
-  "legacy-chat": "auto",
-  quick: "quick",
-  auto: "auto",
-  deep: "deep",
-  "deep-research": "deep",
-} as const satisfies Record<
-  ChatReleaseEvaluationVariantV1,
-  ChatQualityModeV1
->;
-
-const RELEASE_RUNTIME_BY_VARIANT_V1 = {
-  "legacy-chat": "legacy-chat-via-research",
-  quick: "chat-agent",
-  auto: "chat-agent",
-  deep: "chat-agent",
-  "deep-research": "deep-research",
-} as const satisfies Record<
-  ChatReleaseEvaluationVariantV1,
-  ChatEvaluationObservationV1["workflow"]["runtimePath"]
->;
-
-/**
- * Compare the legacy path, all three Chat qualities, and explicit Deep Research
- * inside one frozen, serial envelope. The evaluator records body-free metrics;
- * it never persists source bodies or model prose.
- */
-export async function runChatReleaseComparisonV1(input: {
-  scenario: ChatEvaluationScenarioV1;
-  runners: Readonly<Record<
-    ChatReleaseEvaluationVariantV1,
-    ChatReleaseEvaluationVariantRunnerV1
-  >>;
-}): Promise<ChatReleaseEvaluationComparisonResultV1> {
-  assertScenarioAlreadyNormalized(input.scenario);
-  const scenarioFingerprint = chatEvaluationScenarioFingerprintV1(input.scenario);
-  const runs = {} as Record<
-    ChatReleaseEvaluationVariantV1,
-    { observation: ChatEvaluationObservationV1; metrics: ChatEvaluationMetricsV1 }
-  >;
-  for (const variant of CHAT_RELEASE_EVALUATION_VARIANTS_V1) {
-    const runner = input.runners[variant];
-    if (typeof runner !== "function") invalid(`missing ${variant} runner`);
-    const runnerInput = deepFreeze({
-      schema: CHAT_EVALUATION_SCHEMA_V1,
-      variant,
-      scenario: cloneJson(input.scenario),
-      scenarioFingerprint,
-    });
-    const observation = normalizeChatEvaluationObservationV1(
-      await runner(runnerInput),
-      input.scenario,
-    );
-    if (
-      observation.scenarioId !== input.scenario.id ||
-      observation.scenarioFingerprint !== scenarioFingerprint ||
-      observation.variant !== variant
-    ) {
-      invalid(`${variant} returned a foreign evaluation identity`);
-    }
-    if (observation.qualityMode !== RELEASE_QUALITY_BY_VARIANT_V1[variant]) {
-      invalid(`${variant} changed its quality mode`);
-    }
-    if (
-      observation.workflow.runtimePath !== RELEASE_RUNTIME_BY_VARIANT_V1[variant]
-    ) {
-      invalid(`${variant} used the wrong product runtime`);
-    }
-    const reportFinalizations = observation.workflow.researchReportFinalizations;
-    if (
-      (variant === "quick" || variant === "auto" || variant === "deep") &&
-      reportFinalizations !== 0
-    ) {
-      invalid(`${variant} finalized a Research report`);
-    }
-    if (variant === "deep-research" && reportFinalizations !== 1) {
-      invalid("deep-research did not finalize exactly one Research report");
-    }
-    if (
-      variant !== "deep-research" &&
-      observation.strategy.execution !==
-        input.scenario.gold.expectedStrategyByMode[observation.qualityMode]
-    ) {
-      invalid(`${variant} used the wrong accepted strategy`);
-    }
-    assertWithinBudget(observation, input.scenario.budget);
-    runs[variant] = {
-      observation,
-      metrics: scoreChatEvaluationV1(input.scenario, observation),
-    };
-  }
-  return {
-    schema: CHAT_EVALUATION_SCHEMA_V1,
-    scenarioId: input.scenario.id,
-    scenarioFingerprint,
-    runs,
   };
 }

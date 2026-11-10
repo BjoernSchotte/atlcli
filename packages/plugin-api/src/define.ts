@@ -2,7 +2,7 @@
  * Helper functions for defining plugins.
  */
 
-import type { AtlcliPlugin, CommandDefinition, Subcommand, FlagDefinition } from "./types.js";
+import type { AtlcliPlugin, CommandDefinition } from "./types.js";
 
 /**
  * Define an atlcli plugin.
@@ -57,29 +57,6 @@ export function definePlugin(plugin: AtlcliPlugin): AtlcliPlugin {
 export function defineCommand(command: CommandDefinition): CommandDefinition {
   validateCommand(command);
   return command;
-}
-
-/**
- * Helper to define a subcommand.
- */
-export function defineSubcommand(subcommand: Subcommand): Subcommand {
-  if (!subcommand.name) {
-    throw new Error("Subcommand must have a name");
-  }
-  if (!subcommand.handler) {
-    throw new Error(`Subcommand "${subcommand.name}" must have a handler`);
-  }
-  return subcommand;
-}
-
-/**
- * Helper to define a flag.
- */
-export function defineFlag(flag: FlagDefinition): FlagDefinition {
-  if (!flag.name) {
-    throw new Error("Flag must have a name");
-  }
-  return flag;
 }
 
 function validateCommand(cmd: CommandDefinition): void {

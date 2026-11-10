@@ -84,7 +84,7 @@ cat handbook.pdf | atlcli wiki import - --format pdf --space TEAM
 | `--restriction inherit\|private\|explicit` | Page visibility. `explicit` takes `--viewer` / `--editor` as `account:<id>` or `group-id:<id>` |
 | `--staging-parent <title>` | Import below a new private parent page |
 | `--label <name>` | Labels applied to the root page. Repeatable |
-| `--content-property k=v` | `atlcli.*` page metadata. Repeatable |
+| `--content-property k=v` | `atlcli.*` page metadata. Repeatable. Only `true`/`false`/`null` and plain decimals are typed; `0012` or `0x1F` stay strings |
 
 With `--restriction private` or `explicit` the page is created empty, the
 restriction is applied and read back, and only then does content land.
@@ -154,13 +154,20 @@ atlcli wiki import --manifest batch.yaml --confirm --resume
 ```
 
 - A directory imports every `.docx` directly inside it. A `.zip` of `.docx`
-  files works too.
+  files works too (up to 200 MB; macOS `__MACOSX/` and `._` entries are skipped).
 - `--title` is rejected in batch mode. Titles come from each document.
 - Batches (also `--manifest`) reject `--restriction`, `--viewer`, `--editor`,
   `--staging-parent`, `--label`, `--content-property`, `--title-conflict rename`,
   `--update-page` and `--expect-version`; import single files to use them.
+- `--manifest` takes space, parent, titles, split levels and recipe from the
+  manifest. `--space`, `--parent`, `--split`, `--title`, `--skip-existing`,
+  `--recipe`/`--recipe-id`, the policy flags (`--map-style`, `--revisions`,
+  `--unsupported`, `--comments`, `--overrides`) and file arguments are
+  rejected with it; the error names the manifest field to set.
 - Each file is its own transaction. A failure rolls back that file only and
-  the batch continues. The exit code is non-zero if any file failed.
+  the batch continues. The exit code is non-zero if any file failed. Pages a
+  failed rollback could not delete are named in that file's `error` and
+  listed as `orphanedPageIds` (manifest: the failed item's `pageIds`).
 - A killed batch is resumed with `--skip-existing` (skips existing titles) or,
   for a manifest, `--resume` (state file next to the manifest).
 

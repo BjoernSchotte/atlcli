@@ -189,14 +189,6 @@
       "skipped": 0
     },
     {
-      "file": "apps/cli/src/commands/export-adf-source.test.ts",
-      "durationSeconds": 0.017526,
-      "tests": 8,
-      "passed": 8,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "apps/cli/src/commands/export-auth.test.ts",
       "durationSeconds": 0.001085,
       "tests": 9,
@@ -1165,14 +1157,6 @@
       "skipped": 0
     },
     {
-      "file": "apps/extension/tests/docx/rasterizer-report.test.ts",
-      "durationSeconds": 0.00010400000000000001,
-      "tests": 2,
-      "passed": 2,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "apps/extension/tests/docx/report-view.test.tsx",
       "durationSeconds": 0.013394999999999999,
       "tests": 5,
@@ -1977,14 +1961,6 @@
       "durationSeconds": 0.000079,
       "tests": 2,
       "passed": 2,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
-      "file": "apps/extension/tests/wasm-smoke.test.ts",
-      "durationSeconds": 0.00046199999999999995,
-      "tests": 3,
-      "passed": 3,
       "failed": 0,
       "skipped": 0
     },
@@ -3717,14 +3693,6 @@
       "skipped": 0
     },
     {
-      "file": "packages/export-wiring/src/jobs/checkpointed-source-pipeline.test.ts",
-      "durationSeconds": 0.019676000000000003,
-      "tests": 10,
-      "passed": 10,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "packages/export-wiring/src/jobs/confluence-job-resolve-input.test.ts",
       "durationSeconds": 0.009887,
       "tests": 8,
@@ -3773,14 +3741,6 @@
       "skipped": 0
     },
     {
-      "file": "packages/export-wiring/src/jobs/streamed-asset.test.ts",
-      "durationSeconds": 0.0020559999999999997,
-      "tests": 4,
-      "passed": 4,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "packages/export-wiring/src/jobs/tree-body-spool.test.ts",
       "durationSeconds": 0.004716,
       "tests": 4,
@@ -3793,14 +3753,6 @@
       "durationSeconds": 0.126275,
       "tests": 16,
       "passed": 16,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
-      "file": "packages/export-wiring/src/jobs/web-macro-resolution.test.ts",
-      "durationSeconds": 0.015929,
-      "tests": 7,
-      "passed": 7,
       "failed": 0,
       "skipped": 0
     },
@@ -4325,14 +4277,6 @@
       "skipped": 0
     },
     {
-      "file": "packages/pdf/src/callout-accessibility.test.ts",
-      "durationSeconds": 0.000083,
-      "tests": 2,
-      "passed": 2,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "packages/pdf/src/cross-engine-table-width.test.ts",
       "durationSeconds": 0.011604,
       "tests": 2,
@@ -4693,14 +4637,6 @@
       "skipped": 0
     },
     {
-      "file": "packages/research/src/chat-agent/release-gates.test.ts",
-      "durationSeconds": 0.057534999999999996,
-      "tests": 3,
-      "passed": 3,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "packages/research/src/chat-agent/retrieval-plan.test.ts",
       "durationSeconds": 0.019952999999999995,
       "tests": 23,
@@ -4901,14 +4837,6 @@
       "skipped": 0
     },
     {
-      "file": "packages/research/src/message-lineage.test.ts",
-      "durationSeconds": 0.054127999999999996,
-      "tests": 4,
-      "passed": 4,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "packages/research/src/model-budget-middleware.test.ts",
       "durationSeconds": 0.002585,
       "tests": 2,
@@ -5093,14 +5021,6 @@
       "skipped": 0
     },
     {
-      "file": "packages/research/src/state-lifetime-baseline.test.ts",
-      "durationSeconds": 0.000247,
-      "tests": 3,
-      "passed": 3,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "packages/research/src/task-ledger.test.ts",
       "durationSeconds": 0.0024519999999999998,
       "tests": 6,
@@ -5145,14 +5065,6 @@
       "durationSeconds": 1.2220659999999999,
       "tests": 2,
       "passed": 2,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
-      "file": "packages/research/src/turn-context.test.ts",
-      "durationSeconds": 0.006257,
-      "tests": 1,
-      "passed": 1,
       "failed": 0,
       "skipped": 0
     },
@@ -5237,14 +5149,6 @@
       "skipped": 0
     },
     {
-      "file": "packages/template-pack/src/validate.test.ts",
-      "durationSeconds": 0.007859,
-      "tests": 6,
-      "passed": 6,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "packages/web-publish-astro/src/analytics.test.ts",
       "durationSeconds": 0.000855,
       "tests": 3,
@@ -5277,14 +5181,6 @@
       "skipped": 0
     },
     {
-      "file": "packages/web-publish-astro/src/edit-links.test.ts",
-      "durationSeconds": 0.00048399999999999995,
-      "tests": 2,
-      "passed": 2,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
       "file": "packages/web-publish-astro/src/loader.test.ts",
       "durationSeconds": 0.892013,
       "tests": 20,
@@ -5313,14 +5209,6 @@
       "durationSeconds": 0.000479,
       "tests": 1,
       "passed": 1,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
-      "file": "packages/web-publish-astro/src/prefetch.test.ts",
-      "durationSeconds": 0.000559,
-      "tests": 2,
-      "passed": 2,
       "failed": 0,
       "skipped": 0
     },
@@ -5385,14 +5273,6 @@
       "durationSeconds": 43.271049999999995,
       "tests": 8,
       "passed": 8,
-      "failed": 0,
-      "skipped": 0
-    },
-    {
-      "file": "packages/web-publish/src/cache.test.ts",
-      "durationSeconds": 0.001632,
-      "tests": 2,
-      "passed": 2,
       "failed": 0,
       "skipped": 0
     },

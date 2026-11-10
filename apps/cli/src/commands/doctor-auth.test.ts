@@ -46,6 +46,12 @@ beforeAll(async () => {
           deploymentType: "data-center",
           auth: { type: "bearer" },
         },
+        // Unreachable on purpose: a doctor run that ignores --profile checks "active" and passes.
+        other: {
+          name: "other",
+          deploymentType: "data-center",
+          auth: { type: "bearer" },
+        },
       },
     }),
   );
@@ -114,5 +120,22 @@ describe("doctor credential resolution", () => {
       message: "Profile 'active' missing credentials",
     });
     expect(requestPaths).toEqual([]);
+  });
+
+  it("checks the profile named by --profile, not the current one", async () => {
+    const other = await runDoctor(["--profile", "other"], "fixture-token");
+    expect(other.exitCode).toBe(1);
+    expect(JSON.parse(other.stdout).checks.find((check: { name: string }) => check.name === "active_profile")).toMatchObject({
+      status: "fail",
+      message: "Profile 'other' missing baseUrl",
+    });
+    expect(requestPaths).toEqual([]);
+
+    const missing = await runDoctor(["--profile", "nope"], "fixture-token");
+    expect(missing.exitCode).toBe(1);
+    expect(JSON.parse(missing.stdout).checks.find((check: { name: string }) => check.name === "active_profile")).toMatchObject({
+      status: "fail",
+      message: "Profile 'nope' not found",
+    });
   });
 });

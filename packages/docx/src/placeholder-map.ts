@@ -298,8 +298,6 @@ const SUPPORTED_LOGO = new Set<string>(["$scroll.spacelogo", "$scroll.globallogo
  */
 const SUPPORTED_INCLUDE = new Set<string>(["$scroll.includepage"]);
 
-const UNSUPPORTED_EXACT: Record<string, string> = {};
-
 const UNSUPPORTED_PREFIXES: { prefix: string; reason: string }[] = [
   {
     prefix: "$scroll.jsoncontentproperty",
@@ -316,18 +314,6 @@ const UNSUPPORTED_PREFIXES: { prefix: string; reason: string }[] = [
       "metadata values live in a third-party app; map the key to a content property in the export settings to resolve it",
   },
 ];
-
-/**
- * `$adhocState` is deliberately absent (Björn, 2026-07-16: "bauen wir aus").
- *
- * It is still MATCHED by the scan regex on purpose — dropping it from detection
- * would mean the resolver never sees it, so it would never be blanked and the
- * literal `$adhocState` would survive into the exported document, breaking the
- * never-a-literal invariant. Without a curated entry it falls through to the
- * unrecognized→unsupported branch below: empty value + report line, just with a
- * generic reason instead of a Comala-specific one.
- */
-const NEVER_EXACT: Record<string, string> = {};
 
 const NEVER_PREFIXES: { prefix: string; reason: string }[] = [
   { prefix: "$scroll.custom", reason: "Scroll Documents app — not integrated" },
@@ -359,12 +345,6 @@ export function classifyPlaceholder(raw: string): PlaceholderClass {
     };
   }
 
-  if (base in UNSUPPORTED_EXACT) {
-    return { base, status: "unsupported", dependency: "none", reason: UNSUPPORTED_EXACT[base] };
-  }
-  if (base in NEVER_EXACT) {
-    return { base, status: "never", dependency: "none", reason: NEVER_EXACT[base] };
-  }
   for (const { prefix, reason } of UNSUPPORTED_PREFIXES) {
     if (base === prefix || base.startsWith(`${prefix}.`)) {
       return { base, status: "unsupported", dependency: "none", reason };
@@ -378,6 +358,9 @@ export function classifyPlaceholder(raw: string): PlaceholderClass {
 
   // Any other `$scroll.*` we do not recognize: treat as unsupported (empty +
   // report) rather than leaking the literal — the pinning invariant.
+  // `$adhocState` lands here on purpose (Björn, 2026-07-16: "bauen wir aus"):
+  // the scan regex still matches it so it is blanked, never left as a literal;
+  // it just carries the generic reason instead of a Comala-specific one.
   return {
     base,
     status: "unsupported",

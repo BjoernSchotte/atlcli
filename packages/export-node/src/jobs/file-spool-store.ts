@@ -50,7 +50,7 @@ export class FileExportSpoolStore implements ExportSpoolStore {
     const collected = await streamToDurableTemp(this.#dataPath(ref), source, limits.maxObjectBytes, options?.signal);
     const lease = await this.#lock.acquire({ signal: options?.signal, label: "spool-put" });
     try {
-      const closed = await this.#closed(ref);
+      const closed = await this.isNamespaceClosed(ref.jobId, ref.leaseEpoch);
       if (closed) throw new Error("The spool namespace is closed against late writes.");
       const markers = (await readJsonFiles<SpoolMarkerV1>(this.#objectsDir)).map((entry) => entry.value);
       const existing = markers.find((m) => sameRef(m.ref, ref));
@@ -110,9 +110,10 @@ export class FileExportSpoolStore implements ExportSpoolStore {
       return { objectsDeleted, bytesDeleted };
     } finally { await lease.release(); }
   }
-  async #closed(ref: SpoolRefV1): Promise<boolean> {
-    if ((await readJsonFile<ClosedMarkerV1>(this.#jobClosedPath(ref.jobId)))?.jobId === ref.jobId) return true;
-    const epoch = await readJsonFile<ClosedMarkerV1>(this.#epochClosedPath(ref.jobId, ref.leaseEpoch));
-    return epoch?.jobId === ref.jobId && epoch.leaseEpoch === ref.leaseEpoch;
+  /** True once the epoch (or the whole job) is closed against late writers. Reads two computable marker paths; takes no lock. */
+  async isNamespaceClosed(jobId: string, leaseEpoch: number): Promise<boolean> {
+    if ((await readJsonFile<ClosedMarkerV1>(this.#jobClosedPath(jobId)))?.jobId === jobId) return true;
+    const epoch = await readJsonFile<ClosedMarkerV1>(this.#epochClosedPath(jobId, leaseEpoch));
+    return epoch?.jobId === jobId && epoch.leaseEpoch === leaseEpoch;
   }
 }

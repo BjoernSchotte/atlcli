@@ -14,6 +14,7 @@ import {
   chatScopeFingerprintV1,
   completeChatTurnV1,
   createChatSessionV1,
+  interruptChatTurnV1,
   parseChatSessionV1,
   pauseChatTurnV1,
   renderChatTurnContextV1,
@@ -319,6 +320,41 @@ describe("durable Chat session state", () => {
     expect(resumed.conversation.recentTurns.at(-1)?.status).toBe("running");
     expect(buildChatTurnContextV1(resumed, "research-turn:hitl").current.turnId)
       .toBe("research-turn:hitl");
+  });
+
+  test("interrupting a waiting turn terminates it and keeps the session parseable", async () => {
+    const initial = session();
+    const fingerprint = await chatScopeFingerprintV1({
+      scope: scope("DEMO"),
+      scopeBindings: [binding("DEMO")],
+    });
+    const running = beginChatTurnV1({
+      session: initial,
+      expectedSessionRevision: initial.revision,
+      turnId: "research-turn:hitl",
+      objective: "Ask only if a material choice remains.",
+      qualityMode: "auto",
+      scopeFingerprint: fingerprint,
+      startedAt: "2026-08-06T08:00:00.000Z",
+    });
+    const waiting = pauseChatTurnV1({
+      session: running,
+      expectedSessionRevision: running.revision,
+      turnId: "research-turn:hitl",
+      at: "2026-08-06T08:00:01.000Z",
+    });
+    const interrupted = interruptChatTurnV1({
+      session: waiting,
+      expectedSessionRevision: waiting.revision,
+      turnId: "research-turn:hitl",
+      status: "failed",
+      at: "2026-08-06T08:00:02.000Z",
+    });
+    const turn = interrupted.conversation.recentTurns.at(-1);
+    expect(turn?.status).toBe("failed");
+    expect(turn?.waitingReason).toBeUndefined();
+    expect(interrupted.operations.activeTurnId).toBeUndefined();
+    expect(parseChatSessionV1(JSON.parse(JSON.stringify(interrupted)))).toEqual(interrupted);
   });
 
   test("fences a steering checkpoint from HITL or generic continuation", async () => {

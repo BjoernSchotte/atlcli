@@ -21,6 +21,7 @@ import {
 } from "./outline.js";
 import type { ResearchCoverageTargetV1 } from "./brief.js";
 import type { ResearchWorkspace } from "./workspace.js";
+import { sha256Hex as hash } from "./hash.js";
 
 /** The three private data namespaces exposed by a durable host. */
 export interface ResearchDataStoreConformanceWorkspacesV1 {
@@ -120,11 +121,6 @@ async function evidence(issueKey: string, text: string, capturedAt: string) {
     scopeBindings: BINDINGS,
     capturedAt,
   });
-}
-
-async function hash(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function claim(input: {

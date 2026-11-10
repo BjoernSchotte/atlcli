@@ -8,8 +8,8 @@
  *
  * Scope is deliberately narrow: classic and stream cross-reference sections
  * (including /Prev chains and hybrid /XRefStm), object streams, FlateDecode with
- * PNG/TIFF predictors, and a full-file object scan when the cross-reference
- * data is unusable. Encrypted documents are rejected by the caller before this
+ * PNG predictors (the TIFF predictor is rejected as unsupported), and a
+ * full-file object scan when the cross-reference data is unusable. Encrypted documents are rejected by the caller before this
  * reader runs. It is pure TypeScript and runs unchanged in Node, Bun and
  * browsers.
  */
@@ -603,7 +603,13 @@ export class PdfObjectReader {
       }
     }
     for (const [num] of this.xref) {
-      const d = this.dict({ kind: "ref", num, gen: 0 });
+      let d: PdfDict | null;
+      try {
+        d = this.dict({ kind: "ref", num, gen: 0 });
+      } catch {
+        // One unreadable object must not hide a readable catalog after it.
+        continue;
+      }
       if (d && nameOf(d.entries.get("Type")) === "Catalog") {
         return { kind: "dict", entries: new Map<string, PdfValue>([["Root", { kind: "ref", num, gen: 0 }]]) };
       }

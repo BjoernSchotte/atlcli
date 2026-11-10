@@ -281,22 +281,56 @@ async function publishReport(
   }
 
   const page = await ctx.confluence.getPageMetadata(pageId);
-  output({ schemaVersion: "1", action, title, space, pageId, url: page.url, version: page.version, template: templateInfo, issues: data.issues.length }, opts);
+  const result = { schemaVersion: "1", action, title, space, pageId, url: page.url, version: page.version, template: templateInfo, issues: data.issues.length };
 
   const exportPath = getFlag(flags, "export");
-  if (exportPath) {
-    // Same code path as `atlcli wiki export`; with --json its report follows
-    // the page result as a second JSON document.
-    const { handleExport } = await import("./export.js");
-    const exportFlags = reportExportFlags(
-      exportPath,
-      markdown,
-      getFlag(flags, "export-template") ?? REPORT_EXPORT_TEMPLATE,
-    );
-    const profileFlag = getFlag(flags, "profile");
-    if (profileFlag) exportFlags.profile = profileFlag;
-    await handleExport([pageId], exportFlags, opts);
+  if (!exportPath) {
+    output(result, opts);
+    return;
   }
+  // Same code path as `atlcli wiki export`, which prints its report and exits.
+  const flush = opts.json ? foldExportReport(result) : undefined;
+  if (!flush) output(result, opts);
+  const { handleExport } = await import("./export.js");
+  const exportFlags = reportExportFlags(
+    exportPath,
+    markdown,
+    getFlag(flags, "export-template") ?? REPORT_EXPORT_TEMPLATE,
+  );
+  const profileFlag = getFlag(flags, "profile");
+  if (profileFlag) exportFlags.profile = profileFlag;
+  await handleExport([pageId], exportFlags, opts);
+  flush?.();
+}
+
+/**
+ * Under `--json` stdout carries one document: the next JSON document written
+ * to `stdout` (the export report, or its error) becomes `export` of `result`.
+ * The returned function prints `result` alone if nothing was written.
+ */
+export function foldExportReport(
+  result: Record<string, unknown>,
+  stdout: { write: (chunk: string) => boolean } = process.stdout as { write: (chunk: string) => boolean },
+): () => void {
+  const write = stdout.write;
+  const print = (doc: unknown) => write.call(stdout, `${JSON.stringify(doc, null, 2)}\n`);
+  let pending = true;
+  stdout.write = (chunk: string) => {
+    stdout.write = write;
+    pending = false;
+    try {
+      return print({ ...result, export: JSON.parse(String(chunk)) });
+    } catch {
+      print(result);
+      return write.call(stdout, chunk);
+    }
+  };
+  return () => {
+    if (!pending) return;
+    pending = false;
+    stdout.write = write;
+    print(result);
+  };
 }
 
 /** Built-in PDF template a report exports with unless `--export-template` names another. */

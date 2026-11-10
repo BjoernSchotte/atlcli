@@ -893,9 +893,6 @@ export declare function parseExportBlockDocumentV1(value: unknown, budget?: Expo
 // export: parseExportBlocksV1
 export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
 
-// export: parseExportNotesV1
-export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
-
 // export: resolveCalloutIcon
 export declare function resolveCalloutIcon(callout: {
     kind: CalloutKind;

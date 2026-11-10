@@ -18,5 +18,5 @@
   "links": [{ "referenceId": "fixture-download", "kind": "asset", "assetId": "fixture-asset" }],
   "assetIds": ["fixture-asset"],
   "renderDependencies": [],
-  "pageDigest": "page-digest"
+  "pageDigest": "e84c066419ecccccf4fbed4d7bcc8ae0f98d0accd0398bc4d65ba14b689f5612"
 }

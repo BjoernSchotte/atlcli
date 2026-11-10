@@ -489,7 +489,7 @@ function validateConstraints(
 
     const predicateKey = canonicalCapabilityJson(
       [...predicates].sort((left, right) =>
-        canonicalCapabilityJson(left).localeCompare(canonicalCapabilityJson(right))
+        canonicalCapabilityJson(left).localeCompare(canonicalCapabilityJson(right), "en")
       )
     );
     const knownEffects = effectsByPredicateSet.get(predicateKey) ?? new Map();
@@ -808,7 +808,7 @@ function canonicalDescriptor(descriptor: TemplateCapabilityDescriptorV2): unknow
     ...(descriptor.runtimeWriters
       ? {
           runtimeWriters: [...descriptor.runtimeWriters].sort((left, right) =>
-            left.id.localeCompare(right.id)
+            left.id.localeCompare(right.id, "en")
           )
         }
       : {})
@@ -817,7 +817,7 @@ function canonicalDescriptor(descriptor: TemplateCapabilityDescriptorV2): unknow
 
 function canonicalConstraint(constraint: CapabilityConstraintV2): unknown {
   const byJson = (left: unknown, right: unknown): number =>
-    canonicalCapabilityJson(left).localeCompare(canonicalCapabilityJson(right));
+    canonicalCapabilityJson(left).localeCompare(canonicalCapabilityJson(right), "en");
   return {
     when: [...constraint.when].sort(byJson),
     ...(constraint.require ? { require: [...constraint.require].sort(byJson) } : {}),
@@ -831,14 +831,14 @@ export function canonicalCapabilityCatalogV2(catalogValue: unknown): unknown {
   const constraints = catalog.constraints
     .map(canonicalConstraint)
     .sort((left, right) =>
-      canonicalCapabilityJson(left).localeCompare(canonicalCapabilityJson(right))
+      canonicalCapabilityJson(left).localeCompare(canonicalCapabilityJson(right), "en")
     );
   return {
     schema: catalog.schema,
     id: catalog.id,
     version: catalog.version,
     descriptors: [...catalog.descriptors]
-      .sort((left, right) => left.path.localeCompare(right.path))
+      .sort((left, right) => left.path.localeCompare(right.path, "en"))
       .map(canonicalDescriptor),
     ...(catalog.assets ? { assets: [...catalog.assets].sort() } : {}),
     ...(catalog.labels ? { labels: [...catalog.labels].sort() } : {}),
@@ -864,7 +864,7 @@ export async function computeCapabilityPresentationRevisionV2(
         registry: {
           ...validated,
           descriptors: [...validated.descriptors].sort((left, right) =>
-            left.target.localeCompare(right.target)
+            left.target.localeCompare(right.target, "en")
           )
         },
         detailsOnlyTargets: [...detailsOnlyTargets].sort()

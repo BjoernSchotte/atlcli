@@ -5,7 +5,7 @@
  *
  * `trustRoutingPdfAssetResolver` was written for spec 004, unit-tested through
  * the real `preparePdfDocument` seam — and then composed NOWHERE. Only the DOCX
- * path wired its sibling; `exportPdf` handed `runPdfExport` a bare token
+ * path wired its sibling; the PDF export handed `runPdfExport` a bare token
  * resolver. It was harmless only because the CLI PDF path resolves no macros,
  * so nothing could mint a `trust: "export-view"` ref. The moment `macros` is
  * passed to a PDF env — which spec 010 does for the extension — an unwrapped
@@ -13,7 +13,7 @@
  * macro HTML into a request the host makes on the attacker's behalf.
  *
  * Two distinct claims, both needing a test:
- *  1. the resolver `exportPdf` builds IS policy-routed (behavioural), and
+ *  1. the resolver the PDF export builds IS policy-routed (behavioural), and
  *  2. no future construction site can quietly bypass it (structural).
  */
 import { afterEach, describe, expect, test } from "bun:test";
@@ -128,17 +128,14 @@ describe("CLI PDF asset resolver — trust routing", () => {
 describe("no PDF env construction site bypasses the router", () => {
   const source = readFileSync(join(import.meta.dir, "export-pdf.ts"), "utf8");
 
-  test("runPdfExport is only handed protected or checkpoint-wrapped assets", () => {
+  test("the PDF job env is only handed checkpoint-wrapped, policy-routed assets", () => {
     // The structural half. `cliPdfAssets` is the trust-routing composition
-    // point. The job path may wrap it in durable checkpointing, but an
+    // point. The job path wraps it in durable checkpointing; an
     // `assets:` naming the bare resolver is still the exact regression that
     // left this path unprotected for two specs.
     const assetsFields = [...source.matchAll(/\n\s*assets:\s*([A-Za-z0-9_]+)\(/g)].map((m) => m[1]);
     expect(assetsFields.length).toBeGreaterThan(0);
-    expect([...new Set(assetsFields)].sort()).toEqual([
-      "checkpointPdfAssetsV1",
-      "cliPdfAssets",
-    ]);
+    expect([...new Set(assetsFields)]).toEqual(["checkpointPdfAssetsV1"]);
     expect(source).toMatch(
       /assets:\s*checkpointPdfAssetsV1\(\s*context,\s*request\.idempotencyKey,\s*cliPdfAssets\(/,
     );

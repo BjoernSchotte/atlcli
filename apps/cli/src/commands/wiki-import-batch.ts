@@ -51,6 +51,7 @@ import { assertCliAuthSupported } from "./session-guard.js";
 import {
   publishOnePage,
   publishTree,
+  rollbackBatchItem,
 } from "./wiki-import.js";
 import { applyRestriction, findFreeTitle } from "./wiki-import-destination.js";
 import { loadRecipeById, loadRecipeFile } from "./wiki-import-recipe.js";
@@ -308,6 +309,8 @@ export async function handleManifestBatch(
       // fall through: trashed/deleted or drifted → re-import
     }
 
+    /** Pages of this document a failed rollback left in the space. */
+    let orphaned: string[] = [];
     try {
       const parentId = plan.relativeParentPath ? await ensureFolder(plan.relativeParentPath) : batchRootId;
 
@@ -360,14 +363,9 @@ export async function handleManifestBatch(
           await client.addLabels(root.id, plan.labels);
         }
       } catch (err) {
-        for (const id of [...createdPageIds].reverse()) {
-          try {
-            await client.deletePage(id);
-          } catch {
-            // recorded via lastError; the batch keeps going
-          }
-        }
-        throw err;
+        const rollback = await rollbackBatchItem(client, createdPageIds, err);
+        orphaned = rollback.orphanedPageIds;
+        throw new Error(rollback.error);
       }
       const readback = await client.getPageAdf(root.id);
       rootUrls.set(docSpec.sourcePath, { pageId: root.id, url: root.url });
@@ -384,7 +382,7 @@ export async function handleManifestBatch(
         sourcePath: docSpec.sourcePath,
         sourceSha256: plan.sourceSha256,
         status: "failed",
-        pageIds: [],
+        pageIds: orphaned,
         lastError: (err as Error).message,
       });
     }

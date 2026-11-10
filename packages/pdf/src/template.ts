@@ -109,6 +109,11 @@ export interface AtlcliTypstTemplateOptions {
   titleBlockV5?: boolean;
   /** Revision 6: hidden running-header variants draw no rule. */
   revision6?: boolean;
+  /**
+   * Revision 7: decorations scope first/odd/even by the physical page, the
+   * same page the running header and footer pick their variant from.
+   */
+  revision7?: boolean;
 }
 
 function headingNumberingPatternV5(
@@ -370,7 +375,7 @@ export function createAtlcliTypstTemplate(
       variations === undefined
         ? undefined
         : `variations: (${Object.entries(variations)
-            .sort(([left], [right]) => left.localeCompare(right))
+            .sort(([left], [right]) => left.localeCompare(right, "en"))
             .map(([tag, value]) => `${tag}: ${value}`)
             .join(", ")})`,
     ].filter((value): value is string => value !== undefined)
@@ -489,6 +494,7 @@ export function createAtlcliTypstTemplate(
         visuals,
         options.decorationModelV5,
         catalogDesign.tokens.colors,
+        options.revision7 === true,
       )}\n\n`
     : "\n\n";
   const pageBackgroundSource = hasDecorations
@@ -1292,6 +1298,7 @@ function typstVisualSource(
   visuals: PdfTemplateVisualsV1 | undefined,
   decorationModelV5: AtlcliTypstDecorationModelV5 | undefined,
   colors: Readonly<Record<string, string>>,
+  physicalPageScope = false,
 ): string {
   const byLayer: Record<
     WikiPdfTemplateImageDecorationV1["layer"],
@@ -1327,7 +1334,7 @@ function typstVisualSource(
     name: string,
     entries: readonly string[]
   ): string => `#let ${name}() = context {
-  let current-page = counter(page).get().first()
+  let current-page = ${physicalPageScope ? "here().page()" : "counter(page).get().first()"}
   ${entries.join("\n  ")}
 }`;
   return [

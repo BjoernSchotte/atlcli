@@ -147,6 +147,19 @@ describe("splitDocument", () => {
     expect([...refs]).toEqual(["target_b"]);
   });
 
+  it("maps a bookmark that starts on a list item to the page containing the list", () => {
+    const doc = parseDocx(
+      buildDocxFixture({
+        body:
+          p(r("Section A"), { style: "Heading1" }) +
+          p(r("Section B"), { style: "Heading1" }) +
+          p(`<w:bookmarkStart w:id="1" w:name="step_one"/>` + r("first step"), { numId: "1" }),
+      }),
+    );
+    const { anchorOwners } = splitDocument(doc, { level: 1, rootTitle: "Doc" });
+    expect(anchorOwners.get("step_one")?.title).toBe("Section B");
+  });
+
   it("attaches an H2 without an open H1 page to the deepest open page", () => {
     const doc = parseDocx(
       buildDocxFixture({

@@ -50,7 +50,7 @@ import {
   pdfTemplateHelp,
   ReportedPdfTemplateCliError,
 } from "./commands/pdf-template.js";
-import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
+import { initializePlugins, getPluginRegistry, pluginCommandHelp, resolvePluginInvocation } from "./plugins/loader.js";
 import { unknownSubcommand } from "./commands/unknown-subcommand.js";
 import { ROOT_COMMANDS } from "./root-commands.js";
 
@@ -224,7 +224,7 @@ async function main(): Promise<void> {
         // Check for plugin commands
         const pluginCmd = registry.getCommand(command);
         if (pluginCmd) {
-          await executePluginCommand(pluginCmd, rest, parsed.flags, opts);
+          await executePluginCommand(pluginCmd, opts);
         } else {
           unknownSubcommand(command, rootHelp(registry), opts);
         }
@@ -359,52 +359,21 @@ async function showCommandHelp(
 
 async function executePluginCommand(
   cmd: import("@atlcli/plugin-api").CommandDefinition,
-  args: string[],
-  flags: Record<string, string | boolean | string[]>,
   opts: { json: boolean }
 ): Promise<void> {
-  const [subcommand, ...subArgs] = args;
-
-  // If no subcommand or help requested, show command help
-  if (!subcommand || hasFlag(flags, "help")) {
-    output(pluginCommandHelp(cmd), opts);
+  const { subcommand, args, flags } = resolvePluginInvocation(cmd, process.argv.slice(2));
+  const handler = subcommand?.handler ?? cmd.handler;
+  if (!handler) {
+    // Bare command: help. Unknown subcommand: a usage error, not a silent success.
+    unknownSubcommand(args[0], pluginCommandHelp(cmd), opts);
     return;
   }
-
-  // Find subcommand
-  const sub = cmd.subcommands?.find((s) => s.name === subcommand);
-  if (!sub) {
-    output(`Unknown subcommand: ${subcommand}`, opts);
-    output("", opts);
-    output(pluginCommandHelp(cmd), opts);
-    return;
-  }
-
-  // Build context
-  const ctx: CommandContext = {
-    command: [cmd.name, subcommand],
-    args: subArgs,
+  await handler({
+    command: subcommand ? [cmd.name, subcommand.name] : [cmd.name],
+    args,
     flags,
     output: opts,
-  };
-
-  // Execute handler
-  await sub.handler(ctx);
-}
-
-function pluginCommandHelp(cmd: import("@atlcli/plugin-api").CommandDefinition): string {
-  const lines: string[] = [];
-  lines.push(`atlcli ${cmd.name} <subcommand>`);
-  lines.push("");
-  lines.push(cmd.description);
-  lines.push("");
-  lines.push("Subcommands:");
-
-  for (const sub of cmd.subcommands || []) {
-    lines.push(`  ${sub.name.padEnd(16)} ${sub.description}`);
-  }
-
-  return lines.join("\n");
+  });
 }
 
 function versionInfo(): string {

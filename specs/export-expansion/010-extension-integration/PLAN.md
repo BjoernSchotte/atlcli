@@ -2513,7 +2513,7 @@ closures inside entrypoints with nothing to import and drive. A weaker real
 check beats a strong imaginary one.
 
 This is the same shape as the CLI findings in
-`specs/SUPPORT-CLI-FLAG-AUDIT.md` ("two code paths behind one help line, and
+`specs/export-expansion/010-extension-integration/SUPPORT-CLI-FLAG-AUDIT.md` ("two code paths behind one help line, and
 only one honours the flag"). **Closed by scope decision (2026-07-22):** no
 extension-wide call-site audit will be run for 010. The three concrete defects
 keep their targeted consumption-site guards; there is no hidden audit task.

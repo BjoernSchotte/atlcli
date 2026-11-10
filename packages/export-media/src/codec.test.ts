@@ -18,6 +18,7 @@ import {
   PRINT_PROFILE_PPI,
   STANDARD_PROFILE_PPI,
 } from "./profile.js";
+import { parseSvgSize } from "./inspect.js";
 import { boxResampleRgba } from "./resample.js";
 import { sha256Hex } from "./sha256.js";
 
@@ -451,5 +452,16 @@ describe("normalizeRasterAssetV1", () => {
     const payload = new TextEncoder().encode("atlcli");
     expect(adler32(payload)).toBe(0x08aa027a);
     expect(crc32([payload])).toBe(0xb87ffbc6);
+  });
+});
+
+describe("parseSvgSize", () => {
+  it("reads only the root width/height attributes, never stroke-width", () => {
+    expect(parseSvgSize(`<svg stroke-width="3" width="120" height="60"/>`)).toEqual({ widthPx: 120, heightPx: 60 });
+    expect(parseSvgSize(`<svg stroke-width="3" line-height="9" viewBox="0 0 640 480"/>`)).toEqual({
+      widthPx: 640,
+      heightPx: 480,
+    });
+    expect(parseSvgSize(`<svg stroke-width="3" line-height="9"/>`)).toBeNull();
   });
 });

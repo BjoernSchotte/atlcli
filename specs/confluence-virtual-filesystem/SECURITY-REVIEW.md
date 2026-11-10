@@ -118,7 +118,7 @@ unbounded second copy of content the user may no longer be allowed to see.
   with the user's own rights, so the layer being removed protects against an
   attacker who already has everything it would protect. It is off because
   just-bash 3.4.2 throws on every `exec()` under Bun (issue #386), reproduced in
-  `spikes/vfs-just-bash/`. A `TODO` in `wiki-shell.ts` links the issue.
+  [SPIKE-JUST-BASH.md](SPIKE-JUST-BASH.md). A `TODO` in `wiki-shell.ts` links the issue.
 
 ## 8. Denial of service against the user's own tenant
 

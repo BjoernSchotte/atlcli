@@ -2740,7 +2740,6 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
       if (!workflow) {
         throw new ChatContractError("invalid-report", "The Chat workflow was not accepted.");
       }
-      const snapshot = dispatch.snapshot();
       if (Object.values(state.taskStatuses).some((status) => status !== "completed")) {
         throw new ChatContractError(
           "invalid-report",
@@ -2763,9 +2762,4 @@ export function createChatAgenticWorkflowRuntimeV1(input: {
     },
     dispatchSnapshot: dispatch.snapshot,
   };
-}
-
-export function isChatEvidencePacketV1(value: unknown): value is ChatEvidencePacketV1 {
-  return Boolean(value && typeof value === "object" &&
-    (value as { schema?: unknown }).schema === "atlcli.chat-evidence-packet/v1");
 }

@@ -149,7 +149,7 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain('bun scripts/build-nfs-helper.ts "$RUNNER_TEMP/nfs-helpers/${{ matrix.target }}"');
     expect(reusable).toContain('--nfs-helpers "$RUNNER_TEMP/nfs-helpers"');
     expect(reusable).toContain('"$RUNNER_TEMP/nfs-installed/atlcli-confluence-nfs" --version');
-    expect(reusable.match(/bash scripts\/ci\/install-frozen-dependencies\.sh/g)).toHaveLength(3);
+    expect(reusable.match(/bash scripts\/ci\/install-frozen-dependencies\.sh/g)).toHaveLength(4);
     expect(reusable).toContain("bun scripts/release-artifacts.ts build");
     expect(reusable).toContain('--target "${{ matrix.target }}"');
     expect(reusable).toContain("--skip-extension");
@@ -334,15 +334,27 @@ describe("CI workflow policy", () => {
     expect(reusable).toContain("bun scripts/ci/dev-release-evidence-policy.ts");
   });
 
-  it("retries only the frozen dependency install in quality and release producers", async () => {
-    const quality = await workflow("reusable-quality.yml");
-    const release = await workflow("reusable-release-artifacts.yml");
-    const installer = await ciScript("install-frozen-dependencies.sh");
+  it("bounds every job that runs on a runner with timeout-minutes", async () => {
+    // GitHub's default is 360 minutes; a hung release job should not hold a
+    // runner (or a release) that long.
+    for (const file of await workflowNames()) {
+      const jobs = block(await workflow(file), /^jobs:\s*$/, 0)!;
+      for (const header of jobs.match(/^ {2}[\w-]+:\s*$/gm) ?? []) {
+        const job = block(jobs, new RegExp(`^${header.trimEnd()}\\s*$`), 2)!;
+        if (!/^ {4}runs-on:/m.test(job)) continue; // reusable-workflow caller
+        expect(job, `${file} ${header.trim()}`).toMatch(/^ {4}timeout-minutes: \d+$/m);
+      }
+    }
+  });
 
-    expect(quality.match(/bash scripts\/ci\/install-frozen-dependencies\.sh/g)).toHaveLength(5);
-    expect(release.match(/bash scripts\/ci\/install-frozen-dependencies\.sh/g)).toHaveLength(3);
+  it("retries the frozen dependency install in every workflow", async () => {
+    const installer = await ciScript("install-frozen-dependencies.sh");
+    for (const file of await workflowNames()) {
+      // A bare frozen install fails the job on one registry hiccup.
+      expect(await workflow(file), file).not.toContain("bun install --frozen-lockfile");
+    }
     expect(installer).toContain("for attempt in 1 2 3; do");
-    expect(installer).toContain("if bun install --frozen-lockfile; then");
+    expect(installer).toContain('if bun install --frozen-lockfile "$@"; then');
     expect(installer).toContain('if [[ "$attempt" -eq 3 ]]; then');
     expect(installer).toContain('sleep "$((attempt * 5))"');
     expect(installer).not.toContain("bun install --no-progress");
@@ -975,28 +987,6 @@ describe("CI workflow policy", () => {
       const status = block(ci, new RegExp(`^ {2}${statusName}:\\s*$`), 2);
       if (status !== null) expect(status).not.toMatch(/needs:[^\n]*telemetry/);
     }
-  });
-
-  it("keeps duration-aware topology comparisons off pull requests", async () => {
-    const comparison = await workflow("ci-topology-canary.yml");
-    expect(comparison).not.toContain("pull_request:");
-    for (const topology of [
-      "general-2x1",
-      "general-3x1",
-      "general-2x2-workers",
-    ]) {
-      expect(comparison).toContain(topology);
-    }
-    expect(comparison).toContain("bun scripts/ci/test-lanes.ts --check");
-    expect(comparison).toContain("bun scripts/ci/run-test-lane.ts");
-    expect(comparison).toContain("shard: [1, 2, 3, 4]");
-    expect(comparison).toContain("if: matrix.poppler");
-    expect(comparison).toContain("if: matrix.fonts");
-    expect(comparison).toContain("actions/download-artifact@v8");
-    expect(comparison).toContain("bun scripts/ci/test-timings.ts compare");
-    expect(comparison).toContain("--legacy-namespace legacy-4-shard");
-    expect(comparison).toContain("Prove exact identity, outcomes, and timing");
-    expect(comparison).toContain("topology-comparison-${{ needs.plan.outputs.topology }}");
   });
 
   it("keeps the standalone security attestation dependency-free", async () => {

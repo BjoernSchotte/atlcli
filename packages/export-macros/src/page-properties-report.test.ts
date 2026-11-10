@@ -84,4 +84,58 @@ describe("pagePropertiesReportRenderer", () => {
       expect(table.rows[0].cells.length).toBe(4);
     }
   });
+
+  test("asks the server for title order and cap+1 hits, and fetches pages concurrently", async () => {
+    const pages = Array.from({ length: 60 }, (_, i) => ({
+      id: `p${i}`,
+      title: `Page ${String(i).padStart(2, "0")}`,
+      rows: { Owner: `o${i}` },
+    }));
+    const base = port(pages);
+    const searches: { cql: string; limit?: number }[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    const res = await pagePropertiesReportRenderer(deps).render(
+      { name: "detailssummary", params: [param("label", "meta")] },
+      ctx({
+        ...base,
+        async searchCql(cql, opts) {
+          searches.push({ cql, limit: opts?.limit });
+          return (await base.searchCql(cql, opts)).slice(0, opts?.limit);
+        },
+        async getPageStorageById(id) {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          inFlight -= 1;
+          return base.getPageStorageById!(id);
+        },
+      })
+    );
+    expect(searches).toEqual([{ cql: 'label = "meta" order by title', limit: 51 }]);
+    expect(peak).toBeGreaterThan(1);
+    expect(res.kind).toBe("blocks");
+    if (res.kind === "blocks") {
+      const table = res.blocks[0] as Extract<ExportBlock, { type: "table" }>;
+      expect(table.rows.length).toBe(51); // header + 50
+      expect(JSON.stringify(table.rows[1])).toContain("Page 00");
+      expect(res.notes?.some((n) => n.message.includes("truncated to 50"))).toBe(true);
+    }
+  });
+
+  test("a query with its own ORDER BY is sent unchanged", async () => {
+    const base = port([{ id: "a", title: "Alpha", rows: { Owner: "Ann" } }]);
+    const searches: { cql: string; limit?: number }[] = [];
+    await pagePropertiesReportRenderer(deps).render(
+      { name: "detailssummary", params: [param("cql", "label = x ORDER BY created")] },
+      ctx({
+        ...base,
+        async searchCql(cql, opts) {
+          searches.push({ cql, limit: opts?.limit });
+          return base.searchCql(cql, opts);
+        },
+      })
+    );
+    expect(searches).toEqual([{ cql: "label = x ORDER BY created", limit: 201 }]);
+  });
 });

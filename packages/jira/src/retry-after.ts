@@ -12,6 +12,7 @@
  * import and the parser never reaches the package barrel.
  */
 export {
+  abortableSleep,
   parseRetryAfterMs,
   RETRY_AFTER_MAX_MS,
   RETRY_AFTER_MIN_MS,

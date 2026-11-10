@@ -9,6 +9,7 @@
  * in the imperative shell.
  */
 import { sha256Hex } from "@atlcli/core";
+import { canonicalJson } from "@atlcli/import-core";
 import { isAlias, parseDocument, visit } from "yaml";
 import type { DocxImportOptionsV1, PolicyLayerInput, StyleMappingTarget } from "./overrides.js";
 import { STYLE_MAPPING_TARGETS } from "./overrides.js";
@@ -200,18 +201,7 @@ export async function parseRecipe(text: string): Promise<{ parsed?: ParsedRecipe
 
 /** Canonical JSON: recursively sorted keys, so digests are byte-stable. */
 export function canonicalRecipeJson(recipe: DocxImportRecipeV1): string {
-  const sortValue = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(sortValue);
-    if (isPlainObject(value)) {
-      return Object.fromEntries(
-        Object.keys(value)
-          .sort()
-          .map((key) => [key, sortValue(value[key])]),
-      );
-    }
-    return value;
-  };
-  return JSON.stringify(sortValue(recipe));
+  return canonicalJson(recipe);
 }
 
 /** Applicability check against the (Cloud-only) slice target. */

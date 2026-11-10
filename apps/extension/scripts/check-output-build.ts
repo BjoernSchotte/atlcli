@@ -57,6 +57,16 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { TYPST_VENDOR_PINS } from "../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+import {
+  AGGREGATE_SHIKI_CHUNK_RE,
+  AGGREGATE_SHIKI_RUNTIME_RES,
+  DYNAMIC_CODE_RES,
+  ONIGURUMA_ENGINE_CHUNK_RE,
+  ONIGURUMA_RUNTIME_RES,
+  ONIGURUMA_WASM_RE,
+  REMOTE_SCRIPT_RES,
+  withoutGrammarKeywordFindings,
+} from "./output-scan-rules.js";
 
 export const TYPST_COMPILER_WASM_SHA256 =
   TYPST_VENDOR_PINS["typst_ts_web_compiler_bg.wasm"]!;
@@ -89,22 +99,6 @@ const NODE_GLOBAL_RE =
 const FAKE_BUFFER_GLOBAL_RES: RegExp[] = [
   /\b(?:globalThis|self|window)\s*(?:\.\s*Buffer|\[\s*["']Buffer["']\s*\])\s*=/g,
   /\bObject\.defineProperty\(\s*(?:globalThis|self|window)\s*,\s*["']Buffer["']/g,
-];
-
-/** Dynamic code execution is forbidden by the extension page CSP. */
-const DYNAMIC_CODE_RES: RegExp[] = [
-  /\bnew\s+Function\s*\(/g,
-  /(?:^|[=(:,!&|?;{}])\s*Function\s*\(\s*["'`]/g,
-  /(?<![\w.])\beval\s*\(/g,
-];
-const ONIGURUMA_RUNTIME_RES: RegExp[] = [
-  /\bfindNextOnigScannerMatch\b/g,
-  /Must invoke loadWasm first[.]/g,
-];
-const AGGREGATE_SHIKI_RUNTIME_RES: RegExp[] = [
-  /\bbundle_full_exports\b/g,
-  /\blangs-bundle-full\b/g,
-  /["'`]shiki(?:\/(?:langs|themes))?["'`]/g,
 ];
 
 export interface OutputArtifact {
@@ -260,30 +254,6 @@ const REQUIRED_RESEARCH_ARTIFACTS = [
       "3742fb828ff9841d57dd7350657e3bc9ae2ae52a1d079615f100166c1274052f",
   },
 ] as const;
-
-/**
- * Remote script origin: any executable form that would pull code from an
- * http(s) URL —
- *   - a static `import` (with bindings `import x from "url"`, namespace
- *     `import * as ns from "url"`, or a bare side-effect `import "url"`),
- *   - a dynamic `import(...)`,
- *   - `importScripts(...)` (classic/worker), or
- *   - an HTML `<script src=...>` whose URL is quoted OR unquoted.
- * Bare data/blob URLs and non-script string literals (e.g. a fetch endpoint)
- * are intentionally NOT matched — only executable remote code counts. Patterns
- * tolerate minified spacing (`import{a}from"url"`).
- */
-const REMOTE_SCRIPT_RES: RegExp[] = [
-  // Static import: side-effect (`import "url"`), or with a binding clause
-  // (`import x from "url"`, `import * as ns from "url"`, `import {a} from "url"`).
-  /\bimport\s*(?:[^"'`()]*\bfrom\s*)?["'`]https?:\/\/[^"'`]+["'`]/g,
-  // Dynamic import().
-  /\bimport\s*\(\s*["'`]https?:\/\/[^"'`]+["'`]/g,
-  // Classic worker importScripts().
-  /\bimportScripts\s*\(\s*["'`]https?:\/\/[^"'`]+["'`]/g,
-  // HTML <script src=...> — URL quoted ("url"/'url') or unquoted (src=url).
-  /<script\b[^>]*\bsrc\s*=\s*["']?https?:\/\/[^"'\s>]+/gi,
-];
 
 export interface FileLeak {
   /** Path relative to the scanned root. */
@@ -448,16 +418,7 @@ export function scanText(text: string): string[] {
   for (const re of AGGREGATE_SHIKI_RUNTIME_RES) {
     for (const m of text.matchAll(re)) found.add(m[0].trim());
   }
-  const findings = [...found];
-  if (
-    text.includes("Object.freeze(JSON.parse(`") &&
-    text.includes('"scopeName"')
-  ) {
-    return findings.filter(
-      (finding) => finding !== "__dirname" && finding !== "__filename",
-    );
-  }
-  return findings;
+  return withoutGrammarKeywordFindings(text, [...found]);
 }
 
 /** Verify that every local binary/runtime asset needed by the extension exists. */
@@ -466,14 +427,10 @@ export function validateExtensionArtifactInventory(
 ): string[] {
   const issues: string[] = [];
   for (const artifact of artifacts) {
-    if (/(?:^|\/)(?:onig|shiki)[^/]*[.]wasm$/i.test(artifact.path)) {
+    if (ONIGURUMA_WASM_RE.test(artifact.path)) {
       issues.push(`Oniguruma WASM: unexpected extension artifact ${artifact.path}`);
     }
-    if (
-      /(?:^|\/)(?:langs|themes|bundle-full|bundle-web)-[^/]+[.]js$/i.test(
-        artifact.path,
-      )
-    ) {
+    if (AGGREGATE_SHIKI_CHUNK_RE.test(artifact.path)) {
       issues.push(`aggregate Shiki catalogue: unexpected extension artifact ${artifact.path}`);
     }
   }
@@ -547,7 +504,7 @@ export function scanOutputDir(root: string): FileLeak[] {
   const leaks: FileLeak[] = [];
   for (const file of walk(root, [...SCANNED_EXTENSIONS])) {
     const findings = scanText(readFileSync(file, "utf8"));
-    if (/engine-oniguruma-[^/]+[.]js$/i.test(file)) {
+    if (ONIGURUMA_ENGINE_CHUNK_RE.test(file)) {
       findings.push("Oniguruma engine chunk");
     }
     if (findings.length > 0) {

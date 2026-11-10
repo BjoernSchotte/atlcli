@@ -551,6 +551,30 @@ describe("exportDocx — full pipeline", () => {
     expect(header).toContain("Q3: Architecture / Overview");
   });
 
+  it("resolves placeholders in footnotes, endnotes and comments, not only the main story", async () => {
+    const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const templateBytes = buildDocx({
+      body: para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      extraParts: {
+        "word/footnotes.xml": `<w:footnotes ${W}><w:footnote w:id="1">${para("Source: $scroll.title")}</w:footnote></w:footnotes>`,
+        "word/endnotes.xml": `<w:endnotes ${W}><w:endnote w:id="1">${runSplitPara(["$scroll.space", ".name"])}</w:endnote></w:endnotes>`,
+        "word/comments.xml": `<w:comments ${W}><w:comment w:id="0">${para("$scroll.title $scroll.content $scroll.nosuchthing")}</w:comment></w:comments>`,
+      },
+    });
+    const { bytes, report } = await exportDocx({ templateBytes, details, template, deps });
+    const footnotes = readPart(bytes, "word/footnotes.xml");
+    expect(footnotes).toContain("Source: Q3: Architecture / Overview");
+    for (const part of ["word/footnotes.xml", "word/endnotes.xml", "word/comments.xml"]) {
+      const xml = readPart(bytes, part);
+      expect(xml).not.toContain("$scroll.");
+      assertBalancedXml(xml);
+    }
+    // The body is still inserted in the main story, not in the comment.
+    expect(readPart(bytes, "word/comments.xml")).not.toContain("{@");
+    expect(report.unsupportedNames).toContain("$scroll.nosuchthing");
+  });
+
   it("preserves literal braces in a customer template (#11)", async () => {
     const templateBytes = buildDocx({
       body: para("$scroll.content") + para("Config: {foo} and a lone { brace"),
@@ -2106,6 +2130,35 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
     const doc = readPart(bytes, "word/document.xml");
     expect(doc.match(new RegExp(SENTINEL, "g"))?.length).toBe(2);
     expect(calls).toEqual(["ENG:Imprint"]);
+  });
+
+  it("fetches distinct include targets concurrently, not one after the other", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body:
+          para("$scroll.content") +
+          para("$scroll.includepage.(ENG:A)") +
+          para("$scroll.includepage.(ENG:B)") +
+          para("$scroll.includepage.(ENG:C)"),
+      }),
+      details,
+      template,
+      deps: {
+        ...deps,
+        getIncludedPage: async (ref: { title?: string }) => {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          inFlight -= 1;
+          return { kind: "resolved" as const, page: includePage(ref.title ?? "") };
+        },
+      },
+    });
+    expect(peak).toBe(3);
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc.match(new RegExp(SENTINEL, "g"))?.length).toBe(3);
   });
 
   it("finds and replaces a run-split include token", async () => {

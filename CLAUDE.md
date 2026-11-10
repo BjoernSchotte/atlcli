@@ -49,15 +49,28 @@ bun --conditions=development run --cwd apps/cli src/index.ts <command>  # Run fr
 
 ## Architecture
 
-Bun workspaces monorepo with Turbo. Dependencies: `apps/cli` → `packages/*`
+Bun workspaces monorepo with Turbo: `apps/*` (products) depend on `packages/*`
+(libraries, named `@atlcli/<dir>`; `confluence-nfs` is a Rust helper). `ls apps packages` is the package
+list; each package's `package.json` `description` states its purpose.
 
-| Package | Purpose |
-|---------|---------|
+| Path | Purpose |
+|------|---------|
 | `apps/cli` | CLI entry point and command handlers |
+| `apps/extension` | Browser extension (agentic sidebar, export) |
+| `apps/browser-export-harness` | Browser export conformance/parity harness |
 | `packages/core` | Shared utilities (config, logging, templates) |
-| `packages/confluence` | Confluence REST API client + markdown conversion |
-| `packages/jira` | Jira REST API client |
+| `packages/confluence`, `packages/jira` | REST API clients; Confluence markdown ↔ storage conversion |
+| `packages/confluence-vfs`, `packages/confluence-nfs` | Confluence as a filesystem (`wiki sh`, mounts) |
+| `packages/docx`, `packages/pdf*`, `packages/export-*` | Isomorphic DOCX/PDF export engine and its seams |
+| `packages/import-*` | DOCX/PDF/Confluence import |
+| `packages/web-publish*` | Static-site publishing (Astro, Starlight) |
+| `packages/script-runtime`, `packages/jinja`, `packages/audit` | `atlcli script`, templating, audit rules |
+| `packages/tui`, `packages/research`, `packages/action-*` | TUI, research agent, action palette |
 | `packages/plugin-api` | Plugin type definitions |
+| `plugins/*` | Example/first-party plugins (not workspaces) |
+| `src/content/docs/` | Documentation site (Astro Starlight) |
+| `skills/atlcli/` | Agent skill shipped with the CLI |
+| `scripts/` | Release, CI and guard scripts with their tests |
 
 **Key patterns:**
 - Commands in `apps/cli/src/commands/` use `output(data, opts)` for results, `fail()` for errors
@@ -65,7 +78,7 @@ Bun workspaces monorepo with Turbo. Dependencies: `apps/cli` → `packages/*`
 - API clients (`ConfluenceClient`, `JiraClient`) take Profile, handle REST + errors, return typed responses
 - Design for testability using "functional core, imperative shell": keep pure business logic separate from code that does IO (like CLI interaction)
 
-## Docs standards (docs/)
+## Docs standards (src/content/docs/)
 - Organize docs by user journey and domain: Getting Started, Concepts/Glossary, Feature Guides, Reference, Troubleshooting, and Operations (backups, security, upgrades).
 - Every long page must include an in-page TOC and clear “Related topics” links to keep navigation flowing (maybe comes from the doc generator system we use).
 - Use a consistent page template: short intro → prerequisites → steps → configuration/options → examples → troubleshooting  related topics → feedback/edit link.
@@ -87,11 +100,11 @@ Bun workspaces monorepo with Turbo. Dependencies: `apps/cli` → `packages/*`
 - **Run typecheck before pushing**: `bun run typecheck`
 - **Clean up test resources** - delete test pages/issues after E2E testing
 - **Commit regularly** after completing logical units of work
-- **Update docs/** after features complete - documentation is first-class
+- **Update `src/content/docs/`** (and `skills/atlcli/` when CLI behaviour changes) after features complete - documentation is first-class
 
 ### Planning & Research
 
-- Save feature plans to `spec/` directory for complex features
+- Save feature plans to `specs/<feature>/PLAN.md` for complex features
 - Spawn multiple research agents in parallel for complex topics
 - Use plan mode for non-trivial features before implementing
 - At the end of each plan, give me a list of unresolved questions to answer, if any. Use AskUserQuestion tool.

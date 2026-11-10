@@ -4,6 +4,7 @@ import {
   diffSemanticTreesV1,
   digestSnapshotV1,
   parseChangeSetV1,
+  summarizeOperationsV1,
   type CanonicalJsonValue,
   type ChangeDiagnosticV1,
   type ChangeEntityRefV1,
@@ -413,19 +414,6 @@ function applyCollectionIntent(
   });
 }
 
-function summary(operations: readonly ChangeOperationV1[]): ChangeSetV1["summary"] {
-  const result = { inserts: 0, deletes: 0, modifies: 0, moves: 0, opaque: 0, noOp: false };
-  for (const operation of operations) {
-    if (operation.kind === "insert" || operation.kind === "collection-add") result.inserts += 1;
-    else if (operation.kind === "delete" || operation.kind === "collection-remove") result.deletes += 1;
-    else if (operation.kind === "modify" || operation.kind === "transition") result.modifies += 1;
-    else if (operation.kind === "move") result.moves += 1;
-    else result.opaque += 1;
-  }
-  result.noOp = operations.length === 0;
-  return result;
-}
-
 function uniqueDiagnostics(diagnostics: readonly ChangeDiagnosticV1[]): ChangeDiagnosticV1[] {
   const unique = new Map<string, ChangeDiagnosticV1>();
   for (const diagnostic of diagnostics) unique.set(canonicalJsonV1(diagnostic), diagnostic);
@@ -491,7 +479,7 @@ async function finishPlan(
       acquisition: "planned-operation",
     },
     completeness: { status: degraded ? "degraded" : "complete", diagnostics: completeDiagnostics },
-    summary: summary(operations),
+    summary: summarizeOperationsV1(operations),
     operations,
     limits: { truncated: false, emittedOperations: operations.length },
   });

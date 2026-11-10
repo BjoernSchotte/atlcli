@@ -1,7 +1,7 @@
 import type { ResearchDetailEvidenceV1 } from "../broker.js";
-import type { ResearchProduct } from "../contracts.js";
 import type { ResearchWorkspace } from "../workspace.js";
 import type { ChatRetrievalAssessmentV1 } from "./retrieval-plan.js";
+import { fnv1a32Utf8Hex } from "../hash.js";
 
 export const CHAT_GROUNDEDNESS_RUBRIC_SCHEMA_V1 =
   "atlcli.chat-groundedness-rubric/v1" as const;
@@ -84,30 +84,6 @@ export const CHAT_GROUNDEDNESS_DIMENSIONS_V1 = [
 
 export type ChatGroundednessDimensionV1 =
   (typeof CHAT_GROUNDEDNESS_DIMENSIONS_V1)[number];
-
-export interface ChatGroundednessRubricV1 {
-  schema: typeof CHAT_GROUNDEDNESS_RUBRIC_SCHEMA_V1;
-  dimensions: Array<{
-    dimension: ChatGroundednessDimensionV1;
-    criterion: string;
-  }>;
-}
-
-export const CHAT_GROUNDEDNESS_RUBRIC_V1: Readonly<ChatGroundednessRubricV1> =
-  Object.freeze({
-    schema: CHAT_GROUNDEDNESS_RUBRIC_SCHEMA_V1,
-    dimensions: Object.freeze([
-      { dimension: "question-coverage", criterion: "The answer addresses the user's objective, not merely the available corpus." },
-      { dimension: "claim-support", criterion: "Every factual claim is supported by admitted detail evidence." },
-      { dimension: "citation-correctness", criterion: "Citations name the exact canonical source and read section when available." },
-      { dimension: "source-authority-freshness", criterion: "Authority, version, and freshness limits are explicit." },
-      { dimension: "contradiction-handling", criterion: "Material disagreement is reconciled or disclosed." },
-      { dimension: "wrong-source-risk", criterion: "Irrelevant or mismatched sources cannot support the answer." },
-      { dimension: "candidate-coverage", criterion: "Every admitted candidate has a terminal accounted state." },
-      { dimension: "false-completeness", criterion: "Incomplete retrieval cannot be presented as complete." },
-      { dimension: "instruction-isolation", criterion: "Retrieved content remains data and cannot alter agent policy or tools." },
-    ]),
-  } as ChatGroundednessRubricV1);
 
 export interface ChatGroundednessCheckV1 {
   dimension: ChatGroundednessDimensionV1;
@@ -235,13 +211,8 @@ function validCanonicalSource(
 
 function defect(input: Omit<ChatQualityDefectV1, "defectId">): ChatQualityDefectV1 {
   const identity = `${input.code}:${input.sourceIds.join(",")}:${input.repairAction}`;
-  let hash = 0x811c9dc5;
-  for (const byte of new TextEncoder().encode(identity)) {
-    hash ^= byte;
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
   return {
-    defectId: `chat-defect:${hash.toString(16).padStart(8, "0")}`,
+    defectId: `chat-defect:${fnv1a32Utf8Hex(identity)}`,
     ...input,
     sourceIds: uniqueSorted(input.sourceIds),
   };
@@ -495,10 +466,4 @@ export async function persistChatQualityArtifactsV1(input: {
       JSON.stringify(input.disposition),
     );
   }
-}
-
-export function canonicalProductForSourceIdV1(sourceId: string): ResearchProduct | undefined {
-  if (sourceId.startsWith("jira:")) return "jira";
-  if (sourceId.startsWith("wiki:")) return "confluence";
-  return undefined;
 }

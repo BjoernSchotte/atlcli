@@ -1,6 +1,7 @@
 import { close, createIndex } from "pagefind";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { scanHtmlV1 } from "./html-scan.js";
 import {
   assertPagefindSearchBudgetV1,
   measurePagefindSearchBudgetV1,
@@ -9,8 +10,6 @@ import {
   type PublicationSearchBudgetMeasurementV1,
   type PublicationSearchBudgetV1,
 } from "./search-budget.js";
-
-export const PAGEFIND_VERSION_V1 = "1.5.2";
 
 export interface BuildPagefindIndexOptionsV1 {
   /** Absolute static site candidate directory. */
@@ -38,7 +37,8 @@ export async function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1)
     assertNoErrors(created.errors, "initialization");
     for (const sourcePath of options.pageOutputPaths) {
       const content = await readFile(join(options.outputDirectory, sourcePath), "utf8");
-      const bodies = content.match(/\bdata-pagefind-body\b/gu) ?? [];
+      // Count the attribute, not the text: a page may write about Pagefind.
+      const bodies = scanHtmlV1(content).tags.filter((tag) => tag.attributes.has("data-pagefind-body"));
       if (bodies.length !== 1) {
         throw new Error(`Pagefind requires exactly one trusted data-pagefind-body region in ${sourcePath}`);
       }

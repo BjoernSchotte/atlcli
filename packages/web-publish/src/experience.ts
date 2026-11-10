@@ -1,7 +1,4 @@
 import {
-  type PublicationBuildRequestV1,
-  type PublicationBuildResultV1,
-  type PublicationBuilderV1,
   type PublicationComponentOverrideV1,
   type PublicationDesignTokenValueV1,
   type PublicationExperienceCapabilityV1,
@@ -15,8 +12,6 @@ import {
   type PublicationSearchProviderDescriptorV1,
 } from "./contracts.js";
 import {
-  parsePublicationBuildRequestV1,
-  parsePublicationBuildResultV1,
   parsePublicationExperienceDescriptorV1,
   parsePublicationRendererDescriptorV1,
   parsePublicationSearchProviderDescriptorV1,
@@ -402,58 +397,4 @@ export function negotiatePublicationRenderersV1(
     selected: Object.freeze(selected),
     byKind: Object.freeze(byKind),
   };
-}
-
-export class PublicationBuilderContractErrorV1 extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PublicationBuilderContractErrorV1";
-  }
-}
-
-function assertBuilderPort(builder: PublicationBuilderV1): void {
-  if (
-    builder === null || typeof builder !== "object" ||
-    typeof builder.id !== "string" || builder.id.length === 0 ||
-    typeof builder.version !== "string" || builder.version.length === 0 ||
-    typeof builder.build !== "function"
-  ) {
-    throw new PublicationBuilderContractErrorV1(
-      "Publication builder must expose non-empty id/version and a build function.",
-    );
-  }
-}
-
-export async function runPublicationBuildV1(
-  builder: PublicationBuilderV1,
-  requestValue: unknown,
-): Promise<PublicationBuildResultV1> {
-  assertBuilderPort(builder);
-  const request: PublicationBuildRequestV1 = parsePublicationBuildRequestV1(requestValue);
-  if (builder.id !== request.project.builder.builder) {
-    throw new PublicationBuilderContractErrorV1(
-      `Builder ${builder.id} cannot execute ${request.project.builder.builder}.`,
-    );
-  }
-
-  const result = parsePublicationBuildResultV1(await builder.build(request));
-  const manifest = result.manifest;
-  const invariants: Array<[boolean, string]> = [
-    [manifest.builder.id === builder.id, "manifest builder id"],
-    [manifest.builder.version === builder.version, "manifest builder version"],
-    [manifest.bundleDigest === request.bundle.bundleDigest, "bundle digest"],
-    [manifest.projectDigest === request.projectDigest, "project digest"],
-    [manifest.configDigest === request.configDigest, "config digest"],
-    [manifest.lockfileDigest === request.lockfileDigest, "lockfile digest"],
-    [manifest.base === request.project.builder.base, "base"],
-    [manifest.outputProfile === request.project.builder.outputProfile, "output profile"],
-  ];
-  for (const [valid, label] of invariants) {
-    if (!valid) {
-      throw new PublicationBuilderContractErrorV1(
-        `Publication build result does not preserve the requested ${label}.`,
-      );
-    }
-  }
-  return result;
 }

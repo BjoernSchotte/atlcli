@@ -1,5 +1,6 @@
 import type PizZip from "pizzip";
 import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
+import { throwIfAborted } from "./support.js";
 
 const ZIP32_MAX = 0xffff_ffff;
 const ZIP_ENTRY_COUNT_MAX = 4096;
@@ -55,14 +56,6 @@ interface DocxZipEntry {
   options: {
     compression?: "STORE" | "DEFLATE";
   };
-}
-
-function abortReason(signal: AbortSignal): unknown {
-  return signal.reason ?? new DOMException("DOCX packaging was cancelled.", "AbortError");
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw abortReason(signal);
 }
 
 /** PNG/JPEG/GIF already carry compressed payloads and should use ZIP STORE. */
@@ -182,7 +175,7 @@ export async function* streamDocxOpc(
   zipArchive: PizZip,
   options: StreamDocxOpcOptionsV1 = {},
 ): AsyncIterable<Uint8Array> {
-  throwIfAborted(options.signal);
+  throwIfAborted(options.signal, "DOCX packaging was cancelled.");
   const entries = Object.entries(
     zipArchive.files as unknown as Record<string, DocxZipEntry>,
   );
@@ -222,7 +215,7 @@ export async function* streamDocxOpc(
   const drain = async function* (): AsyncIterable<Uint8Array> {
     if (streamError) throw streamError;
     while (pending.length > 0) {
-      throwIfAborted(options.signal);
+      throwIfAborted(options.signal, "DOCX packaging was cancelled.");
       const chunk = pending.shift()!;
       outputBytes += chunk.byteLength;
       if (!Number.isSafeInteger(outputBytes) || outputBytes > ZIP_OUTPUT_MAX_BYTES) {
@@ -235,7 +228,7 @@ export async function* streamDocxOpc(
 
   try {
     for (const [path, entry] of entries) {
-      throwIfAborted(options.signal);
+      throwIfAborted(options.signal, "DOCX packaging was cancelled.");
       if (new TextEncoder().encode(path).byteLength > 0xffff) {
         throw new RangeError(`DOCX ZIP entry name is too long: ${path}`);
       }
@@ -254,7 +247,7 @@ export async function* streamDocxOpc(
           ? boundedSourceChunks(deferred.chunks)
           : partChunks(entry, replacement);
       for await (const chunk of chunks) {
-        throwIfAborted(options.signal);
+        throwIfAborted(options.signal, "DOCX packaging was cancelled.");
         entryBytes += chunk.byteLength;
         totalUncompressedBytes += chunk.byteLength;
         if (

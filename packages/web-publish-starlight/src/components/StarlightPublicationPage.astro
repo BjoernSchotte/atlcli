@@ -33,8 +33,8 @@ interface Props {
   };
   /** Shared SEO tags generated from the publication route/locale planner. */
   seoHead?: readonly PublicationSeoHeadTagV1[];
-  /** Optional provider-validated action; the component never derives an URL. */
-  editLink?: { href: string; label?: string };
+  /** Optional provider-validated action (`publicationEditLinkV1`); the component never derives an URL. */
+  editLink?: { href: string; label?: string; placement?: "page-footer" | "page-actions" };
 }
 
 const { page, navigation, sidebar, context, copy, seoHead, editLink } = Astro.props;
@@ -54,7 +54,7 @@ const { page, navigation, sidebar, context, copy, seoHead, editLink } = Astro.pr
   headings={navigation.toc.map((heading) => ({ depth: heading.level, slug: heading.anchorId, text: heading.text }))}
   sidebar={sidebar}
 >
-  {editLink && <StarlightPublicationEditLink href={editLink.href} label={editLink.label} />}
+  {editLink && editLink.placement !== "page-footer" && <StarlightPublicationEditLink href={editLink.href} label={editLink.label} />}
   <StarlightPublicationNavigation navigation={navigation} copy={copy} />
   <slot />
   <StarlightDocumentBody
@@ -62,5 +62,6 @@ const { page, navigation, sidebar, context, copy, seoHead, editLink } = Astro.pr
     context={context}
     search={{ sourceId: page.sourceId, title: page.title, labels: page.labels, locale: context.locale }}
   />
+  {editLink?.placement === "page-footer" && <StarlightPublicationEditLink href={editLink.href} label={editLink.label} />}
   <slot name="after-content" />
 </StarlightPage>

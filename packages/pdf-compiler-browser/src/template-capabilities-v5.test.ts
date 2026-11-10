@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 import type { ExportBlock } from "@atlcli/confluence";
-import sharp from "sharp";
 import {
   validateManifestV3,
   validatePdfTemplateDesignV3,
@@ -87,21 +86,23 @@ async function rasterPage(
       "-singlefile",
       "-r",
       "72",
-      "-png",
       path,
       prefix,
     ], { stdout: "pipe", stderr: "pipe" });
     if (await process.exited !== 0) {
       throw new Error(`pdftoppm failed: ${await new Response(process.stderr).text()}`);
     }
-    const raster = await sharp(join(directory, "page.png"))
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
+    // pdftoppm's native output: a binary PPM, `P6\n<width> <height>\n255\n`
+    // followed by raw RGB — no image library needed to read it.
+    const ppm = new Uint8Array(await Bun.file(join(directory, "page.ppm")).arrayBuffer());
+    const header = /^P6\s+(\d+)\s+(\d+)\s+255\s/u.exec(
+      new TextDecoder("latin1").decode(ppm.subarray(0, 32)),
+    );
+    if (!header) throw new Error("pdftoppm did not write a binary PPM");
     return {
-      data: new Uint8Array(raster.data),
-      width: raster.info.width,
-      height: raster.info.height,
+      data: ppm.subarray(header[0].length),
+      width: Number(header[1]),
+      height: Number(header[2]),
     };
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -579,6 +580,34 @@ describe("canonical revision-5 page and running-region source", () => {
     const structure = inspectablePdf(result.pdf!);
     expect(structure).toContain("/Artifact");
     expect(structure).not.toMatch(/\/S\s*\/Figure\b/u);
+  }, 120_000);
+
+  it("revision 7 scopes an even-page decoration by the physical page when numbering starts above 1", async () => {
+    // Physical page 2 (the first body page) is an even page for the running
+    // header whatever number it prints.
+    const secondPagePixel = async (start: number, revision: "6" | "7") => {
+      const decorated = design();
+      decorated.navigation.contents.enabled = false;
+      decorated.navigation.pageNumbers.start = start;
+      decorated.paints = { solid: { kind: "solid", color: "accent" } };
+      decorated.decorations = [{
+        kind: "rect",
+        scope: "even",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "210mm", height: "8mm" },
+        fill: "solid",
+      }];
+      const result = await compiler.compile(
+        bundle(createAtlcliTypstTemplateV5(decorated, {}, undefined, revision)),
+      );
+      expect(result.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+      return pixelAtMm(await rasterPage(result.pdf!, 2), 100, 4);
+    };
+    const drawn = await secondPagePixel(1, "6");
+    // Revisions 5/6 compare the page COUNTER, which reads 3 on that page.
+    expect(await secondPagePixel(2, "6")).not.toEqual(drawn);
+    expect(await secondPagePixel(2, "7")).toEqual(drawn);
+    expect(await secondPagePixel(1, "7")).toEqual(drawn);
   }, 120_000);
 
   it("executes normalized image crop and every bounded clip with shifted negative controls", async () => {

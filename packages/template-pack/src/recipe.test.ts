@@ -376,6 +376,17 @@ describe("validatePdfTemplateRecipeV2", () => {
     expect(validatePdfTemplateRecipeV2(source).design).toEqual({});
   });
 
+  it("rejects a design or assets value that is not an object", () => {
+    for (const design of ["landscape", 7, true, null, [{ page: {} }]]) {
+      expect(() => validatePdfTemplateRecipeV2({ ...recipeV2(), design })).toThrow(
+        /recipe\.design: must be an object/u,
+      );
+    }
+    expect(() => validatePdfTemplateRecipeV2({ ...recipeV2(), assets: null })).toThrow(
+      /recipe\.assets/u,
+    );
+  });
+
   it("rejects author-owned compiler ranges and generated fields", () => {
     const source = recipeV2();
     (source.template as Record<string, unknown>).compilerRange =

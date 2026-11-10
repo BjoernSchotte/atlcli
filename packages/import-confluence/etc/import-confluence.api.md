@@ -19,9 +19,6 @@ export interface AdfNode {
     text?: string;
 }
 
-// export: assertAdfReadbackShape
-export declare function assertAdfReadbackShape(value: unknown): asserts value is AdfDocument;
-
 // export: CloudImportClientPort
 export interface CloudImportClientPort {
     createPageAdf(input: {
@@ -219,9 +216,6 @@ export interface AdfNode {
     }[];
     text?: string;
 }
-
-// export: assertAdfReadbackShape
-export declare function assertAdfReadbackShape(value: unknown): asserts value is AdfDocument;
 
 // export: CloudImportClientPort
 export interface CloudImportClientPort {

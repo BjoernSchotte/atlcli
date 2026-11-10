@@ -61,7 +61,7 @@ export function projectVisualOracle(
         },
       ];
     });
-  }).sort((left, right) => left.key.localeCompare(right.key));
+  }).sort((left, right) => left.key.localeCompare(right.key, "en"));
 }
 
 /** Field-addressed diff: one oracle mutation yields one responsible failure. */

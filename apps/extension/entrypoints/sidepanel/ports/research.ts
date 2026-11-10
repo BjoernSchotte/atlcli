@@ -46,6 +46,9 @@ import {
   isChatPresentationMessage,
   isResearchEvent,
   isResearchProgress,
+  type ExtRequest,
+  type ResponseFor,
+  type ResponseMap,
 } from "../../../utils/messages.js";
 import {
   ACTIVE_CHAT_CONVERSATION_KEY,
@@ -53,6 +56,8 @@ import {
   browserChatHostIdentityV1,
 } from "../../../utils/research/browser-chat-host.js";
 import { createBrowserChatTurnPortV1 } from "../../../utils/research/chat-turn-port.js";
+
+type ResearchErrorCode = ConstructorParameters<typeof ResearchContractError>[0];
 
 const MAX_RESEARCH_RESUME_MS = 10 * 60_000;
 const RESEARCH_SESSION_ID_PATTERN = CHAT_CONVERSATION_ID_PATTERN;
@@ -279,6 +284,41 @@ function safeFilename(value: string): string {
   return normalized.endsWith(".md") ? normalized : `${normalized || "research-report"}.md`;
 }
 
+type WindowScopedKind =
+  & Extract<ExtRequest, { windowId: number }>["kind"]
+  & keyof ResponseMap;
+
+/**
+ * One window-scoped request/response exchange with the service worker. Every
+ * such request answers with `<kind>-result`, either `ok: true` plus its payload
+ * or `ok: false` plus a contract error code.
+ */
+async function sendForWindow<K extends WindowScopedKind>(
+  kind: K,
+  host: string,
+  payload: Omit<Extract<ExtRequest, { kind: K }>, "kind" | "windowId">,
+): Promise<Extract<ResponseFor<K>, { ok: true }>> {
+  const windowId = await currentWindowId();
+  const response = (await chrome.runtime.sendMessage({ kind, windowId, ...payload })) as
+    | { kind?: unknown; ok?: unknown; code?: ResearchErrorCode; error?: string }
+    | undefined;
+  if (!response || response.kind !== `${kind}-result`) {
+    throw new ResearchContractError("provider-error", `The ${host} host returned no result.`);
+  }
+  if (response.ok !== true) {
+    throw new ResearchContractError(response.code ?? "provider-error", response.error ?? "");
+  }
+  return response as Extract<ResponseFor<K>, { ok: true }>;
+}
+
+async function currentWindowId(): Promise<number> {
+  const window = await chrome.windows.getCurrent();
+  if (window.id === undefined) {
+    throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
+  }
+  return window.id;
+}
+
 export function chromeResearchPort(): ResearchPort {
   let activeRunId: string | null = null;
   const credentialStorage = chromeBrowserCredentialStorageV1();
@@ -329,34 +369,7 @@ export function chromeResearchPort(): ResearchPort {
     },
 
     async controlActiveChat(command) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:chat-control",
-        windowId: window.id,
-        command,
-      }) as
-        | { kind: "research:chat-control-result"; ok: true; state: ChatInteractionStateV1 }
-        | {
-            kind: "research:chat-control-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:chat-control-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The Chat interaction host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.state;
+      return (await sendForWindow("research:chat-control", "Chat interaction", { command })).state;
     },
 
     async resetChatConversation() {
@@ -364,736 +377,175 @@ export function chromeResearchPort(): ResearchPort {
     },
 
     async resolveScope(request, options) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = (await chrome.runtime.sendMessage({
-        kind: "research:resolve-scope",
-        windowId: window.id,
-        request,
-        ...(options ? { options } : {}),
-      })) as
-        | {
-            kind: "research:resolve-scope-result";
-            ok: true;
-            outcome: Awaited<ReturnType<ResearchPort["resolveScope"]>>;
-          }
-        | {
-            kind: "research:resolve-scope-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:resolve-scope-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research scope host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.outcome;
+      return (await sendForWindow(
+        "research:resolve-scope",
+        "research scope",
+        { request, ...(options ? { options } : {}) },
+      )).outcome;
     },
 
     async listResumableSessions() {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:list-resumable-sessions",
-        windowId: window.id,
-      }) as
-        | {
-            kind: "research:list-resumable-sessions-result";
-            ok: true;
-            sessions: ResearchResumableSessionV1[];
-          }
-        | {
-            kind: "research:list-resumable-sessions-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:list-resumable-sessions-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research session host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.sessions;
+      return (await sendForWindow(
+        "research:list-resumable-sessions",
+        "research session",
+        {},
+      )).sessions;
     },
 
     async listRetainedSessions() {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:list-retained-sessions",
-        windowId: window.id,
-      }) as
-        | {
-            kind: "research:list-retained-sessions-result";
-            ok: true;
-            sessions: ResearchRetainedSessionV1[];
-          }
-        | {
-            kind: "research:list-retained-sessions-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:list-retained-sessions-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The retained research session host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.sessions;
+      return (await sendForWindow(
+        "research:list-retained-sessions",
+        "retained research session",
+        {},
+      )).sessions;
     },
 
     async prepareFollowUpTurn(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:prepare-follow-up-turn",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:prepare-follow-up-turn-result";
-            ok: true;
-            outcome: Awaited<ReturnType<NonNullable<ResearchPort["prepareFollowUpTurn"]>>>;
-          }
-        | {
-            kind: "research:prepare-follow-up-turn-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:prepare-follow-up-turn-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research follow-up host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.outcome;
+      return (await sendForWindow(
+        "research:prepare-follow-up-turn",
+        "research follow-up",
+        { ...input },
+      )).outcome;
     },
 
     async requestSteering(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:steer-session",
-        windowId: window.id,
-        ...input,
-      }) as
-        | { kind: "research:steer-session-result"; ok: true }
-        | {
-            kind: "research:steer-session-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:steer-session-result") {
-        throw new ResearchContractError("provider-error", "The research steering host returned no result.");
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      await sendForWindow("research:steer-session", "research steering", { ...input });
     },
 
     async listScopeReviews() {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:list-scope-reviews",
-        windowId: window.id,
-      }) as
-        | {
-            kind: "research:list-scope-reviews-result";
-            ok: true;
-            reviews: ResearchSessionScopeReviewV1[];
-          }
-        | {
-            kind: "research:list-scope-reviews-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:list-scope-reviews-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research scope-review host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.reviews;
+      return (await sendForWindow(
+        "research:list-scope-reviews",
+        "research scope-review",
+        {},
+      )).reviews;
     },
 
     async listScopePlanReviews() {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:list-scope-plan-reviews",
-        windowId: window.id,
-      }) as
-        | {
-            kind: "research:list-scope-plan-reviews-result";
-            ok: true;
-            reviews: ResearchSessionScopeReviewV1[];
-          }
-        | {
-            kind: "research:list-scope-plan-reviews-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:list-scope-plan-reviews-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research scope-plan-review host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.reviews;
+      return (await sendForWindow(
+        "research:list-scope-plan-reviews",
+        "research scope-plan-review",
+        {},
+      )).reviews;
     },
 
     async approveScopeReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:approve-scope-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:approve-scope-review-result";
-            ok: true;
-            review: ResearchSessionScopeReviewV1;
-          }
-        | {
-            kind: "research:approve-scope-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:approve-scope-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research scope-approval host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.review;
+      return (await sendForWindow(
+        "research:approve-scope-review",
+        "research scope-approval",
+        { ...input },
+      )).review;
     },
 
     async rejectScopeReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:reject-scope-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:reject-scope-review-result";
-            ok: true;
-            review: ResearchSessionScopeReviewV1;
-          }
-        | {
-            kind: "research:reject-scope-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:reject-scope-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research scope-rejection host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.review;
+      return (await sendForWindow(
+        "research:reject-scope-review",
+        "research scope-rejection",
+        { ...input },
+      )).review;
     },
 
     async approveScopePlanReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:approve-scope-plan-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:approve-scope-plan-review-result";
-            ok: true;
-            review: ResearchSessionScopeReviewV1;
-          }
-        | {
-            kind: "research:approve-scope-plan-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:approve-scope-plan-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research scope-plan-approval host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.review;
+      return (await sendForWindow(
+        "research:approve-scope-plan-review",
+        "research scope-plan-approval",
+        { ...input },
+      )).review;
     },
 
     async preparePlanReview(request, policy) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:prepare-plan-review",
-        windowId: window.id,
-        request,
-        policy,
-      }) as
-        | {
-            kind: "research:prepare-plan-review-result";
-            ok: true;
-            review: ResearchSessionPlanReviewV1;
-          }
-        | {
-            kind: "research:prepare-plan-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:prepare-plan-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research plan-preparation host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.review;
+      return (await sendForWindow(
+        "research:prepare-plan-review",
+        "research plan-preparation",
+        { request, policy },
+      )).review;
     },
 
     async listPlanReviews() {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:list-plan-reviews",
-        windowId: window.id,
-      }) as
-        | {
-            kind: "research:list-plan-reviews-result";
-            ok: true;
-            reviews: ResearchSessionPlanReviewV1[];
-          }
-        | {
-            kind: "research:list-plan-reviews-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:list-plan-reviews-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research plan-review host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.reviews;
+      return (await sendForWindow(
+        "research:list-plan-reviews",
+        "research plan-review",
+        {},
+      )).reviews;
     },
 
     async approvePlanReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:approve-plan-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:approve-plan-review-result";
-            ok: true;
-            session: ResearchResumableSessionV1;
-          }
-        | {
-            kind: "research:approve-plan-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:approve-plan-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research plan-approval host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.session;
+      return (await sendForWindow(
+        "research:approve-plan-review",
+        "research plan-approval",
+        { ...input },
+      )).session;
     },
 
     async rejectPlanReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:reject-plan-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:reject-plan-review-result";
-            ok: true;
-            review: ResearchSessionPlanReviewV1;
-          }
-        | {
-            kind: "research:reject-plan-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:reject-plan-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research plan-revision host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.review;
+      return (await sendForWindow(
+        "research:reject-plan-review",
+        "research plan-revision",
+        { ...input },
+      )).review;
     },
 
     async prepareClarificationReview(request, policy) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:prepare-clarification-review",
-        windowId: window.id,
-        request,
-        policy,
-      }) as
-        | {
-            kind: "research:prepare-clarification-review-result";
-            ok: true;
-            review: ResearchSessionClarificationReviewV1;
-          }
-        | {
-            kind: "research:prepare-clarification-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:prepare-clarification-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research clarification-preparation host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.review;
+      return (await sendForWindow(
+        "research:prepare-clarification-review",
+        "research clarification-preparation",
+        { request, policy },
+      )).review;
     },
 
     async listClarificationReviews() {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:list-clarification-reviews",
-        windowId: window.id,
-      }) as
-        | {
-            kind: "research:list-clarification-reviews-result";
-            ok: true;
-            reviews: ResearchSessionClarificationReviewV1[];
-          }
-        | {
-            kind: "research:list-clarification-reviews-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:list-clarification-reviews-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research clarification-review host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.reviews;
+      return (await sendForWindow(
+        "research:list-clarification-reviews",
+        "research clarification-review",
+        {},
+      )).reviews;
     },
 
     async resolveClarificationReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:resolve-clarification-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:resolve-clarification-review-result";
-            ok: true;
-            outcome: ResearchClarificationReviewResolutionV1;
-          }
-        | {
-            kind: "research:resolve-clarification-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:resolve-clarification-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research clarification-resolution host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.outcome;
+      return (await sendForWindow(
+        "research:resolve-clarification-review",
+        "research clarification-resolution",
+        { ...input },
+      )).outcome;
     },
 
     async continueClarificationReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:continue-clarification-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:continue-clarification-review-result";
-            ok: true;
-            outcome: ResearchClarificationReviewResolutionV1;
-          }
-        | {
-            kind: "research:continue-clarification-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:continue-clarification-review-result") {
-        throw new ResearchContractError(
-          "provider-error",
-          "The research clarification-recovery host returned no result.",
-        );
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.outcome;
+      return (await sendForWindow(
+        "research:continue-clarification-review",
+        "research clarification-recovery",
+        { ...input },
+      )).outcome;
     },
 
     async prepareScopeClarificationReview(request, policy, options) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:prepare-scope-clarification-review",
-        windowId: window.id,
-        request,
-        policy,
-        ...(options?.purpose ? { purpose: options.purpose } : {}),
-      }) as
-        | {
-            kind: "research:prepare-scope-clarification-review-result";
-            ok: true;
-            review: ResearchSessionScopeClarificationReviewV1;
-          }
-        | {
-            kind: "research:prepare-scope-clarification-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:prepare-scope-clarification-review-result") {
-        throw new ResearchContractError("provider-error", "The research scope-clarification host returned no result.");
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.review;
+      return (await sendForWindow(
+        "research:prepare-scope-clarification-review",
+        "research scope-clarification",
+        { request, policy, ...(options?.purpose ? { purpose: options.purpose } : {}) },
+      )).review;
     },
 
     async listScopeClarificationReviews() {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:list-scope-clarification-reviews",
-        windowId: window.id,
-      }) as
-        | {
-            kind: "research:list-scope-clarification-reviews-result";
-            ok: true;
-            reviews: ResearchSessionScopeClarificationReviewV1[];
-          }
-        | {
-            kind: "research:list-scope-clarification-reviews-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:list-scope-clarification-reviews-result") {
-        throw new ResearchContractError("provider-error", "The research scope-clarification review host returned no result.");
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.reviews;
+      return (await sendForWindow(
+        "research:list-scope-clarification-reviews",
+        "research scope-clarification review",
+        {},
+      )).reviews;
     },
 
     async resolveScopeClarificationReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:resolve-scope-clarification-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:resolve-scope-clarification-review-result";
-            ok: true;
-            outcome: ResearchScopeClarificationReviewResolutionV1;
-          }
-        | {
-            kind: "research:resolve-scope-clarification-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:resolve-scope-clarification-review-result") {
-        throw new ResearchContractError("provider-error", "The research scope-clarification resolution host returned no result.");
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.outcome;
+      return (await sendForWindow(
+        "research:resolve-scope-clarification-review",
+        "research scope-clarification resolution",
+        { ...input },
+      )).outcome;
     },
 
     async continueScopeClarificationReview(input) {
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        throw new ResearchContractError("provider-error", "The side panel window is unavailable.");
-      }
-      const response = await chrome.runtime.sendMessage({
-        kind: "research:continue-scope-clarification-review",
-        windowId: window.id,
-        ...input,
-      }) as
-        | {
-            kind: "research:continue-scope-clarification-review-result";
-            ok: true;
-            outcome: ResearchScopeClarificationReviewResolutionV1;
-          }
-        | {
-            kind: "research:continue-scope-clarification-review-result";
-            ok: false;
-            code: ConstructorParameters<typeof ResearchContractError>[0];
-            error: string;
-          }
-        | undefined;
-      if (!response || response.kind !== "research:continue-scope-clarification-review-result") {
-        throw new ResearchContractError("provider-error", "The research scope-clarification recovery host returned no result.");
-      }
-      if (!response.ok) throw new ResearchContractError(response.code, response.error);
-      return response.outcome;
+      return (await sendForWindow(
+        "research:continue-scope-clarification-review",
+        "research scope-clarification recovery",
+        { ...input },
+      )).outcome;
     },
 
     async run(request, options) {
@@ -1107,118 +559,117 @@ export function chromeResearchPort(): ResearchPort {
         throw new ResearchContractError("cancelled", "The research run was cancelled.");
       }
       const runId = crypto.randomUUID();
-      let sessionId = `research-session:${crypto.randomUUID()}`;
-      if (options?.mode === "chat") {
-        const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
-        const retained = stored[ACTIVE_CHAT_CONVERSATION_KEY];
-        sessionId = options.conversationId ?? (
-          typeof retained === "string" && RESEARCH_SESSION_ID_PATTERN.test(retained)
-            ? retained
-            : sessionId
-        );
-        await chrome.storage.local.set({ [ACTIVE_CHAT_CONVERSATION_KEY]: sessionId });
-      }
-      const turnId = options?.chatResume?.turnId ??
-        options?.chatCheckpointResume?.turnId ??
-        `research-turn:${crypto.randomUUID()}`;
-      const policy = normalizeResearchOneShotPolicyV1(options?.policy);
-      const hostIdentity = options?.mode === "chat"
-        ? await browserChatHostIdentityV1()
-        : undefined;
+      // Claimed before the first await and released in one `finally`: a
+      // rejected lookup must not leave the port "already active" forever, and
+      // a second call must not slip in while the first is still awaiting.
       activeRunId = runId;
-      options?.onSessionStart?.({ sessionId, turnId });
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        activeRunId = null;
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable."
-        );
-      }
-      const onProgress = (message: unknown): void => {
-        if (isResearchProgress(message, runId)) {
-          options?.onProgress?.(message.progress);
-        }
-        if (isResearchEvent(message, runId)) {
-          options?.onEvent?.(message.event);
-        }
-        if (isChatPresentationMessage(message, runId)) {
-          options?.onChatPresentation?.(message.event);
-        }
-      };
-      const cancel = (): void => {
-        void chrome.runtime.sendMessage({
-          kind: "research:cancel-session",
-          runId,
-        }).catch(() => undefined);
-      };
-      chrome.runtime.onMessage.addListener(onProgress);
-      options?.signal?.addEventListener("abort", cancel, { once: true });
-      const timeoutId = setTimeout(cancel, request.limits.maxRunMs);
       try {
-        let response:
-          | {
-              kind: "research:run-result";
-              runId: string;
-              ok: true;
-              report: ResearchReport | ChatAnswerV1;
-            }
-          | {
-              kind: "research:run-result";
-              runId: string;
-              ok: false;
-              code: ConstructorParameters<typeof ResearchContractError>[0];
-              error: string;
-              question?: ChatUserQuestionV1;
-            }
-          | undefined;
-        try {
-          response = (await chrome.runtime.sendMessage({
-            kind: "research:run",
+        let sessionId = `research-session:${crypto.randomUUID()}`;
+        if (options?.mode === "chat") {
+          const stored = await chrome.storage.local.get(ACTIVE_CHAT_CONVERSATION_KEY);
+          const retained = stored[ACTIVE_CHAT_CONVERSATION_KEY];
+          sessionId = options.conversationId ?? (
+            typeof retained === "string" && RESEARCH_SESSION_ID_PATTERN.test(retained)
+              ? retained
+              : sessionId
+          );
+          await chrome.storage.local.set({ [ACTIVE_CHAT_CONVERSATION_KEY]: sessionId });
+        }
+        const turnId = options?.chatResume?.turnId ??
+          options?.chatCheckpointResume?.turnId ??
+          `research-turn:${crypto.randomUUID()}`;
+        const policy = normalizeResearchOneShotPolicyV1(options?.policy);
+        const hostIdentity = options?.mode === "chat"
+          ? await browserChatHostIdentityV1()
+          : undefined;
+        options?.onSessionStart?.({ sessionId, turnId });
+        const windowId = await currentWindowId();
+        const onProgress = (message: unknown): void => {
+          if (isResearchProgress(message, runId)) {
+            options?.onProgress?.(message.progress);
+          }
+          if (isResearchEvent(message, runId)) {
+            options?.onEvent?.(message.event);
+          }
+          if (isChatPresentationMessage(message, runId)) {
+            options?.onChatPresentation?.(message.event);
+          }
+        };
+        const cancel = (): void => {
+          void chrome.runtime.sendMessage({
+            kind: "research:cancel-session",
             runId,
-            sessionId,
-            turnId,
-            windowId: window.id,
-            mode: options?.mode ?? "research",
-            request,
-            policy,
-            ...(hostIdentity ? { hostIdentity } : {}),
-            ...(options?.qualityPolicy ? { qualityPolicy: options.qualityPolicy } : {}),
-            ...(options?.chatResume ? { resumeAnswer: options.chatResume.answer } : {}),
-            ...(options?.chatCheckpointResume
-              ? { resumeCheckpoint: { kind: options.chatCheckpointResume.kind } }
-              : {}),
-          })) as typeof response;
-        } catch (error) {
+          }).catch(() => undefined);
+        };
+        chrome.runtime.onMessage.addListener(onProgress);
+        options?.signal?.addEventListener("abort", cancel, { once: true });
+        const timeoutId = setTimeout(cancel, request.limits.maxRunMs);
+        try {
+          let response:
+            | {
+                kind: "research:run-result";
+                runId: string;
+                ok: true;
+                report: ResearchReport | ChatAnswerV1;
+              }
+            | {
+                kind: "research:run-result";
+                runId: string;
+                ok: false;
+                code: ConstructorParameters<typeof ResearchContractError>[0];
+                error: string;
+                question?: ChatUserQuestionV1;
+              }
+            | undefined;
+          try {
+            response = (await chrome.runtime.sendMessage({
+              kind: "research:run",
+              runId,
+              sessionId,
+              turnId,
+              windowId,
+              mode: options?.mode ?? "research",
+              request,
+              policy,
+              ...(hostIdentity ? { hostIdentity } : {}),
+              ...(options?.qualityPolicy ? { qualityPolicy: options.qualityPolicy } : {}),
+              ...(options?.chatResume ? { resumeAnswer: options.chatResume.answer } : {}),
+              ...(options?.chatCheckpointResume
+                ? { resumeCheckpoint: { kind: options.chatCheckpointResume.kind } }
+                : {}),
+            })) as typeof response;
+          } catch (error) {
+            if (options?.signal?.aborted) {
+              throw new ResearchContractError("cancelled", "The research run was cancelled.");
+            }
+            throw error;
+          }
           if (options?.signal?.aborted) {
             throw new ResearchContractError("cancelled", "The research run was cancelled.");
           }
-          throw error;
-        }
-        if (options?.signal?.aborted) {
-          throw new ResearchContractError("cancelled", "The research run was cancelled.");
-        }
-        if (
-          !response ||
-          response.kind !== "research:run-result" ||
-          response.runId !== runId
-        ) {
-          throw new ResearchContractError(
-            "provider-error",
-            "The research host returned no correlated result."
-          );
-        }
-        if (!response.ok) {
-          if (response.question) {
-            throw new ChatUserQuestionRequiredError(response.question);
+          if (
+            !response ||
+            response.kind !== "research:run-result" ||
+            response.runId !== runId
+          ) {
+            throw new ResearchContractError(
+              "provider-error",
+              "The research host returned no correlated result."
+            );
           }
-          throw new ResearchContractError(response.code, response.error);
+          if (!response.ok) {
+            if (response.question) {
+              throw new ChatUserQuestionRequiredError(response.question);
+            }
+            throw new ResearchContractError(response.code, response.error);
+          }
+          return response.report;
+        } finally {
+          clearTimeout(timeoutId);
+          chrome.runtime.onMessage.removeListener(onProgress);
+          options?.signal?.removeEventListener("abort", cancel);
         }
-        return response.report;
       } finally {
-        clearTimeout(timeoutId);
-        chrome.runtime.onMessage.removeListener(onProgress);
-        options?.signal?.removeEventListener("abort", cancel);
         if (activeRunId === runId) activeRunId = null;
       }
     },
@@ -1234,83 +685,82 @@ export function chromeResearchPort(): ResearchPort {
         throw new ResearchContractError("cancelled", "The research run was cancelled.");
       }
       const runId = crypto.randomUUID();
+      // Claimed before the first await and released in one `finally`: a
+      // rejected lookup must not leave the port "already active" forever, and
+      // a second call must not slip in while the first is still awaiting.
       activeRunId = runId;
-      options?.onSessionStart?.({ sessionId });
-      const window = await chrome.windows.getCurrent();
-      if (window.id === undefined) {
-        activeRunId = null;
-        throw new ResearchContractError(
-          "provider-error",
-          "The side panel window is unavailable.",
-        );
-      }
-      const onProgress = (message: unknown): void => {
-        if (isResearchProgress(message, runId)) {
-          options?.onProgress?.(message.progress);
-        }
-        if (isResearchEvent(message, runId)) {
-          options?.onEvent?.(message.event);
-        }
-      };
-      const cancel = (): void => {
-        void chrome.runtime.sendMessage({
-          kind: "research:cancel-session",
-          runId,
-        }).catch(() => undefined);
-      };
-      chrome.runtime.onMessage.addListener(onProgress);
-      options?.signal?.addEventListener("abort", cancel, { once: true });
-      const timeoutId = setTimeout(cancel, MAX_RESEARCH_RESUME_MS);
       try {
-        let response:
-          | {
-              kind: "research:resume-result";
-              runId: string;
-              ok: true;
-              report: ResearchReport;
-            }
-          | {
-              kind: "research:resume-result";
-              runId: string;
-              ok: false;
-              code: ConstructorParameters<typeof ResearchContractError>[0];
-              error: string;
-            }
-          | undefined;
-        try {
-          response = await chrome.runtime.sendMessage({
-            kind: "research:resume",
+        options?.onSessionStart?.({ sessionId });
+        const windowId = await currentWindowId();
+        const onProgress = (message: unknown): void => {
+          if (isResearchProgress(message, runId)) {
+            options?.onProgress?.(message.progress);
+          }
+          if (isResearchEvent(message, runId)) {
+            options?.onEvent?.(message.event);
+          }
+        };
+        const cancel = (): void => {
+          void chrome.runtime.sendMessage({
+            kind: "research:cancel-session",
             runId,
-            sessionId,
-            windowId: window.id,
-          }) as typeof response;
-        } catch (error) {
+          }).catch(() => undefined);
+        };
+        chrome.runtime.onMessage.addListener(onProgress);
+        options?.signal?.addEventListener("abort", cancel, { once: true });
+        const timeoutId = setTimeout(cancel, MAX_RESEARCH_RESUME_MS);
+        try {
+          let response:
+            | {
+                kind: "research:resume-result";
+                runId: string;
+                ok: true;
+                report: ResearchReport;
+              }
+            | {
+                kind: "research:resume-result";
+                runId: string;
+                ok: false;
+                code: ConstructorParameters<typeof ResearchContractError>[0];
+                error: string;
+              }
+            | undefined;
+          try {
+            response = await chrome.runtime.sendMessage({
+              kind: "research:resume",
+              runId,
+              sessionId,
+              windowId,
+            }) as typeof response;
+          } catch (error) {
+            if (options?.signal?.aborted) {
+              throw new ResearchContractError("cancelled", "The research run was cancelled.");
+            }
+            throw error;
+          }
           if (options?.signal?.aborted) {
             throw new ResearchContractError("cancelled", "The research run was cancelled.");
           }
-          throw error;
+          if (
+            !response ||
+            response.kind !== "research:resume-result" ||
+            response.runId !== runId
+          ) {
+            throw new ResearchContractError(
+              "provider-error",
+              "The research host returned no correlated resume result.",
+            );
+          }
+          if (!response.ok) {
+            throw new ResearchContractError(response.code, response.error);
+          }
+          return response.report;
+        } finally {
+          clearTimeout(timeoutId);
+          chrome.runtime.onMessage.removeListener(onProgress);
+          options?.signal?.removeEventListener("abort", cancel);
         }
-        if (options?.signal?.aborted) {
-          throw new ResearchContractError("cancelled", "The research run was cancelled.");
-        }
-        if (
-          !response ||
-          response.kind !== "research:resume-result" ||
-          response.runId !== runId
-        ) {
-          throw new ResearchContractError(
-            "provider-error",
-            "The research host returned no correlated resume result.",
-          );
-        }
-        if (!response.ok) {
-          throw new ResearchContractError(response.code, response.error);
-        }
-        return response.report;
       } finally {
-        clearTimeout(timeoutId);
-        chrome.runtime.onMessage.removeListener(onProgress);
-        options?.signal?.removeEventListener("abort", cancel);
         if (activeRunId === runId) activeRunId = null;
       }
     },

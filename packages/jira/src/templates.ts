@@ -79,14 +79,6 @@ export interface JiraTemplateSummary {
   overrides?: JiraTemplateSource;
 }
 
-/** Template metadata for listing (legacy compat) */
-export interface JiraTemplateInfo {
-  name: string;
-  description?: string;
-  createdAt: string;
-  sourceIssue?: string;
-}
-
 // ============ Storage Configuration ============
 
 /**
@@ -605,86 +597,6 @@ export async function ensureMigrated(): Promise<{ migrated: string[]; skipped: s
   }
 
   return null;
-}
-
-// ============ Legacy Compatibility Functions ============
-
-/**
- * Get the templates directory path (legacy compat).
- * @deprecated Use GlobalJiraTemplateStorage instead
- */
-export function getTemplatesDir(): string {
-  return join(getJiraTemplatesBaseDir(), "global");
-}
-
-/**
- * List all saved templates (legacy compat).
- * @deprecated Use JiraTemplateResolver.listAll() instead
- */
-export async function listTemplates(): Promise<JiraTemplateInfo[]> {
-  await ensureMigrated();
-  const storage = new GlobalJiraTemplateStorage();
-  const summaries = await storage.list();
-  return summaries.map(s => ({
-    name: s.name,
-    description: s.description,
-    createdAt: s.createdAt,
-    sourceIssue: s.sourceIssue,
-  }));
-}
-
-/**
- * Load a template by name (legacy compat).
- * @deprecated Use JiraTemplateResolver.resolve() instead
- */
-export async function loadTemplate(name: string): Promise<JiraTemplate> {
-  await ensureMigrated();
-  const storage = new GlobalJiraTemplateStorage();
-  const template = await storage.get(name);
-  if (!template) {
-    throw new Error(`Template not found: ${name}`);
-  }
-  return template;
-}
-
-/**
- * Check if a template exists (legacy compat).
- * @deprecated Use JiraTemplateStorage.exists() instead
- */
-export async function templateExists(name: string): Promise<boolean> {
-  await ensureMigrated();
-  const storage = new GlobalJiraTemplateStorage();
-  return storage.exists(name);
-}
-
-/**
- * Save a template (legacy compat).
- * @deprecated Use JiraTemplateStorage.save() instead
- */
-export async function saveTemplate(
-  template: JiraTemplate,
-  options?: { force?: boolean }
-): Promise<void> {
-  await ensureMigrated();
-  const storage = new GlobalJiraTemplateStorage();
-
-  if (!options?.force && (await storage.exists(template.name))) {
-    throw new Error(
-      `Template already exists: ${template.name}. Use --force to overwrite.`
-    );
-  }
-
-  await storage.save(template);
-}
-
-/**
- * Delete a template (legacy compat).
- * @deprecated Use JiraTemplateStorage.delete() instead
- */
-export async function deleteTemplate(name: string): Promise<void> {
-  await ensureMigrated();
-  const storage = new GlobalJiraTemplateStorage();
-  await storage.delete(name);
 }
 
 // ============ Conversion Functions ============

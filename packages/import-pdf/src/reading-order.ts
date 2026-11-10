@@ -7,6 +7,7 @@ import type {
 } from "./contracts.js";
 import { normalizePdfText, textDirection, unionRects, type PdfTextDirection } from "./text.js";
 import { assemblePdfTextV2, type PdfTextAssemblyV2 } from "./text-assembly.js";
+import { median } from "./text-geometry.js";
 
 export const PDF_GEOMETRY_POLICY_V1 = Object.freeze({
   maxColumns: 2,
@@ -46,13 +47,6 @@ export interface PdfReadingOrderPageV1 {
   ordered: PdfGeometryFragmentV1[];
   columnCount: number;
   qualificationReasons: string[];
-}
-
-function median(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle]!;
 }
 
 function isBreak(character: PdfTextCharacterFact): boolean {

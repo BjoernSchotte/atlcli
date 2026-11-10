@@ -12,10 +12,8 @@ import {
   digestPublicationRefreshPlanV1,
 } from "./digests.js";
 import {
-  createNodePublicationCacheStoreV1,
   materializeNodePublicationBundleV1,
   NodePublicationBundleErrorV1,
-  PublicationCacheStoreErrorV1,
   PublicationFileReadErrorV1,
   readBoundedPublicationJsonV1,
   sweepNodePublicationRetentionV1,
@@ -36,26 +34,6 @@ async function fixture(): Promise<{ root: string; file: string }> {
   await writeFile(file, '{"schema":"fixture"}', { mode: 0o600 });
   return { root, file };
 }
-
-const cachedPage = {
-  schema: "atlcli.publication-page/1",
-  sourceId: "cached-page",
-  sourceVersion: "1",
-  title: "Cached page",
-  position: 0,
-  depth: 0,
-  route: "/cached-page/",
-  blocks: [{ type: "paragraph", content: [{ type: "text", text: "Cached content" }] }],
-  notes: [],
-  labels: [],
-  links: [],
-  assetIds: [],
-  renderDependencies: [],
-  pageDigest: "cached-page-digest",
-} as const satisfies PublicationPageV1;
-
-const PAGE_KEY = "a".repeat(64);
-const ASSET_KEY = "b".repeat(64);
 
 async function sha256(bytes: Uint8Array): Promise<string> {
   const buffer = new ArrayBuffer(bytes.byteLength);
@@ -237,86 +215,6 @@ describe("@atlcli/web-publish/node bounded JSON reader", () => {
   });
 });
 
-describe("@atlcli/web-publish/node cache store", () => {
-  test("round-trips bounded normalized pages and binary assets under digest-only paths", async () => {
-    const { root } = await fixture();
-    const store = createNodePublicationCacheStoreV1({ workspaceDirectory: join(root, "workspace") });
-
-    await store.writePage(PAGE_KEY, cachedPage);
-    await store.writeAsset({
-      cacheKey: ASSET_KEY,
-      mediaType: "image/png",
-      sha256: "c".repeat(64),
-      bytes: new Uint8Array([137, 80, 78, 71]),
-    });
-
-    expect(await store.readPage(PAGE_KEY)).toEqual(cachedPage);
-    const asset = await store.readAsset(ASSET_KEY);
-    expect(asset).toEqual({
-      cacheKey: ASSET_KEY,
-      mediaType: "image/png",
-      sha256: "c".repeat(64),
-      bytes: new Uint8Array([137, 80, 78, 71]),
-    });
-    asset?.bytes.fill(0);
-    expect((await store.readAsset(ASSET_KEY))?.bytes).toEqual(new Uint8Array([137, 80, 78, 71]));
-    expect(await store.readPage("d".repeat(64))).toBeUndefined();
-    expect(await store.readAsset("d".repeat(64))).toBeUndefined();
-  });
-
-  test("rejects path-like keys, oversized values, and cache symlink entries", async () => {
-    const { root } = await fixture();
-    const workspaceDirectory = join(root, "workspace");
-    const cacheDirectory = join(workspaceDirectory, "cache");
-    const store = createNodePublicationCacheStoreV1({
-      workspaceDirectory,
-      maxPageBytes: 32,
-      maxAssetBytes: 3,
-    });
-    await expect(store.writePage("../not-a-key", cachedPage)).rejects.toThrow("SHA-256");
-    await expect(store.writePage(PAGE_KEY, cachedPage)).rejects.toMatchObject({ code: "too-large" });
-    await expect(store.writeAsset({
-      cacheKey: ASSET_KEY,
-      mediaType: "image/png",
-      sha256: "c".repeat(64),
-      bytes: new Uint8Array([1, 2, 3, 4]),
-    })).rejects.toMatchObject({ code: "too-large" });
-
-    const regularStore = createNodePublicationCacheStoreV1({ workspaceDirectory });
-    await regularStore.writePage(PAGE_KEY, cachedPage);
-    const pagePath = join(cacheDirectory, "pages", `${PAGE_KEY}.json`);
-    const replacement = join(root, "replacement.json");
-    await writeFile(replacement, JSON.stringify(cachedPage));
-    await import("node:fs/promises").then(({ unlink }) => unlink(pagePath));
-    await symlink(replacement, pagePath);
-    await expect(regularStore.readPage(PAGE_KEY)).rejects.toBeInstanceOf(PublicationCacheStoreErrorV1);
-  });
-
-  test("allows authoritative rewrites to recover corrupt derived cache entries", async () => {
-    const { root } = await fixture();
-    const workspaceDirectory = join(root, "workspace");
-    const store = createNodePublicationCacheStoreV1({ workspaceDirectory });
-    await store.writePage(PAGE_KEY, cachedPage);
-    const pagePath = join(workspaceDirectory, "cache", "pages", `${PAGE_KEY}.json`);
-    await writeFile(pagePath, "not-json");
-    await expect(store.readPage(PAGE_KEY)).rejects.toMatchObject({ code: "corrupt" });
-    await store.writePage(PAGE_KEY, cachedPage);
-    expect(await store.readPage(PAGE_KEY)).toEqual(cachedPage);
-
-    const asset = {
-      cacheKey: ASSET_KEY,
-      mediaType: "image/png",
-      sha256: "c".repeat(64),
-      bytes: new Uint8Array([137, 80, 78, 71]),
-    };
-    await store.writeAsset(asset);
-    await writeFile(join(workspaceDirectory, "cache", "assets", ASSET_KEY, "metadata.json"), "not-json");
-    await expect(store.readAsset(ASSET_KEY)).rejects.toMatchObject({ code: "corrupt" });
-    await store.writeAsset(asset);
-    expect(await store.readAsset(ASSET_KEY)).toEqual(asset);
-  });
-});
-
 describe("@atlcli/web-publish/node immutable bundle activation", () => {
   test("validates a complete plan, stages content-addressed files, and atomically activates only the verified bundle", async () => {
     const { root } = await fixture();
@@ -349,6 +247,24 @@ describe("@atlcli/web-publish/node immutable bundle activation", () => {
       expectedActiveBundleDigest: result.bundle.bundleDigest,
     });
     expect(repeat.bundleDirectory).toBe(result.bundleDirectory);
+  });
+
+  test("freezes edit links into the bundle identity and refuses a link off the trusted origin", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    const origin = "https://confluence.example.test";
+    const editLinks = { origin, label: "Edit", placement: "page-actions" as const, fallback: "omit" as const, links: [{ sourceId: "guide", href: `${origin}/wiki/pages/resumedraft.action?draftId=1` }] };
+    const plain = await materializeNodePublicationBundleV1(request);
+    expect(plain.bundle.editLinks).toBeUndefined();
+    const linked = await materializeNodePublicationBundleV1({ ...request, editLinks, expectedActiveBundleDigest: plain.bundle.bundleDigest });
+    expect(linked.bundle.editLinks).toEqual(editLinks);
+    expect(linked.bundle.bundleDigest).not.toBe(plain.bundle.bundleDigest);
+    await expect(materializeNodePublicationBundleV1({
+      ...request,
+      editLinks: { ...editLinks, links: [{ sourceId: "guide", href: "https://evil.example.test/wiki/pages/1" }] },
+      expectedActiveBundleDigest: linked.bundle.bundleDigest,
+    })).rejects.toThrow();
+    expect(JSON.parse(await readFile(join(request.workspaceDirectory, "current.json"), "utf8")).bundleDigest).toBe(linked.bundle.bundleDigest);
   });
 
   test("rejects incomplete, corrupt, and cancelled candidates without changing the last active pointer", async () => {

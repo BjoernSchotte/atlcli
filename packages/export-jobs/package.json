@@ -23,7 +23,6 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.type-tests.json",
     "clean": "rm -rf dist",
     "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"

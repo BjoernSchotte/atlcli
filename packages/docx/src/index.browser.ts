@@ -7,7 +7,7 @@
  * (the closure guard, `scripts/api-closure.ts`, fails on any
  * reachable-but-unexported gap). A blanket `export *` is deliberately NOT
  * used: the export/image/placeholder-map/dateformat modules carry ~40 OOXML
- * and parsing helpers (`ensureNumberingPart`, `encodeXmlText`, `relsPathFor`,
+ * and parsing helpers (`ensureNumberingPart`, `relsPathFor`,
  * `parseSvgSize`, `classifyPlaceholder`, …) that must NOT be frozen into the
  * stable 1.0.0 surface. Those stay reachable via `./scan` and the non-frozen
  * `./internal` subpath. Every re-exported module MUST build for

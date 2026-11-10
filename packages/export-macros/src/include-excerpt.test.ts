@@ -104,25 +104,41 @@ describe("ac:link-wrapped page ref end-to-end (e2e-observed storage shape)", () 
   });
 });
 
-describe("cross-renderer cycle guard", () => {
-  test("include → multiexcerpt-include → back is bounded by shared visited/depth", async () => {
-    // Page A `include`s page B; page B contains a multiexcerpt-include back to A.
-    // Both renderers share ctx.visited, so the second traversal short-circuits.
-    const c = port({
-      A: { id: "a1", storage: "<p>A</p>" },
-      B: { id: "b1", storage: "<p>B</p>" },
-    });
+describe("recursion guard", () => {
+  test("the same page included twice in one export is expanded both times", async () => {
+    const c = port({ A: { id: "a1", storage: "<p>A</p>" } });
     const shared = ctx(c);
-    // First include of A registers "…:A#" in visited.
-    await includeRenderer({ storageToBlocks }).render({ name: "include", params: [pageRefParam("A")] }, shared);
-    // A multiexcerpt-include back to A#intro is a different key, but re-including
-    // A via the include renderer is now guarded.
+    const include = includeRenderer({ storageToBlocks });
+    const macro = { name: "include", params: [pageRefParam("A")] };
+    expect((await include.render(macro, shared)).kind).toBe("blocks");
+    expect((await include.render(macro, shared)).kind).toBe("blocks");
+
+    const excerpts = port({
+      Source: {
+        id: "s1",
+        storage:
+          '<ac:structured-macro ac:name="multiexcerpt-macro"><ac:parameter ac:name="MultiExcerptName">intro</ac:parameter><ac:rich-text-body><p>Shared</p></ac:rich-text-body></ac:structured-macro>',
+      },
+    });
+    const sharedExcerpts = ctx(excerpts);
+    const multi = multiexcerptIncludeRenderer({ storageToBlocks, extractMacroBody });
+    const multiMacro = {
+      name: "multiexcerpt-include-macro",
+      params: [
+        { name: "PageWithExcerpt", text: "Source" },
+        { name: "MultiExcerptName", text: "intro" },
+      ],
+    };
+    expect((await multi.render(multiMacro, sharedExcerpts)).kind).toBe("blocks");
+    expect((await multi.render(multiMacro, sharedExcerpts)).kind).toBe("blocks");
+  });
+
+  test("a page already on the include chain (host-supplied visited) is not expanded", async () => {
+    const c = port({ A: { id: "a1", storage: "<p>A</p>" } });
     const res = await includeRenderer({ storageToBlocks }).render(
       { name: "include", params: [pageRefParam("A")] },
-      shared
+      ctx(c, { visited: new Set([":A#"]) })
     );
     expect(res.kind).toBe("skip");
-    // sanity: multiexcerpt shares the same guard mechanism
-    expect(typeof multiexcerptIncludeRenderer).toBe("function");
   });
 });

@@ -14,7 +14,7 @@ import { pdfBytesFromUint8Array, type PdfBytesHandle } from "./bytes-handle.js";
 import { formatPdfCompilerDiagnostics, type PdfCompilePort } from "./compiler.js";
 import { preparePdfDocument } from "./prepare.js";
 import { resolvePdfSettings } from "./settings.js";
-import { serializePdfDocument } from "./serialize.js";
+import { resolvePdfTextWidthsPt, serializePdfDocument } from "./serialize.js";
 import type {
   PdfAssetResolver,
   PdfCompilerDiagnostic,
@@ -39,6 +39,7 @@ import type {
   ExportImageQualityV1,
   RasterNormalizerPortV1,
 } from "@atlcli/export-media";
+import { isAbortError, throwIfAborted } from "./shared.js";
 
 export interface PdfOutputSink {
   /**
@@ -182,15 +183,6 @@ export class PdfExportError extends Error {
     this.diagnostics = options.diagnostics ?? [];
     this.cause = options.cause;
   }
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DOMException("PDF export was cancelled.", "AbortError");
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError"
-    || error instanceof Error && error.name === "AbortError";
 }
 
 function wrapFailure(error: unknown, phase: PdfExportErrorPhase): never {
@@ -397,7 +389,15 @@ export async function preparePdfExport(
       // Provenance fallback for the alt-text audit (spec 011): a single-page
       // export's blocks carry no page id of their own, but the caller knows it.
       ...(input.page?.id ? { pageContext: { pageId: input.page.id } } : {}),
-      ...(input.imageQuality ? { imageQuality: input.imageQuality } : {}),
+      ...(input.imageQuality
+        ? {
+            imageQuality: input.imageQuality,
+            textWidthsPt: resolvePdfTextWidthsPt(settings!, {
+              ...(input.templateManifest !== undefined ? { templateManifest: input.templateManifest } : {}),
+              ...(templatePack !== undefined ? { templatePack } : {}),
+            }),
+          }
+        : {}),
       ...(env.rasterNormalizer ? { rasterNormalizer: env.rasterNormalizer } : {}),
     });
     throwIfAborted(input.signal);

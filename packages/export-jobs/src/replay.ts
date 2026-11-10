@@ -1,6 +1,7 @@
 import type { ExportJobRequestV1 } from "./request.js";
 import type { ExportJobSnapshotV1, ExportJobState } from "./snapshot.js";
 import { parseExportJobRequestV1 } from "./validation.js";
+import { canonical } from "./internal.js";
 
 export type ExportJobReplayRelationV1 = "retry" | "rerun";
 
@@ -48,15 +49,6 @@ const RETRY_STATES: ReadonlySet<ExportJobState> = new Set([
   "interrupted",
   "cancelled",
 ]);
-
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entry]) => entry !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right));
-  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}`;
-}
 
 function replayPayload(request: ExportJobRequestV1): string {
   const { id: _id, idempotencyKey: _key, createdAt: _createdAt, priority: _priority, ...rest } =

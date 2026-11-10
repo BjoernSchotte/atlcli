@@ -79,10 +79,7 @@ Configure the sync database backend:
 ```json
 {
   "storage": {
-    "adapter": "sqlite",
-    "sqlite": {
-      "enableVectors": false
-    }
+    "adapter": "sqlite"
   }
 }
 ```
@@ -90,7 +87,6 @@ Configure the sync database backend:
 | Option | Values | Default |
 |--------|--------|---------|
 | `adapter` | `sqlite`, `json` | `sqlite` |
-| `sqlite.enableVectors` | Enable vector search | `false` |
 
 See [Storage](confluence/storage.md) for details.
 
@@ -329,19 +325,24 @@ Environment variables do not replace a profile; see [Environment Variables](refe
 
 ## Project Configuration
 
-For Confluence sync, project-specific config is stored in `.atlcli.json` within the synced directory:
+For Confluence sync, `atlcli wiki docs init` writes the directory's config to `.atlcli/config.json`:
 
 ```json
 {
+  "schemaVersion": 2,
+  "scope": { "type": "space" },
   "space": "TEAM",
-  "rootPageId": "12345",
-  "ignorePaths": ["drafts/**", "*.tmp"],
-  "syncOptions": {
-    "deleteOrphans": false,
-    "preserveLocalChanges": true
+  "baseUrl": "https://your-site.atlassian.net",
+  "profile": "work",
+  "settings": {
+    "autoCreatePages": false,
+    "preserveHierarchy": true,
+    "defaultParentId": null
   }
 }
 ```
+
+Files are excluded from sync with [ignore patterns](confluence/ignore.md), not with a config key.
 
 ## Precedence
 
@@ -349,7 +350,7 @@ Settings are applied in this order (later overrides earlier):
 
 1. Built-in defaults
 2. Global config file (`~/.atlcli/config.json`)
-3. Project config file (`.atlcli.json`)
+3. Project config file (`.atlcli/config.json`)
 4. Environment variables
 5. Command-line flags
 

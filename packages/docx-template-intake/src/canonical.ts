@@ -3,7 +3,7 @@ function ordered(value: unknown): unknown {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => left.localeCompare(right, "en"))
         .map(([key, item]) => [key, ordered(item)])
     );
   }

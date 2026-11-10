@@ -8,8 +8,6 @@
  * @module link-validator
  */
 
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { SyncDbAdapter, LinkRecord, PageRecord } from "./sync-db/types.js";
 import { extractLinksFromMarkdownToRecords } from "./link-extractor-markdown.js";
 
@@ -201,38 +199,6 @@ export async function validatePageLinksQuick(
   const external = outgoing.filter((l) => l.linkType === "external");
 
   return { broken, external };
-}
-
-/**
- * Validate all links across all pages in a directory.
- *
- * Batch validation for comprehensive audit reports.
- *
- * @param adapter - The sync database adapter
- * @param localDir - Root directory containing markdown files
- * @returns Array of validation results for all pages
- */
-export async function validateAllLinks(
-  adapter: SyncDbAdapter,
-  localDir: string
-): Promise<LinkValidationResult[]> {
-  const pages = await adapter.listPages({});
-  const results: LinkValidationResult[] = [];
-
-  for (const page of pages) {
-    const filePath = join(localDir, page.path);
-
-    try {
-      const markdownContent = await readFile(filePath, "utf-8");
-      const result = await validatePageLinks(adapter, filePath, markdownContent, localDir);
-      results.push(result);
-    } catch {
-      // File might not exist locally (remote-only page)
-      // Skip silently
-    }
-  }
-
-  return results;
 }
 
 /**

@@ -7,10 +7,7 @@
  * components mountable by a different host shell (a Forge iframe inherits the
  * page's colour scheme) without a per-host fork.
  *
- * `.theme-light` / `.theme-dark` on <html> (element+class = higher specificity
- * than the bare `:root` rules, including the ones inside the media query) are
- * the seam for an explicit theme setting; Phase 0 ships no toggle and follows
- * the OS preference.
+ * There is no theme toggle: the panel follows the OS preference.
  */
 @import "tailwindcss";
 
@@ -104,37 +101,6 @@
     --input: oklch(1 0 0 / 16%);
     --ring: oklch(0.556 0 0);
   }
-}
-
-html.theme-light {
-  color-scheme: light;
-}
-
-html.theme-dark {
-  color-scheme: dark;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.145 0 0);
-  --success: oklch(0.7 0.14 152);
-  --success-foreground: oklch(0.145 0 0);
-  --warning: oklch(0.77 0.14 75);
-  --warning-foreground: oklch(0.145 0 0);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.556 0 0);
 }
 
 @layer base {

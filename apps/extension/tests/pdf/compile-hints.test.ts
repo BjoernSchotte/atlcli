@@ -116,7 +116,6 @@ describe("hint routing", () => {
     await routeMessage(
       { kind: "pdf:compile", jobId: JOB_ID, job: "preview", pages: 7 },
       {
-        runWasmSmoke: async () => 0,
         getCurrentEntity: async () => ({ windowId: 1, url: null, entity: null, seq: 1 }),
         runPdfCompile: async (_jobId, hints) => {
           seen.push(hints);
@@ -135,8 +134,7 @@ describe("hint routing", () => {
         { kind: "pdf:compile", jobId: JOB_ID, job: "export", pages: 2 },
         () => resolve(),
         {
-          runWasmSmoke: async () => 0,
-          getCurrentEntity: async () => ({ windowId: 1, url: null, entity: null, seq: 1 }),
+            getCurrentEntity: async () => ({ windowId: 1, url: null, entity: null, seq: 1 }),
           runPdfCompile: async (_jobId, hints) => {
             seen.push(hints);
             return { ok: true };
@@ -155,7 +153,6 @@ describe("hint routing", () => {
         { kind: "offscreen:pdf-compile", jobId: JOB_ID, job: "preview", pages: 5 },
         () => resolve(),
         {
-          runWasmAdd: async () => 0,
           runPdfCompile: async (_jobId, hints) => {
             seen.push(hints);
             return { ok: true };

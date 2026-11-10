@@ -28,7 +28,7 @@ export interface CiRoutes {
 const SITE_DOC_PREFIXES = ["src/content/", "src/components/", "src/styles/", "public/"];
 const SITE_DOC_FILES = new Set(["astro.config.mjs", "src/content.config.ts", "tsconfig.docs.json"]);
 const GLOBAL_FILES = new Set(["package.json", "bun.lock", "turbo.json", "tsconfig.json"]);
-const DOCUMENTATION_PREFIXES = ["docs/", "spec/", "specs/", ".github/ISSUE_TEMPLATE/"];
+const DOCUMENTATION_PREFIXES = ["specs/", ".github/ISSUE_TEMPLATE/"];
 const DOCUMENTATION_FILES = new Set(["README.md", "CHANGELOG.md", "LICENSE", "NOTICE", ".impeccable.md"]);
 const README_MEDIA_PREFIX = "assets/readme/";
 /**

@@ -12,14 +12,11 @@ import { ConfluenceClient, SyncScope, PageChangeInfo } from "./client.js";
 function createMockClient(initialPages: PageChangeInfo[] = []): {
   client: ConfluenceClient;
   setPages: (pages: PageChangeInfo[]) => void;
-  setPagesForSince: (pages: PageChangeInfo[]) => void;
 } {
   let pages = [...initialPages];
-  let pagesForSince = [...initialPages];
 
   const client = {
     getAllPages: async () => pages,
-    getPagesSince: async () => pagesForSince,
     getPageVersion: async (id: string) => {
       const page = pages.find(p => p.id === id);
       return page ?? { id, title: "Unknown", version: 1 };
@@ -30,7 +27,6 @@ function createMockClient(initialPages: PageChangeInfo[] = []): {
   return {
     client,
     setPages: (newPages: PageChangeInfo[]) => { pages = newPages; },
-    setPagesForSince: (newPages: PageChangeInfo[]) => { pagesForSince = newPages; },
   };
 }
 
@@ -74,7 +70,7 @@ describe("ConfluencePoller", () => {
 
   describe("polling", () => {
     test("detects new pages", async () => {
-      const { client, setPages, setPagesForSince } = createMockClient([]);
+      const { client, setPages } = createMockClient([]);
       const poller = new ConfluencePoller({
         client,
         scope: { type: "space", spaceKey: "TEST" },
@@ -85,7 +81,6 @@ describe("ConfluencePoller", () => {
       // Simulate new page appearing
       const newPage = { id: "new", title: "New Page", version: 1 };
       setPages([newPage]);
-      setPagesForSince([newPage]);
 
       const events: PollChangeEvent[] = [];
       poller.on((e) => { events.push(e); });
@@ -101,7 +96,7 @@ describe("ConfluencePoller", () => {
       const pages: PageChangeInfo[] = [
         { id: "1", title: "Page 1", version: 1 },
       ];
-      const { client, setPages, setPagesForSince } = createMockClient(pages);
+      const { client, setPages } = createMockClient(pages);
       const poller = new ConfluencePoller({
         client,
         scope: { type: "space", spaceKey: "TEST" },
@@ -112,7 +107,6 @@ describe("ConfluencePoller", () => {
       // Simulate version bump
       const updatedPage = { id: "1", title: "Page 1", version: 2 };
       setPages([updatedPage]);
-      setPagesForSince([updatedPage]);
 
       const events: PollChangeEvent[] = [];
       poller.on((e) => { events.push(e); });
@@ -145,7 +139,7 @@ describe("ConfluencePoller", () => {
         { id: "1", title: "Page 1", version: 1 },
         { id: "2", title: "Page 2", version: 1 },
       ];
-      const { client, setPages, setPagesForSince } = createMockClient(pages);
+      const { client, setPages } = createMockClient(pages);
       const poller = new ConfluencePoller({
         client,
         scope: { type: "space", spaceKey: "TEST" },
@@ -155,7 +149,6 @@ describe("ConfluencePoller", () => {
 
       // Simulate page deletion
       setPages([{ id: "1", title: "Page 1", version: 1 }]);
-      setPagesForSince([]);
 
       const events: PollChangeEvent[] = [];
       poller.on((e) => { events.push(e); });
@@ -261,5 +254,65 @@ describe("factory functions", () => {
     const { client } = createMockClient([]);
     const poller = createPagePoller(client, "12345", 5000);
     expect(poller).toBeInstanceOf(ConfluencePoller);
+  });
+});
+
+describe("one listing per poll", () => {
+  function countingClient(folders: () => Promise<unknown[]>) {
+    const calls = { all: 0 };
+    const client = {
+      getAllPages: async () => { calls.all += 1; return [{ id: "1", title: "Page 1", version: 1 }]; },
+      getAllFoldersWithVersions: folders,
+    } as unknown as ConfluenceClient;
+    return { client, calls };
+  }
+
+  test("a poll lists the scope once", async () => {
+    const { client, calls } = countingClient(async () => []);
+    const poller = new ConfluencePoller({ client, scope: { type: "space", spaceKey: "TEST" } });
+    await poller.initialize();
+    calls.all = 0;
+
+    await poller.poll();
+
+    expect(calls.all).toBe(1);
+  });
+
+  test("a failed folder listing emits no deleted events and keeps the known folders", async () => {
+    let fail = false;
+    const { client } = countingClient(async () => {
+      if (fail) throw new Error("503");
+      return [{ id: "f1", title: "Folder", version: 1 }];
+    });
+    const poller = new ConfluencePoller({ client, scope: { type: "space", spaceKey: "TEST" } });
+    await poller.initialize();
+    const events: PollChangeEvent[] = [];
+    poller.on((event) => { events.push(event); });
+
+    fail = true;
+    await expect(poller.poll()).rejects.toThrow("503");
+    expect(events).toEqual([]);
+    expect(poller.getState().knownFolders.has("f1")).toBe(true);
+
+    // The next poll runs again instead of staying locked out.
+    fail = false;
+    expect(await poller.poll()).toEqual([]);
+  });
+
+  test("a failed scheduled poll goes to onError instead of an unhandled rejection", async () => {
+    const errors: unknown[] = [];
+    const client = { getAllPages: async () => { throw new Error("offline"); } } as unknown as ConfluenceClient;
+    const poller = new ConfluencePoller({
+      client,
+      scope: { type: "space", spaceKey: "TEST" },
+      intervalMs: 60_000,
+      onError: (error) => errors.push(error),
+    });
+
+    poller.start();
+    poller.stop();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(errors.map((error) => (error as Error).message)).toEqual(["offline"]);
   });
 });

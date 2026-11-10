@@ -98,6 +98,7 @@ atlcli jira webhook delete 12345
 ## Troubleshooting
 
 - **401 Invalid signature**: the sender's secret differs from `--secret`, or it sends no `X-Hub-Signature` header. Drop `--secret` to test.
+- **400 Invalid JSON**: the request body is not a JSON object. Jira always sends one; check a hand-written test request.
 - **Events arrive but nothing prints**: check `--projects` and `--events`; filtered events are acknowledged but not printed.
 - **403 "Only Connect and OAuth 2.0 apps can use this operation"** on `list`, `register`, `delete` or `refresh`: the profile uses an API token. Create the webhook in the Jira admin UI and run `serve` to receive it.
 

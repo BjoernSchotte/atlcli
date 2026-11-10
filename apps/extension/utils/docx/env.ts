@@ -10,7 +10,6 @@
 import type {
   AssetFetcher,
   AssetRef,
-  OutputSink,
   SvgRasterizer,
   TemplateSource,
 } from "@atlcli/docx/browser-entry";
@@ -33,7 +32,6 @@ import {
 } from "@atlcli/core/internal";
 import { LEGACY_CURRENT_KEY, type TemplateEngine } from "./template-store.js";
 import { idbTemplateLibrary } from "../templates/library.js";
-import { downloadBytes } from "../download.js";
 
 export { memoryTemplateSource };
 
@@ -288,67 +286,6 @@ export function sessionDocxAssets(options: SessionDocxAssetsOptions): AssetFetch
  * to the readable code-block fallback; a decode that never settles is cut off
  * by `decodeTimeoutMs` so one broken diagram can't freeze the whole export.
  */
-/**
- * Sub-phase timing sums of every {@link canvasSvgRasterizer} call since the
- * last {@link resetRasterizerStats} — the panel appends them to the export
- * report so a slow rasterizer names its slow sub-step (decode vs draw vs
- * encode) without devtools.
- */
-export interface RasterizerStats {
-  calls: number;
-  decodeMs: number;
-  drawMs: number;
-  encodeMs: number;
-  encodeCallsMs: number[];
-}
-
-const rasterizerStats: RasterizerStats = {
-  calls: 0,
-  decodeMs: 0,
-  drawMs: 0,
-  encodeMs: 0,
-  encodeCallsMs: [],
-};
-
-export function resetRasterizerStats(): void {
-  rasterizerStats.calls = 0;
-  rasterizerStats.decodeMs = 0;
-  rasterizerStats.drawMs = 0;
-  rasterizerStats.encodeMs = 0;
-  rasterizerStats.encodeCallsMs.length = 0;
-}
-
-export function getRasterizerStats(): RasterizerStats {
-  return { ...rasterizerStats, encodeCallsMs: [...rasterizerStats.encodeCallsMs] };
-}
-
 export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 10_000): SvgRasterizer {
-  return neutralCanvasSvgRasterizer({
-    document: doc,
-    decodeTimeoutMs,
-    onTiming(timing) {
-      rasterizerStats.decodeMs += timing.decodeMs;
-      rasterizerStats.drawMs += timing.drawMs;
-      rasterizerStats.encodeMs += timing.encodeMs;
-      rasterizerStats.encodeCallsMs.push(timing.encodeMs);
-      rasterizerStats.calls += 1;
-    },
-  });
-}
-
-/**
- * {@link OutputSink} that hands the bytes to the browser as a `.docx`
- * download via a temporary object URL on an invisible anchor.
- */
-export function downloadOutputSink(doc: Document = document): OutputSink {
-  return {
-    async emit(name: string, bytes: Uint8Array): Promise<void> {
-      await downloadBytes({
-        name,
-        bytes,
-        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        document: doc,
-      });
-    },
-  };
+  return neutralCanvasSvgRasterizer({ document: doc, decodeTimeoutMs });
 }

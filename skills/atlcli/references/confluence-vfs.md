@@ -164,6 +164,11 @@ Config defaults live under `vfs` in `~/.atlcli/config.json` (`cacheDir`, `mode`,
 - `.labels/` lists only labels already seen in the session, and `.by-id/` lists
   nothing, though both resolve any name you ask for.
 - Confluence folders have no body: their `_index.md` cannot be written.
+- The space homepage cannot be moved, renamed or deleted (`EROFS`); its
+  `_index.md` can be edited.
+- A page is a directory even without children: `cat page-123` fails with
+  `EISDIR`; read `page-123/_index.md` or `page-123.md`. A page the account
+  may not view is `ENOENT`.
 
 Related: [confluence-docs-sync.md](confluence-docs-sync.md),
 [confluence-pages.md](confluence-pages.md), [safety.md](safety.md).

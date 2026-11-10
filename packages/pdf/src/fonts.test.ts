@@ -6,10 +6,10 @@ import {
   FontVerificationError,
   MAX_FONT_BYTES,
   parseFontMeta,
-  sha256Hex,
   verifyFontBytes,
   WEB_PACKAGED_FONT_GUIDANCE,
 } from "./fonts.js";
+import { sha256Hex } from "./shared.js";
 import type { FontAsset } from "./types.js";
 
 // Real font bytes come from the actual bundled compiler fonts (Source Sans 3,

@@ -282,9 +282,4 @@ export async function verifyStorageSemanticReadback(
   return verify("storage", storageTokens(expected), storageTokens(actual));
 }
 
-export function assertAdfReadbackShape(value: unknown): asserts value is AdfDocument {
-  const document = asRecord(value, "ADF document") as unknown as AdfDocument;
-  adfTokens(document);
-}
-
 export type { AdfNode };

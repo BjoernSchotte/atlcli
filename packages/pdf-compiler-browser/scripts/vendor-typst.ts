@@ -10,7 +10,7 @@
  * Why `vendor/` is NOT committed to git: the wasm is ~28 MB — committing it
  * (and re-committing on every typst.ts upgrade) would permanently bloat the
  * repository. Instead this script reproduces `vendor/` deterministically from
- * the repo's installed (already-patched) node_modules, pinned by sha256. It
+ * the repo's installed, unpatched fork package in node_modules, pinned by sha256. It
  * runs as part of this package's `build` and `prepack`, so both the turbo
  * build graph and packed tarballs always contain a verified copy. The
  * regeneration source therefore stays the immutable fork package selected by
@@ -178,7 +178,7 @@ export async function ensureVendoredTypst(): Promise<EnsureVendoredTypstResult> 
     // fall through and (re)vendor
   }
 
-  // Resolve the installed (patched) upstream package from this package's
+  // Resolve the installed fork package (no local patch) from this package's
   // context — it is a devDependency of @atlcli/pdf-compiler-browser.
   const sourceMjs = fileURLToPath(
     import.meta.resolve("@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs"),

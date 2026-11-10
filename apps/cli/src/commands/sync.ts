@@ -31,6 +31,7 @@ import {
   hasConflictMarkers,
   WebhookServer,
   WebhookPayload,
+  isLoopbackHost,
   parseFrontmatter,
   addFrontmatter,
   AtlcliFrontmatter,
@@ -40,6 +41,7 @@ import {
   initAtlcliDirV2,
   readState,
   writeState,
+  escapeCqlValue,
   updatePageState,
   readBaseContent,
   writeBaseContent,
@@ -89,7 +91,50 @@ interface SyncOptions {
   autoCreate: boolean;
   webhookPort?: number;
   webhookUrl?: string;
+  /** Interface the webhook server binds. */
+  webhookHost?: string;
+  /** Shared secret every webhook event must prove. */
+  webhookSecret?: string;
   labelFilter?: string;
+}
+
+/**
+ * @internal
+ * Where the webhook server listens and what it demands of a caller. Without a
+ * secret every caller is trusted, so the server may only bind a loopback
+ * address; a tunnel or reverse proxy on the same machine still reaches it.
+ */
+export function webhookSettings(
+  flags: { host?: string; secret?: string },
+  env: Record<string, string | undefined> = process.env
+): { host: string; secret?: string } | { error: string } {
+  const secret = flags.secret || env.ATLCLI_WEBHOOK_SECRET || undefined;
+  const host = flags.host ?? "127.0.0.1";
+  if (!secret && !isLoopbackHost(host)) {
+    return {
+      error:
+        `--webhook-host ${host} needs a webhook secret (ATLCLI_WEBHOOK_SECRET or --webhook-secret). ` +
+        "Without a secret the webhook server only binds a loopback address.",
+    };
+  }
+  return { host, secret };
+}
+
+/**
+ * @internal
+ * Whether `pageId` lies inside the sync scope, asked of Confluence. A webhook
+ * request only names a page; what it claims about that page (space, title) is
+ * never used to decide what the daemon pulls.
+ */
+export async function pageInScope(
+  client: Pick<ConfluenceClient, "getPageMetadata">,
+  scope: SyncScope,
+  pageId: string
+): Promise<boolean> {
+  if (scope.type === "page") return pageId === scope.pageId;
+  const page = await client.getPageMetadata(pageId);
+  if (scope.type === "space") return page.spaceKey === scope.spaceKey;
+  return pageId === scope.ancestorId || (page.ancestors ?? []).some((a) => String(a.id) === scope.ancestorId);
 }
 
 /** Sync event for output */
@@ -224,6 +269,15 @@ export async function handleSync(
     return;
   }
 
+  const webhook = webhookSettings({
+    host: getFlag(flags, "webhook-host"),
+    secret: getFlag(flags, "webhook-secret"),
+  });
+  if (webhookPortStr && "error" in webhook) {
+    fail(opts, 1, ERROR_CODES.USAGE, webhook.error);
+    return;
+  }
+
   const syncOpts: SyncOptions = {
     dir,
     scope,
@@ -236,6 +290,7 @@ export async function handleSync(
     autoCreate: hasFlag(flags, "auto-create"),
     webhookPort: webhookPortStr ? webhookPort : undefined,
     webhookUrl: getFlag(flags, "webhook-url"),
+    ...("error" in webhook ? {} : { webhookHost: webhook.host, webhookSecret: webhook.secret }),
     labelFilter,
   };
 
@@ -268,6 +323,52 @@ export async function handleSync(
   }
 }
 
+/** @internal CQL for the pages of a space that carry `label`. */
+export function labelScopeCql(label: string, spaceKey: string): string {
+  return `label = "${escapeCqlValue(label)}" AND type = page AND space = "${escapeCqlValue(spaceKey)}"`;
+}
+
+/**
+ * @internal
+ * `writeState` rewrites every tracked page, so a write per pulled page makes
+ * the initial sync quadratic. Between `begin()` and `end()` only every
+ * `every`-th `save()` writes; `end()` writes what is left. `then` runs once
+ * the state it depends on is on disk.
+ */
+export class StateWrites {
+  private waiting: Array<() => Promise<unknown>> | undefined;
+  private unsaved = 0;
+
+  constructor(private readonly write: () => Promise<void>, private readonly every = 100) {}
+
+  begin(): void {
+    this.waiting = [];
+  }
+
+  async save(then?: () => Promise<unknown>): Promise<void> {
+    if (!this.waiting) {
+      await this.write();
+      await then?.();
+      return;
+    }
+    if (then) this.waiting.push(then);
+    if (++this.unsaved >= this.every) await this.flush();
+  }
+
+  async end(): Promise<void> {
+    if (this.unsaved > 0) await this.flush();
+    this.waiting = undefined;
+  }
+
+  private async flush(): Promise<void> {
+    const waiting = this.waiting ?? [];
+    this.waiting = [];
+    this.unsaved = 0;
+    await this.write();
+    for (const then of waiting) await then();
+  }
+}
+
 /**
  * Main sync engine that coordinates file watching, polling, and merging.
  */
@@ -289,6 +390,7 @@ class SyncEngine {
   private spaceKey: string = "";
   private baseUrl: string;
   private homePageId: string | undefined; // Space home page ID for flattening hierarchy
+  private stateWrites = new StateWrites(() => writeState(this.atlcliDir, this.state!));
 
   constructor(client: ConfluenceClient, opts: SyncOptions, outputOpts: OutputOptions, baseUrl: string) {
     this.lockFilePath = join(opts.dir, ".atlcli", ".sync.lock");
@@ -397,9 +499,9 @@ class SyncEngine {
     if (this.opts.labelFilter) {
       // Use label-filtered search
       if (this.opts.scope.type === "space") {
-        pages = await this.client.getPagesByLabel(this.opts.labelFilter, {
-          spaceKey: this.opts.scope.spaceKey,
-        });
+        // Every match: getPagesByLabel reads one page of results only.
+        pages = (await this.client.searchPages(labelScopeCql(this.opts.labelFilter, this.opts.scope.spaceKey), 100))
+          .map((page) => ({ ...page, version: page.version ?? 1 }));
       } else if (this.opts.scope.type === "tree") {
         // For tree scope with label, get all pages in tree then filter by label
         const allPages = await this.client.getAllPages({ scope: this.opts.scope });
@@ -537,9 +639,21 @@ class SyncEngine {
     // Save migrated state. Under --dry-run the in-memory state alone drives the
     // per-page report below; persisting it would create `.atlcli/sync.db`.
     if (!this.opts.dryRun) {
-      await writeState(this.atlcliDir, this.state!);
+      await this.stateWrites.save();
     }
 
+    this.stateWrites.begin();
+    try {
+      await this.syncPagesAndFolders(pages);
+    } finally {
+      await this.stateWrites.end();
+    }
+
+    this.emit({ type: "status", message: "Initial sync complete" });
+  }
+
+  /** The bulk part of the initial sync: every page and folder in scope. */
+  private async syncPagesAndFolders(pages: { id: string; version: number }[]): Promise<void> {
     // Sync each page
     for (const pageInfo of pages) {
       const pageState = this.state!.pages[pageInfo.id];
@@ -602,8 +716,6 @@ class SyncEngine {
         }
       }
     }
-
-    this.emit({ type: "status", message: "Initial sync complete" });
   }
 
   /** Get relative path from absolute path */
@@ -625,49 +737,26 @@ class SyncEngine {
 
     // Start webhook server if configured
     if (this.opts.webhookPort) {
-      // Build filter based on scope
-      const filterPageIds = this.opts.scope.type === "page"
-        ? new Set([this.opts.scope.pageId])
-        : undefined;
-      const filterSpaceKeys = this.opts.scope.type === "space"
-        ? new Set([this.opts.scope.spaceKey])
-        : undefined;
-
+      // No payload filters: the scope is checked against Confluence in
+      // handleWebhookEvent, not against what the request says about the page.
       this.webhookServer = new WebhookServer({
         port: this.opts.webhookPort,
-        filterPageIds,
-        filterSpaceKeys,
+        hostname: this.opts.webhookHost,
+        secret: this.opts.webhookSecret,
       });
-
-      this.webhookServer.on(async (payload: WebhookPayload) => {
-        if (!payload.page) return;
-
-        this.emit({
-          type: "status",
-          message: `Webhook received: ${payload.eventType} for ${payload.page.title}`,
-          details: { pageId: payload.page.id, event: payload.eventType },
-        });
-
-        const file = this.getFileByPageId(payload.page.id);
-
-        if (payload.eventType === "page_updated" || payload.eventType === "page_created") {
-          await this.handleRemoteChange(payload.page.id, file);
-        } else if (payload.eventType === "page_removed" || payload.eventType === "page_trashed") {
-          if (file) {
-            this.emit({
-              type: "status",
-              message: `Remote page deleted: ${payload.page.title}`,
-              details: { pageId: payload.page.id, file },
-            });
-          }
-        }
-      });
-
+      this.webhookServer.on((payload) => this.handleWebhookEvent(payload));
       this.webhookServer.start();
       this.emit({
         type: "status",
-        message: `Webhook server listening on http://localhost:${this.opts.webhookPort}/webhook`,
+        message: `Webhook server listening on ${this.webhookServer.getUrl()}`,
       });
+      if (!this.opts.webhookSecret) {
+        this.emit({
+          type: "status",
+          message:
+            "Warning: no webhook secret is set. The webhook server accepts unauthenticated events from this machine only (loopback). Set ATLCLI_WEBHOOK_SECRET to authenticate callers.",
+        });
+      }
 
       // Register webhook with Confluence if URL provided
       if (this.opts.webhookUrl) {
@@ -676,6 +765,7 @@ class SyncEngine {
             name: "atlcli-sync",
             url: this.opts.webhookUrl,
             events: ["page_created", "page_updated", "page_removed", "page_trashed"],
+            secret: this.opts.webhookSecret,
           });
           this.emit({
             type: "status",
@@ -696,6 +786,11 @@ class SyncEngine {
         client: this.client,
         scope: this.opts.scope,
         intervalMs: this.opts.pollIntervalMs,
+        onError: (err) =>
+          this.emit({
+            type: "error",
+            message: `Poll failed: ${err instanceof Error ? err.message : String(err)}`,
+          }),
       });
 
       this.poller.on(async (event: PollChangeEvent) => {
@@ -818,6 +913,57 @@ class SyncEngine {
     } catch {
       // Ignore errors - file may not exist
     }
+  }
+
+  /**
+   * Act on one webhook event. The request is untrusted input even when it is
+   * authenticated: only the page id is taken from it, and a page the daemon
+   * does not track yet is pulled only after Confluence confirms it is in scope.
+   */
+  private async handleWebhookEvent(payload: WebhookPayload): Promise<void> {
+    const rawId: unknown = payload.page?.id;
+    const pageId = typeof rawId === "number" ? String(rawId) : rawId;
+    if (typeof pageId !== "string" || !/^\d+$/.test(pageId)) return;
+    const { eventType } = payload;
+
+    this.emit({
+      type: "status",
+      message: `Webhook received: ${eventType} for page ${pageId}`,
+      details: { pageId, event: eventType },
+    });
+
+    const file = this.getFileByPageId(pageId);
+
+    if (eventType === "page_removed" || eventType === "page_trashed") {
+      if (file) {
+        this.emit({ type: "status", message: `Remote page deleted: ${file}`, details: { pageId, file } });
+      }
+      return;
+    }
+    if (eventType !== "page_updated" && eventType !== "page_created") return;
+
+    if (!this.state?.pages[pageId]) {
+      let inScope: boolean;
+      try {
+        inScope = await pageInScope(this.client, this.opts.scope, pageId);
+      } catch (err) {
+        this.emit({
+          type: "error",
+          pageId,
+          message: `Webhook ignored: page ${pageId} could not be checked against the sync scope: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        return;
+      }
+      if (!inScope) {
+        this.emit({
+          type: "status",
+          message: `Webhook ignored: page ${pageId} is outside the sync scope`,
+          details: { pageId, event: eventType },
+        });
+        return;
+      }
+    }
+    await this.handleRemoteChange(pageId, file);
   }
 
   /** Handle a remote change detected by polling */
@@ -985,11 +1131,9 @@ class SyncEngine {
       // Write base content for 3-way merge
       await writeBaseContent(this.atlcliDir, pageId, markdown);
 
-      // Save state
-      await writeState(this.atlcliDir, this.state!);
-
-      // Extract and store links from pulled page (Phase 1 link graph population)
-      await storePageLinks(this.atlcliDir, pageId, page.storage);
+      // Save state, then extract and store the links of the pulled page:
+      // a link row needs its source page row.
+      await this.stateWrites.save(() => storePageLinks(this.atlcliDir, pageId, page.storage));
 
       this.emit({
         type: "pull",
@@ -1128,7 +1272,7 @@ class SyncEngine {
       });
 
       // Save state
-      await writeState(this.atlcliDir, this.state!);
+      await this.stateWrites.save();
 
       this.emit({
         type: "pull",
@@ -1185,7 +1329,7 @@ class SyncEngine {
       // Remove from state
       delete this.state!.pages[folderId];
       delete this.state!.pathIndex[localFile];
-      await writeState(this.atlcliDir, this.state!);
+      await this.stateWrites.save();
 
       this.emit({
         type: "status",
@@ -1394,7 +1538,7 @@ class SyncEngine {
         await writeBaseContent(this.atlcliDir, pageId, markdownContent);
 
         // Save state
-        await writeState(this.atlcliDir, this.state!);
+        await this.stateWrites.save();
 
         this.emit({
           type: "push",
@@ -1465,7 +1609,7 @@ class SyncEngine {
         await writeBaseContent(this.atlcliDir, page.id, markdownContent);
 
         // Save state
-        await writeState(this.atlcliDir, this.state!);
+        await this.stateWrites.save();
 
         this.emit({
           type: "push",
@@ -1593,7 +1737,7 @@ class SyncEngine {
       });
 
       // Save state
-      await writeState(this.atlcliDir, this.state!);
+      await this.stateWrites.save();
 
       this.emit({
         type: "push",
@@ -1690,7 +1834,7 @@ class SyncEngine {
       await writeBaseContent(this.atlcliDir, page.id, markdownContent);
 
       // Save state
-      await writeState(this.atlcliDir, this.state!);
+      await this.stateWrites.save();
 
       this.emit({
         type: "push",
@@ -1787,7 +1931,7 @@ class SyncEngine {
         await writeBaseContent(this.atlcliDir, pageId, result.content);
 
         // Save state
-        await writeState(this.atlcliDir, this.state!);
+        await this.stateWrites.save();
 
         this.emit({
           type: "push",
@@ -1833,7 +1977,7 @@ class SyncEngine {
               path: relativePath,
               syncState: "conflict",
             });
-            await writeState(this.atlcliDir, this.state!);
+            await this.stateWrites.save();
           }
 
           this.emit({
@@ -1965,6 +2109,10 @@ Behavior options:
 
 Webhook options (optional, for real-time updates):
   --webhook-port <port> Start webhook server on port
+  --webhook-host <addr> Interface to bind (default: 127.0.0.1). Any other
+                        interface needs a secret
+  --webhook-secret <s>  Shared secret callers must prove (HMAC X-Hub-Signature
+                        or bearer token). Prefer env ATLCLI_WEBHOOK_SECRET
   --webhook-url <url>   Public URL to register with Confluence
 
 Examples:

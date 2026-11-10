@@ -118,8 +118,8 @@ defaults.
 | Field | Type | Default | Required | Constraints |
 |-------|------|---------|----------|-------------|
 | `text` | `string` | — | **Required** | Must be non-empty (whitespace-only is rejected). |
-| `color` | `string` | `"#DE350B"` | Optional | Normalizable to `#RRGGBB`. |
-| `opacity` | `number` | `0.08` | Optional | In the half-open range `(0, 1]`. `0`, negative values, `NaN`, and `Infinity` are rejected. |
+| `color` | `string` | The template's `tokens.colors.watermark` (`"#DE350B"` in the built-in template) | Optional | Normalizable to `#RRGGBB`. An explicit value overrides the template's. |
+| `opacity` | `number` | `0.08` | Optional | In the half-open range `(0, 1]`. `0`, negative values, `NaN`, and `Infinity` are rejected. Multiplied by the template's `tokens.ratios.watermarkOpacityScale` percentage (`100` in the built-in template). |
 | `angle` | `number` | `-54` | Optional | Degrees, `-180..180` inclusive. |
 | `size` | `number` | `96` | Optional | Points, `8..400` inclusive. |
 

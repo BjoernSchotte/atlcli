@@ -8,7 +8,19 @@
  *
  * Every construct outside the slice surfaces as an ImportIssue (§2.4).
  */
-import { unzipDocx, readPartText, DOCX_TEMPLATE_INTAKE_BUDGET } from "@atlcli/docx/scan";
+import { unzipDocx, readPartText, DOCX_ARCHIVE_BUDGET, type ArchiveBudget } from "@atlcli/docx/scan";
+
+/**
+ * Archive budget for document import. The template-intake budget (2 MiB per
+ * XML part) is sized for templates and rejects ordinary long documents, whose
+ * `word/document.xml` runs to tens of MiB. 32 MiB per XML part covers those
+ * and still bounds the element tree `parseXmlTree` materializes.
+ */
+export const DOCX_IMPORT_BUDGET: ArchiveBudget = {
+  ...DOCX_ARCHIVE_BUDGET,
+  maxXmlPartUncompressedBytes: 32 * 1024 * 1024,
+  maxXmlPartCharacters: 32 * 1024 * 1024,
+};
 import type {
   ImportAsset,
   ImportImageBlock,
@@ -894,6 +906,9 @@ function buildList(paragraphs: NumberedParagraph[], ctx: ParseContext): ImportLi
   return root;
 }
 
+/** Word's own column limit; clamps an untrusted w:gridSpan. */
+const MAX_GRID_SPAN = 63;
+
 function parseTable(tbl: XmlElement, ctx: ParseContext, depth: number): ImportBlock[] {
   if (depth > 0) {
     report(
@@ -919,7 +934,13 @@ function parseTable(tbl: XmlElement, ctx: ParseContext, depth: number): ImportBl
     const cells = childElements(tr)
       .filter((c) => c.local === "tc")
       .map((tc) => {
-        const vMerge = firstChild(tc, "tcPr") && firstChild(firstChild(tc, "tcPr")!, "vMerge");
+        const tcPr = firstChild(tc, "tcPr");
+        const vMerge = tcPr && firstChild(tcPr, "vMerge");
+        const gridSpan = tcPr && firstChild(tcPr, "gridSpan");
+        // Horizontal merge: one w:tc spans several grid columns. Dropping it
+        // shifts every later cell of the row one column to the left.
+        const rawSpan = gridSpan ? Number(attr(gridSpan, "val", W_NS)) : 1;
+        const colspan = Number.isInteger(rawSpan) && rawSpan > 1 ? Math.min(rawSpan, MAX_GRID_SPAN) : 1;
         if (vMerge) {
           report(
             ctx,
@@ -929,7 +950,12 @@ function parseTable(tbl: XmlElement, ctx: ParseContext, depth: number): ImportBl
             "Vertically merged table cells were imported as separate cells.",
           );
         }
-        return { id: nodeId(ctx, "table-cell"), header: isHeaderRow, blocks: parseBlocks(tc, ctx, depth + 1) };
+        return {
+          id: nodeId(ctx, "table-cell"),
+          header: isHeaderRow,
+          ...(colspan > 1 ? { colspan } : {}),
+          blocks: parseBlocks(tc, ctx, depth + 1),
+        };
       });
     if (cells.length > 0) rows.push({ cells });
   }
@@ -946,20 +972,39 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
   let pendingList: NumberedParagraph[] = [];
   let pendingQuote: ImportBlock[] = [];
   let pendingCode: string[] = [];
+  // Bookmarks and comment starts met inside an open list/quote/code group.
+  // The group's top-level block does not exist until it is flushed, and that
+  // block is what owns an anchor (split and comment placement both key on
+  // top-level blocks).
+  let groupBookmarks: string[] = [];
+  let groupCommentStarts: string[] = [];
 
+  const pushGroup = (block: ImportBlock): void => {
+    if (groupBookmarks.length > 0) block.bookmarks = groupBookmarks;
+    for (const id of groupCommentStarts) {
+      if (!ctx.commentOwnerBlocks.has(id)) ctx.commentOwnerBlocks.set(id, block);
+    }
+    groupBookmarks = [];
+    groupCommentStarts = [];
+    blocks.push(block);
+  };
   const flushPending = () => {
     if (pendingList.length > 0) {
-      blocks.push(buildList(pendingList, ctx));
+      pushGroup(buildList(pendingList, ctx));
       pendingList = [];
     }
     if (pendingQuote.length > 0) {
-      blocks.push({ id: nodeId(ctx, "blockquote"), type: "blockquote", blocks: pendingQuote });
+      pushGroup({ id: nodeId(ctx, "blockquote"), type: "blockquote", blocks: pendingQuote });
       pendingQuote = [];
     }
     if (pendingCode.length > 0) {
-      blocks.push({ id: nodeId(ctx, "code"), type: "code", text: pendingCode.join("\n") });
+      pushGroup({ id: nodeId(ctx, "code"), type: "code", text: pendingCode.join("\n") });
       pendingCode = [];
     }
+  };
+  const ownGroup = (bookmarks: string[], commentStarts: string[]): void => {
+    groupBookmarks.push(...bookmarks);
+    groupCommentStarts.push(...commentStarts);
   };
 
   for (const child of childElements(container)) {
@@ -1006,7 +1051,11 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
           break;
         }
         if (numbering) {
+          // Groups are mutually exclusive: an open quote/code group ends here,
+          // or it would be emitted after the list it precedes.
+          if (pendingQuote.length > 0 || pendingCode.length > 0) flushPending();
           pendingList.push({ ilvl: numbering.ilvl, ordered: numbering.ordered, runs });
+          ownGroup(bookmarks, commentStarts);
           if (images.length > 0) {
             flushPending();
             blocks.push(...images);
@@ -1021,12 +1070,14 @@ function parseBlocks(container: XmlElement, ctx: ParseContext, tableDepth: numbe
           // touch an open quote group (groups are mutually exclusive).
           if (pendingList.length > 0 || pendingCode.length > 0) flushPending();
           pendingQuote.push({ id: nodeId(ctx, "paragraph"), type: "paragraph", runs });
+          ownGroup(bookmarks, commentStarts);
           blocks.push(...images);
           break;
         }
         if (styleId && ctx.styles.code.has(styleId)) {
           if (pendingList.length > 0 || pendingQuote.length > 0) flushPending();
           pendingCode.push(runsToPlainText(runs));
+          ownGroup(bookmarks, commentStarts);
           blocks.push(...images);
           break;
         }
@@ -1114,7 +1165,7 @@ export interface ParseDocxPolicy {
 }
 
 export function parseDocx(bytes: Uint8Array, policy: ParseDocxPolicy = {}): ImportedDocument {
-  const zip = unzipDocx(bytes, DOCX_TEMPLATE_INTAKE_BUDGET);
+  const zip = unzipDocx(bytes, DOCX_IMPORT_BUDGET);
 
   const readOptional = (part: string): string | undefined =>
     zip.file(part) ? readPartText(zip, part) : undefined;

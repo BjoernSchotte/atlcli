@@ -32,7 +32,8 @@ atlcli wiki template validate --file ./template.md --json
 
 `list` hides templates shadowed by a more specific level; `--all` shows them.
 `list` also filters with `--tag` and `--search`. `validate --all` exits 1 when
-any template is invalid, warnings keep exit 0.
+any template is invalid, warnings keep exit 0; with `--json` it prints one
+document, `{"valid", "templates": [{"name", "valid", "errors", "warnings"}]}`.
 
 ## Managing templates
 

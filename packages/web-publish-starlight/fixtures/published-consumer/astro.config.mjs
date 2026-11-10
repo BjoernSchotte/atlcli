@@ -3,8 +3,10 @@ import starlight from "@astrojs/starlight";
 import { fileURLToPath } from "node:url";
 import { atlcliPublishingIntegration } from "@atlcli/web-publish-astro";
 
-const bundlePath = fileURLToPath(new URL("./publication/bundle.json", import.meta.url));
-const manifestPath = fileURLToPath(new URL("../evidence/published-consumer-inventory.json", import.meta.url));
+const bundlePath = process.env.ATLCLI_PUBLICATION_BUNDLE_PATH ??
+  fileURLToPath(new URL("./publication/bundle.json", import.meta.url));
+const manifestPath = process.env.ATLCLI_PUBLICATION_INVENTORY_PATH ??
+  fileURLToPath(new URL("../evidence/published-consumer-inventory.json", import.meta.url));
 const outDir = fileURLToPath(new URL("./dist/", import.meta.url));
 const publicDir = fileURLToPath(new URL("./public/", import.meta.url));
 

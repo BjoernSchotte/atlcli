@@ -1,4 +1,5 @@
 import type { PdfTemplatePackReferenceV1 } from "./request.js";
+import { sha256Hex, throwIfAborted } from "./internal.js";
 
 const SHA256_RE = /^[a-f0-9]{64}$/u;
 
@@ -76,15 +77,6 @@ export function templatePackReference(
   };
 }
 
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw (
-      signal.reason ??
-      new DOMException("Template pack operation was cancelled.", "AbortError")
-    );
-  }
-}
-
 function validateLimits(limits: TemplatePackStoreLimitsV1): void {
   if (
     !Number.isSafeInteger(limits.maxObjectBytes) ||
@@ -96,14 +88,6 @@ function validateLimits(limits: TemplatePackStoreLimitsV1): void {
       "Template pack limits must be non-negative safe integers."
     );
   }
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const owned = new Uint8Array(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", owned.buffer);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
 }
 
 function validateReference(reference: PdfTemplatePackReferenceV1): void {

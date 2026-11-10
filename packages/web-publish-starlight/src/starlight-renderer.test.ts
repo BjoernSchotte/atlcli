@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { adfToBlocks, storageToBlocks } from "@atlcli/confluence";
 import { defaultRegistry, resolveMacroBlocks } from "@atlcli/export-macros";
 import { negotiatePublicationExperienceV1 } from "@atlcli/web-publish";
-import { digestPublicationPageV1, type PublicationPageV1 } from "@atlcli/web-publish";
+import { digestPublicationJsonV1, digestPublicationPageV1, publicationBundleDigestInputV1, type PublicationBundleV1, type PublicationPageV1 } from "@atlcli/web-publish";
 import {
   assertAstroStaticPerformanceBudgetV1,
   measureAstroStaticPerformanceV1,
@@ -27,8 +27,8 @@ function isWithinOutputRoot(outputDirectory: string, candidate: string): boolean
   return relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
 }
 
-async function run(command: string[], cwd: string): Promise<string> {
-  const process = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe" });
+async function run(command: string[], cwd: string, environment: Record<string, string> = {}): Promise<string> {
+  const process = Bun.spawn(command, { cwd, env: { ...globalThis.process.env, ...environment }, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
     new Response(process.stdout).text(),
@@ -106,8 +106,12 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   expect(page).toContain("immutable bundle rendered through the supported Starlight publishing adapter");
   expect(page).toContain('href="/docs/assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt"');
   expect(page.match(/\bdata-pagefind-body\b/gu)).toHaveLength(1);
+  // The bundle froze an edit link for `guide` only; the template renders exactly that one.
+  expect(page).toMatch(/<a href="https:\/\/confluence\.example\.test\/wiki\/pages\/resumedraft\.action\?draftId=1" rel="external" data-atlcli-edit-link data-pagefind-ignore[^>]*>Edit in Confluence<\/a>/u);
+  expect(page.match(/data-atlcli-edit-link/gu)).toHaveLength(1);
 
   const label = await readFile(resolve(publishedConsumerFixture, "dist/publish/topics/guide/index.html"), "utf8");
+  expect(label).not.toContain("data-atlcli-edit-link");
   expect(label).toContain('data-atlcli-publication-slot="label-landing"');
   expect(label).toContain("Topic: guide");
   expect(label).toContain('href="/docs/publish/guide/"');
@@ -125,6 +129,8 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   expect(page).toContain('rel="alternate" hreflang="en" href="https://publish.example/docs/publish/guide/"');
   const arabic = await readFile(resolve(publishedConsumerFixture, "dist/ar/publish/guide/index.html"), "utf8");
   expect(arabic).toContain('lang="ar"');
+  expect(arabic).not.toContain("data-atlcli-edit-link");
+  expect(arabic).not.toContain("confluence.example.test");
   expect(arabic).toContain('dir="rtl"');
   expect(arabic).toContain('data-pagefind-filter="language"');
   expect(arabic).toContain('rel="canonical" href="https://publish.example/docs/ar/publish/guide/"');
@@ -146,6 +152,27 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   ]);
   expect(inventory.labelLandings).toEqual([expect.objectContaining({ kind: "label", slug: "guide", pathname: "publish/topics/guide/" })]);
   expect(inventory.projectPages).toEqual([{ kind: "project", pathname: "404/" }]);
+}, CONSUMER_BUILD_TIMEOUT_MS);
+
+test("a Starlight consumer of a bundle refreshed without edit links renders no edit action", async () => {
+  const root = await mkdtemp(resolve(tmpdir(), "atlcli-starlight-no-edit-link-"));
+  try {
+    await cp(resolve(publishedConsumerFixture, "publication"), resolve(root, "publication"), { recursive: true });
+    const bundlePath = resolve(root, "publication/bundle.json");
+    const { editLinks: _editLinks, ...disabled } = JSON.parse(await readFile(bundlePath, "utf8")) as PublicationBundleV1;
+    await writeFile(bundlePath, JSON.stringify({ ...disabled, bundleDigest: await digestPublicationJsonV1(publicationBundleDigestInputV1(disabled)) }));
+    await run(["bun", "run", "build"], publishedConsumerFixture, {
+      ATLCLI_PUBLICATION_BUNDLE_PATH: bundlePath,
+      ATLCLI_PUBLICATION_INVENTORY_PATH: resolve(root, "inventory.json"),
+    });
+    for (const path of ["dist/publish/guide/index.html", "dist/ar/publish/guide/index.html", "dist/publish/topics/guide/index.html"]) {
+      const html = await readFile(resolve(publishedConsumerFixture, path), "utf8");
+      expect(html).not.toContain("data-atlcli-edit-link");
+      expect(html).not.toContain("confluence.example.test");
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 }, CONSUMER_BUILD_TIMEOUT_MS);
 
 test("a deliberately small plain-Astro experience uses the same contract without a second dispatcher", async () => {
@@ -488,6 +515,7 @@ test("a production harness converts Cloud ADF and DC Storage before a packed Ast
     await writeFile(resolve(consumer, "publication/pages/guide-ar.json"), JSON.stringify(dcPageOut, null, 2));
     const bundlePath = resolve(consumer, "publication/bundle.json");
     const bundle = JSON.parse(await readFile(bundlePath, "utf8")) as {
+      bundleDigest: string;
       pages: { sourceId: string; path: string; pageDigest: string }[];
       sourceSnapshot: { pages: { sourceId: string; representation: "atlas_doc_format" | "storage" }[] };
       complete: boolean;
@@ -500,6 +528,8 @@ test("a production harness converts Cloud ADF and DC Storage before a packed Ast
       ...entry,
       representation: entry.sourceId === "guide" ? "atlas_doc_format" : "storage",
     }));
+    // The loader recomputes digests, so the rewritten bundle is sealed again.
+    bundle.bundleDigest = await digestPublicationJsonV1(publicationBundleDigestInputV1(bundle as unknown as PublicationBundleV1));
     await writeFile(bundlePath, JSON.stringify(bundle, null, 2));
     const partialBundlePath = resolve(consumer, "publication/partial-bundle.json");
     await writeFile(partialBundlePath, JSON.stringify({ ...bundle, complete: false }, null, 2));

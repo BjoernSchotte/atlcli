@@ -339,6 +339,9 @@ function num(values: Readonly<Record<string, SettingValue>>, key: string): numbe
  * text exists (a present logo without alt is an engine rejection, and a silent
  * one here would be worse).
  */
+/** The watermark colour the settings form shows before the user picks one. */
+export const DEFAULT_WATERMARK_COLOR = "#DE350B";
+
 export function toPdfSettings(
   values: Readonly<Record<string, SettingValue>>
 ): PdfTemplateSettings | undefined {
@@ -371,7 +374,9 @@ export function toPdfSettings(
     settings.watermark = { text: watermarkText };
     const color = text(values, "watermarkColor");
     const normalized = color ? normalizeHexColor(color) : undefined;
-    if (normalized) settings.watermark.color = normalized;
+    // The untouched form default is not a choice: leaving the colour out lets
+    // the template's own watermark colour apply (the built-in one is this red).
+    if (normalized && normalized !== DEFAULT_WATERMARK_COLOR) settings.watermark.color = normalized;
     const opacity = num(values, "watermarkOpacity");
     if (opacity !== undefined) settings.watermark.opacity = opacity;
     const angle = num(values, "watermarkAngle");

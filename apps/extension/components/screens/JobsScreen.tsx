@@ -109,28 +109,31 @@ function replayActionKey(relation: "retry" | "rerun", jobId: string): string {
 }
 
 function EventLine({ event }: { event: ExportJobEventV1 }): React.JSX.Element {
+  const t = useT();
+  // State, progress and issue lines stay protocol vocabulary (job states,
+  // stage ids, issue codes), quoted as the CLI prints them.
   let text: string;
   switch (event.kind) {
     case "state":
       text = `${event.from} → ${event.to}`;
       break;
     case "stage":
-      text = `Stage: ${event.stage}`;
+      text = t("jobs.event.stage", { stage: event.stage });
       break;
     case "progress":
       text = `${event.progress.stage}: ${event.progress.done}/${event.progress.total ?? "?"}`;
       break;
     case "retry":
-      text = `Retry: ${event.code}`;
+      text = t("jobs.event.retry", { code: event.code });
       break;
     case "issue":
       text = `${event.level}: ${event.code}`;
       break;
     case "recovery":
-      text = `Recovery lease ${event.leaseEpoch}`;
+      text = t("jobs.event.recovery", { epoch: event.leaseEpoch });
       break;
     case "artifact":
-      text = `Artifact: ${event.artifact.filename}`;
+      text = t("jobs.event.artifact", { filename: event.artifact.filename });
       break;
   }
   return (
@@ -186,11 +189,11 @@ function JobDetail({
       </div>
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-        <span className="text-muted-foreground">Renderer</span>
+        <span className="text-muted-foreground">{t("jobs.detail.renderer")}</span>
         <span>{detail.request.renderer ?? unavailable}</span>
-        <span className="text-muted-foreground">Template</span>
+        <span className="text-muted-foreground">{t("jobs.detail.template")}</span>
         <span>{detail.request.template ?? unavailable}</span>
-        <span className="text-muted-foreground">Fingerprint</span>
+        <span className="text-muted-foreground">{t("jobs.detail.fingerprint")}</span>
         <code className="break-all text-[11px]">
           {detail.request.fingerprint ?? unavailable}
         </code>
@@ -229,19 +232,19 @@ function JobDetail({
           <p className="m-0 text-xs text-muted-foreground">{unavailable}</p>
         ) : (
           <dl className="m-0 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-            <dt className="text-muted-foreground">Pages fetched</dt>
+            <dt className="text-muted-foreground">{t("jobs.stat.pagesFetched")}</dt>
             <dd className="m-0">{job.stats.pages.fetched}</dd>
-            <dt className="text-muted-foreground">Assets embedded</dt>
+            <dt className="text-muted-foreground">{t("jobs.stat.assetsEmbedded")}</dt>
             <dd className="m-0">{job.stats.assets.embedded}</dd>
-            <dt className="text-muted-foreground">Diagrams rendered</dt>
+            <dt className="text-muted-foreground">{t("jobs.stat.diagramsRendered")}</dt>
             <dd className="m-0">{job.stats.diagrams.rendered}</dd>
-            <dt className="text-muted-foreground">Macros unresolved</dt>
+            <dt className="text-muted-foreground">{t("jobs.stat.macrosUnresolved")}</dt>
             <dd className="m-0">{job.stats.macros.unresolved}</dd>
-            <dt className="text-muted-foreground">Spool peak bytes</dt>
+            <dt className="text-muted-foreground">{t("jobs.stat.spoolPeakBytes")}</dt>
             <dd className="m-0" data-testid="job-metric-spool">
               {metric(job.stats.storage.spoolPeakBytes, unavailable)}
             </dd>
-            <dt className="text-muted-foreground">Heap peak bytes</dt>
+            <dt className="text-muted-foreground">{t("jobs.stat.heapPeakBytes")}</dt>
             <dd className="m-0" data-testid="job-metric-heap">
               {metric(job.stats.memory.heapPeakBytes, unavailable)}
             </dd>
@@ -302,9 +305,12 @@ function JobDetail({
         )}
         {job.reportSummary && (
           <p className="mb-0 mt-2 text-xs text-muted-foreground">
-            {job.reportSummary.completeness} · {job.reportSummary.issues.info} info ·{" "}
-            {job.reportSummary.issues.warning} warning ·{" "}
-            {job.reportSummary.issues.error} error
+            {t("jobs.detail.reportSummary", {
+              completeness: job.reportSummary.completeness,
+              info: job.reportSummary.issues.info,
+              warning: job.reportSummary.issues.warning,
+              error: job.reportSummary.issues.error,
+            })}
           </p>
         )}
       </div>
@@ -314,15 +320,15 @@ function JobDetail({
           {t("jobs.detail.diagnostics")}
         </summary>
         <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
-          <dt className="text-muted-foreground">Job</dt>
+          <dt className="text-muted-foreground">{t("jobs.diag.job")}</dt>
           <dd className="m-0 break-all">{job.id}</dd>
-          <dt className="text-muted-foreground">Attempt</dt>
+          <dt className="text-muted-foreground">{t("jobs.diag.attempt")}</dt>
           <dd className="m-0">{job.attempt}</dd>
-          <dt className="text-muted-foreground">Recoveries</dt>
+          <dt className="text-muted-foreground">{t("jobs.diag.recoveries")}</dt>
           <dd className="m-0">{job.recoveryCount}</dd>
-          <dt className="text-muted-foreground">Stage</dt>
+          <dt className="text-muted-foreground">{t("jobs.diag.stage")}</dt>
           <dd className="m-0">{job.stage ?? unavailable}</dd>
-          <dt className="text-muted-foreground">Artifact SHA-256</dt>
+          <dt className="text-muted-foreground">{t("jobs.diag.artifactSha256")}</dt>
           <dd className="m-0 break-all">
             {job.artifact?.sha256 ?? unavailable}
           </dd>

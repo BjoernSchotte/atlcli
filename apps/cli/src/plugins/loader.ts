@@ -12,12 +12,16 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import drawioPlugin from "../../../../plugins/plugin-drawio/src/index.js";
 import gitPlugin from "../../../../plugins/plugin-git/src/index.js";
+import { parseArgs, UsageError } from "@atlcli/core";
 import type {
   AtlcliPlugin,
   CommandDefinition,
+  FlagDefinition,
+  FlagValue,
   PluginMetadata,
   PluginHooks,
   CommandContext,
+  Subcommand,
 } from "@atlcli/plugin-api";
 
 const BUILTIN_PLUGINS: readonly AtlcliPlugin[] = [gitPlugin, drawioPlugin];
@@ -44,6 +48,68 @@ export function createBuiltinPluginMetadata(
     location: `builtin:${plugin.name}`,
     enabled,
   };
+}
+
+/** What a plugin command line resolves to once the plugin's flag definitions are applied. */
+export interface PluginInvocation {
+  /** The matched subcommand; undefined when the first argument names none. */
+  subcommand?: Subcommand;
+  /** Positional arguments after the command and the matched subcommand. */
+  args: string[];
+  flags: Record<string, FlagValue>;
+}
+
+/**
+ * Parse `argv` (everything after `atlcli`) for a plugin command, honouring its
+ * flag definitions: a switch never takes the next argument as its value, an
+ * alias sets the flag's name, `default` fills an absent flag, and a missing
+ * `required` flag or a value flag without a value is a usage error.
+ */
+export function resolvePluginInvocation(cmd: CommandDefinition, argv: readonly string[]): PluginInvocation {
+  const parse = (definitions: readonly FlagDefinition[]) => {
+    // The generic parser cannot know a plugin's switches and would read
+    // `--check docs` as check="docs". Moved behind every other argument, a
+    // switch has nothing to consume.
+    const switches = new Set(
+      definitions.filter((d) => !d.hasValue).flatMap((d) => [`--${d.name}`, ...(d.alias ? [`-${d.alias}`] : [])]),
+    );
+    return parseArgs([...argv.filter((token) => !switches.has(token)), ...argv.filter((token) => switches.has(token))]);
+  };
+
+  let parsed = parse(cmd.flags ?? []);
+  const subcommand = cmd.subcommands?.find((s) => s.name === parsed._[1]);
+  const definitions = [...(cmd.flags ?? []), ...(subcommand?.flags ?? [])];
+  if (subcommand?.flags?.length) parsed = parse(definitions);
+
+  const flags: Record<string, FlagValue> = { ...parsed.flags };
+  for (const definition of definitions) {
+    const { name, alias } = definition;
+    if (alias && flags[alias] !== undefined && flags[name] === undefined) flags[name] = flags[alias]!;
+    if (definition.hasValue && flags[name] === true) throw new UsageError(`--${name} needs a value.`);
+    if (flags[name] === undefined && definition.default !== undefined) flags[name] = definition.default;
+    if (definition.required && flags[name] === undefined) throw new UsageError(`--${name} is required.`);
+  }
+  return { subcommand, args: parsed._.slice(subcommand ? 2 : 1), flags };
+}
+
+/** Help text of a plugin command: its subcommands and their flags. */
+export function pluginCommandHelp(cmd: CommandDefinition): string {
+  const flagLines = (definitions: readonly FlagDefinition[] | undefined, indent: string) =>
+    (definitions ?? []).map((d) => {
+      const names = `--${d.name}${d.alias ? `, -${d.alias}` : ""}${d.hasValue ? " <value>" : ""}`;
+      const notes = `${d.required ? " (required)" : ""}${d.default !== undefined ? ` (default: ${d.default})` : ""}`;
+      return `${indent}${names.padEnd(24)} ${d.description}${notes}`;
+    });
+
+  const lines = [`atlcli ${cmd.name}${cmd.subcommands?.length ? " <subcommand>" : ""}`, "", cmd.description];
+  if (cmd.subcommands?.length) {
+    lines.push("", "Subcommands:");
+    for (const sub of cmd.subcommands) {
+      lines.push(`  ${sub.name.padEnd(16)} ${sub.description}`, ...flagLines(sub.flags, "      "));
+    }
+  }
+  if (cmd.flags?.length) lines.push("", "Flags:", ...flagLines(cmd.flags, "  "));
+  return lines.join("\n");
 }
 
 /** Loaded plugin with metadata */

@@ -1,6 +1,7 @@
 {
   "name": "atlcli-plugin-drawio",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "Draw.io previews for atlcli Confluence sync",
   "exports": {
@@ -23,5 +24,8 @@
     "url": "https://github.com/BjoernSchotte/atlcli/issues"
   },
   "homepage": "https://github.com/BjoernSchotte/atlcli#readme",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@atlcli/plugin-api": "workspace:*"
+  }
 }

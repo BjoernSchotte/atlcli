@@ -26,13 +26,6 @@ const CACHE_DIR = "cache";
 export const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;
 
 /**
- * Check if a file size exceeds the large file threshold.
- */
-export function isLargeFile(sizeBytes: number): boolean {
-  return sizeBytes >= LARGE_FILE_THRESHOLD;
-}
-
-/**
  * Format file size for human-readable output.
  */
 export function formatFileSize(bytes: number): string {
@@ -489,7 +482,9 @@ export async function writeState(
   const adapter = await createSyncDb(atlcliPath, { autoMigrate: true });
 
   try {
-    await writeStateToAdapter(adapter, state);
+    // All or nothing: a failure part-way must not leave pages deleted or
+    // half the state written.
+    await adapter.transaction((tx) => writeStateToAdapter(tx, state));
   } finally {
     await adapter.close();
   }
@@ -630,17 +625,6 @@ export function updatePageState(
 }
 
 /**
- * Remove a page from state.
- */
-export function removePageState(state: AtlcliState, pageId: string): void {
-  const existing = state.pages[pageId];
-  if (existing?.path) {
-    delete state.pathIndex[existing.path];
-  }
-  delete state.pages[pageId];
-}
-
-/**
  * Get page state by file path (relative to root).
  */
 export function getPageByPath(
@@ -716,21 +700,6 @@ export async function writeBaseContent(
   const cachePath = join(dir, ATLCLI_DIR, CACHE_DIR, `${pageId}.md`);
   await mkdir(dirname(cachePath), { recursive: true });
   await writeFile(cachePath, content);
-}
-
-/**
- * Delete base content from cache.
- */
-export async function deleteBaseContent(
-  dir: string,
-  pageId: string
-): Promise<void> {
-  const cachePath = join(dir, ATLCLI_DIR, CACHE_DIR, `${pageId}.md`);
-  try {
-    await unlink(cachePath);
-  } catch {
-    // Ignore if file doesn't exist
-  }
 }
 
 /**
@@ -818,17 +787,6 @@ export function removeAttachmentState(
 }
 
 /**
- * Get attachment state by ID.
- */
-export function getAttachmentById(
-  state: AtlcliState,
-  pageId: string,
-  attachmentId: string
-): AttachmentState | null {
-  return state.pages[pageId]?.attachments?.[attachmentId] ?? null;
-}
-
-/**
  * Get all attachments for a page.
  */
 export function getPageAttachments(
@@ -866,30 +824,6 @@ export function computeAttachmentSyncState(
 // ============ Attachment Cache Functions ============
 
 const ATTACHMENTS_CACHE_DIR = "attachments";
-
-/**
- * Read attachment base content from cache.
- */
-export async function readAttachmentBase(
-  dir: string,
-  pageId: string,
-  attachmentId: string,
-  extension: string
-): Promise<Buffer | null> {
-  const cachePath = join(
-    dir,
-    ATLCLI_DIR,
-    CACHE_DIR,
-    ATTACHMENTS_CACHE_DIR,
-    pageId,
-    `${attachmentId}${extension}`
-  );
-  try {
-    return await readFile(cachePath);
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Write attachment base content to cache.
@@ -945,13 +879,6 @@ export function getAttachmentsDirName(pageFilename: string): string {
   return `${baseName}.attachments`;
 }
 
-/**
- * Compute the attachments directory path for a page.
- */
-export function getAttachmentsDir(pageDir: string, pageFilename: string): string {
-  return join(pageDir, getAttachmentsDirName(pageFilename));
-}
-
 // ============ Link Storage Functions ============
 
 /**
@@ -980,37 +907,6 @@ export async function storePageLinks(
   try {
     const links = extractLinksFromStorage(storage, pageId);
     await adapter.setPageLinks(pageId, links);
-  } finally {
-    await adapter.close();
-  }
-}
-
-/**
- * Store links for multiple pages in a batch.
- * More efficient than calling storePageLinks repeatedly.
- *
- * @param dir - Directory containing .atlcli/
- * @param pages - Array of { pageId, storage } objects
- */
-export async function storePageLinksBatch(
-  dir: string,
-  pages: Array<{ pageId: string; storage: string }>
-): Promise<void> {
-  if (pages.length === 0) return;
-
-  const atlcliPath = join(dir, ATLCLI_DIR);
-
-  // Only store links if using sync.db (not legacy state.json)
-  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
-    return;
-  }
-
-  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
-  try {
-    for (const { pageId, storage } of pages) {
-      const links = extractLinksFromStorage(storage, pageId);
-      await adapter.setPageLinks(pageId, links);
-    }
   } finally {
     await adapter.close();
   }

@@ -27,6 +27,23 @@ import type { RasterNormalizerPortV1 } from "@atlcli/export-media";
 import {
   buildProductiveExportTelemetryV1,
 } from "./productive-telemetry.js";
+import {
+  canonicalJson,
+  nonNegativeFinite,
+  nonNegativeSafeInteger,
+  progress,
+  publishTelemetry,
+  sameEstimate,
+  sameReportSummary,
+  sha256Hex,
+  throwIfAborted,
+  topReportCodes,
+  validateEstimate,
+} from "./job-internals.js";
+
+function canonical(value: unknown): string {
+  return canonicalJson(value, "Prepared PDF metadata");
+}
 
 export type PdfExportJobEngineInputV1 = Omit<
   RunPdfExportInput,
@@ -279,36 +296,6 @@ export class PdfRenderRestartLimitError extends Error {
   }
 }
 
-function abortReason(signal: AbortSignal): unknown {
-  return signal.reason ?? new DOMException("PDF export job was cancelled.", "AbortError");
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw abortReason(signal);
-}
-
-function nonNegativeSafeInteger(value: number, path: string): void {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new RangeError(`${path} must be a non-negative safe integer.`);
-  }
-}
-
-function nonNegativeFinite(value: number, path: string): void {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new RangeError(`${path} must be a non-negative finite number.`);
-  }
-}
-
-function validateEstimate(estimate: ResourceEstimateV1): void {
-  nonNegativeSafeInteger(estimate.heapBytes, "estimate.heapBytes");
-  nonNegativeSafeInteger(estimate.spoolBytes, "estimate.spoolBytes");
-  nonNegativeSafeInteger(estimate.outputBytes, "estimate.outputBytes");
-  nonNegativeSafeInteger(estimate.rasterPixels, "estimate.rasterPixels");
-  if (!(["measured", "estimated", "unknown"] as const).includes(estimate.confidence)) {
-    throw new RangeError("estimate.confidence is invalid.");
-  }
-}
-
 function validateRasterNormalizerLease(lease: PdfRasterNormalizerLeaseV1): void {
   if (
     lease.evidence.schema !== "atlcli.pdf-raster-normalizer-evidence/1" ||
@@ -352,16 +339,6 @@ async function releaseRasterNormalizerLease(
     // Cleanup is best-effort and must never replace the primary export result
     // or failure. Productive adapters still terminate eagerly and idempotently.
   }
-}
-
-function sameEstimate(left: ResourceEstimateV1, right: ResourceEstimateV1): boolean {
-  return (
-    left.heapBytes === right.heapBytes &&
-    left.spoolBytes === right.spoolBytes &&
-    left.outputBytes === right.outputBytes &&
-    left.rasterPixels === right.rasterPixels &&
-    left.confidence === right.confidence
-  );
 }
 
 function sameCheckpointExceptAttempts(
@@ -415,17 +392,6 @@ function validateCheckpoint(
   validateEstimate(checkpoint.estimate);
 }
 
-function progress(
-  context: ExportJobExecutionContext,
-  now: () => number,
-  stage: "discover" | "fetch" | "compose" | "render" | "validate" | "commit",
-  done: number,
-  total: number | null,
-  detail: string,
-): Promise<void> {
-  return context.updateProgress({ stage, done, total, detail, updatedAt: now() });
-}
-
 class CapturePdfOutputSink {
   #captured?: { filename: string; handle: PdfBytesHandle };
 
@@ -444,46 +410,6 @@ class CapturePdfOutputSink {
     const captured = this.#captured;
     this.#captured = undefined;
     return captured;
-  }
-}
-
-async function sha256Hex(bytes: Uint8Array, signal?: AbortSignal): Promise<string> {
-  if (signal) throwIfAborted(signal);
-  // WebCrypto snapshots its input synchronously and digesting a typed-array
-  // VIEW hashes exactly the view's range, so the old non-buffer-exact
-  // `slice()` copy was avoidable (issue #118 Phase 0.5). Only a
-  // SharedArrayBuffer-backed view (which WebCrypto rejects) still copies.
-  const source: Uint8Array<ArrayBuffer> =
-    bytes.buffer instanceof ArrayBuffer ? (bytes as Uint8Array<ArrayBuffer>) : bytes.slice();
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", source));
-  if (signal) throwIfAborted(signal);
-  return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
-}
-
-function canonical(value: unknown, ancestors = new Set<object>()): string {
-  if (value === null || typeof value !== "object") {
-    if (typeof value === "number" && !Number.isFinite(value)) {
-      throw new Error("Prepared PDF metadata contains a non-finite number.");
-    }
-    return JSON.stringify(value);
-  }
-  if (ancestors.has(value)) throw new Error("Prepared PDF metadata contains a cycle.");
-  ancestors.add(value);
-  try {
-    if (Array.isArray(value)) {
-      return `[${value.map((entry) => canonical(entry, ancestors)).join(",")}]`;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new Error("Prepared PDF metadata must contain only plain data objects.");
-    }
-    return `{${Object.entries(value as Record<string, unknown>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry, ancestors)}`)
-      .join(",")}}`;
-  } finally {
-    ancestors.delete(value);
   }
 }
 
@@ -556,13 +482,6 @@ async function fingerprintPreparedPdfExport(
   const descriptorBytes = encoder.encode(descriptor);
   byteLength += descriptorBytes.byteLength;
   return { byteLength, sha256: await sha256Hex(descriptorBytes, signal) };
-}
-
-function sameReportSummary(
-  left: ExportReportSummaryV1 | undefined,
-  right: ExportReportSummaryV1,
-): boolean {
-  return left !== undefined && canonical(left) === canonical(right);
 }
 
 async function buildResultRecoveryKey(
@@ -643,14 +562,6 @@ function validateResultIntent(
   }
 }
 
-async function publishTelemetry(
-  context: ExportJobExecutionContext,
-  telemetry: ExportJobResultTelemetryV1,
-): Promise<void> {
-  await context.updateStats(telemetry.stats);
-  for (const issue of telemetry.issues) await context.appendEvent(issue);
-}
-
 function validateExecutionResult(
   result: ExportJobExecutionResultV1,
   context: ExportJobExecutionContext,
@@ -698,10 +609,7 @@ function reportSummary(report: PdfExportReport): ExportReportSummaryV1 {
   }
   return {
     issues: counts,
-    topCodes: [...codes]
-      .map(([code, count]) => ({ code, count }))
-      .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code))
-      .slice(0, 20),
+    topCodes: topReportCodes(codes),
     completeness: report.complete ? "complete" : "partial",
   };
 }

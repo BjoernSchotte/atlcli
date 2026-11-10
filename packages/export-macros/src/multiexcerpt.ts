@@ -2,9 +2,9 @@
  * Multiexcerpt-include renderer (spec 004, E4 — Appfire single-sourcing).
  *
  * Fetches the source page, extracts the named excerpt's body from the walked
- * block tree, and returns it as real blocks. Shares the recursion guard
- * (`ctx.visited`/`ctx.depth`) with the E5 include renderers so a multiexcerpt
- * that itself includes another is bounded.
+ * block tree, and returns it as real blocks. Honours the host-set recursion
+ * guard (`ctx.visited`/`ctx.depth`) like the E5 include renderers; see there
+ * for why it never adds to `visited`.
  */
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
 import { macroParamText } from "./params.js";
@@ -45,7 +45,6 @@ export function multiexcerptIncludeRenderer(deps: {
           notes: [cycleNote(m.name, key)],
         };
       }
-      ctx.visited.add(key);
 
       try {
         const page = await ctx.confluence.getPageStorage(pageTitle, ctx.page.spaceKey);

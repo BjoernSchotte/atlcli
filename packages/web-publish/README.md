@@ -38,15 +38,10 @@ absence with deletion. It emits separate `exclude`, `out-of-scope`, and
 `complete-scan` authority may emit `confirmed-delete`. Content, metadata,
 tree-position, asset metadata, and route changes remain independently visible.
 
-Use `@atlcli/web-publish/node` for bounded filesystem helpers and the default
-publication-workspace cache store. The cache is digest-keyed, stores only
-validated `PublicationPageV1` documents and binary asset values, rejects
-symlink/path traversal inputs, and remains derived state rather than source or
-bundle authority. `digestPublicationPageCacheKeyV1()` includes the entire
-normalized-page dependency identity, not merely the source page version.
-Refresh planning records asset-metadata and frozen live-macro dependency changes
-as independent changes, so neither can remain stale when a page body is
-unchanged.
+Use `@atlcli/web-publish/node` for the bounded JSON reader and the immutable
+bundle writer; both reject symlink and path-traversal inputs. Refresh planning
+records asset-metadata and frozen live-macro dependency changes as independent
+changes, so neither can remain stale when a page body is unchanged.
 
 Chart publication derives an ID-free `PublicationChartRenderPolicyV1` from the
 private project and stores it in the immutable bundle. Normalization admission,

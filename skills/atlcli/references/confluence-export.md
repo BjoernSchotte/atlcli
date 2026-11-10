@@ -39,7 +39,9 @@ a full Confluence URL. `--output` (`-o`) is required. `--format` is `docx`
 
 For DOCX, `--template` (`-t`) is optional. Without it the export uses a bundled
 default template and the report carries the info note `template-default-used`.
-The engine fills `$scroll.*` placeholders only. A template with docxtpl/Jinja
+The engine fills `$scroll.*` placeholders only, in the body, headers, footers,
+text boxes, footnotes, endnotes and comments. A date placeholder without a
+format argument prints the local `yyyy-MM-dd`. A template with docxtpl/Jinja
 placeholders (`{{ ... }}`, `{% ... %}`) exports with those left as literal text
 and a `template-foreign-placeholders` warning.
 
@@ -55,7 +57,8 @@ DOCX options:
   refresh fields on open. A table of contents then shows placeholder text until
   refreshed in Word (select all, F9).
 - `--no-live-macros`: skip live macro rendering (Jira, `export_view`,
-  attachment macros). It is not an offline mode, the page body still fetches.
+  attachment macros) for DOCX and PDF. Stored with the job, so `jobs retry` /
+  `rerun` keep it. It is not an offline mode, the page body still fetches.
 - `--keep-ignored`: keep `scroll-only` and `scroll-ignore` content, for
   debugging a single page.
 - `--engine ts`: accepted, it is the only engine.

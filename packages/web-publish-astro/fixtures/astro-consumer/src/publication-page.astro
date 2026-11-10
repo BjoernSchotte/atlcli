@@ -1,6 +1,6 @@
 ---
 import { getEntry } from "astro:content";
-import { publicationStaticPathsV1, readPublicationNavigationV1 } from "@atlcli/web-publish-astro";
+import { publicationEditLinkV1, publicationStaticPathsV1, readPublicationNavigationV1 } from "@atlcli/web-publish-astro";
 import PagefindSearch from "@atlcli/web-publish-astro/components/PagefindSearch.astro";
 import PagefindSearchPage from "@atlcli/web-publish-astro/components/PagefindSearchPage.astro";
 import { bundlePath, labelRoutePrefix } from "virtual:atlcli-publication";
@@ -15,9 +15,10 @@ export async function getStaticPaths() {
 const path = Astro.props;
 const entry = path.kind === "page" ? await getEntry("publications", path.sourceId) : undefined;
 if (path.kind === "page" && !entry) throw new Error(`Missing publication entry ${path.sourceId}`);
-const labelLanding = path.kind === "label"
-  ? (await readPublicationNavigationV1({ bundlePath, ...(labelRoutePrefix === undefined ? {} : { labelRoutePrefix }) })).navigation.labels.find((label) => label.slug === path.slug)
-  : undefined;
+const loaded = await readPublicationNavigationV1({ bundlePath, ...(labelRoutePrefix === undefined ? {} : { labelRoutePrefix }) });
+const labelLanding = path.kind === "label" ? loaded.navigation.labels.find((label) => label.slug === path.slug) : undefined;
+// The frozen, origin-checked edit action of this page, or nothing.
+const editLink = path.kind === "page" ? publicationEditLinkV1(loaded.bundle, path.sourceId) : undefined;
 if (path.kind === "label" && !labelLanding) throw new Error(`Missing publication label landing ${path.slug}`);
 const title = entry?.data.title ?? `Topic: ${labelLanding!.label}`;
 const base = import.meta.env.BASE_URL;
@@ -43,6 +44,7 @@ const base = import.meta.env.BASE_URL;
       <span data-pagefind-filter="label">guide</span>
       <h1>{entry!.data.title}</h1>
       <p>Structured blocks: {entry!.data.blocks.length}</p>
+      {editLink && <a href={editLink.href} rel="external" data-atlcli-edit-link data-pagefind-ignore>{editLink.label}</a>}
       <p>{"<img src=x onerror=alert('pagefind-hostile')> hostile-search-token"}</p>
     </article> : <article data-atlcli-label-slug={labelLanding!.slug} data-pagefind-body>
       <span data-pagefind-filter="label">{labelLanding!.label}</span>

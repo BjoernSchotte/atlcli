@@ -135,7 +135,11 @@ export interface ScanResult {
   supported: ScanHit[];
   unsupported: ScanHit[];
   never: ScanHit[];
-  /** Names of the document parts scanned (document.xml, header1.xml, …). */
+  /**
+   * Names of the parts walked for placeholders: the document, headers/footers
+   * and chart/diagram parts always, any other WordprocessingML part (footnotes,
+   * endnotes, comments, …) when it carries placeholder-like text.
+   */
   parts: string[];
   /** True when the template contains a `$scroll.content` insertion point. */
   hasContentPlaceholder: boolean;
@@ -580,10 +584,10 @@ function classifyActiveContentPart(name: string): string | undefined {
  * being read anyway, and every narrowing so far has turned out to have a
  * counterexample.
  */
-function wordprocessingPartNames(zip: PizZip): string[] {
-  return Object.keys(zip.files).filter(
-    (n) => /^word\/.*\.xml$/i.test(n) && !/^word\/_rels\//i.test(n)
-  );
+export function wordprocessingPartNames(zip: PizZip): string[] {
+  return Object.keys(zip.files)
+    .filter((n) => /^word\/.*\.xml$/i.test(n) && !/^word\/_rels\//i.test(n))
+    .sort();
 }
 
 /**
@@ -691,19 +695,6 @@ export function findActiveContentRelationship(relsXml: string): string | undefin
     }
   }
   return undefined;
-}
-
-/**
- * True when a `.rels` part declares an altChunk relationship.
- *
- * Retained as a named export for API stability; {@link findActiveContentRelationship}
- * is the general form and is what {@link assertNoActiveContent} calls.
- */
-export function hasAltChunkRelationship(relsXml: string): boolean {
-  for (const m of relsXml.matchAll(/\bType\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
-    if (/\/aFChunk$/i.test(decodeXmlEntities(m[1] ?? m[2] ?? "").trim())) return true;
-  }
-  return false;
 }
 
 /**
@@ -843,14 +834,6 @@ export function collectFieldInstructions(
     }
   }
   return found;
-}
-
-/**
- * Backwards-compatible alias for {@link collectFieldInstructions} over the
- * audited keyword list. Retained as a named export for API stability.
- */
-export function collectRiskyFieldInstructions(xml: string): string[] {
-  return collectFieldInstructions(xml, AUDITED_FIELD_INSTRUCTIONS);
 }
 
 // ---------------------------------------------------------------------------
@@ -1038,9 +1021,33 @@ export interface FieldUse {
  * because a caller may need to tell two fields of the SAME keyword apart
  * (`SEQ Figure` vs `SEQ Table`; see {@link collectSeqSequenceNames}).
  *
- * {@link collectFieldKeywords} is the keyword-only projection of this, and
- * carries the full rationale for reading the keyword positionally out of each
- * field's own reassembled instruction.
+ * WHY NOT {@link collectFieldInstructions}: that function concatenates every
+ * instruction in the part into ONE haystack and asks whether a keyword appears
+ * anywhere in it. For its own job — "does this template mention DDE at all",
+ * where a false positive costs an over-cautious refusal — that is the right
+ * trade. Here it would be actively wrong in both directions:
+ *
+ *  - FALSE POSITIVES from field ARGUMENTS. `\bSEQ\b` matches the URL inside
+ *    ` HYPERLINK "https://example.com/seq/123" `, and `\bINDEX\b` matches any
+ *    link ending `/index.html`. A document of nothing but hyperlinks would have
+ *    kept prompting — the exact defect, re-created through the matcher.
+ *  - FALSE POSITIVES from the JOIN. Instructions are concatenated with no
+ *    separator, so two adjacent fields can spell a third keyword across their
+ *    seam.
+ *
+ * So the keyword is read positionally, from the front of each field's OWN
+ * instruction. What IS reused is the insight that fix was built on (see
+ * {@link collectStylerefFields}): Word splits one instruction across several
+ * `<w:instrText>` runs — ` TO` + `C \o "1-3"` is ordinary output — so the runs
+ * are concatenated BEFORE matching. The concatenation is just bounded by the
+ * field's own `fldChar begin`/`end` instead of running to the end of the part.
+ *
+ * Nesting is tracked with a stack, so `{ IF { PAGE } = 1 … }` reports both `IF`
+ * and `PAGE` and the outer instruction does not swallow the inner one. An
+ * unterminated field (no `end`) is flushed at the end of the part rather than
+ * dropped; a `<w:instrText>` with no enclosing `begin` opens an implicit field,
+ * because a malformed part should still be classified, not silently treated as
+ * field-free.
  */
 export function collectFieldUses(xml: string): FieldUse[] {
   const uses: FieldUse[] = [];
@@ -1116,43 +1123,6 @@ export function collectSeqSequenceNames(xml: string): string[] {
     if (name !== undefined && !names.includes(name)) names.push(name);
   }
   return names;
-}
-
-/**
- * The keyword of every field in one part's XML, uppercased, in document order.
- * Pure; never mutates. Repeats are kept — the caller decides what to do with a
- * count.
- *
- * WHY NOT {@link collectFieldInstructions}: that function concatenates every
- * instruction in the part into ONE haystack and asks whether a keyword appears
- * anywhere in it. For its own job — "does this template mention DDE at all",
- * where a false positive costs an over-cautious refusal — that is the right
- * trade. Here it would be actively wrong in both directions:
- *
- *  - FALSE POSITIVES from field ARGUMENTS. `\bSEQ\b` matches the URL inside
- *    ` HYPERLINK "https://example.com/seq/123" `, and `\bINDEX\b` matches any
- *    link ending `/index.html`. A document of nothing but hyperlinks would have
- *    kept prompting — the exact defect, re-created through the matcher.
- *  - FALSE POSITIVES from the JOIN. Instructions are concatenated with no
- *    separator, so two adjacent fields can spell a third keyword across their
- *    seam.
- *
- * So the keyword is read positionally, from the front of each field's OWN
- * instruction. What IS reused is the insight that fix was built on (see
- * {@link collectStylerefFields}): Word splits one instruction across several
- * `<w:instrText>` runs — ` TO` + `C \o "1-3"` is ordinary output — so the runs
- * are concatenated BEFORE matching. The concatenation is just bounded by the
- * field's own `fldChar begin`/`end` instead of running to the end of the part.
- *
- * Nesting is tracked with a stack, so `{ IF { PAGE } = 1 … }` reports both `IF`
- * and `PAGE` and the outer instruction does not swallow the inner one. An
- * unterminated field (no `end`) is flushed at the end of the part rather than
- * dropped; a `<w:instrText>` with no enclosing `begin` opens an implicit field,
- * because a malformed part should still be classified, not silently treated as
- * field-free.
- */
-export function collectFieldKeywords(xml: string): string[] {
-  return collectFieldUses(xml).map((use) => use.keyword);
 }
 
 /** Options for {@link needsFieldRefresh}. */
@@ -1261,7 +1231,12 @@ export function unzipDocx(bytes: Uint8Array, budget: ArchiveBudget = DOCX_ARCHIV
  * Exposed separately so the export flow can reuse a zip it already holds.
  */
 export function scanZip(zip: PizZip): ScanResult {
-  const parts = documentPartNames(zip);
+  // `$scroll.content`, STYLEREF and the logo/include passes are tied to the
+  // main story + headers/footers; plain text placeholders resolve in EVERY
+  // WordprocessingML part (footnotes, endnotes, comments, glossary), so the
+  // inventory walks the same breadth `preprocessScrollText` rewrites.
+  const documentParts = new Set(documentPartNames(zip));
+  const parts: string[] = [];
   const byBase = new Map<string, ScanHit>();
   let hasContent = false;
   const stylerefStyleNames: string[] = [];
@@ -1285,11 +1260,17 @@ export function scanZip(zip: PizZip): ScanResult {
   // Declaration order, independent of the archive's member order.
   const riskyFieldInstructions = AUDITED_FIELD_INSTRUCTIONS.filter((keyword) => riskyFound.has(keyword));
 
-  for (const part of parts) {
+  for (const part of wordprocessingPartNames(zip)) {
     const xml = readPartText(zip, part);
-    for (const name of collectStylerefFields(xml)) {
-      if (!stylerefStyleNames.includes(name)) stylerefStyleNames.push(name);
+    const isDocumentPart = documentParts.has(part);
+    if (isDocumentPart) {
+      for (const name of collectStylerefFields(xml)) {
+        if (!stylerefStyleNames.includes(name)) stylerefStyleNames.push(name);
+      }
+    } else if (!xml.includes("$scroll") && !xml.includes("$adhocState") && !xml.includes("{")) {
+      continue; // styles, numbering, settings, …: nothing a placeholder walk could find
     }
+    parts.push(part);
     // Walk every paragraph the replacement will touch — including text-box
     // (mc:Choice + mc:Fallback) and drawing-adjacent occurrences — so the panel's
     // supported-list matches what preprocessScrollText actually resolves.
@@ -1309,7 +1290,8 @@ export function scanZip(zip: PizZip): ScanResult {
       while ((m = PLACEHOLDER_RE.exec(text)) !== null) {
         const raw = m[0];
         const cls = classifyPlaceholder(raw);
-        if (cls.base === "$scroll.content") hasContent = true;
+        // The body can only be inserted where the content pass looks for it.
+        if (cls.base === "$scroll.content" && isDocumentPart) hasContent = true;
         const existing = byBase.get(cls.base);
         if (existing) {
           existing.count += 1;

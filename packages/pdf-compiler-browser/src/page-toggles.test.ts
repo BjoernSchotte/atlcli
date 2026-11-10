@@ -49,8 +49,11 @@ async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>>
 
 function revision6(
   toggles: { cover?: boolean; closingPage?: boolean; titleBlock?: boolean },
+  revision: "6" | "7" = "6",
+  mutate?: (design: PdfTemplateManifestV5["design"] & object) => void,
 ): PdfTemplateManifestV5 {
   const design = structuredClone(BUILTIN_PDF_TEMPLATE_BASELINE_V2.design);
+  mutate?.(design);
   if (toggles.titleBlock !== undefined) {
     design.compositions.titleBlock = { enabled: toggles.titleBlock };
   }
@@ -62,7 +65,7 @@ function revision6(
     name: "Page toggles",
     version: "1.0.0",
     engine: { kind: "typst", api: "wiki.pdf-template/v1", entry: "atlcli.typ", compilerRange: ">=0.15.1 <0.16" },
-    canonicalSource: { api: "wiki.pdf-canonical-typst", revision: "6" },
+    canonicalSource: { api: "wiki.pdf-canonical-typst", revision },
     capabilityCatalog: {
       id: PDF_TEMPLATE_CAPABILITIES_V4.id,
       version: PDF_TEMPLATE_CAPABILITIES_V4.version,
@@ -161,5 +164,30 @@ describe("cover and closing-page toggles (real compiler)", () => {
     // Without the capability the body starts directly.
     const plain = await pages({ outline: false }, revision6({ cover: false }));
     expect(plain[0]).not.toMatch(/EXPORTED BY/u);
+  }, 120_000);
+
+  it("compiles a revision-7 pack with decorations", async () => {
+    const decorated = (revision: "6" | "7") =>
+      pages({ outline: false }, revision6({}, revision, (design) => {
+        design.navigation.pageNumbers.start = 5;
+        design.paints = {
+          band: {
+            kind: "linear",
+            angle: 0,
+            relativeTo: "parent",
+            stops: [{ at: 0, color: "coverTitleInk" }, { at: 100, color: "coverTitleInk" }],
+          },
+        };
+        design.decorations = [{
+          kind: "rect",
+          scope: "first",
+          layer: "page-background",
+          box: { x: "0mm", y: "0mm", width: "210mm", height: "10mm" },
+          fill: "band",
+        }];
+      }));
+    // `here().page()` must resolve inside the page background; the page
+    // sequence itself is the same as revision 6.
+    expect(await decorated("7")).toEqual(await decorated("6"));
   }, 120_000);
 });

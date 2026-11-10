@@ -711,5 +711,3 @@ function typstVisualSource(
     definition("template-footer-decorations", byLayer.footer),
   ].join("\n\n");
 }
-
-export const ATLCLI_TYPST_TEMPLATE_LEGACY = createAtlcliTypstTemplateLegacy();

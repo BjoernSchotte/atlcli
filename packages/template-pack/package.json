@@ -48,7 +48,9 @@
   },
   "dependencies": {
     "@atlcli/core": "workspace:*",
-    "@atlcli/docx": "workspace:*",
     "pizzip": "^3.2.0"
+  },
+  "devDependencies": {
+    "@atlcli/docx": "workspace:*"
   }
 }

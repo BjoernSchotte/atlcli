@@ -40,7 +40,7 @@ export interface OffscreenActivityTracker {
   begin(): void;
   /** A job finished. Re-arms the idle close once the last one is done. */
   end(): void;
-  /** Non-job traffic (a ping, a wasm smoke test): re-arm only when idle. */
+  /** Non-job traffic (e.g. warming the DOCX runtime): re-arm only when idle. */
   touch(): void;
   /** Jobs currently in flight. */
   readonly inFlight: number;

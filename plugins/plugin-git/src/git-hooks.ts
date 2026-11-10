@@ -4,11 +4,11 @@
  * Installs/removes/checks post-commit hooks for auto-pushing to Confluence.
  */
 
-import { readFile, writeFile, unlink, chmod, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { readFile, writeFile, unlink, chmod, mkdir, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { existsSync } from "node:fs";
-import type { CommandContext } from "./types.js";
-import { isGitRepo, getGitRoot } from "./utils.js";
+import type { CommandContext } from "@atlcli/plugin-api";
+import { gitExec, isGitRepo, getGitRoot } from "./utils.js";
 
 /** Marker comment to identify our hook */
 const HOOK_MARKER = "# atlcli-plugin-git hook";
@@ -57,11 +57,13 @@ exit 0
 }
 
 /**
- * Get the path to the post-commit hook.
+ * Get the path to the post-commit hook. Git names the hooks directory: it is
+ * the main repository's in a linked worktree and `core.hooksPath` when set.
  */
 async function getHookPath(dir: string): Promise<string> {
-  const gitRoot = await getGitRoot(dir);
-  return join(gitRoot, ".git", "hooks", "post-commit");
+  const { stdout } = await gitExec(dir, ["rev-parse", "--git-path", "hooks"]);
+  // Relative output is relative to the directory git ran in.
+  return join(resolve(dir, stdout.replace(/\r?\n$/, "")), "post-commit");
 }
 
 /**
@@ -131,7 +133,7 @@ export async function installHookHandler(ctx: CommandContext): Promise<void> {
     return;
   }
   const portableDocsDir = relativeDocsDir ? relativeDocsDir.split(sep).join("/") : ".";
-  const hookPath = join(gitRoot, ".git", "hooks", "post-commit");
+  const hookPath = await getHookPath(dir);
 
   // Check if our hook is already installed
   if (await isHookInstalled(hookPath)) {
@@ -159,7 +161,8 @@ export async function installHookHandler(ctx: CommandContext): Promise<void> {
     console.log("Backed up existing hook to:", backupPath);
   }
 
-  // Write the hook
+  // Write the hook (a fresh clone or a custom core.hooksPath may have no hooks directory yet)
+  await mkdir(dirname(hookPath), { recursive: true });
   await writeFile(hookPath, buildHookScript(portableDocsDir));
   await chmod(hookPath, 0o755); // Make executable
 

@@ -230,11 +230,6 @@ The compiler-range check is a pure semver comparison against the pinned compiler
 version; actually compiling the template against the canonical feature set stays
 a deferred Level-B host follow-up.
 
-`validatePack(bytes)` combines unpack + import gate + an engine-specific hook and
-returns a typed report `{ ok, manifest?, scanReport?, issues }`. It throws
-**only** on package corruption (the `TemplatePackError`s above); manifest-gate
-failures and engine-hook problems are surfaced as `issues` with `ok: false`.
-
 PDF export adds a stricter execution gate after the generic container gate. It
 requires the current capability catalog, a complete validated design, a
 supported canonical-source revision, byte-identical regeneration of
@@ -244,18 +239,18 @@ and valid decoration writers and scopes. A locally edited Typst member fails as
 
 ## DOCX scan policy
 
-For a `kind: "docx"` pack, `validatePack` runs the DOCX template scanner and
-applies the same policy as the live product — no stricter:
+The container layer never opens the inner `.docx`: `unpackTemplate` and
+`validateManifest` check the archive and the manifest only. A host that imports
+a `kind: "docx"` pack runs the DOCX template scanner (`scanTemplate` from the
+DOCX engine) on the unpacked `engine.entry` bytes and applies the product's
+policy:
 
 - A package-level failure (a scan/unzip error on a corrupt inner `.docx`) is
-  **fatal**: `ok: false` with the error surfaced in `issues`
-  (`docx-scan-failed`).
-- `never`-classified placeholders are a **warning** (`never-placeholders`), not
-  a rejection — those placeholders render empty, an accepted case in the product.
+  **fatal**: the template is rejected.
+- `never`-classified placeholders are a **warning**, not a rejection — those
+  placeholders render empty, an accepted case in the product.
 - A missing content placeholder is **not** a rejection — the exporter appends
   content before the final section break as a documented fallback.
-
-Warnings keep `ok: true`; only errors flip it to `false`.
 
 ## Minimal example (Typst)
 
@@ -303,11 +298,10 @@ setting, and carries provenance:
 ```
 
 ```ts
-const report = validatePack(docxPackBytes);
-// A pack whose inner .docx uses only `never`-classified placeholders:
-//   report.ok === true, report.issues === [{ severity: "warning", code: "never-placeholders", … }]
-// A pack with a corrupt inner .docx:
-//   report.ok === false, report.issues === [{ severity: "error", code: "docx-scan-failed", … }]
+const { manifest, files } = unpackTemplate(docxPackBytes);
+validateManifest(manifest);
+const scan = scanTemplate(files[manifest.engine.entry]!);
+// `scan` lists the placeholders; a corrupt inner .docx throws a DocxError.
 ```
 
 ## Related topics

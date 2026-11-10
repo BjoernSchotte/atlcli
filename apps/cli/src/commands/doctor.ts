@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import {
   output,
+  getFlag,
   hasFlag,
   loadConfig,
   getActiveProfile,
@@ -71,12 +72,13 @@ export async function handleDoctor(
   results.push(await checkConfigExists(fix));
   results.push(await checkConfigValid());
   results.push(await checkProfileExists());
-  results.push(await checkActiveProfile());
+  const requested = getFlag(flags, "profile");
+  results.push(await checkActiveProfile(requested));
 
   // Only run connectivity checks if we have a valid profile
   const hasValidProfile = results.every(r => r.status !== "fail");
   if (hasValidProfile) {
-    const connectivityResults = await checkConnectivity();
+    const connectivityResults = await checkConnectivity(requested);
     results.push(...connectivityResults);
   }
 
@@ -217,18 +219,18 @@ async function checkProfileExists(): Promise<CheckResult> {
   }
 }
 
-async function checkActiveProfile(): Promise<CheckResult> {
+async function checkActiveProfile(requested?: string): Promise<CheckResult> {
   try {
     const config = await loadConfig();
-    const profile = getActiveProfile(config);
+    const profile = getActiveProfile(config, requested);
 
     if (!profile) {
       return {
         name: "active_profile",
         category: "auth",
         status: "fail",
-        message: "No active profile",
-        suggestion: "Run: atlcli auth switch <profile>",
+        message: requested ? `Profile '${requested}' not found` : "No active profile",
+        suggestion: requested ? "Run: atlcli auth list" : "Run: atlcli auth switch <profile>",
       };
     }
 
@@ -292,12 +294,12 @@ async function checkActiveProfile(): Promise<CheckResult> {
   }
 }
 
-async function checkConnectivity(): Promise<CheckResult[]> {
+async function checkConnectivity(requested?: string): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
 
   try {
     const config = await loadConfig();
-    const profile = getActiveProfile(config);
+    const profile = getActiveProfile(config, requested);
 
     if (!profile) {
       return [
@@ -560,8 +562,9 @@ function doctorHelp(): string {
 Diagnose common issues with atlcli setup and connectivity.
 
 Options:
-  --fix   Auto-fix safe issues (create directories, etc.)
-  --json  JSON output for scripting
+  --fix             Auto-fix safe issues (create directories, etc.)
+  --profile <name>  Check this profile instead of the current one
+  --json            JSON output for scripting
 
 Checks:
   - Config file exists and valid

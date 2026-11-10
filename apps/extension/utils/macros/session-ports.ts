@@ -317,7 +317,7 @@ export interface SessionPortDeps {
 /**
  * {@link JiraIssuePort} over `JiraClient` (`<profile.baseUrl>/rest/api/3` — the
  * Cloud v3 path the client picks itself for `*.atlassian.net`, covered by the
- * manifest's existing `*://*.atlassian.net/*` host permission, same origin as
+ * manifest's existing `https://*.atlassian.net/*` host permission, same origin as
  * Confluence).
  *
  * The export `AbortSignal` is threaded INTO the client
@@ -607,7 +607,7 @@ export function createSessionMacroPorts(input: SessionMacroPortsInput): SessionM
   const confluence = input.confluenceClient ?? new ConfluenceClient(profile);
   // Constructed from the SAME session profile as the Confluence client, exactly
   // as `ConfluenceClient` is above — Cloud serves both products from one origin,
-  // already covered by the manifest's `*://*.atlassian.net/*` host permission.
+  // already covered by the manifest's `https://*.atlassian.net/*` host permission.
   //
   // Unconditional on purpose (plan owner's ruling, spec 010 T5.4). While
   // `@atlcli/jira` was not a dependency of this extension the port was simply

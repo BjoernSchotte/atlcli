@@ -77,6 +77,11 @@ interface CliJobBaseInput {
   outputTargetKind?: "file" | "directory";
   displayName?: string;
   codeTheme?: CodeThemeId;
+  /**
+   * `false` for `--no-live-macros`. Persisted as `options.resolveMacros`, so a
+   * retry or rerun of the stored job stays deterministic.
+   */
+  liveMacros?: boolean;
 }
 
 export function buildCliDocxJobRequest(
@@ -111,7 +116,7 @@ export function buildCliDocxJobRequest(
     template: input.template,
     options: {
       embedImages: input.embedImages,
-      resolveMacros: true,
+      resolveMacros: input.liveMacros !== false,
       codeTheme: resolveCodeThemeId(input.codeTheme),
       keepIgnored: input.keepIgnored,
       strict: input.strict,
@@ -162,7 +167,7 @@ export function buildCliPdfJobRequest(
       },
     settings: input.settings ?? {},
     options: {
-      resolveMacros: true,
+      resolveMacros: input.liveMacros !== false,
       codeTheme: resolveCodeThemeId(input.codeTheme),
       profile: input.profile.name,
       strict: input.strict,

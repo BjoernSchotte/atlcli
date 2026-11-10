@@ -252,7 +252,7 @@ describe("skills/atlcli", () => {
   it("names what its content was checked against", () => {
     const opening = readFileSync(join(SKILL_DIR, "SKILL.md"), "utf8").split(/^## /m)[0]!.replace(/\s+/g, " ");
     expect(opening).toMatch(
-      /This skill was checked against the atlcli source at commit [0-9a-f]{7,40} plus `atlcli skill`, after release v\d{4}\.\d+\.\d+\./,
+      /This skill was checked against the atlcli source at commit [0-9a-f]{7,40}, after release v\d{4}\.\d+\.\d+[.:]/,
     );
   });
 

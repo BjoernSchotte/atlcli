@@ -1,6 +1,7 @@
 {
   "name": "atlcli-plugin-git",
-  "version": "0.5.1",
+  "version": "1.0.0",
+  "private": true,
   "type": "module",
   "description": "Git integration for atlcli Confluence sync",
   "exports": {
@@ -16,5 +17,8 @@
     "confluence"
   ],
   "author": "",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@atlcli/plugin-api": "workspace:*"
+  }
 }

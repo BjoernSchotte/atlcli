@@ -27,27 +27,6 @@ import type { BrowserPdfCompilerFontSourceV1 } from "@atlcli/pdf-compiler-browse
 
 const require = createRequire(import.meta.url);
 
-/**
- * Load the vendored, CSP-patched typst wasm and the twelve canonical fonts from
- * the INSTALLED packages (`@atlcli/pdf-compiler-browser/wasm`,
- * `@atlcli/pdf/fonts/*`) — plain `require.resolve`, so it works identically
- * under Node and Bun, from a workspace link or an installed tarball. (The
- * CLI's release binaries keep their own embedded-asset loader; everything
- * else should use this.)
- */
-export async function loadNodePdfCompilerAssets(): Promise<{ wasm: ArrayBuffer; fonts: Uint8Array[] }> {
-  const wasmBytes = await readFile(require.resolve("@atlcli/pdf-compiler-browser/wasm"));
-  const fonts = await Promise.all(
-    PDF_RUNTIME_ASSETS.fonts.map(
-      async (font) => new Uint8Array(await readFile(require.resolve(`@atlcli/pdf/fonts/${font.fileName}`)))
-    )
-  );
-  // Standalone ArrayBuffer → the ArrayBuffer-only wasm init branch
-  // (WebAssembly.instantiate), never the browser Response/string path.
-  const wasm = wasmBytes.buffer.slice(wasmBytes.byteOffset, wasmBytes.byteOffset + wasmBytes.byteLength);
-  return { wasm, fonts };
-}
-
 let compilerPromise: Promise<PdfCompilePort> | null = null;
 
 function nodePdfFontSources(): BrowserPdfCompilerFontSourceV1[] {

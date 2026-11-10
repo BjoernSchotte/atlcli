@@ -86,6 +86,7 @@ atlcli config unset global.project         # Remove a value
 ```bash
 atlcli doctor                 # Run all health checks
 atlcli doctor --fix           # Auto-fix safe issues (create dirs, etc.)
+atlcli doctor --profile <name>  # Check that profile instead of the current one
 atlcli doctor --json          # JSON output for scripting
 ```
 
@@ -186,7 +187,6 @@ atlcli audit wiki --all --fix --fix-label <label>  # Custom stale label
 # Advanced
 atlcli audit wiki --include-remote           # Include unsynced remote pages
 atlcli audit wiki --refresh-users            # Refresh user status from API
-atlcli audit wiki --rebuild-graph            # Rebuild link graph from markdown
 atlcli audit wiki --export-graph             # Export link graph as JSON
 ```
 

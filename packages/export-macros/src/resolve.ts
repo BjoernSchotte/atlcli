@@ -67,7 +67,6 @@ export const MACRO_DEGRADED = "macro-degraded";
 export const MACRO_SKIPPED_BY_CONFIG = "macro-skipped-by-config";
 
 const DEFAULT_CONCURRENCY = 4;
-const DEFAULT_RATE_LIMIT_MS = 30_000;
 
 /** Internal marker distinguishing a deadline abort from a real port failure. */
 class DeadlineError extends Error {

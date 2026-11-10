@@ -3,7 +3,7 @@
 Status: **Implemented** (2026-07-14 — Tasks 1–8 complete, all §8 ACs verified; implemented by Opus 4.8 agents, adversarially reviewed by Sonnet 5, two MAJOR review findings fixed in `d1274a2`)
 
 Spec ID: `001-browser-ready-core`
-Related specs: `spec/scroll-word-exporter-features.md` (existing `$scroll.*` placeholder catalog — input to Task 8), `spec/confluence-docx-export.md`, `spec/docx-export-typescript-analysis.md` (export background)
+Related specs: `specs/confluence-docx-export/scroll-word-exporter-features.md` (existing `$scroll.*` placeholder catalog — input to Task 8), `specs/confluence-docx-export/PLAN.md`, `specs/confluence-docx-export/docx-export-typescript-analysis.md` (export background)
 Related strategy: `~/code/rovo-skills/FAHRPLAN.md` Phase 0 · `~/code/rovo-skills/research/TYPST-EXPORT-ANGLE.md` §7.1–7.5 · `~/code/rovo-skills/research/AGENT-OVERLAY-ANGLE.md` §1.2
 Origin: FAHRPLAN Phase 0 — "atlcli-Basis fit machen (Voraussetzung für jede Extension)"
 
@@ -210,7 +210,7 @@ Data Center variants must respect context paths (the `resolveDeploymentType`/`ge
 
 ## 7. Scroll placeholder mapping (deliverable, no code)
 
-`spec/scroll-word-exporter-features.md` already catalogs the `$scroll.*` placeholders (page info, metadata, header/footer, TOC) — the raw survey exists but is **not yet verified against the current K15t docs** (research flag, TYPST §7.5 step 0).
+`specs/confluence-docx-export/scroll-word-exporter-features.md` already catalogs the `$scroll.*` placeholders (page info, metadata, header/footer, TOC) — the raw survey exists but is **not yet verified against the current K15t docs** (research flag, TYPST §7.5 step 0).
 
 Deliverable: `specs/001-browser-ready-core/scroll-placeholder-mapping.md` —
 
@@ -281,7 +281,7 @@ Extract pure types, create `index.browser.ts` with the trivially safe modules, a
 ### Task 8 — Scroll placeholder mapping (parallel, no code)
 
 - [x] `scroll-placeholder-mapping.md` exists per §7: every placeholder from the verified catalog has a mapping row with status
-- [x] Deviations from `spec/scroll-word-exporter-features.md` (new/renamed/removed placeholders in current K15t docs) explicitly listed
+- [x] Deviations from `specs/confluence-docx-export/scroll-word-exporter-features.md` (new/renamed/removed placeholders in current K15t docs) explicitly listed
 - [x] atlcli data-model gaps enumerated as Phase 1 inputs
 
 ---

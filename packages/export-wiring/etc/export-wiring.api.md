@@ -27,35 +27,6 @@ export interface BuildMacroOptionsArgs {
 // export: buildMacroResolutionOptions
 export declare function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroResolutionOptions;
 
-// export: CheckpointedOrderedSourcePipelineOptionsV1
-export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result> {
-    jobId: string;
-    requestKey: string;
-    source: OrderedSourcePortV1<Value, Cursor>;
-    concurrency: number;
-    maxResultSlots: number;
-    maxBufferedEntries: number;
-    signal?: AbortSignal;
-    resume?: PersistedOrderedSourceCheckpointV1<Cursor>;
-    process(source: Value, context: {
-        ordinal: number;
-        key: string;
-        signal: AbortSignal;
-    }): Promise<Result>;
-    commitCheckpoint(item: OrderedSourceCommitV1<Value, Result>, checkpoint: OrderedSourceCheckpointV1<Cursor>, context: {
-        signal: AbortSignal;
-    }): Promise<string>;
-    publishCheckpointRef?(ref: string, context: {
-        signal: AbortSignal;
-    }): Promise<void>;
-}
-
-// export: CheckpointedOrderedSourcePipelineResultV1
-export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
-    committedCount: number;
-    latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
-}
-
 // export: classifyClientError
 export declare function classifyClientError(err: unknown, service: string): never;
 
@@ -166,19 +137,6 @@ export type DocxConfluenceResolvedInputExtrasV1 = Omit<TypescriptDocxExportJobEn
 
 // export: DocxConfluenceRootDetailsV1
 export type DocxConfluenceRootDetailsV1 = Omit<ConfluencePageDetails, "id" | "title" | "version" | "spaceKey" | "storage">;
-
-// export: ExportAssetResponseV1
-export interface ExportAssetResponseV1 {
-    contentLength?: number;
-    body: AsyncIterable<Uint8Array>;
-}
-
-// export: ExportAssetSourceV1
-export interface ExportAssetSourceV1<Reference> {
-    fetch(reference: Reference, context: {
-        signal: AbortSignal;
-    }): Promise<ExportAssetResponseV1>;
-}
 
 // export: exportViewPortFromClient
 export declare function exportViewPortFromClient(client: ConfluenceClient, signal?: AbortSignal): ExportViewPort;
@@ -308,57 +266,11 @@ export interface MaterializedPublicationAssetV1 {
     bytes: Uint8Array;
 }
 
-// export: OrderedSourceCheckpointV1
-export interface OrderedSourceCheckpointV1<Cursor> {
-    version: 1;
-    jobId: string;
-    requestKey: string;
-    generation: number;
-    sourceCursor: Cursor;
-    nextCommitOrdinal: number;
-    committedCount: number;
-}
-
-// export: OrderedSourceCommitV1
-export interface OrderedSourceCommitV1<Value, Result> {
-    ordinal: number;
-    key: string;
-    source: Value;
-    result: Result;
-}
-
-// export: OrderedSourceDiscoveryV1
-export interface OrderedSourceDiscoveryV1<Value, Cursor> {
-    entries: readonly OrderedSourceEntryV1<Value, Cursor>[];
-    done: boolean;
-}
-
-// export: OrderedSourceEntryV1
-export interface OrderedSourceEntryV1<Value, Cursor> {
-    key: string;
-    value: Value;
-    cursorAfter: Cursor;
-}
-
-// export: OrderedSourcePortV1
-export interface OrderedSourcePortV1<Value, Cursor> {
-    discover(after: Cursor | undefined, context: {
-        limit: number;
-        signal: AbortSignal;
-    }): Promise<OrderedSourceDiscoveryV1<Value, Cursor>>;
-}
-
 // export: parseIpv6
 export declare function parseIpv6(value: string): number[] | undefined;
 
 // export: PdfConfluenceResolvedInputExtrasV1
 export type PdfConfluenceResolvedInputExtrasV1 = Omit<PdfExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "page">;
-
-// export: PersistedOrderedSourceCheckpointV1
-export interface PersistedOrderedSourceCheckpointV1<Cursor> {
-    checkpoint: OrderedSourceCheckpointV1<Cursor>;
-    ref: string;
-}
 
 // export: PublicationAssetDeduplicationErrorCodeV1
 export type PublicationAssetDeduplicationErrorCodeV1 = "duplicate-asset-id" | "invalid-materialized-asset" | "digest-conflict";
@@ -477,91 +389,11 @@ export interface ResolvedConfluenceSourceV1 {
     chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
-// export: ResolvedWebMacroPageV1
-export interface ResolvedWebMacroPageV1 {
-    sourceId: string;
-    sourceVersion?: number;
-    blocks: readonly ExportBlock[];
-    notes: readonly ExportNote[];
-    renderModels: readonly WebMacroRenderModelV1[];
-    frozenProvenance: WebMacroFrozenProvenanceV1;
-    resolvedAtEpochMs: number;
-    usedLive: boolean;
-}
-
-// export: ResolveWebPageMacrosOptionsV1
-export interface ResolveWebPageMacrosOptionsV1 {
-    macros: MacroResolutionOptions;
-    policy: WebMacroResolutionPolicyV1;
-    previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
-    dependencyDigestForPage?: (page: ExportPageNode) => string | undefined;
-    now?: () => number;
-}
-
-// export: resolveWebPageMacrosV1
-export declare function resolveWebPageMacrosV1(pages: readonly ExportPageNode[], options: ResolveWebPageMacrosOptionsV1): Promise<readonly ResolvedWebMacroPageV1[]>;
-
-// export: runCheckpointedOrderedSourcePipeline
-export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
-
-// export: streamBoundedExportAssetV1
-export declare function streamBoundedExportAssetV1<Reference, Result>(options: {
-    reference: Reference;
-    source: ExportAssetSourceV1<Reference>;
-    reservations: ByteReservationSemaphoreV1;
-    limits: StreamedExportAssetLimitsV1;
-    signal?: AbortSignal;
-    persist(body: AsyncIterable<Uint8Array>, context: {
-        declaredByteLength?: number;
-        maxByteLength: number;
-        signal: AbortSignal;
-    }): Promise<Result>;
-}): Promise<StreamedExportAssetResultV1<Result>>;
-
-// export: StreamedExportAssetLimitsV1
-export interface StreamedExportAssetLimitsV1 {
-    maxAssetBytes: number;
-    maxChunkBytes: number;
-}
-
-// export: StreamedExportAssetResultV1
-export interface StreamedExportAssetResultV1<Result> {
-    result: Result;
-    byteLength: number;
-    chunkCount: number;
-}
-
 // export: trustRoutingAssetFetcher
 export declare function trustRoutingAssetFetcher(inner: AssetFetcher, external: ExternalAssetFetcher): AssetFetcher;
 
 // export: trustRoutingPdfAssetResolver
 export declare function trustRoutingPdfAssetResolver(inner: PdfAssetResolver, external: ExternalAssetFetcher): PdfAssetResolver;
-
-// export: WebMacroFrozenProvenanceV1
-export interface WebMacroFrozenProvenanceV1 {
-    sourceId: string;
-    sourceVersion?: number;
-    resolvedAtEpochMs: number;
-    dependencyDigest?: string;
-    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
-}
-
-// export: WebMacroRenderModelV1
-export interface WebMacroRenderModelV1 {
-    sourceId: string;
-    macroName: string;
-    kind: MacroWebRenderModelKindV1;
-    requestedKind?: Exclude<MacroWebRenderModelKindV1, "unknown">;
-    rendererId?: string;
-    provenance: "static" | "frozen-live" | "fallback";
-    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
-}
-
-// export: WebMacroResolutionPolicyV1
-export interface WebMacroResolutionPolicyV1 {
-    mode: "static-only" | "allow-frozen-live";
-    liveFreshnessSeconds?: number;
-}
 ```
 
 ### Entry point `./fixtures`
@@ -617,35 +449,6 @@ export declare const TRUST_ROUTING_PROBE_REF: PdfAssetRef;
 ```ts
 // export: checkpointDocxAssetsV1
 export declare function checkpointDocxAssetsV1(context: ExportJobExecutionContext, requestKey: string, delegate: AssetFetcher): AssetFetcher;
-
-// export: CheckpointedOrderedSourcePipelineOptionsV1
-export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result> {
-    jobId: string;
-    requestKey: string;
-    source: OrderedSourcePortV1<Value, Cursor>;
-    concurrency: number;
-    maxResultSlots: number;
-    maxBufferedEntries: number;
-    signal?: AbortSignal;
-    resume?: PersistedOrderedSourceCheckpointV1<Cursor>;
-    process(source: Value, context: {
-        ordinal: number;
-        key: string;
-        signal: AbortSignal;
-    }): Promise<Result>;
-    commitCheckpoint(item: OrderedSourceCommitV1<Value, Result>, checkpoint: OrderedSourceCheckpointV1<Cursor>, context: {
-        signal: AbortSignal;
-    }): Promise<string>;
-    publishCheckpointRef?(ref: string, context: {
-        signal: AbortSignal;
-    }): Promise<void>;
-}
-
-// export: CheckpointedOrderedSourcePipelineResultV1
-export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
-    committedCount: number;
-    latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
-}
 
 // export: checkpointPdfAssetsV1
 export declare function checkpointPdfAssetsV1(context: ExportJobExecutionContext, requestKey: string, delegate: PdfAssetResolver): PdfAssetResolver;
@@ -982,59 +785,6 @@ export interface DocxTemplateBindingV1 {
     sha256: string;
 }
 
-// export: ExportAssetResponseV1
-export interface ExportAssetResponseV1 {
-    contentLength?: number;
-    body: AsyncIterable<Uint8Array>;
-}
-
-// export: ExportAssetSourceV1
-export interface ExportAssetSourceV1<Reference> {
-    fetch(reference: Reference, context: {
-        signal: AbortSignal;
-    }): Promise<ExportAssetResponseV1>;
-}
-
-// export: OrderedSourceCheckpointV1
-export interface OrderedSourceCheckpointV1<Cursor> {
-    version: 1;
-    jobId: string;
-    requestKey: string;
-    generation: number;
-    sourceCursor: Cursor;
-    nextCommitOrdinal: number;
-    committedCount: number;
-}
-
-// export: OrderedSourceCommitV1
-export interface OrderedSourceCommitV1<Value, Result> {
-    ordinal: number;
-    key: string;
-    source: Value;
-    result: Result;
-}
-
-// export: OrderedSourceDiscoveryV1
-export interface OrderedSourceDiscoveryV1<Value, Cursor> {
-    entries: readonly OrderedSourceEntryV1<Value, Cursor>[];
-    done: boolean;
-}
-
-// export: OrderedSourceEntryV1
-export interface OrderedSourceEntryV1<Value, Cursor> {
-    key: string;
-    value: Value;
-    cursorAfter: Cursor;
-}
-
-// export: OrderedSourcePortV1
-export interface OrderedSourcePortV1<Value, Cursor> {
-    discover(after: Cursor | undefined, context: {
-        limit: number;
-        signal: AbortSignal;
-    }): Promise<OrderedSourceDiscoveryV1<Value, Cursor>>;
-}
-
 // export: PdfConfluenceResolvedInputExtrasV1
 export type PdfConfluenceResolvedInputExtrasV1 = Omit<PdfExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "page">;
 
@@ -1223,12 +973,6 @@ export interface PersistedConfluenceSourcePlanV1 {
     ref: string;
 }
 
-// export: PersistedOrderedSourceCheckpointV1
-export interface PersistedOrderedSourceCheckpointV1<Cursor> {
-    checkpoint: OrderedSourceCheckpointV1<Cursor>;
-    ref: string;
-}
-
 // export: resolveConfluencePageGraphV1
 export declare function resolveConfluencePageGraphV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluencePageGraphV1>;
 
@@ -1292,60 +1036,6 @@ export interface ResolvedConfluenceSourceV1 {
     chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
-// export: ResolvedWebMacroPageV1
-export interface ResolvedWebMacroPageV1 {
-    sourceId: string;
-    sourceVersion?: number;
-    blocks: readonly ExportBlock[];
-    notes: readonly ExportNote[];
-    renderModels: readonly WebMacroRenderModelV1[];
-    frozenProvenance: WebMacroFrozenProvenanceV1;
-    resolvedAtEpochMs: number;
-    usedLive: boolean;
-}
-
-// export: ResolveWebPageMacrosOptionsV1
-export interface ResolveWebPageMacrosOptionsV1 {
-    macros: MacroResolutionOptions;
-    policy: WebMacroResolutionPolicyV1;
-    previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
-    dependencyDigestForPage?: (page: ExportPageNode) => string | undefined;
-    now?: () => number;
-}
-
-// export: resolveWebPageMacrosV1
-export declare function resolveWebPageMacrosV1(pages: readonly ExportPageNode[], options: ResolveWebPageMacrosOptionsV1): Promise<readonly ResolvedWebMacroPageV1[]>;
-
-// export: runCheckpointedOrderedSourcePipeline
-export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
-
-// export: streamBoundedExportAssetV1
-export declare function streamBoundedExportAssetV1<Reference, Result>(options: {
-    reference: Reference;
-    source: ExportAssetSourceV1<Reference>;
-    reservations: ByteReservationSemaphoreV1;
-    limits: StreamedExportAssetLimitsV1;
-    signal?: AbortSignal;
-    persist(body: AsyncIterable<Uint8Array>, context: {
-        declaredByteLength?: number;
-        maxByteLength: number;
-        signal: AbortSignal;
-    }): Promise<Result>;
-}): Promise<StreamedExportAssetResultV1<Result>>;
-
-// export: StreamedExportAssetLimitsV1
-export interface StreamedExportAssetLimitsV1 {
-    maxAssetBytes: number;
-    maxChunkBytes: number;
-}
-
-// export: StreamedExportAssetResultV1
-export interface StreamedExportAssetResultV1<Result> {
-    result: Result;
-    byteLength: number;
-    chunkCount: number;
-}
-
 // export: TypescriptDocxExportJobEngineInputV1
 export type TypescriptDocxExportJobEngineInputV1 = Omit<ExportInput, "templateBytes" | "signal" | "onProgress">;
 
@@ -1355,30 +1045,4 @@ export type TypescriptDocxExportJobResolvedInputV1 = TypescriptDocxExportJobEngi
         sourcePageCount: number;
     };
 };
-
-// export: WebMacroFrozenProvenanceV1
-export interface WebMacroFrozenProvenanceV1 {
-    sourceId: string;
-    sourceVersion?: number;
-    resolvedAtEpochMs: number;
-    dependencyDigest?: string;
-    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
-}
-
-// export: WebMacroRenderModelV1
-export interface WebMacroRenderModelV1 {
-    sourceId: string;
-    macroName: string;
-    kind: MacroWebRenderModelKindV1;
-    requestedKind?: Exclude<MacroWebRenderModelKindV1, "unknown">;
-    rendererId?: string;
-    provenance: "static" | "frozen-live" | "fallback";
-    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
-}
-
-// export: WebMacroResolutionPolicyV1
-export interface WebMacroResolutionPolicyV1 {
-    mode: "static-only" | "allow-frozen-live";
-    liveFreshnessSeconds?: number;
-}
 ```

@@ -26,7 +26,7 @@ import {
   CODE_THEME_METADATA,
   DEFAULT_CODE_THEME,
 } from "@atlcli/code-highlight/registry";
-import type { SettingsSchema } from "./settings-schema.js";
+import { DEFAULT_WATERMARK_COLOR, type SettingsSchema } from "./settings-schema.js";
 
 /** Byte cap on an uploaded logo, matching the engine's `LOGO_MAX_BYTES`. */
 export const PDF_LOGO_MAX_BYTES = 5 * 1024 * 1024;
@@ -75,7 +75,7 @@ export const PDF_LEVEL_A_SETTINGS: SettingsSchema = {
   logoAlt: { type: "text", default: "", maxLength: 200, group: "branding" },
 
   watermarkText: { type: "text", default: "", maxLength: 200, group: "watermark" },
-  watermarkColor: { type: "color", default: "#DE350B", group: "watermark" },
+  watermarkColor: { type: "color", default: DEFAULT_WATERMARK_COLOR, group: "watermark" },
   watermarkOpacity: {
     type: "number",
     default: 0.08,

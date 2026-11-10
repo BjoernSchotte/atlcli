@@ -415,6 +415,23 @@ describe("wiki template validate is usable as a CI gate", () => {
     expect(res.stdout).toContain("broken");
   }, 30_000);
 
+  test("validate --all --json prints one document for all templates", async () => {
+    await writeTemplate("global", "fine", "all good");
+    await writeTemplate("global", "warned", "{{undeclared}}");
+    await writeTemplate("global", "broken", "{% if x %}\nunclosed block");
+
+    const res = await runCli("wiki", "template", "validate", "--all", "--json");
+
+    expect(res.exitCode).toBe(1);
+    const report = JSON.parse(res.stdout) as { valid: boolean; templates: Array<{ name: string; valid: boolean }> };
+    expect(report.valid).toBe(false);
+    expect(report.templates.filter((t) => ["fine", "warned", "broken"].includes(t.name)).map((t) => [t.name, t.valid]).sort()).toEqual([
+      ["broken", false],
+      ["fine", true],
+      ["warned", true],
+    ]);
+  }, 30_000);
+
   test("validate --all exits 0 when everything is valid", async () => {
     await writeTemplate("global", "fine", "all good");
 

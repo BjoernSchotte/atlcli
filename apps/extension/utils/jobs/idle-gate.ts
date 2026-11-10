@@ -18,7 +18,7 @@
  *
  * In-flight state is read from the **durable job records** instead. This wrapper
  * is an {@link IdleTimerLike}, so it slots in wherever the raw timer went and
- * covers *both* call sites at once — `runWasmSmoke`'s `touch()` and
+ * covers *both* call sites at once — the runtime preparation's `touch()` and
  * `runPdfCompile`'s `end()` both funnel through `reset()`, which is exactly
  * where the counter used to lie.
  *

@@ -615,7 +615,7 @@ export class FakeConfluenceClient implements VfsClient {
           (page.labels ?? []).includes(label) &&
           (options.spaceKey === undefined || page.spaceKey === options.spaceKey),
       )
-      .slice(0, options.limit ?? this.pageSize)
+      .slice(0, options.limit)
       .map((page) => ({
         id: page.id,
         title: page.title,

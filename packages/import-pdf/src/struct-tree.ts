@@ -40,7 +40,10 @@ export interface DocStructElement {
 
 export interface DocStructTree {
   pageCount: number;
-  /** Per page: MCID -> what its marked content draws, from the content stream. */
+  /**
+   * Per page: MCID -> what its marked content draws, from the content stream.
+   * Empty unless requested with {@link DocStructTreeOptions.markedContent}.
+   */
   markedContent: Array<Map<number, MarkedContentKind>>;
   recoveredByScan: boolean;
   roots: DocStructElement[];
@@ -49,6 +52,8 @@ export interface DocStructTree {
 export interface DocStructTreeOptions {
   maxElements?: number;
   maxDepth?: number;
+  /** Classify every page's marked content (needed by `correlateDocStructTree`). */
+  markedContent?: boolean;
 }
 
 /** Returns null when the document has no StructTreeRoot. */
@@ -61,10 +66,13 @@ export function readDocStructTree(bytes: Uint8Array, options: DocStructTreeOptio
 
   const pageIndexByObj = new Map<number, number>();
   collectPages(reader, catalog.entries.get("Pages"), pageIndexByObj, new Set(), 0);
-  const markedContent = [...pageIndexByObj.keys()].map((num) => {
-    const page = reader.dict({ kind: "ref", num, gen: 0 });
-    return page ? classifyMarkedContent(reader, page) : new Map<number, MarkedContentKind>();
-  });
+  // Lexing every content stream is only worth it for the correlation audit.
+  const markedContent = options.markedContent
+    ? [...pageIndexByObj.keys()].map((num) => {
+        const page = reader.dict({ kind: "ref", num, gen: 0 });
+        return page ? classifyMarkedContent(reader, page) : new Map<number, MarkedContentKind>();
+      })
+    : [];
 
   const roleMap = reader.dict(root.entries.get("RoleMap"));
   const resolveRole = (role: string): string => {

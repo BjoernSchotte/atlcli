@@ -53,7 +53,7 @@ The page shows the sprint goal, dates, issue and story-point counts, and done an
 | `--status-map` | `"<status>=todo\|wip\|done,…"` | `flow.statusMap` | Which statuses count as done (see [Status mapping](flow-metrics.md#status-mapping)) |
 | `--dry-run` | flag | off | Print the markdown and the planned action; write nothing |
 | `--force` | flag | off | Overwrite a same-title page atlcli did not create |
-| `--export` | path ending in `.pdf` or `.docx` | none | Export the page after writing it; an existing file is replaced |
+| `--export` | path ending in `.pdf` or `.docx` | none | Export the page after writing it; an existing file is replaced. With `--json`, the export report is the `export` field of the result |
 | `--export-template` | path or name | `report` (PDF) | Export template (as `atlcli wiki export --template`) |
 | `--list-templates` | flag | off | List the bundled templates |
 | `--print-template` | template name | none | Print a bundled template to start your own |
@@ -172,7 +172,6 @@ Each issue has `key`, `url`, `link` (`[KEY](url)`), `summary`, `summaryMd`, `exc
 | `Template render failed: …` | A custom template still uses Handlebars (`{{#each}}`, `{{{link}}}`) or has an unclosed `{% for %}` | Rewrite it with the [migration table](../templating.md#breaking-templates-use-jinja), or start again from `--print-template` |
 | Finished issues listed under "Not done" | The done status sits in Jira's In Progress category | `--status-map "Fertig=done"` or `flow.statusMap`; see [Completed work](analytics.md#completed-work) |
 | An issue that is done today is listed under "Not done" on a sprint review | It was finished after the sprint ended | Expected: the review shows the sprint as of its end |
-| `--json` with `--export` prints two JSON documents | The page result, then the export report | Parse them one by one, for example with `jq -s` |
 
 ## Related Topics
 

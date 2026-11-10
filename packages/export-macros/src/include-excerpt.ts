@@ -2,9 +2,11 @@
  * include / excerpt-include / excerpt renderers (spec 004, E5).
  *
  * `include` pulls in a whole page; `excerpt-include` pulls in a named excerpt;
- * `excerpt` is the definition-side macro (pure passthrough). All three share the
- * `ctx.visited`/`ctx.depth` recursion guard with the E4 multiexcerpt renderer so
- * a cross-renderer cycle (`include` → `multiexcerpt-include` → back) is caught.
+ * `excerpt` is the definition-side macro (pure passthrough). The include-style
+ * renderers honour `ctx.visited`/`ctx.depth` as set by the host, but never add
+ * to `visited`: the resolver expands one level only, so an include cannot
+ * recurse, and a key left behind made a second include of the same page read
+ * as a cycle.
  */
 import type { ExportBlock, ExportNote, MacroParamRef } from "@atlcli/confluence";
 import { macroParamText } from "./params.js";
@@ -100,7 +102,6 @@ export function includeRenderer(deps: { storageToBlocks: StorageToBlocksDep }): 
       const key = refKey(ref, "");
       const guard = guarded(ctx, key, m.name);
       if (guard) return { kind: "skip", notes: [guard] };
-      ctx.visited.add(key);
       try {
         const page = await fetchByRef(ctx.confluence, ref, ctx.page.spaceKey);
         if (!page) return { kind: "skip", notes: [notFound(m.name)] };
@@ -138,7 +139,6 @@ export function excerptIncludeRenderer(deps: {
       const key = refKey(ref, excerptName);
       const guard = guarded(ctx, key, m.name);
       if (guard) return { kind: "skip", notes: [guard] };
-      ctx.visited.add(key);
       try {
         const page = await fetchByRef(ctx.confluence, ref, ctx.page.spaceKey);
         if (!page) return { kind: "skip", notes: [notFound(m.name)] };

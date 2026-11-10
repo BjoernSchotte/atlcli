@@ -365,6 +365,12 @@ describe("planPublicationRoutesV1", () => {
       outputProfile: "portable-file",
       reservedOutputPathPrefixes: ["pagefind"],
     }).activeOutputs[0]?.outputPath).toBe("pagefind.html");
+    // No source id is exempt: a page id that merely looks like an internal
+    // owner must not be able to claim a path under a reserved prefix.
+    expectPlanningError(() => plan({
+      pages: [{ sourceId: "[reserved-prefix:pagefind]", title: "Pagefind" }],
+      reservedOutputPathPrefixes: ["pagefind"],
+    }), "output-path-collision");
   });
 
   test("rejects handwritten route collisions before generated allocation", () => {
@@ -386,4 +392,13 @@ describe("planPublicationRoutesV1", () => {
       outputProfile: "portable-file",
     }), "output-path-collision");
   });
+});
+
+test("a route already inside the namespace is not prefixed twice", async () => {
+  const { publicationNamespacedRouteV1 } = await import("./routes.js");
+  expect(publicationNamespacedRouteV1("/guide/", "/publish")).toBe("/publish/guide/");
+  expect(publicationNamespacedRouteV1("/publish/guide/", "/publish")).toBe("/publish/guide/");
+  expect(publicationNamespacedRouteV1("/publish/", "/publish")).toBe("/publish/");
+  expect(publicationNamespacedRouteV1("/publisher/", "/publish")).toBe("/publish/publisher/");
+  expect(publicationNamespacedRouteV1("/guide/", "")).toBe("/guide/");
 });

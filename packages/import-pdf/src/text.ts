@@ -8,6 +8,9 @@ import type {
   PdfTextCharacterFactV2,
 } from "./contracts.js";
 import { assemblePdfTextV2, type PdfTextAssemblyV2 } from "./text-assembly.js";
+import { textDirection, unionRects } from "./text-geometry.js";
+
+export { textDirection, unionRects };
 
 export type PdfTextDirection = "ltr" | "rtl" | "neutral";
 
@@ -85,39 +88,6 @@ export function normalizePdfTextFragment(value: string): string {
     .normalize("NFC");
 }
 
-export function textDirection(value: string): PdfTextDirection {
-  let ltr = 0;
-  let rtl = 0;
-  for (const character of value) {
-    if (/\p{Script=Arabic}|\p{Script=Hebrew}/u.test(character)) rtl += 1;
-    else if (/\p{Letter}|\p{Number}/u.test(character)) ltr += 1;
-  }
-  if (rtl > ltr) return "rtl";
-  if (ltr > 0) return "ltr";
-  return "neutral";
-}
-
-export function unionRects(
-  rects: Array<PdfNormalizedRect | null | undefined>,
-): PdfNormalizedRect | null {
-  const values = rects.filter((rect): rect is PdfNormalizedRect => rect !== null && rect !== undefined);
-  if (values.length === 0) return null;
-  const left = Math.min(...values.map((rect) => rect.x));
-  const top = Math.min(...values.map((rect) => rect.y));
-  const right = Math.max(...values.map((rect) => rect.x + rect.width));
-  const bottom = Math.max(...values.map((rect) => rect.y + rect.height));
-  return {
-    x: round(left),
-    y: round(top),
-    width: round(Math.max(0, right - left)),
-    height: round(Math.max(0, bottom - top)),
-  };
-}
-
-function round(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000;
-}
-
 export function charactersForMcids(
   page: PdfPageFactsV1,
   mcids: readonly number[],
@@ -170,6 +140,56 @@ function visualOrderForLtrLinesV2(characters: PdfTextCharacterFactV2[]): PdfText
   });
 }
 
+interface PageCharacterIndexV2 {
+  byMcid: Map<number, PdfTextCharacterFactV2[]>;
+  byIndex: Map<number, PdfTextCharacterFactV2>;
+  /** True when the array is in strictly ascending `index` order (what PDFium emits). */
+  ascending: boolean;
+}
+
+// Keyed on the characters array: every structure node of a page asks the same
+// questions, and scanning the whole page per MCID made a page quadratic.
+const pageCharacterIndexes = new WeakMap<readonly PdfTextCharacterFactV2[], PageCharacterIndexV2>();
+
+function pageCharacterIndexV2(characters: readonly PdfTextCharacterFactV2[]): PageCharacterIndexV2 {
+  let cached = pageCharacterIndexes.get(characters);
+  if (cached) return cached;
+  cached = { byMcid: new Map(), byIndex: new Map(), ascending: true };
+  let previous = -Infinity;
+  for (const character of characters) {
+    if (character.index <= previous) cached.ascending = false;
+    previous = character.index;
+    if (!cached.byIndex.has(character.index)) cached.byIndex.set(character.index, character);
+    if (character.mcid === null) continue;
+    const owned = cached.byMcid.get(character.mcid);
+    if (owned) owned.push(character);
+    else cached.byMcid.set(character.mcid, [character]);
+  }
+  pageCharacterIndexes.set(characters, cached);
+  return cached;
+}
+
+/** Characters with `after < index < before`, in page order. */
+function charactersBetweenV2(
+  characters: readonly PdfTextCharacterFactV2[],
+  after: number,
+  before: number,
+): readonly PdfTextCharacterFactV2[] {
+  if (!pageCharacterIndexV2(characters).ascending) {
+    return characters.filter((character) => character.index > after && character.index < before);
+  }
+  let low = 0;
+  let high = characters.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (characters[middle]!.index <= after) low = middle + 1;
+    else high = middle;
+  }
+  let end = low;
+  while (end < characters.length && characters[end]!.index < before) end += 1;
+  return characters.slice(low, end);
+}
+
 /** Preserve structure-tree MCID order and page order only inside each MCID. */
 export function charactersForOrderedMcidsV2(
   page: PdfPageFactsV2,
@@ -178,15 +198,13 @@ export function charactersForOrderedMcidsV2(
   const result: PdfTextCharacterFactV2[] = [];
   const seen = new Set<number>();
   for (const mcid of mcids) {
-    const owned = visualOrderForLtrLinesV2(page.characters.filter((character) => character.mcid === mcid));
+    const owned = visualOrderForLtrLinesV2(pageCharacterIndexV2(page.characters).byMcid.get(mcid) ?? []);
     const previous = result.at(-1);
     const first = owned[0];
     if (previous && first && first.index > previous.index) {
-      for (const bridge of page.characters) {
+      for (const bridge of charactersBetweenV2(page.characters, previous.index, first.index)) {
         if (
-          bridge.index <= previous.index
-          || bridge.index >= first.index
-          || seen.has(bridge.index)
+          seen.has(bridge.index)
           || !bridge.generated
           || (!/^\s*$/u.test(bridge.value) && !bridge.hyphen && !bridge.value.includes("\u00ad"))
         ) continue;
@@ -242,7 +260,7 @@ export function correlateTaggedTextV2(
         if (kid.kind !== "element") return [];
         const childIndexes = new Set(orderedDescendantMcidsV2(kid.node));
         const childMarked = markedCharacterIndexes.filter((index) => {
-          const character = page.characters.find((candidate) => candidate.index === index);
+          const character = pageCharacterIndexV2(page.characters).byIndex.get(index);
           return character?.mcid !== null && character !== undefined && childIndexes.has(character.mcid);
         });
         const correlated = correlateTaggedTextV2(page, kid.node, childMarked, documentLexicon);

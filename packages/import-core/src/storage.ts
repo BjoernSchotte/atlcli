@@ -83,11 +83,3 @@ export function documentToStorage(
   const assets = new Map(document.assets.map((asset) => [asset.id, asset.fileName]));
   return encodeBlocks(document.blocks, options, assets);
 }
-
-export function storageTagSequence(storage: string): string[] {
-  const tags: string[] = [];
-  const expression = /<(h[1-6]|p|ul|ol|table|blockquote|ac:image|ac:structured-macro)[\s/>]/g;
-  let match: RegExpExecArray | null;
-  while ((match = expression.exec(storage)) !== null) tags.push(match[1]);
-  return tags;
-}

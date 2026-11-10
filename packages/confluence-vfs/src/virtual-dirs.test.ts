@@ -450,6 +450,17 @@ describe(".labels", () => {
     await vfs.close();
   });
 
+  // The listing asked for 250 pages and showed a larger label cut short.
+  it("lists every page of a label with more than 250 pages", async () => {
+    const client = seeded();
+    for (let i = 0; i < 300; i++) {
+      client.seedPage({ id: String(1000 + i), title: `Bulk ${i}`, spaceKey: "DOCSY", parentId: "100", labels: ["bulk"] });
+    }
+    const vfs = await openVfs(client);
+    expect((await vfs.readdir("/DOCSY/.labels/bulk")).length).toBe(300);
+    await vfs.close();
+  });
+
   it("returns an empty listing for a label nothing carries", async () => {
     const vfs = await openVfs(seeded());
     expect(await vfs.readdir("/DOCSY/.labels/nonexistent")).toEqual([]);

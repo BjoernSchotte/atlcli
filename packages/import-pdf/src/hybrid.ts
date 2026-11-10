@@ -24,6 +24,7 @@ import {
   pdfTextBoundaryDecisionIdsV2,
 } from "./assembly-evidence.js";
 import { digestPdfCanonical, digestPdfFactsV2 } from "./canonical.js";
+import { addEvidenceByPage } from "./evidence-index.js";
 import { rectsTouch } from "./fallbacks.js";
 import { mergePdfBlocksByEvidence, taggedFigureCaptionCharacterIndexesV2 } from "./figures.js";
 import { PdfImportError } from "./issues.js";
@@ -244,17 +245,34 @@ function overlaps(left: PdfNormalizedRect, right: PdfNormalizedRect): boolean {
     && Math.min(left.y + left.height, right.y + right.height) > Math.max(left.y, right.y);
 }
 
+interface BoundaryCounts { explicit: number; inferred: number; unresolved: number }
+
+/** Counts per boundary id; an id that occurs more than once counts each time. */
+function countBoundariesById(boundaries: readonly PdfTextBoundaryDecisionV2[]): Map<string, BoundaryCounts> {
+  const byId = new Map<string, BoundaryCounts>();
+  for (const boundary of boundaries) {
+    let counts = byId.get(boundary.id);
+    if (!counts) byId.set(boundary.id, counts = { explicit: 0, inferred: 0, unresolved: 0 });
+    if (boundary.action === "preserve-explicit-space") counts.explicit += 1;
+    else if (boundary.action === "unresolved") counts.unresolved += 1;
+    else counts.inferred += 1;
+  }
+  return byId;
+}
+
 function boundaryCounts(
-  pageIndex: number,
-  evidence: readonly PdfDecisionEvidenceV2[],
-  boundaries: readonly PdfTextBoundaryDecisionV2[],
-): { explicit: number; inferred: number; unresolved: number } {
-  const ids = new Set(evidence.filter((entry) => entry.locator.pageIndex === pageIndex)
-    .flatMap((entry) => entry.boundaryDecisionIds));
-  const pageBoundaries = boundaries.filter((boundary) => ids.has(boundary.id));
-  const explicit = pageBoundaries.filter((boundary) => boundary.action === "preserve-explicit-space").length;
-  const unresolved = pageBoundaries.filter((boundary) => boundary.action === "unresolved").length;
-  return { explicit, unresolved, inferred: pageBoundaries.length - explicit - unresolved };
+  pageEvidence: readonly PdfDecisionEvidenceV2[],
+  boundariesById: ReadonlyMap<string, BoundaryCounts>,
+): BoundaryCounts {
+  const total = { explicit: 0, inferred: 0, unresolved: 0 };
+  for (const id of new Set(pageEvidence.flatMap((entry) => entry.boundaryDecisionIds))) {
+    const counts = boundariesById.get(id);
+    if (!counts) continue;
+    total.explicit += counts.explicit;
+    total.inferred += counts.inferred;
+    total.unresolved += counts.unresolved;
+  }
+  return total;
 }
 
 export async function normalizeHybridPdfFactsV2(
@@ -272,11 +290,20 @@ export async function normalizeHybridPdfFactsV2(
   }
   const tagged = await normalizeTaggedPdfFactsV2(facts, factsDigest);
   const documentLexicon = pdfDocumentLexiconV2(facts.pages);
-  const evidence = tagged.evidence.map((entry) => ({ ...entry }));
+  // Evidence grows inside the page loop; every entry goes through recordEvidence
+  // so the per-page index always matches the list.
+  const evidence: PdfDecisionEvidenceV2[] = [];
+  const evidenceByPage = new Map<number, PdfDecisionEvidenceV2[]>();
+  const recordEvidence = (entry: PdfDecisionEvidenceV2): void => {
+    evidence.push(entry);
+    addEvidenceByPage(evidenceByPage, entry);
+  };
+  for (const entry of tagged.evidence) recordEvidence({ ...entry });
   const boundaries: PdfTextBoundaryDecisionV2[] = tagged.boundaries.map((entry) => ({ ...entry }));
   const transformations: PdfTextTransformationV2[] = tagged.transformations.map((entry) => ({ ...entry }));
   let issues: ImportIssue[] = tagged.document.issues.map((issue) => ({ ...issue }));
   const additions: Array<{ block: ImportBlock; pageIndex: number; y: number; x: number; height: number }> = [];
+  const additionIdsByPage = new Map<number, string[]>();
   const reconciliations: PageReconciliation[] = [];
   const pagesWithHybridResidual = new Set<number>();
 
@@ -296,27 +323,32 @@ export async function normalizeHybridPdfFactsV2(
     if (!owned) taggedOwnedByPage.set(entry.pageIndex, owned = new Set());
     owned.add(entry.characterIndex);
   }
+  const initialDuplicatesByPage = new Map(initialAudit.duplicateOwnershipAttemptsByPage
+    .map((entry) => [entry.pageIndex, entry.count]));
+  const taggedProjectedNodeIdsByPage = new Map<number, string[]>();
+  for (const outcome of tagged.pageOutcomes) {
+    if (!taggedProjectedNodeIdsByPage.has(outcome.pageIndex)) {
+      taggedProjectedNodeIdsByPage.set(outcome.pageIndex, outcome.projectedNodeIds);
+    }
+  }
 
   for (const page of facts.pages) {
     const taggedOwned = taggedOwnedByPage.get(page.index) ?? new Set<number>();
     // An unresolved cell of a linearized table is already in its row text and
     // inside the table's rendered region, and a figure's caption is projected
     // with its figure; geometry must not project either again.
+    const pageEvidence = evidenceByPage.get(page.index) ?? [];
     const tableCovered = new Set([
-      ...evidence.filter((entry) =>
-        entry.locator.pageIndex === page.index
-        && entry.decisionCode === "pdf/table-tagged-boundary-unresolved"
-      ).flatMap((entry) => entry.locator.characterIndexes ?? []),
+      ...pageEvidence.filter((entry) => entry.decisionCode === "pdf/table-tagged-boundary-unresolved")
+        .flatMap((entry) => entry.locator.characterIndexes ?? []),
       ...taggedFigureCaptionCharacterIndexesV2(page),
     ]);
     const visible = page.characters.filter((character) => isVisibleCharacter(character.value));
     const residualIndexes = new Set(visible
       .filter((character) => !taggedOwned.has(character.index) && !tableCovered.has(character.index))
       .map((character) => character.index));
-    const projectedNodeIds = tagged.pageOutcomes.find((outcome) => outcome.pageIndex === page.index)
-      ?.projectedNodeIds ?? [];
-    const duplicateOwnershipAttemptCount = initialAudit.duplicateOwnershipAttemptsByPage
-      .find((entry) => entry.pageIndex === page.index)?.count ?? 0;
+    const projectedNodeIds = taggedProjectedNodeIdsByPage.get(page.index) ?? [];
+    const duplicateOwnershipAttemptCount = initialDuplicatesByPage.get(page.index) ?? 0;
     if (residualIndexes.size === 0 && duplicateOwnershipAttemptCount === 0) {
       reconciliations.push({
         pageIndex: page.index,
@@ -342,11 +374,8 @@ export async function normalizeHybridPdfFactsV2(
     const accounted = new Set(fragments.flatMap((fragment) => fragment.assembly.characterIndexes)
       .filter((index) => residualIndexes.has(index)));
     const regions = groupResidualRegions(fragments);
-    const acceptedTaggedBoxes = evidence.filter((entry) =>
-      entry.locator.pageIndex === page.index
-      && entry.targetNodeId
-      && entry.locator.bbox
-    ).map((entry) => entry.locator.bbox!);
+    const acceptedTaggedBoxes = pageEvidence.filter((entry) => entry.targetNodeId && entry.locator.bbox)
+      .map((entry) => entry.locator.bbox!);
     const pageReasons = new Set<string>();
     if ([...residualIndexes].some((index) => !accounted.has(index))) pageReasons.add("missing-geometry");
     if (duplicateOwnershipAttemptCount > 0) pageReasons.add("duplicate-character-ownership");
@@ -380,7 +409,7 @@ export async function normalizeHybridPdfFactsV2(
         appendPdfTextAssemblyV2({ boundaries, transformations }, assembly);
         issues.push(...pdfTextAssemblyIssuesV2(assembly, page.index, sourceId));
       }
-      evidence.push({
+      recordEvidence({
         sourceId,
         locator: { pageIndex: page.index, characterIndexes: [...residualIndexes].sort((a, b) => a - b) },
         basis: ["text-geometry", "text-boundary"],
@@ -434,7 +463,7 @@ export async function normalizeHybridPdfFactsV2(
         };
         fallbackLocators.push(locator);
         fallbackReasonCodes.add(unresolved ? "unresolved-text-boundary" : "under-evidenced-residual-layout");
-        evidence.push({
+        recordEvidence({
           sourceId: region.sourceId,
           locator,
           basis: ["text-geometry", "text-boundary"],
@@ -464,8 +493,11 @@ export async function normalizeHybridPdfFactsV2(
         x: region.bbox.x,
         height: region.bbox.height,
       });
+      const pageAdditionIds = additionIdsByPage.get(page.index);
+      if (pageAdditionIds) pageAdditionIds.push(blockId);
+      else additionIdsByPage.set(page.index, [blockId]);
       repairedIndexes.push(...regionIndexes);
-      evidence.push({
+      recordEvidence({
         sourceId: region.sourceId,
         targetNodeId: blockId,
         locator: {
@@ -512,7 +544,7 @@ export async function normalizeHybridPdfFactsV2(
       mode: fallbackLocators.length > 0 ? "fallback-required" : "hybrid-repaired",
       projectedNodeIds: [
         ...projectedNodeIds,
-        ...additions.filter((addition) => addition.pageIndex === page.index).map((addition) => addition.block.id),
+        ...(additionIdsByPage.get(page.index) ?? []),
       ],
       geometryRepairedCharacterIndexes: [...new Set(repairedIndexes)].sort((a, b) => a - b),
       geometryRepairRegionCount: repairedIndexes.length > 0 ? regions.length - fallbackLocators.length : 0,
@@ -540,16 +572,26 @@ export async function normalizeHybridPdfFactsV2(
   };
   const audit = auditPdfCharacterOwnershipV2(facts, evidence);
   const ownership = audit.ownership;
+  const boundariesById = countBoundariesById(boundaries);
+  const ownedByPage = new Map<number, { owned: number; reported: number }>();
+  for (const entry of ownership) {
+    let counts = ownedByPage.get(entry.pageIndex);
+    if (!counts) ownedByPage.set(entry.pageIndex, counts = { owned: 0, reported: 0 });
+    counts.owned += 1;
+    if (entry.outcome === "reported") counts.reported += 1;
+  }
+  const finalDuplicatesByPage = new Map(audit.duplicateOwnershipAttemptsByPage
+    .map((entry) => [entry.pageIndex, entry.count]));
   const pageOutcomes = reconciliations.map((reconciliation) => {
-    const counts = boundaryCounts(reconciliation.pageIndex, evidence, boundaries);
-    const pageOwnership = ownership.filter((entry) => entry.pageIndex === reconciliation.pageIndex);
+    const counts = boundaryCounts(evidenceByPage.get(reconciliation.pageIndex) ?? [], boundariesById);
+    const pageOwnership = ownedByPage.get(reconciliation.pageIndex) ?? { owned: 0, reported: 0 };
     return {
       pageIndex: reconciliation.pageIndex,
       mode: reconciliation.mode,
       projectedNodeIds: reconciliation.projectedNodeIds,
       visibleCharacterCount: facts.pages[reconciliation.pageIndex]!.characters
         .filter((character) => isVisibleCharacter(character.value)).length,
-      uniquelyOwnedCharacterCount: pageOwnership.length,
+      uniquelyOwnedCharacterCount: pageOwnership.owned,
       explicitBoundaryCount: counts.explicit,
       inferredBoundaryCount: counts.inferred,
       unresolvedBoundaryCount: counts.unresolved,
@@ -557,11 +599,9 @@ export async function normalizeHybridPdfFactsV2(
       geometryRepairRegionCount: reconciliation.geometryRepairRegionCount,
       duplicateOwnershipAttemptCount: Math.max(
         reconciliation.duplicateOwnershipAttemptCount,
-        audit.duplicateOwnershipAttemptsByPage.find((entry) =>
-          entry.pageIndex === reconciliation.pageIndex
-        )?.count ?? 0,
+        finalDuplicatesByPage.get(reconciliation.pageIndex) ?? 0,
       ),
-      residualReportedCharacterCount: pageOwnership.filter((entry) => entry.outcome === "reported").length,
+      residualReportedCharacterCount: pageOwnership.reported,
       fallbackScope: reconciliation.fallbackScope,
       fallbackReasonCodes: reconciliation.fallbackReasonCodes,
       fallbackRegionLocators: reconciliation.fallbackRegionLocators,

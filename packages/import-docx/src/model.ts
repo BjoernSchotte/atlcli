@@ -1,10 +1,8 @@
 /** DOCX-only extensions around the source-neutral `@atlcli/import-core` IR. */
 import type { ImportBlock, ImportDocumentV2 } from "@atlcli/import-core";
 
-export type DocxImportBlock =
-  | (Extract<ImportBlock, { type: "heading" }> & { bookmarks?: string[] })
-  | (Extract<ImportBlock, { type: "paragraph" }> & { bookmarks?: string[] })
-  | Exclude<ImportBlock, { type: "heading" } | { type: "paragraph" }>;
+/** Every block may own the Word bookmarks that start inside it. */
+export type DocxImportBlock = ImportBlock & { bookmarks?: string[] };
 
 /**
  * A Word comment or reply. Source attribution is visible content only; the

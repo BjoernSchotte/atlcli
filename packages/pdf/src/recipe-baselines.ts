@@ -21,6 +21,7 @@ import {
 import {
   resolvePdfCatalogAuthoringTarget,
   resolvePdfCatalogRuntimeV3,
+  type PdfCompleteDesignRevision,
 } from "./catalog-runtime.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V3,
@@ -29,6 +30,7 @@ import {
   PDF_TEMPLATE_CAPABILITY_DIGEST_V4,
   projectPdfDesignThroughCatalogSchemaV2,
 } from "./design-catalog.js";
+import { sha256Hex } from "./shared.js";
 
 export const PDF_TEMPLATE_BASELINE_SCHEMA_V1 =
   "atlcli.pdf-template-baseline/1" as const;
@@ -67,7 +69,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
   catalog: TemplateCapabilityCatalogReferenceV1;
   canonicalSource: {
     api: "wiki.pdf-canonical-typst";
-    revision: "5" | "6";
+    revision: PdfCompleteDesignRevision;
   };
   compilerRange: string;
   design: WikiPdfTemplateDesignV3;
@@ -188,15 +190,6 @@ function builtinBaselineContent(
     ),
     localization: structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST.localization!),
   });
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  return Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes)),
-    ),
-    (byte) => byte.toString(16).padStart(2, "0"),
-  ).join("");
 }
 
 export function canonicalPdfTemplateBaselineV1(

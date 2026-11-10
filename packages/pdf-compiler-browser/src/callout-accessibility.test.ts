@@ -1,15 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
-import {
-  PDF_RUNTIME_ASSETS,
-  type PdfSourceBundle,
-} from "@atlcli/pdf/browser";
+import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf/browser";
 import type { ExportBlock } from "@atlcli/confluence";
-import {
-  decorativeCalloutIcon,
-  labelledCalloutIcon,
-} from "../../pdf/src/callout-accessibility.js";
 import { preparePdfDocument } from "../../pdf/src/prepare.js";
 import { serializePdfDocument } from "../../pdf/src/serialize.js";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
@@ -40,22 +33,7 @@ function inspectable(pdf: Uint8Array): string {
   return text;
 }
 
-function source(iconExpression: string): PdfSourceBundle {
-  return {
-    main:
-      `#set document(title: "Callout accessibility spike")\n` +
-      `#set text(font: "Source Sans 3")\n` +
-      `#${iconExpression}\n` +
-      `#text("Warning")\n` +
-      `#text("Body marker")\n`,
-    template: "",
-    assets: [],
-    sourceMap: [],
-    notes: [],
-  };
-}
-
-describe("semantic callout PDF accessibility spikes", () => {
+describe("semantic callout PDF accessibility", () => {
   let compiler: BrowserPdfCompiler;
 
   beforeAll(async () => {
@@ -71,30 +49,6 @@ describe("semantic callout PDF accessibility spikes", () => {
   afterAll(async () => {
     await compiler?.reset();
   });
-
-  it("excludes a decorative glyph from the structure tree", async () => {
-    const result = await compiler.compile(
-      source(decorativeCalloutIcon('[#text(font: "Noto Sans Symbols2", "⚠")]')),
-    );
-    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
-    const text = inspectable(result.pdf!);
-
-    expect(text).toContain("/StructTreeRoot");
-    expect(text).toContain("/Artifact");
-    expect(text).not.toMatch(/\/S\s*\/Figure\b/);
-  }, 120_000);
-
-  it("can alternatively expose one labelled figure replacement", async () => {
-    const result = await compiler.compile(
-      source(labelledCalloutIcon('[#text(font: "Noto Sans Symbols2", "⚠")]', "Warning")),
-    );
-    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
-    const text = inspectable(result.pdf!);
-    const figures = [...text.matchAll(/\/S\s*\/Figure\b/g)];
-
-    expect(figures).toHaveLength(1);
-    expect(text).toMatch(/\/Alt\s*\(Warning\)/u);
-  }, 120_000);
 
   it("compiles every production semantic callout as one labelled figure", async () => {
     const kinds = ["info", "note", "warning", "tip", "success", "error"] as const;

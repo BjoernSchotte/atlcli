@@ -32,6 +32,9 @@ describe("ordinary CLI job source wiring", () => {
     expect(ordinary).toContain('stage: "fetch"');
     expect(ordinary).toContain("resolveInput,");
     expect(ordinary).not.toContain("resolveScope(args");
+    // The stored request, not the invoking flags, decides live macro rendering.
+    expect(ordinary).toContain("context.signal,\n          request.options.resolveMacros,");
+    expect(await source("./export.ts")).toContain('liveMacros: !hasFlag(flags, "no-live-macros"),');
   });
 
   it("routes DOCX and retained-job replay through the same host policy", async () => {
@@ -39,12 +42,12 @@ describe("ordinary CLI job source wiring", () => {
     const ordinary = between(
       command,
       "async function exportDocxAsOrdinaryJob(",
-      "\nasync function exportWithTsEngine(",
+      "\nfunction exportHelp(",
     );
     const replay = between(
       command,
       "async function executeStoredExportJob(",
-      "\nasync function resolvePageId(",
+      "\nasync function resolveTemplatePath(",
     );
 
     expect(ordinary).toContain("createConfluenceDocxResolveInputV1({");
@@ -59,6 +62,9 @@ describe("ordinary CLI job source wiring", () => {
     expect(ordinary).toContain('stage: "fetch"');
     expect(ordinary).toContain("resolveInput,");
     expect(ordinary).not.toContain("pdfModule.resolveScope(");
+    expect(ordinary).toContain("\n          request.options.resolveMacros,");
+    expect(ordinary).not.toContain("args.liveMacros");
+    expect(command).toContain("liveMacros: !noLiveMacros,\n  });");
     expect(replay).toContain("exportSourcePolicyFromFlag(");
     expect(replay).toContain("new ConfluenceClient(profile, {");
   });

@@ -1,4 +1,5 @@
 import {
+  assertPublicationEditLinkBuildPolicyV1,
   digestPublicationJsonV1,
   normalizePublicationRouteV1,
   publicationRouteToOutputPathV1,
@@ -58,12 +59,16 @@ function assertInventoryOutput(inventory: AstroBuildInventoryV1): Map<string, As
 
 function assertInventoryPages(request: PublicationBuildRequestV1, inventory: AstroBuildInventoryV1): Map<string, AstroBuildInventoryV1["pages"][number]> {
   const bundlePageIds = new Set(request.bundle.pages.map((page) => page.sourceId));
+  const activeRoutes = new Map<string, string>();
+  for (const route of request.bundle.routes) {
+    if (route.state === "active" && !activeRoutes.has(route.sourceId)) activeRoutes.set(route.sourceId, route.route);
+  }
   const pages = new Map<string, AstroBuildInventoryV1["pages"][number]>();
   for (const page of inventory.pages) {
     if (page.kind !== "page") throw new TypeError("Astro build inventory has an invalid source page kind");
     if (!bundlePageIds.has(page.sourceId)) throw new TypeError(`Astro build inventory has unexplained publication page '${page.sourceId}'`);
     if (pages.has(page.sourceId)) throw new TypeError(`Astro build inventory has duplicate publication page '${page.sourceId}'`);
-    const expectedRoute = request.bundle.routes.find((route) => route.sourceId === page.sourceId && route.state === "active")?.route;
+    const expectedRoute = activeRoutes.get(page.sourceId);
     if (expectedRoute === undefined || page.route !== expectedRoute) {
       throw new TypeError(`Astro build inventory route does not match publication page '${page.sourceId}'`);
     }
@@ -178,6 +183,11 @@ export async function createAstroStaticPublicationManifestV1(
   const analytics = request.project.analytics.provider === "none"
     ? { provider: "none" as const }
     : { provider: "plausible" as const, endpointOrigin: new URL(request.project.analytics.endpoint).origin, events: ["pageview"] };
+  // The bundle froze the links under the policy of its refresh; a project
+  // that changed the policy since must refresh, not build.
+  assertPublicationEditLinkBuildPolicyV1(request.project, request.bundle);
+  const editLinkIds = new Set(request.bundle.editLinks?.links.map((link) => link.sourceId));
+  const includedSourceIds = pages.filter((page) => editLinkIds.has(page.sourceId)).map((page) => page.sourceId);
   const base = {
     schema: "atlcli.static-publication-manifest/1" as const,
     bundleDigest: request.bundle.bundleDigest,
@@ -193,7 +203,12 @@ export async function createAstroStaticPublicationManifestV1(
     search: { provider: "pagefind" as const, digest: searchDigest, files: searchFiles, languages: searchLanguages, indexedSourceIds: pages.map((page) => page.sourceId) },
     seo: { digest: seoDigest },
     analytics,
-    editLinks: { provider: request.project.editLink.provider === "none" ? "none" as const : "confluence" as const, includedSourceIds: [], omittedSourceIds: pages.map((page) => page.sourceId) },
+    editLinks: {
+      provider: request.project.editLink.provider === "none" ? "none" as const : "confluence" as const,
+      ...(includedSourceIds.length === 0 ? {} : { origin: request.bundle.editLinks!.origin }),
+      includedSourceIds,
+      omittedSourceIds: pages.filter((page) => !editLinkIds.has(page.sourceId)).map((page) => page.sourceId),
+    },
     removedOwnedPaths: [],
     verification: { valid: true, checkedPages: pages.length, checkedAssets: assets.length, issues: [] },
   };

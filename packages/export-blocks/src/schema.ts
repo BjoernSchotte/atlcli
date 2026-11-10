@@ -445,16 +445,6 @@ export function parseExportBlocksV1(
   return value as readonly ExportBlock[];
 }
 
-export function parseExportNotesV1(
-  value: unknown,
-  budget: ExportBlockValidationBudgetV1 = DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1,
-): readonly ExportNote[] {
-  jsonSafetyPass(value, budget);
-  const entries = array(value, "$notes");
-  entries.forEach((entry, index) => note(entry, `$notes[${index}]`));
-  return value as readonly ExportNote[];
-}
-
 export function parseExportBlockDocumentV1(
   value: unknown,
   budget: ExportBlockValidationBudgetV1 = DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1,

@@ -59,7 +59,7 @@ import {
 import { packTemplate } from "@atlcli/template-pack";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes, sha256Hex as sha256 } from "./digest.js";
-import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
+import { deterministicClock, noPdfAssets } from "./pdf-run.js";
 
 const PROJECT_ID = "browser:docx-template-intake";
 const IMPORTER_VERSION = "atlcli.pdf-template-import/1";
@@ -75,10 +75,6 @@ const BASELINE_DESIGN =
   BUILTIN_PDF_TEMPLATE_MANIFEST.design as unknown as Readonly<
     Record<string, unknown>
   >;
-
-const noAssets = failingPdfAssets(
-  "The template-intake conformance export has no document assets.",
-);
 
 const FINAL_BLOCKS: readonly ExportBlock[] = [
   {
@@ -334,7 +330,7 @@ async function compileFinal(
       profile: "tagged",
       filename: "DOCX Template Intake.pdf",
     },
-    { assets: noAssets, compiler, output, now: deterministicClock() }
+    { assets: noPdfAssets, compiler, output, now: deterministicClock() }
   );
   return { report, bytes: output.single.bytes };
 }

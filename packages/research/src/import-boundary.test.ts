@@ -17,9 +17,6 @@ import {
   ResearchContractError as ExtensionResearchContractError,
   normalizeResearchRequestV1 as normalizeFromExtension,
 } from "../../../apps/extension/utils/research/contracts.js";
-import {
-  decodeResearchSearchInputV1 as decodeFromExtension,
-} from "../../../apps/extension/utils/research/capability-contracts.js";
 import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
 import * as deepagentsBrowser from "deepagents/browser";
 import * as deepagentsNode from "deepagents/node";
@@ -52,7 +49,6 @@ describe("@atlcli/research import boundaries", () => {
     expect(normalizeFromDefault).toBe(normalizeFromBrowser);
     expect(normalizeFromDefault).toBe(normalizeFromExtension);
     expect(decodeFromDefault).toBe(decodeFromBrowser);
-    expect(decodeFromDefault).toBe(decodeFromExtension);
   });
 
   it("loads the host-neutral root with no browser or Node host graph", () => {

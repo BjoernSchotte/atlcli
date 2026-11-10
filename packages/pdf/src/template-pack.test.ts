@@ -15,6 +15,7 @@ import {
   PDF_CANONICAL_SOURCE_REVISION_4,
   PDF_CANONICAL_SOURCE_REVISION_5,
   PDF_CANONICAL_SOURCE_REVISION_6,
+  PDF_CANONICAL_SOURCE_REVISION_7,
   PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION,
   PdfTemplateValidationError,
   buildUniformPdfPageBorderV1,
@@ -489,7 +490,8 @@ describe("PDF template manifest phase", () => {
       PDF_CANONICAL_SOURCE_REVISION_4,
       PDF_CANONICAL_SOURCE_REVISION_5,
       PDF_CANONICAL_SOURCE_REVISION_6,
-    ]).toEqual(["1", "2", "3", "4", "5", "6"]);
+      PDF_CANONICAL_SOURCE_REVISION_7,
+    ]).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
     const prior = await manifestWith({}, { canonical: true });
     expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
 
@@ -531,7 +533,7 @@ describe("PDF template manifest phase", () => {
     );
 
     const future = structuredClone(prior.manifest);
-    future.canonicalSource!.revision = "7";
+    future.canonicalSource!.revision = "8";
     await expectPdfReason(
       () => validatePdfTemplateManifest(future),
       "unsupported-canonical-revision"
@@ -539,6 +541,52 @@ describe("PDF template manifest phase", () => {
     expect(() => validatePdfTemplateManifest(future)).toThrow(
       /explicit template migration/
     );
+  });
+
+  it("scopes revision-7 decorations by the physical page and leaves revisions 5/6 untouched", () => {
+    const visuals = { assets: {}, decorations: [] };
+    const decorated = (revision: string): string => {
+      const manifest = structuredClone(revision6Manifest()) as PdfTemplateManifestV5;
+      manifest.canonicalSource!.revision = revision;
+      const design = manifest.design as unknown as Record<string, any>;
+      design.navigation.pageNumbers.start = 2;
+      design.paints = {
+        hero: {
+          kind: "linear",
+          angle: 43,
+          relativeTo: "parent",
+          stops: [{ at: 0, color: "coverTitleInk" }, { at: 100, color: "coverTitleInk" }],
+        },
+      };
+      design.decorations = [{
+        kind: "rect",
+        scope: "even",
+        layer: "page-background",
+        box: { x: "0mm", y: "0mm", width: "210mm", height: "10mm" },
+        fill: "hero",
+      }];
+      return generateCanonicalPdfTemplateSourceV1(
+        validatePdfTemplateManifest(manifest) as PdfTemplateManifestV5,
+        visuals,
+      );
+    };
+    const logical = "#let template-page-decorations() = context {\n  let current-page = counter(page).get().first()";
+    const physical = "#let template-page-decorations() = context {\n  let current-page = here().page()";
+    const revision6 = decorated(PDF_CANONICAL_SOURCE_REVISION_6);
+    const revision7 = decorated(PDF_CANONICAL_SOURCE_REVISION_7);
+    // A start other than 1 shifts the counter's parity against the physical
+    // page the header picks its odd/even variant from.
+    expect(revision6).toContain("counter(page).update(2)");
+    expect(revision6).toContain(logical);
+    expect(revision7).toContain(physical);
+    expect(revision7).not.toContain(logical);
+    // Nothing else differs between the two revisions.
+    expect(
+      revision7.replace(
+        /(#let template-[a-z-]+\(\) = context \{\n  let current-page = )here\(\)\.page\(\)/g,
+        "$1counter(page).get().first()",
+      ),
+    ).toBe(revision6);
   });
 
   it("compiles revision-6 page toggles into the template defaults", () => {

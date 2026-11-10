@@ -104,7 +104,7 @@ the document → the file name.
 | Bold, italic, code-styled runs | `strong`, `em`, `code` marks |
 | External hyperlinks (`http`, `https`, `mailto`) | Native links |
 | Bullet and numbered lists, including nesting | Native bullet/ordered lists (format from `numbering.xml`) |
-| Tables with marked header rows | Native tables with header cells |
+| Tables with marked header rows | Native tables with header cells; horizontally merged cells keep their column span |
 | Embedded images (PNG, JPEG, GIF, WebP, SVG) | Page attachments rendered as native media |
 | Quote / Intense Quote / Zitat paragraphs | Native blockquotes (consecutive paragraphs grouped) |
 | Code-styled paragraphs (Code, Source Code, HTML Preformatted) | Native code blocks (consecutive lines merged) |
@@ -411,9 +411,11 @@ atlcli wiki import a.docx b.docx c.docx --space TEAM --confirm
 atlcli wiki import export-bundle.zip --space TEAM --confirm   # outer ZIP
 ```
 
-A `.zip` batch source is inspected against the same hardened archive
-budgets as DOCX packages (entry-name safety, zip-bomb limits) before
-anything is inflated; all `.docx` members import in sorted order.
+A `.zip` batch source is inspected for entry-name safety and zip-bomb limits
+before anything is inflated: at most 200 MB compressed, 512 MiB declared
+uncompressed, and 10,000 entries. All `.docx` members import in sorted order;
+macOS resource-fork entries (`__MACOSX/`, `._name.docx`) and Word lock files
+(`~$name.docx`) are skipped.
 
 The batch preview lists every file with its resolved title, page count,
 attachments, issues, and editability rating; files that fail to parse are
@@ -427,7 +429,10 @@ and manifest batches also reject `--restriction`, `--viewer`, `--editor`,
 Each file publishes as its **own transaction**: a failure rolls back only
 that file's pages, is recorded in the result list, and the batch continues.
 The final report shows exact `created` / `skipped` / `failed` results and
-the command exits non-zero if anything failed.
+the command exits non-zero if anything failed. If the rollback of a failed
+file cannot delete one of its pages, the file's error names the page ids
+(JSON: `orphanedPageIds`; in a manifest batch, the failed item's `pageIds`)
+so you can remove them by hand.
 
 **Resuming:** re-run the same command with `--skip-existing` — files whose
 titles already exist in the space are skipped instead of failing, so an
@@ -462,6 +467,14 @@ documents:
 atlcli wiki import --manifest batch.yaml --confirm          # first run
 atlcli wiki import --manifest batch.yaml --confirm --resume # continue later
 ```
+
+The manifest is the only source of the destination, the titles, the split
+levels and the recipe. Flags that say the same thing elsewhere are rejected
+instead of ignored: `--space`, `--parent`, `--split`, `--title`,
+`--skip-existing` (use `--resume`), `--recipe`, `--recipe-id`, `--map-style`,
+`--revisions`, `--unsupported`, `--comments`, `--overrides`, `--from-page`,
+`--attachment`, and file arguments. The error names the manifest field to
+set instead.
 
 - Every document is its own transaction; a failure rolls back only that
   document's pages and the batch continues to an exact
@@ -498,7 +511,7 @@ atlcli wiki import --manifest batch.yaml --confirm --resume # continue later
 | `--editor <principal>` | string, repeatable | — | Explicit mode: `account:<id>` or `group-id:<id>` |
 | `--staging-parent <title>` | string | — | Create a private import-owned parent and import below it |
 | `--label <name>` | string, repeatable | — | Labels applied and verified on the root page |
-| `--content-property <k=v>` | string, repeatable | — | `atlcli.*` namespaced page metadata (max 20, value ≤ 2048 chars) |
+| `--content-property <k=v>` | string, repeatable | — | `atlcli.*` namespaced page metadata (max 20, value ≤ 2048 chars). `true`, `false`, `null` and plain decimal numbers (`42`, `-3.5`) are stored typed; everything else, including `0012`, `0x1F` and `1e3`, stays a string |
 | `--map-style <s>=<t>` | string, repeatable | — | Map a Word style to `paragraph`/`heading-1..6`/`blockquote`/`code` |
 | `--revisions <mode>` | string | `accept` | `accept` or `reject` tracked changes |
 | `--unsupported <mode>` | string | `report` | `fail` blocks confirmed publishes on lossy constructs |
@@ -582,6 +595,7 @@ against a specific live Data Center installation.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `Rejected DOCX package: …` | File is `.doc`, corrupted, or contains active content | Re-save as `.docx` in Word; remove macros |
+| `Rejected DOCX package: … beyond the template-intake XML limit` | One XML part (usually `word/document.xml`) is larger than 32 MiB uncompressed, or the file is over 20 MB | Split the document in Word and import the parts |
 | `Space XYZ not found or not accessible` | Wrong key or missing permission | Check `--space`; verify the profile can see the space |
 | `Data Center import supports single pages only; unsupported here: …` | A Cloud-only flag on a DC profile | Drop the listed flags, or use a Cloud profile |
 | Headings imported as plain paragraphs | Text styled manually (big/bold) instead of Word heading styles | Apply real heading styles in Word and re-import |

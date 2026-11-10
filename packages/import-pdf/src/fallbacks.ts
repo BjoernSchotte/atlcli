@@ -1,3 +1,4 @@
+import { zlibSync } from "fflate";
 import type { PdfNormalizedRect } from "./contracts.js";
 
 function uint32(value: number): Uint8Array {
@@ -31,42 +32,17 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function adler32(bytes: Uint8Array): number {
-  let a = 1;
-  let b = 0;
-  for (const byte of bytes) {
-    a = (a + byte) % 65521;
-    b = (b + a) % 65521;
-  }
-  return ((b << 16) | a) >>> 0;
-}
-
-function storedZlib(bytes: Uint8Array): Uint8Array {
-  const blocks: Uint8Array[] = [new Uint8Array([0x78, 0x01])];
-  for (let offset = 0; offset < bytes.byteLength || offset === 0; offset += 65_535) {
-    const length = Math.min(65_535, bytes.byteLength - offset);
-    const final = offset + length >= bytes.byteLength;
-    blocks.push(new Uint8Array([
-      final ? 1 : 0,
-      length & 0xff,
-      (length >>> 8) & 0xff,
-      (~length) & 0xff,
-      ((~length) >>> 8) & 0xff,
-    ]));
-    blocks.push(bytes.subarray(offset, offset + length));
-    if (final) break;
-  }
-  blocks.push(uint32(adler32(bytes)));
-  return concat(blocks);
-}
-
 function pngChunk(type: string, data: Uint8Array): Uint8Array {
   const typeBytes = new TextEncoder().encode(type);
   const payload = concat([typeBytes, data]);
   return concat([uint32(data.byteLength), payload, uint32(crc32(payload))]);
 }
 
-/** Deterministic RGBA PNG encoder using bounded uncompressed DEFLATE blocks. */
+/**
+ * Deterministic RGBA PNG encoder. fflate is pure JS, so the bytes are the same
+ * on every runtime; stored (uncompressed) blocks cost 4 bytes per pixel and
+ * spent the rendered-bytes budget after about 32 fallback pages.
+ */
 export function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array {
   if (
     !Number.isSafeInteger(width)
@@ -88,7 +64,7 @@ export function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): 
   return concat([
     new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
     pngChunk("IHDR", ihdr),
-    pngChunk("IDAT", storedZlib(scanlines)),
+    pngChunk("IDAT", zlibSync(scanlines, { level: 6 })),
     pngChunk("IEND", new Uint8Array()),
   ]);
 }

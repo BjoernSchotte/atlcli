@@ -362,7 +362,9 @@ function validateDesignOverlayV2(
   value: unknown,
   path: string,
 ): PdfTemplateRecipeDesignOverlayV2 {
-  return validateRecipeV2Json(value, path, 0, {
+  // The overlay root is an object; JSON scalars and arrays are only legal
+  // BELOW it. `null` is rejected like any other non-object.
+  return validateRecipeV2Json(object(value, path), path, 0, {
     nodes: 0,
   }) as PdfTemplateRecipeDesignOverlayV2;
 }
@@ -766,8 +768,14 @@ export function validatePdfTemplateRecipeV2(
     schema: WIKI_PDF_TEMPLATE_RECIPE_SCHEMA_V2,
     template: validateTemplateV2(recipe.template, `${path}.template`),
     baseline: validateBaselineV2(recipe.baseline, `${path}.baseline`),
-    design: validateDesignOverlayV2(recipe.design ?? {}, `${path}.design`),
+    design: validateDesignOverlayV2(
+      recipe.design === undefined ? {} : recipe.design,
+      `${path}.design`,
+    ),
     ...(localization === undefined ? {} : { localization }),
-    assets: validateAssets(recipe.assets ?? {}, `${path}.assets`),
+    assets: validateAssets(
+      recipe.assets === undefined ? {} : recipe.assets,
+      `${path}.assets`,
+    ),
   };
 }

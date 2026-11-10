@@ -2,6 +2,7 @@ import { decodeHTML } from "entities";
 import { storageMentionIds, USERKEY_MENTION_PREFIX } from "./mention-ids.js";
 import { parseRetryAfterMs } from "./retry-after.js";
 import {
+  abortableSleep,
   SessionRedirectBlockedError,
   createAtlassianSessionRedirectPolicy,
   fetchSessionBinaryFollowingRedirects,
@@ -256,6 +257,8 @@ export type ConfluencePageDetails = ConfluencePage & {
   modifiedBy?: ConfluenceUser;
   labels?: string[];
   tinyUrl?: string;
+  /** Provider-returned edit relation (`_links.editui`, Data Center `_links.edit`), absolute, when the response has one. */
+  editUrl?: string;
   /** Editor version: 'v2' (new editor), 'v1' (legacy), or null (unknown) */
   editorVersion?: "v2" | "v1" | null;
 };
@@ -441,6 +444,8 @@ export type ConfluenceFolder = {
   parentId: string | null;
   url?: string;
   createdAt?: string;
+  /** Present on folders found by search (the folder listings). */
+  version?: number;
 };
 
 /**
@@ -584,6 +589,22 @@ function extractCursor(nextLink: string | undefined, baseUrl: string): string | 
   const nextUrl = new URL(nextLink, baseUrl);
   return nextUrl.searchParams.get("cursor") ?? undefined;
 }
+
+/** `fn` over `items` with at most `size` calls in flight; results keep input order. */
+async function mapChunked<T, R>(
+  items: readonly T[],
+  size: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(...(await Promise.all(items.slice(i, i + size).map(fn))));
+  }
+  return out;
+}
+
+/** Lookups made alongside a listing run this many at a time. */
+const LOOKUP_CONCURRENCY = 5;
 
 const ACCOUNT_STATUSES = new Set(["active", "inactive", "closed"]);
 
@@ -752,21 +773,7 @@ export class ConfluenceClient {
       return injectedScheduler(ms, signal);
     }
 
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted) {
-        reject(signal.reason ?? new Error("Aborted"));
-        return;
-      }
-      const timer = setTimeout(() => {
-        signal?.removeEventListener("abort", onAbort);
-        resolve();
-      }, ms);
-      const onAbort = () => {
-        clearTimeout(timer);
-        reject(signal?.reason ?? new Error("Aborted"));
-      };
-      signal?.addEventListener("abort", onAbort, { once: true });
-    });
+    return abortableSleep(ms, signal);
   }
 
   /**
@@ -872,6 +879,58 @@ export class ConfluenceClient {
     }
   }
 
+  /**
+   * The one retry loop behind `request`, `requestV2`, `requestBinary` and
+   * `webhookRequest`. A 429 was never processed, so it is always retried (after
+   * `Retry-After`, else exponential backoff). A 5xx is retried unless
+   * `retryServerErrors` is false: a non-idempotent write may already have been
+   * applied. Returns the last response, whatever its status; each caller turns
+   * it into its own error. `emit` reports attempts and the responses consumed
+   * here to the transport guard/observer.
+   */
+  private async fetchWithRetry(
+    send: () => Promise<Response>,
+    options: { method: string; signal?: AbortSignal; retryServerErrors?: boolean; emit?: boolean }
+  ): Promise<{ res: Response; attempt: number; startedAt: number }> {
+    const { method, signal, emit } = options;
+    for (let attempt = 0; ; attempt++) {
+      signal?.throwIfAborted();
+      if (emit) this.emitTransport({ type: "attempt", method, attempt });
+      const startedAt = Date.now();
+      let res: Response;
+      try {
+        res = await send();
+      } catch (error) {
+        if (emit) this.emitTransport({ type: "error", method, attempt, durationMs: Date.now() - startedAt });
+        throw error;
+      }
+      const response = { type: "response" as const, method, attempt, status: res.status };
+      const backoffMs = this.baseDelayMs * Math.pow(2, attempt);
+      const last = attempt >= this.maxRetries;
+
+      if (res.status === 429) {
+        const delayMs = parseRetryAfterMs(res.headers.get("Retry-After")) ?? backoffMs;
+        if (emit) {
+          this.emitTransport({ ...response, durationMs: Date.now() - startedAt, responseBytes: 0, retryAfterMs: delayMs });
+        }
+        if (last) return { res, attempt, startedAt };
+        await this.sleep(delayMs, signal);
+        continue;
+      }
+
+      if (res.status >= 500 && options.retryServerErrors !== false && !last) {
+        if (emit) {
+          const responseBytes = new TextEncoder().encode(await res.text()).byteLength;
+          this.emitTransport({ ...response, durationMs: Date.now() - startedAt, responseBytes });
+        }
+        await this.sleep(backoffMs, signal);
+        continue;
+      }
+
+      return { res, attempt, startedAt };
+    }
+  }
+
   private async request(
     path: string,
     options: {
@@ -935,15 +994,9 @@ export class ConfluenceClient {
           : undefined,
     });
 
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      options.signal?.throwIfAborted();
-      this.emitTransport({ type: "attempt", method, attempt });
-      const attemptStartedAt = Date.now();
-      let res: Response;
-      try {
-        res = await this.countedFetch(
+    const { res, attempt, startedAt: attemptStartedAt } = await this.fetchWithRetry(
+      () =>
+        this.countedFetch(
           url.toString(),
           this.applyFetchOptions({
             method,
@@ -955,122 +1008,88 @@ export class ConfluenceClient {
             body: options.body ? JSON.stringify(options.body) : undefined,
             signal: options.signal,
           })
-        );
-      } catch (error) {
-        this.emitTransport({
-          type: "error",
-          method,
-          attempt,
-          durationMs: Date.now() - attemptStartedAt,
-        });
-        throw error;
-      }
+        ),
+      { method, signal: options.signal, retryServerErrors: options.retryServerErrors, emit: true }
+    );
 
-      // Session auth: a redirect means the session is missing — classify it
-      // rather than follow it to a foreign origin with cookies.
-      this.assertNotAuthRedirect(res);
+    // Session auth: a redirect means the session is missing — classify it
+    // rather than follow it to a foreign origin with cookies.
+    this.assertNotAuthRedirect(res);
 
-      // Handle rate limiting (429)
-      if (res.status === 429) {
-        const delayMs =
-          parseRetryAfterMs(res.headers.get("Retry-After")) ??
-          this.baseDelayMs * Math.pow(2, attempt);
-        this.emitTransport({
-          type: "response",
-          method,
-          attempt,
-          status: res.status,
-          durationMs: Date.now() - attemptStartedAt,
-          responseBytes: 0,
-          retryAfterMs: delayMs,
-        });
-
-        if (attempt < this.maxRetries) {
-          await this.sleep(delayMs, options.signal);
-          continue;
-        }
-        const error = new ConfluenceRequestError(
-          res.status,
-          `Rate limited by Confluence API after ${this.maxRetries} retries`,
-          requestId,
-        );
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: "Too Many Requests",
-          durationMs: Date.now() - startTime,
-          error: error.message,
-        });
-        throw error;
-      }
-
-      const text = await res.text();
-      this.emitTransport({
-        type: "response",
-        method,
-        attempt,
+    if (res.status === 429) {
+      const error = new ConfluenceRequestError(
+        res.status,
+        `Rate limited by Confluence API after ${this.maxRetries} retries`,
+        requestId,
+      );
+      logger.api("response", {
+        requestId,
         status: res.status,
-        durationMs: Date.now() - attemptStartedAt,
-        responseBytes: new TextEncoder().encode(text).byteLength,
+        statusText: "Too Many Requests",
+        durationMs: Date.now() - startTime,
+        error: error.message,
       });
-      let data: unknown = text;
-      let isJson = false;
-      if (text) {
-        try {
-          data = JSON.parse(text);
-          isJson = true;
-        } catch {
-          data = text;
-        }
+      throw error;
+    }
+
+    const text = await res.text();
+    this.emitTransport({
+      type: "response",
+      method,
+      attempt,
+      status: res.status,
+      durationMs: Date.now() - attemptStartedAt,
+      responseBytes: new TextEncoder().encode(text).byteLength,
+    });
+    let data: unknown = text;
+    let isJson = false;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+        isJson = true;
+      } catch {
+        data = text;
       }
+    }
 
-      if (!res.ok) {
-        // Under a logBody policy, keep the raw response text OUT of the thrown
-        // message too (it embeds full response bodies) — surface only status.
-        const message = suppressBody
-          ? `[response body omitted: logBody policy]`
-          : typeof data === "string"
-            ? data
-            : JSON.stringify(data);
-        lastError = new ConfluenceRequestError(
-          res.status,
-          `Confluence API error (${res.status}): ${message}`,
-          requestId,
-        );
-
-        // Retry on server errors (5xx)
-        if (res.status >= 500 && options.retryServerErrors !== false && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
-          continue;
-        }
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: res.statusText,
-          body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
-          durationMs: Date.now() - startTime,
-          error: lastError.message,
-        });
-        throw lastError;
-      }
-
-      // Session auth: reject a 2xx that is a login page / error envelope, not a
-      // real API payload (spec 003 §2.3). No-op for CLI/token auth.
-      this.assertSessionJsonOk(text, data, isJson);
-
-      // Log successful response
+    if (!res.ok) {
+      // Under a logBody policy, keep the raw response text OUT of the thrown
+      // message too (it embeds full response bodies) — surface only status.
+      const message = suppressBody
+        ? `[response body omitted: logBody policy]`
+        : typeof data === "string"
+          ? data
+          : JSON.stringify(data);
+      const error = new ConfluenceRequestError(
+        res.status,
+        `Confluence API error (${res.status}): ${message}`,
+        requestId,
+      );
       logger.api("response", {
         requestId,
         status: res.status,
         statusText: res.statusText,
         body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
         durationMs: Date.now() - startTime,
+        error: error.message,
       });
-
-      return data;
+      throw error;
     }
 
-    throw lastError ?? new Error("Request failed after retries");
+    // Session auth: reject a 2xx that is a login page / error envelope, not a
+    // real API payload (spec 003 §2.3). No-op for CLI/token auth.
+    this.assertSessionJsonOk(text, data, isJson);
+
+    // Log successful response
+    logger.api("response", {
+      requestId,
+      status: res.status,
+      statusText: res.statusText,
+      body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
+      durationMs: Date.now() - startTime,
+    });
+
+    return data;
   }
 
   /**
@@ -1133,105 +1152,89 @@ export class ConfluenceClient {
           : undefined,
     });
 
-    let lastError: Error | null = null;
+    const { res } = await this.fetchWithRetry(
+      () =>
+        this.countedFetch(url.toString(), this.applyFetchOptions({
+          method,
+          headers: {
+            Authorization: this.authHeader,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: options.body ? JSON.stringify(options.body) : undefined,
+          signal: options.signal,
+        })),
+      { method, signal: options.signal, retryServerErrors: options.retryServerErrors }
+    );
 
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      options.signal?.throwIfAborted();
-      const res = await this.countedFetch(url.toString(), this.applyFetchOptions({
-        method,
-        headers: {
-          Authorization: this.authHeader,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined,
-        signal: options.signal,
-      }));
+    // Session auth: classify an auth-redirect rather than follow it.
+    this.assertNotAuthRedirect(res);
 
-      // Session auth: classify an auth-redirect rather than follow it.
-      this.assertNotAuthRedirect(res);
+    if (res.status === 429) {
+      const error = new ConfluenceV2RequestError(
+        res.status,
+        `Rate limited by Confluence API after ${this.maxRetries} retries`,
+        undefined,
+        requestId,
+      );
+      logger.api("response", {
+        requestId,
+        status: res.status,
+        statusText: "Too Many Requests",
+        durationMs: Date.now() - startTime,
+        error: error.message,
+      });
+      throw error;
+    }
 
-      if (res.status === 429) {
-        const delayMs =
-          parseRetryAfterMs(res.headers.get("Retry-After")) ??
-          this.baseDelayMs * Math.pow(2, attempt);
-
-        if (attempt < this.maxRetries) {
-          await this.sleep(delayMs, options.signal);
-          continue;
-        }
-        const error = new ConfluenceV2RequestError(
-          res.status,
-          `Rate limited by Confluence API after ${this.maxRetries} retries`,
-          undefined,
-          requestId,
-        );
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: "Too Many Requests",
-          durationMs: Date.now() - startTime,
-          error: error.message,
-        });
-        throw error;
+    const text = await res.text();
+    let data: unknown = text;
+    let isJson = false;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+        isJson = true;
+      } catch {
+        data = text;
       }
+    }
 
-      const text = await res.text();
-      let data: unknown = text;
-      let isJson = false;
-      if (text) {
-        try {
-          data = JSON.parse(text);
-          isJson = true;
-        } catch {
-          data = text;
-        }
-      }
-
-      if (!res.ok) {
-        const message = suppressBody
-          ? "[response body omitted: logBody policy]"
-          : typeof data === "string"
-            ? data
-            : JSON.stringify(data);
-        lastError = new ConfluenceV2RequestError(
-          res.status,
-          `Confluence API v2 error (${res.status}): ${message}`,
-          classifyV2Failure(path, options.query, res.status, data),
-          requestId,
-        );
-
-        if (res.status >= 500 && options.retryServerErrors !== false && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
-          continue;
-        }
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: res.statusText,
-          body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
-          durationMs: Date.now() - startTime,
-          error: lastError.message,
-        });
-        throw lastError;
-      }
-
-      // Session auth: reject a 2xx login page / error envelope (spec 003 §2.3).
-      this.assertSessionJsonOk(text, data, isJson);
-
-      // Log successful response
+    if (!res.ok) {
+      const message = suppressBody
+        ? "[response body omitted: logBody policy]"
+        : typeof data === "string"
+          ? data
+          : JSON.stringify(data);
+      const error = new ConfluenceV2RequestError(
+        res.status,
+        `Confluence API v2 error (${res.status}): ${message}`,
+        classifyV2Failure(path, options.query, res.status, data),
+        requestId,
+      );
       logger.api("response", {
         requestId,
         status: res.status,
         statusText: res.statusText,
         body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
         durationMs: Date.now() - startTime,
+        error: error.message,
       });
-
-      return data;
+      throw error;
     }
 
-    throw lastError ?? new Error("Request failed after retries");
+    // Session auth: reject a 2xx login page / error envelope (spec 003 §2.3).
+    this.assertSessionJsonOk(text, data, isJson);
+
+    // Log successful response
+    logger.api("response", {
+      requestId,
+      status: res.status,
+      statusText: res.statusText,
+      body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
+      durationMs: Date.now() - startTime,
+    });
+
+    return data;
   }
 
   /**
@@ -1530,12 +1533,15 @@ export class ConfluenceClient {
     const base = data._links?.base;
     const webui = data._links?.webui;
     const tinyui = data._links?.tinyui;
+    // Cloud names the relation `editui`, Data Center `edit`.
+    const editui = data._links?.editui ?? data._links?.edit;
 
     return {
       id: data.id,
       title: data.title,
       url: base && webui ? `${base}${webui}` : undefined,
       tinyUrl: base && tinyui ? `${base}${tinyui}` : undefined,
+      editUrl: base && editui ? `${base}${editui}` : undefined,
       version: data.version?.number,
       spaceKey: data.space?.key,
       parentId,
@@ -1965,11 +1971,10 @@ export class ConfluenceClient {
     };
     return drainPaginated<{ id: string; title: string; spaceKey?: string }>(async (token) => {
       // First page uses the structured query; subsequent pages follow the
-      // server's own `_links.next` path (its query already baked in), stripping
-      // the /rest/api prefix request() re-adds — same shape as searchByUrl.
+      // server's own `_links.next` path (its query already baked in).
       const data = (token === undefined
         ? await this.request("/content", { query, signal })
-        : await this.request(token.replace(/^\/rest\/api/, ""), { signal })) as any;
+        : await this.request(this.v1NextPath(token), { signal })) as any;
       const results = Array.isArray(data.results) ? data.results : [];
       return {
         items: results.map((item: any) => ({
@@ -1983,25 +1988,31 @@ export class ConfluenceClient {
   }
 
   /**
-   * Follow a pagination URL to get the next page of search results.
-   * Strips the /rest/api prefix from the URL since request() adds it.
+   * The `request()` path for a v1 `_links.next` link.
+   *
+   * Confluence emits site-relative links (`/wiki/rest/api/...`),
+   * product-relative links (`/rest/api/...`) and absolute URLs. A leading
+   * slash normally resets the URL path, so the product-relative form is
+   * resolved against the configured REST base explicitly. A link outside this
+   * client's origin and REST base is refused.
    */
-  private async searchByUrl(url: string, signal?: AbortSignal): Promise<SearchResults> {
+  private v1NextPath(link: string): string {
     const apiBase = new URL(`${this.confluenceBaseUrl}/rest/api/`);
-    // Confluence Cloud currently emits both site-relative links
-    // (`/wiki/rest/api/...`) and product-relative links (`/rest/api/...`).
-    // A leading slash normally resets the URL path, so resolve the latter
-    // relative to the configured product REST base explicitly.
-    const resolved = url.startsWith("/rest/api/")
-      ? new URL(url.slice("/rest/api/".length), apiBase)
-      : new URL(url, apiBase);
+    const resolved = link.startsWith("/rest/api/")
+      ? new URL(link.slice("/rest/api/".length), apiBase)
+      : new URL(link, apiBase);
     if (
       resolved.origin.toLowerCase() !== this.capabilityOrigin ||
       !resolved.pathname.startsWith(apiBase.pathname)
     ) {
-      throw new Error("Confluence search cursor is outside the configured REST API.");
+      throw new Error("Confluence pagination link is outside the configured REST API.");
     }
-    const path = `/${resolved.pathname.slice(apiBase.pathname.length)}${resolved.search}`;
+    return `/${resolved.pathname.slice(apiBase.pathname.length)}${resolved.search}`;
+  }
+
+  /** Follow a pagination URL to get the next page of search results. */
+  private async searchByUrl(url: string, signal?: AbortSignal): Promise<SearchResults> {
+    const path = this.v1NextPath(url);
     const data = (await this.request(path, {
       signal,
       logBody: "meta-only",
@@ -2254,7 +2265,7 @@ export class ConfluenceClient {
         ? await drainPaginated<{ key: string; value: unknown }>(async (token) => {
             const data = (await (token === undefined
               ? this.request(`/content/${pageId}/property`, { query: { limit: 100 }, logBody: "meta-only", signal: options.signal })
-              : this.request(token.replace(/^\/rest\/api/, ""), { logBody: "meta-only", signal: options.signal }))) as any;
+              : this.request(this.v1NextPath(token), { logBody: "meta-only", signal: options.signal }))) as any;
             return { items: (data?.results ?? []).map((r: any) => ({ key: r.key, value: r.value })), next: data?._links?.next };
           })
         : await drainPaginated<{ key: string; value: unknown }>(async (cursor) => {
@@ -2519,7 +2530,7 @@ export class ConfluenceClient {
                 `/content/${parentId}/child/page?expand=extensions.position,version,ancestors&limit=${limit}`,
                 { signal: options.signal, logBody: "meta-only" }
               )
-            : await this.request(token.replace(/^\/rest\/api/, ""), {
+            : await this.request(this.v1NextPath(token), {
                 signal: options.signal,
                 logBody: "meta-only",
               });
@@ -2643,7 +2654,7 @@ export class ConfluenceClient {
         const data: any = await this.request(
           token === undefined
             ? `/space/${encodeURIComponent(spaceKey)}/content/page?depth=root&expand=version&limit=100`
-            : token.replace(/^\/rest\/api/, ""),
+            : this.v1NextPath(token),
           { signal: options.signal, logBody: "meta-only" }
         );
         if (!Array.isArray(data.results)) throw new Error("Invalid space-root page response");
@@ -3187,43 +3198,6 @@ export class ConfluenceClient {
   }
 
   /**
-   * Get pages modified since a given date using CQL.
-   * Used for efficient polling of spaces or page trees.
-   *
-   * Uses cursor-based pagination via _links.next (start parameter is deprecated).
-   */
-  async getPagesSince(params: {
-    scope: SyncScope;
-    since: string; // ISO date string
-    limit?: number;
-  }): Promise<PageChangeInfo[]> {
-    const { scope, since, limit = 100 } = params;
-
-    // Single page: direct fetch
-    if (scope.type === "page") {
-      const pageInfo = await this.getPageVersion(scope.pageId);
-      return [pageInfo];
-    }
-
-    // Format date for CQL (YYYY-MM-DD)
-    const dateStr = since.split("T")[0];
-
-    // Build CQL for tree or space scope
-    let cql: string;
-    switch (scope.type) {
-      case "tree":
-        cql = `ancestor=${scope.ancestorId} AND type=page AND lastModified >= "${dateStr}"`;
-        break;
-      case "space":
-        cql = `space="${scope.spaceKey}" AND type=page AND lastModified >= "${dateStr}"`;
-        break;
-    }
-
-    // Use cursor-based pagination
-    return this.searchPagesAsChangeInfo(cql, limit);
-  }
-
-  /**
    * Get all pages in a scope (initial sync).
    *
    * For space scope: uses v2 API with reliable cursor-based pagination.
@@ -3285,7 +3259,8 @@ export class ConfluenceClient {
    */
   private async searchPagesAsChangeInfo(
     cql: string,
-    limit: number
+    limit: number,
+    maxItems?: number
   ): Promise<PageChangeInfo[]> {
     // Ends only on the absence of a next link (see drainPaginated).
     return drainPaginated<PageChangeInfo>(async (nextLink) => {
@@ -3294,8 +3269,7 @@ export class ConfluenceClient {
           ? await this.request("/content/search", {
               query: { cql, limit, expand: "version,space,history.lastUpdated" },
             })
-          : // Strip /rest/api prefix since request() adds it
-            await this.request(nextLink.replace(/^\/rest\/api/, ""));
+          : await this.request(this.v1NextPath(nextLink));
       const results = Array.isArray(data.results) ? data.results : [];
       const items: PageChangeInfo[] = results.map((item: any) => ({
         id: item.id,
@@ -3305,7 +3279,7 @@ export class ConfluenceClient {
         spaceKey: item.space?.key,
       }));
       return { items, next: data._links?.next || undefined };
-    });
+    }, { maxItems });
   }
 
   /**
@@ -3315,15 +3289,7 @@ export class ConfluenceClient {
     ids: string[],
     concurrency = 5
   ): Promise<(ConfluencePage & { storage: string })[]> {
-    const results: (ConfluencePage & { storage: string })[] = [];
-
-    for (let i = 0; i < ids.length; i += concurrency) {
-      const chunk = ids.slice(i, i + concurrency);
-      const pages = await Promise.all(chunk.map((id) => this.getPage(id)));
-      results.push(...pages);
-    }
-
-    return results;
+    return mapChunked(ids, concurrency, (id) => this.getPage(id));
   }
 
   // ============ Attachment Operations ============
@@ -3463,7 +3429,9 @@ export class ConfluenceClient {
   }
 
   /**
-   * List attachments for a page.
+   * List every attachment of a page. `limit` is the page size, not a cap:
+   * callers look attachments up by name or id, so a first page read as the
+   * whole list made uploads duplicate and copies drop files.
    *
    * GET /content/{id}/child/attachment
    */
@@ -3471,16 +3439,19 @@ export class ConfluenceClient {
     pageId: string,
     options: { limit?: number; signal?: AbortSignal } = {},
   ): Promise<AttachmentInfo[]> {
-    const data = (await this.request(`/content/${pageId}/child/attachment`, {
-      query: {
-        expand: "version,metadata.mediaType",
-        limit: options.limit ?? 100,
-      },
-      signal: options.signal,
-    })) as any;
-
-    const results = Array.isArray(data.results) ? data.results : [];
-    return results.map((item: any) => this.parseAttachmentResponse(item, pageId));
+    return drainPaginated<AttachmentInfo>(async (token) => {
+      const data = (token === undefined
+        ? await this.request(`/content/${pageId}/child/attachment`, {
+            query: { expand: "version,metadata.mediaType", limit: options.limit ?? 100 },
+            signal: options.signal,
+          })
+        : await this.request(this.v1NextPath(token), { signal: options.signal })) as any;
+      const results = Array.isArray(data.results) ? data.results : [];
+      return {
+        items: results.map((item: any) => this.parseAttachmentResponse(item, pageId)),
+        next: data._links?.next || undefined,
+      };
+    });
   }
 
   /**
@@ -3792,90 +3763,67 @@ export class ConfluenceClient {
       }),
     });
 
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      options.signal?.throwIfAborted();
-      const init = this.applyFetchOptions({
-        method: "GET",
-        headers: {
-          Authorization: this.authHeader,
-        },
-        signal: options.signal,
-      });
-      // Token mode is untouched: no `redirect: "manual"` was set for it, so
-      // fetch keeps following redirects exactly as before.
-      const res = this.useSession
-        ? await fetchSessionBinaryFollowingRedirects(
-            url.toString(),
-            init,
-            this.sessionRedirectPolicy,
-            {
-              fetchFn: (input, init) => this.countedFetch(input, init),
-              loginRedirectError: (status) => this.authRedirectError(status),
-              blockedRedirectError: (target, reason) =>
-                new SessionRedirectBlockedError("Confluence attachment download", target, reason),
-            }
-          )
-        : await this.countedFetch(url.toString(), init);
-
-      if (res.status === 429) {
-        const delayMs =
-          parseRetryAfterMs(res.headers.get("Retry-After")) ??
-          this.baseDelayMs * Math.pow(2, attempt);
-
-        if (attempt < this.maxRetries) {
-          await this.sleep(delayMs, options.signal);
-          continue;
-        }
-        const error = new Error(`Rate limited after ${this.maxRetries} retries`);
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: "Too Many Requests",
-          durationMs: Date.now() - startTime,
-          error: error.message,
+    // Token mode is untouched: no `redirect: "manual"` was set for it, so
+    // fetch keeps following redirects exactly as before.
+    const { res } = await this.fetchWithRetry(
+      () => {
+        const init = this.applyFetchOptions({
+          method: "GET",
+          headers: {
+            Authorization: this.authHeader,
+          },
+          signal: options.signal,
         });
-        throw error;
-      }
+        return this.useSession
+          ? fetchSessionBinaryFollowingRedirects(
+              url.toString(),
+              init,
+              this.sessionRedirectPolicy,
+              {
+                fetchFn: (input, init) => this.countedFetch(input, init),
+                loginRedirectError: (status) => this.authRedirectError(status),
+                blockedRedirectError: (target, reason) =>
+                  new SessionRedirectBlockedError("Confluence attachment download", target, reason),
+              }
+            )
+          : this.countedFetch(url.toString(), init);
+      },
+      { method: "GET", signal: options.signal }
+    );
 
-      if (!res.ok) {
-        lastError = new Error(`Download error (${res.status})`);
-
-        if (res.status >= 500 && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
-          continue;
-        }
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: res.statusText,
-          durationMs: Date.now() - startTime,
-          error: lastError.message,
-        });
-        throw lastError;
-      }
-
-      const arrayBuffer = await res.arrayBuffer();
-      // Isomorphic: `new Uint8Array(arrayBuffer)` instead of the node-only
-      // `Buffer.from(...)` so this file stays browser-safe (no `Buffer` global
-      // in the extension bundle). Node callers that need base64 wrap the result
-      // in `Buffer.from(...)` at the call site.
-      const buffer = new Uint8Array(arrayBuffer);
-
-      // Log successful response (without binary body, just size)
+    if (!res.ok) {
+      const error = new Error(
+        res.status === 429
+          ? `Rate limited after ${this.maxRetries} retries`
+          : `Download error (${res.status})`
+      );
       logger.api("response", {
         requestId,
         status: res.status,
-        statusText: res.statusText,
-        body: `[binary ${buffer.length} bytes]`,
+        statusText: res.status === 429 ? "Too Many Requests" : res.statusText,
         durationMs: Date.now() - startTime,
+        error: error.message,
       });
-
-      return buffer;
+      throw error;
     }
 
-    throw lastError ?? new Error("Download failed after retries");
+    const arrayBuffer = await res.arrayBuffer();
+    // Isomorphic: `new Uint8Array(arrayBuffer)` instead of the node-only
+    // `Buffer.from(...)` so this file stays browser-safe (no `Buffer` global
+    // in the extension bundle). Node callers that need base64 wrap the result
+    // in `Buffer.from(...)` at the call site.
+    const buffer = new Uint8Array(arrayBuffer);
+
+    // Log successful response (without binary body, just size)
+    logger.api("response", {
+      requestId,
+      status: res.status,
+      statusText: res.statusText,
+      body: `[binary ${buffer.length} bytes]`,
+      durationMs: Date.now() - startTime,
+    });
+
+    return buffer;
   }
 
   /**
@@ -3945,6 +3893,8 @@ export class ConfluenceClient {
     name: string;
     url: string;
     events: string[];
+    /** Shared secret Confluence signs each delivery with (`X-Hub-Signature`). */
+    secret?: string;
   }): Promise<WebhookRegistration> {
     const data = (await this.webhookRequest("/webhook", {
       method: "POST",
@@ -3953,6 +3903,7 @@ export class ConfluenceClient {
         url: params.url,
         events: params.events,
         active: true,
+        ...(params.secret ? { configuration: { secret: params.secret } } : {}),
       },
     })) as any;
 
@@ -4001,61 +3952,45 @@ export class ConfluenceClient {
   ): Promise<unknown> {
     const url = new URL(`${this.confluenceBaseUrl}/rest/webhooks/1.0${path}`);
 
-    let lastError: Error | null = null;
+    const method = options.method ?? "GET";
+    // A webhook registration may already be applied when its response is lost.
+    const { res } = await this.fetchWithRetry(
+      () =>
+        this.countedFetch(url.toString(), this.applyFetchOptions({
+          method,
+          headers: {
+            Authorization: this.authHeader,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: options.body ? JSON.stringify(options.body) : undefined,
+        })),
+      { method, retryServerErrors: method !== "POST" }
+    );
 
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await this.countedFetch(url.toString(), this.applyFetchOptions({
-        method: options.method ?? "GET",
-        headers: {
-          Authorization: this.authHeader,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined,
-      }));
-
-      if (res.status === 429) {
-        const delayMs =
-          parseRetryAfterMs(res.headers.get("Retry-After")) ??
-          this.baseDelayMs * Math.pow(2, attempt);
-
-        if (attempt < this.maxRetries) {
-          await this.sleep(delayMs);
-          continue;
-        }
-        throw new Error(`Rate limited after ${this.maxRetries} retries`);
-      }
-
-      if (res.status === 204) {
-        return {}; // No content (DELETE success)
-      }
-
-      const text = await res.text();
-      let data: unknown = text;
-      if (text) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = text;
-        }
-      }
-
-      if (!res.ok) {
-        const message = typeof data === "string" ? data : JSON.stringify(data);
-        lastError = new Error(`Webhook API error (${res.status}): ${message}`);
-
-        // A webhook registration may already be applied when its response is lost.
-        if (res.status >= 500 && options.method !== "POST" && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
-          continue;
-        }
-        throw lastError;
-      }
-
-      return data;
+    if (res.status === 429) {
+      throw new Error(`Rate limited after ${this.maxRetries} retries`);
+    }
+    if (res.status === 204) {
+      return {}; // No content (DELETE success)
     }
 
-    throw lastError ?? new Error("Request failed after retries");
+    const text = await res.text();
+    let data: unknown = text;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+
+    if (!res.ok) {
+      const message = typeof data === "string" ? data : JSON.stringify(data);
+      throw new Error(`Webhook API error (${res.status}): ${message}`);
+    }
+
+    return data;
   }
 
   // ============ Label Operations ============
@@ -4114,7 +4049,8 @@ export class ConfluenceClient {
   }
 
   /**
-   * Get pages with a specific label.
+   * Get every page with a specific label, following pagination. `limit` caps
+   * the total; without it the list is complete.
    *
    * Uses CQL: label = "labelname" [AND space = "SPACEKEY"]
    */
@@ -4122,25 +4058,14 @@ export class ConfluenceClient {
     label: string,
     options: { spaceKey?: string; limit?: number } = {}
   ): Promise<PageChangeInfo[]> {
-    const { spaceKey, limit = 100 } = options;
+    const { spaceKey, limit } = options;
 
-    let cql = `label = "${label}" AND type = page`;
+    let cql = `label = "${escapeCqlValue(label)}" AND type = page`;
     if (spaceKey) {
-      cql += ` AND space = "${spaceKey}"`;
+      cql += ` AND space = "${escapeCqlValue(spaceKey)}"`;
     }
 
-    const data = (await this.request("/content/search", {
-      query: { cql, limit, expand: "version,space,history.lastUpdated" },
-    })) as any;
-
-    const results = Array.isArray(data.results) ? data.results : [];
-    return results.map((item: any) => ({
-      id: item.id,
-      title: item.title,
-      version: item.version?.number ?? 1,
-      lastModified: item.history?.lastUpdated?.when,
-      spaceKey: item.space?.key,
-    }));
+    return this.searchPagesAsChangeInfo(cql, Math.min(limit ?? 100, 100), limit);
   }
 
   // ============ Version History Operations ============
@@ -4404,23 +4329,14 @@ export class ConfluenceClient {
     pageId: string,
     options: { limit?: number } = {}
   ): Promise<FooterComment[]> {
-    const { limit = 100 } = options;
-
-    const data = (await this.requestV2(`/pages/${pageId}/footer-comments`, {
-      query: {
-        limit,
-        "body-format": "storage",
-      },
-    })) as any;
-
-    const results = Array.isArray(data.results) ? data.results : [];
-    const comments = results.map((item: any) => this.parseFooterComment(item));
-
-    // Fetch replies for each comment
-    for (const comment of comments) {
+    const comments = await this.listComments(
+      `/pages/${pageId}/footer-comments`,
+      options.limit ?? 100,
+      (item) => this.parseFooterComment(item)
+    );
+    await mapChunked(comments, LOOKUP_CONCURRENCY, async (comment) => {
       comment.replies = await this.getFooterCommentReplies(comment.id);
-    }
-
+    });
     return comments;
   }
 
@@ -4433,22 +4349,12 @@ export class ConfluenceClient {
     commentId: string,
     options: { limit?: number } = {}
   ): Promise<FooterComment[]> {
-    const { limit = 50 } = options;
-
-    try {
-      const data = (await this.requestV2(`/footer-comments/${commentId}/children`, {
-        query: {
-          limit,
-          "body-format": "storage",
-        },
-      })) as any;
-
-      const results = Array.isArray(data.results) ? data.results : [];
-      return results.map((item: any) => this.parseFooterComment(item));
-    } catch {
-      // No replies or endpoint not available
-      return [];
-    }
+    return this.listComments(
+      `/footer-comments/${commentId}/children`,
+      options.limit ?? 50,
+      (item) => this.parseFooterComment(item),
+      true
+    );
   }
 
   /**
@@ -4460,23 +4366,14 @@ export class ConfluenceClient {
     pageId: string,
     options: { limit?: number } = {}
   ): Promise<InlineComment[]> {
-    const { limit = 100 } = options;
-
-    const data = (await this.requestV2(`/pages/${pageId}/inline-comments`, {
-      query: {
-        limit,
-        "body-format": "storage",
-      },
-    })) as any;
-
-    const results = Array.isArray(data.results) ? data.results : [];
-    const comments = results.map((item: any) => this.parseInlineComment(item));
-
-    // Fetch replies for each comment
-    for (const comment of comments) {
+    const comments = await this.listComments(
+      `/pages/${pageId}/inline-comments`,
+      options.limit ?? 100,
+      (item) => this.parseInlineComment(item)
+    );
+    await mapChunked(comments, LOOKUP_CONCURRENCY, async (comment) => {
       comment.replies = await this.getInlineCommentReplies(comment.id);
-    }
-
+    });
     return comments;
   }
 
@@ -4489,21 +4386,37 @@ export class ConfluenceClient {
     commentId: string,
     options: { limit?: number } = {}
   ): Promise<InlineComment[]> {
-    const { limit = 50 } = options;
+    return this.listComments(
+      `/inline-comments/${commentId}/children`,
+      options.limit ?? 50,
+      (item) => this.parseInlineComment(item),
+      true
+    );
+  }
 
+  /**
+   * Every comment of a v2 comment listing; `limit` is the page size, not a cap.
+   * `missingIsEmpty` is for reply listings: a parent deleted since it was
+   * listed (404) has no replies. Any other failure is thrown, so a transient
+   * error cannot pass for "no comments".
+   */
+  private async listComments<T>(
+    path: string,
+    limit: number,
+    parse: (item: any) => T,
+    missingIsEmpty = false
+  ): Promise<T[]> {
     try {
-      const data = (await this.requestV2(`/inline-comments/${commentId}/children`, {
-        query: {
-          limit,
-          "body-format": "storage",
-        },
-      })) as any;
-
-      const results = Array.isArray(data.results) ? data.results : [];
-      return results.map((item: any) => this.parseInlineComment(item));
-    } catch {
-      // No replies or endpoint not available
-      return [];
+      return await drainPaginated<T>(async (cursor) => {
+        const data = (await this.requestV2(path, {
+          query: { limit, "body-format": "storage", cursor },
+        })) as any;
+        const results = Array.isArray(data.results) ? data.results : [];
+        return { items: results.map(parse), next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+      });
+    } catch (error) {
+      if (missingIsEmpty && error instanceof ConfluenceV2RequestError && error.status === 404) return [];
+      throw error;
     }
   }
 
@@ -4940,41 +4853,43 @@ export class ConfluenceClient {
   }
 
   /**
-   * Get all folders in a space by walking from the space homepage.
-   *
-   * Since Confluence Cloud v2 API doesn't have a direct endpoint to list all
-   * folders in a space, we traverse from the homepage using getPageDirectChildren.
+   * Get all folders in a space, wherever they sit (space root, under a page at
+   * any depth, inside another folder).
    *
    * @param spaceKey - The space key (e.g., "DOCSY")
    */
   async getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]> {
-    // Find homepage using CQL (the oldest page with no parent in the space).
-    const cql = `space = "${spaceKey}" AND type = page ORDER BY created ASC`;
-    const batch = 50;
-    const firstParentless = async (results: ConfluenceSearchResult[]): Promise<string | undefined> => {
-      for (const result of results) {
-        const pageDetails = await this.getPage(result.id);
-        if (!pageDetails.parentId && (!pageDetails.ancestors || pageDetails.ancestors.length === 0)) {
-          return result.id;
-        }
-      }
-      return undefined;
-    };
+    return this.searchFolders(`space="${escapeCqlValue(spaceKey)}" AND type=folder`);
+  }
 
-    // The homepage is normally the oldest page, so look at the first batch
-    // before draining the whole space (this runs on every poll).
-    const head = await this.searchPages(cql, batch, { maxResults: batch });
-    let homepageId = await firstParentless(head);
-    if (!homepageId && head.length === batch) {
-      homepageId = await firstParentless((await this.searchPages(cql, batch)).slice(batch));
-    }
-
-    if (!homepageId) {
-      return []; // No homepage found, return empty
-    }
-
-    // Walk the tree from homepage to find all folders
-    return this.getFoldersInTree(homepageId);
+  /**
+   * Folders matching a CQL query, in one paginated search.
+   *
+   * The v2 API has no endpoint that lists folders, and walking direct-children
+   * only from folders misses a folder below a sub-page or at space root, while
+   * walking every page costs one request per page. Like every CQL search this
+   * reads the search index, which can trail a write by a few seconds.
+   */
+  private async searchFolders(cql: string): Promise<ConfluenceFolder[]> {
+    // Folders are a Cloud feature; Data Center has none and rejects the type.
+    if (this.deploymentType !== "cloud") return [];
+    // Ends only on the absence of a next link (see drainPaginated).
+    return drainPaginated<ConfluenceFolder>(async (nextLink) => {
+      const data: any =
+        nextLink === undefined
+          ? await this.request("/content/search", { query: { cql, limit: 100, expand: "ancestors,space,version" } })
+          : await this.request(this.v1NextPath(nextLink));
+      const results = Array.isArray(data.results) ? data.results : [];
+      const items: ConfluenceFolder[] = results.map((item: any) => ({
+        version: typeof item.version?.number === "number" ? item.version.number : undefined,
+        id: String(item.id),
+        title: item.title,
+        spaceId: item.space?.id === undefined ? "" : String(item.space.id),
+        parentId: Array.isArray(item.ancestors) && item.ancestors.length > 0 ? String(item.ancestors.at(-1).id) : null,
+        url: this.buildWebUrl(item._links?.webui),
+      }));
+      return { items, next: data._links?.next || undefined };
+    });
   }
 
   /**
@@ -5051,64 +4966,31 @@ export class ConfluenceClient {
     if (scope.type === "space") {
       folders = await this.getSpaceFolders(scope.spaceKey);
     } else if (scope.type === "tree") {
-      // Get folders recursively under ancestor
       folders = await this.getFoldersInTree(scope.ancestorId);
     }
     // For single page scope, no folders to track
 
-    // Get versions for each folder
-    const results: Array<{ id: string; title: string; version: number }> = [];
-    for (const folder of folders) {
+    // The search already carries the version (measured against Cloud); only a
+    // result without one costs a request. A folder deleted since it was listed
+    // (404) is left out. Any other failure is thrown: the poller reports a
+    // folder missing from this list as deleted.
+    const results = await mapChunked(folders, LOOKUP_CONCURRENCY, async (folder) => {
       try {
-        const version = await this.getFolderVersion(folder.id);
-        results.push({ id: folder.id, title: folder.title, version });
-      } catch {
-        // Folder may have been deleted
+        return { id: folder.id, title: folder.title, version: folder.version ?? (await this.getFolderVersion(folder.id)) };
+      } catch (error) {
+        if (error instanceof ConfluenceRequestError && error.status === 404) return undefined;
+        throw error;
       }
-    }
-
-    return results;
+    });
+    return results.filter((folder) => folder !== undefined);
   }
 
   /**
-   * Get folders recursively under a parent (page or folder).
-   *
-   * Traverses the hierarchy to find all nested folders.
+   * Get all folders below a parent (page or folder), at any depth and whether
+   * they hang off a page or a folder.
    */
   async getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]> {
-    const folders: ConfluenceFolder[] = [];
-    const visited = new Set<string>();
-
-    const traverse = async (id: string) => {
-      if (visited.has(id)) return;
-      visited.add(id);
-
-      // Get direct children (can include folders)
-      let children: FolderChild[];
-      try {
-        children = await this.getPageDirectChildren(id);
-      } catch (err) {
-        // Parent may have been deleted or access denied
-        return;
-      }
-
-      for (const child of children) {
-        if (child.type === "folder") {
-          // Fetch full folder info
-          try {
-            const folder = await this.getFolder(child.id);
-            folders.push(folder);
-            // Recurse into folder
-            await traverse(child.id);
-          } catch {
-            // Folder may have been deleted
-          }
-        }
-      }
-    };
-
-    await traverse(parentId);
-    return folders;
+    return this.searchFolders(`ancestor="${escapeCqlValue(parentId)}" AND type=folder`);
   }
 
   /**

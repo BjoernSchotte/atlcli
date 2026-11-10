@@ -8,6 +8,7 @@ import {
 } from "./contracts.js";
 import type { BoundedContentProjectionV1 } from "./capability-contracts.js";
 import type { ResearchWorkspace } from "./workspace.js";
+import { sha256Hex as sha256 } from "./hash.js";
 
 export const RESEARCH_EVIDENCE_RECORD_SCHEMA_V1 = "atlcli.research-evidence-record/v1" as const;
 export const RESEARCH_EVIDENCE_CHUNK_SCHEMA_V1 = "atlcli.research-evidence-chunk/v1" as const;
@@ -262,12 +263,6 @@ function splitText(text: string): Array<{ start: number; end: number; text: stri
     start = end;
   }
   return chunks;
-}
-
-async function sha256(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function validateSource(source: ResearchSourceReferenceV1, identity: ResearchEvidenceIdentityV1): void {
@@ -526,6 +521,11 @@ export class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenceStoreV1
   readonly #workspace: ResearchWorkspace;
   #index: PersistedIndexV1 = { schema: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1, recordIds: [] };
   #loaded = false;
+  // Record ID -> canonical identity, filled as records pass through this
+  // store, so an identity lookup reads each record at most once per instance
+  // instead of re-validating the whole store on every call. The instance
+  // already owns the index the same way (see #hydrate).
+  readonly #canonicalIds = new Map<string, string>();
   #tail: Promise<void> = Promise.resolve();
   #writeFailure: unknown;
 
@@ -567,7 +567,9 @@ export class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenceStoreV1
     const contents = await this.#workspace.readFile(recordPath(id));
     if (contents === undefined) return undefined;
     try {
-      return validateRecord(JSON.parse(contents) as ResearchEvidenceRecordV1);
+      const record = validateRecord(JSON.parse(contents) as ResearchEvidenceRecordV1);
+      this.#canonicalIds.set(record.id, record.identity.canonicalId);
+      return record;
     } catch (error) {
       if (error instanceof ResearchContractError) throw error;
       invalid("Stored evidence record is not JSON.");
@@ -618,6 +620,7 @@ export class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenceStoreV1
           recordIds: [...this.#index.recordIds, validatedRecord.id].sort(),
         };
         await this.#persistIndex();
+        this.#canonicalIds.set(validatedRecord.id, validatedRecord.identity.canonicalId);
       } catch (error) {
         this.#writeFailure = error;
         throw error;
@@ -643,6 +646,8 @@ export class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenceStoreV1
       const identity = boundedText(canonicalId, "Evidence canonical identity", 1_024);
       const records: ResearchEvidenceRecordV1[] = [];
       for (const id of this.#index.recordIds) {
+        const known = this.#canonicalIds.get(id);
+        if (known !== undefined && known !== identity) continue;
         const record = await this.#readRecord(id);
         if (!record) invalid("Evidence store index references a missing record.");
         if (record.identity.canonicalId === identity) records.push(clone(record));
@@ -699,6 +704,7 @@ export class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenceStoreV1
           schema: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1,
           recordIds: this.#index.recordIds.filter((candidate) => candidate !== validatedId),
         };
+        this.#canonicalIds.delete(validatedId);
         await this.#persistIndex();
         await this.#workspace.remove(recordPath(validatedId));
         for (const chunk of record.chunkIds) await this.#workspace.remove(chunkPath(chunk));
@@ -715,6 +721,7 @@ export class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenceStoreV1
       await this.#hydrate();
       try {
         await this.#workspace.remove(ROOT_PATH);
+        this.#canonicalIds.clear();
         this.#index = { schema: RESEARCH_EVIDENCE_STORE_INDEX_SCHEMA_V1, recordIds: [] };
         this.#loaded = true;
       } catch (error) {

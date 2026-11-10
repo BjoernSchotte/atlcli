@@ -385,7 +385,6 @@ export function accessUserItems(model: Pick<AccessModel, "resources" | "users" |
 
 /** Which items a rule judges: `meta.audit.items`. */
 export type AccessItems = "resources" | "spaces" | "projects" | "pages" | "users";
-export const ACCESS_ITEMS: readonly AccessItems[] = ["resources", "spaces", "projects", "pages", "users"];
 
 export interface AccessAuditInput {
   rules: AuditRules;

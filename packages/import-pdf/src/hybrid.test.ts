@@ -175,6 +175,40 @@ describe("PDF hybrid semantic reconciliation", () => {
     expect(repairs[0]!.locator.bbox!.y).not.toBeCloseTo(repairs[1]!.locator.bbox!.y);
   });
 
+  it("reconciles a multi-page document to the pinned result", async () => {
+    // Repaired, page-fallback and repaired again: per-page lookups must see
+    // exactly their own page's evidence, including what earlier pages added.
+    // A deliberate policy change moves this digest; an indexing slip must not.
+    const adapter = await createNodePdfiumFactsAdapterV2();
+    const repaired = (await adapter.analyze(await fixture("independent-fragmented-tagged.pdf"))).facts;
+    const dispersed = (await adapter.analyze(await fixture("independent-negative-tagged.pdf"))).facts;
+    const facts = structuredClone(repaired);
+    facts.pages = [
+      repaired.pages[0]!,
+      { ...structuredClone(dispersed.pages[0]!), index: 1 },
+      { ...structuredClone(repaired.pages[0]!), index: 2 },
+    ];
+    facts.pageCount = 3;
+
+    const normalized = await normalizeHybridPdfFactsV2(facts, await digestPdfFactsV2(facts));
+    expect(normalized.pageOutcomes.map((page) => [
+      page.mode,
+      page.projectedNodeIds.length,
+      page.explicitBoundaryCount,
+      page.inferredBoundaryCount,
+      page.unresolvedBoundaryCount,
+      page.uniquelyOwnedCharacterCount,
+      page.residualReportedCharacterCount,
+      page.geometryRepairRegionCount,
+    ])).toEqual([
+      ["hybrid-repaired", 8, 25, 23, 0, 158, 0, 1],
+      ["fallback-required", 3, 18, 11, 0, 160, 91, 0],
+      ["hybrid-repaired", 8, 25, 23, 0, 158, 0, 1],
+    ]);
+    expect(normalized.semanticDigest)
+      .toBe("96c6fac62019d069219776c0b6f14dd2d8dbdc7f74c35dc3c9cb8af7c9e81b9a");
+  });
+
   it("retains page fallback for dispersed residue and closes it only when attached", async () => {
     const reported = await review("independent-negative-tagged.pdf", { scanPolicy: "report" });
     expect(reported.pages[0]).toMatchObject({

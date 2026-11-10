@@ -44,6 +44,9 @@
     "astro": ">=7.1.6 <8"
   },
   "devDependencies": {
+    "@atlcli/confluence": "workspace:*",
+    "@atlcli/export-macros": "workspace:*",
+    "@atlcli/web-publish-astro": "workspace:*",
     "@playwright/test": "1.65.0"
   }
 }

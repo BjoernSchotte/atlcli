@@ -494,14 +494,6 @@ export declare function buildResearchCql(scope: ResearchScopeV1, query: Research
 // export: buildResearchJql
 export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
-// export: buildResearchTurnContextV1
-export declare function buildResearchTurnContextV1(input: {
-    brief: ResearchBriefV1;
-    graph: ResearchGraphV1;
-    turn?: ResearchSessionTurnV1;
-    lineage: ResearchMessageLineageStoreV1;
-}): Promise<ResearchTurnContextV1>;
-
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -934,12 +926,6 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
-// export: CHAT_RELEASE_GATE_SCHEMA_V1
-export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
-
-// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
-export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
-
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -1355,7 +1341,6 @@ export declare class ChatCandidateLedgerControllerV1 {
     isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
-    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
     finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
     assessment(): ChatRetrievalAssessmentV1;
 }
@@ -1863,43 +1848,6 @@ export interface ChatRelationshipTraversalProposalV1 {
     maxDepth: 1;
 }
 
-// export: ChatReleaseGateFailureCodeV1
-export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
-
-// export: ChatReleaseGateFailureV1
-export interface ChatReleaseGateFailureV1 {
-    code: ChatReleaseGateFailureCodeV1;
-    scenarioIds: string[];
-}
-
-// export: ChatReleaseGatePolicyV1
-export interface ChatReleaseGatePolicyV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}
-
-// export: ChatReleaseGateResultV1
-export interface ChatReleaseGateResultV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    passed: boolean;
-    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
-    scenarioCount: number;
-    simpleScenarioCount: number;
-    complexScenarioCount: number;
-    failures: ChatReleaseGateFailureV1[];
-    aggregate: {
-        legacyQuality: number;
-        autoQuality: number;
-        quickSimpleQuality: number;
-        deepSimpleQuality: number;
-        quickComplexQuality: number;
-        deepComplexQuality: number;
-    };
-}
-
 // export: ChatResolvedRetrievalEntityV1
 export interface ChatResolvedRetrievalEntityV1 {
     bindingId: string;
@@ -2002,13 +1950,6 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
-}
-
-// export: ChatRetrievalTraceConformanceV1
-export interface ChatRetrievalTraceConformanceV1 {
-    plan: string;
-    candidateLedger: string;
-    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -2638,12 +2579,6 @@ export declare function createChatRetrievalPlanV1(input: {
     now?: () => number;
 }): ChatRetrievalPlanV1;
 
-// export: createChatSessionStateV1
-export declare function createChatSessionStateV1(input: {
-    conversationId: string;
-    qualityPolicy: ChatQualityPolicyV1;
-}): ChatSessionStateV1;
-
 // export: createChatSessionV1
 export declare function createChatSessionV1(input: {
     conversationId: string;
@@ -2847,9 +2782,6 @@ export declare function createResearchSessionV1(input: {
     leaseExpiresAt: string;
 }): ResearchSessionV1;
 
-// export: createRestResearchBroker
-export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
-
 // export: createRestResearchProviders
 export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
 
@@ -2885,15 +2817,6 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
-
-// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
-export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
-    schema: "atlcli.chat-release-gate/v1";
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}>;
 
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
@@ -2990,15 +2913,6 @@ export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
-
-// export: evaluateChatReleaseGatesV1
-export declare function evaluateChatReleaseGatesV1(input: {
-    cases: readonly {
-        scenario: ChatEvaluationScenarioV1;
-        comparison: ChatReleaseEvaluationComparisonResultV1;
-    }[];
-    policy?: ChatReleaseGatePolicyV1;
-}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -3244,9 +3158,6 @@ export declare function isChatPresentationStreamEventV1(value: unknown): value i
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
-// export: isResearchBriefClarificationRequiredV1
-export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
-
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
@@ -3261,9 +3172,6 @@ export declare function isResearchReconciliationReferenceKnownV1(reference: Rese
 
 // export: isResearchReconciliationTargetKnownV1
 export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
-
-// export: isResearchScopeClarificationRequiredV1
-export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -3835,9 +3743,6 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
     language?: ResearchReportLanguageV1;
 }): string;
 
-// export: renderResearchTurnContextV1
-export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
-
 // export: requestChatSteeringV1
 export declare function requestChatSteeringV1(input: {
     state: ChatInteractionStateV1;
@@ -4042,31 +3947,11 @@ export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-p
 // export: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-revision-proposal/v1";
 
-// export: RESEARCH_GRAPH_ROLES
-export declare const RESEARCH_GRAPH_ROLES: readonly [
-    "focused-researcher",
-    "document-distiller",
-    "contradiction-verifier",
-    "coverage-moderator",
-    "outline-planner",
-    "reconciler",
-    "synthesizer"
-];
-
 // export: RESEARCH_GRAPH_SCHEMA_V1
 export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
-
-// export: RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1: "atlcli.research-message-lineage-event/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-message-lineage-index/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
 // export: RESEARCH_MODEL_PROFILE_IDS_V1
 export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
@@ -4455,12 +4340,6 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "research.candidate.rank"
 ];
 
-// export: RESEARCH_TURN_CONTEXT_SCHEMA_V1
-export declare const RESEARCH_TURN_CONTEXT_SCHEMA_V1: "atlcli.research-turn-context/v1";
-
-// export: RESEARCH_WORKSPACE_SCHEMA_V1
-export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
-
 // export: ResearchAcceptedPacketReductionV1
 export interface ResearchAcceptedPacketReductionV1 {
     attempt: ResearchTaskAttemptV1;
@@ -4752,9 +4631,6 @@ export interface ResearchClarificationQuestionV1 {
     candidateIds?: string[];
 }
 
-// export: ResearchClarificationRequiredV1
-export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
-
 // export: ResearchClarificationReviewResolutionInputV1
 export interface ResearchClarificationReviewResolutionInputV1 {
     answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
@@ -4847,31 +4723,6 @@ export interface ResearchCursorVaultOptions {
     ttlMs?: number;
 }
 
-// export: ResearchDataStoreConformanceFactoryV1
-export interface ResearchDataStoreConformanceFactoryV1 {
-    create(input: {
-        sessionId: string;
-    }): ResearchDataStoreConformanceWorkspacesV1 | Promise<ResearchDataStoreConformanceWorkspacesV1>;
-    dispose?(workspaces: ResearchDataStoreConformanceWorkspacesV1): void | Promise<void>;
-}
-
-// export: ResearchDataStoreConformanceResultV1
-export interface ResearchDataStoreConformanceResultV1 {
-    evidencePublicationAtomicity: "passed";
-    claimPublicationAtomicity: "passed";
-    outlinePublicationAtomicity: "passed";
-    spanAndBindingValidation: "passed";
-    evidenceDrivenInvalidation: "passed";
-    retentionDeletion: "passed";
-}
-
-// export: ResearchDataStoreConformanceWorkspacesV1
-export interface ResearchDataStoreConformanceWorkspacesV1 {
-    evidence: ResearchWorkspace;
-    claims: ResearchWorkspace;
-    outline: ResearchWorkspace;
-}
-
 // export: ResearchDetailEvidenceV1
 export interface ResearchDetailEvidenceV1 {
     source: ResearchSourceReferenceV1;
@@ -4935,10 +4786,6 @@ export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "can
 
 // export: ResearchDynamicAgentDraftV1
 export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1>;
-
-// export: ResearchEffortV1
-// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
 
 // export: ResearchEntityKind
 export type ResearchEntityKind = "jira" | "wiki";
@@ -5563,96 +5410,6 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
-// export: ResearchMessageLineageEventKindV1
-export type ResearchMessageLineageEventKindV1 = "message" | "host_event";
-
-// export: ResearchMessageLineageEventV1
-export interface ResearchMessageLineageEventV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1;
-    id: string;
-    batchId: string;
-    ordinal: number;
-    kind: ResearchMessageLineageEventKindV1;
-    source: "langgraph" | "host";
-    createdAt: string;
-    payloadJson: string;
-    payloadHash: string;
-}
-
-// export: ResearchMessageLineageLinksV1
-export interface ResearchMessageLineageLinksV1 {
-    turnId?: string;
-    graphRevision?: number;
-    packetRefs?: string[];
-    artifactIds?: string[];
-}
-
-// export: ResearchMessageLineageStoreV1
-export interface ResearchMessageLineageStoreV1 {
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
-}
-
-// export: ResearchMessageLineageSummaryKindV1
-export type ResearchMessageLineageSummaryKindV1 = "turn" | "branch" | "session";
-
-// export: ResearchMessageLineageSummaryV1
-export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1;
-    id: string;
-    kind: ResearchMessageLineageSummaryKindV1;
-    createdAt: string;
-    author: "host" | "model";
-    nonAuthoritative: true;
-    summary: string;
-    sourceEventIds: string[];
-    parentSummaryIds: string[];
-}
-
 // export: ResearchModelBudgetCapacityV1
 export interface ResearchModelBudgetCapacityV1 {
     calls: number;
@@ -6263,10 +6020,6 @@ export interface ResearchReconciliationInputV1 {
     };
 }
 
-// export: ResearchReconciliationModeV1
-// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
-
 // export: ResearchReconciliationTriggerV1
 export type ResearchReconciliationTriggerV1 = "multi_branch" | "low_coverage" | "contradiction" | "negative_claim" | "high_impact_claim" | "stale_or_truncated" | "user_requested";
 
@@ -6741,12 +6494,6 @@ export interface ResearchScopeCatalogProvidersV1 {
     }): Promise<ResearchScopeCandidateV1 | undefined>;
 }
 
-// export: ResearchScopeClarificationPlanningActionV1
-export interface ResearchScopeClarificationPlanningActionV1 {
-    sessionId: string;
-    revision: number;
-}
-
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
@@ -6759,13 +6506,6 @@ export interface ResearchScopeClarificationRequiredV1 {
     productHint?: "jira" | "confluence";
     entityKindHint?: "project" | "space" | "issue" | "page";
     rerunGuidance: string[];
-}
-
-// export: ResearchScopeClarificationReviewActionV1
-export interface ResearchScopeClarificationReviewActionV1 {
-    sessionId: string;
-    revision: number;
-    selection: ResearchScopeCandidateSelectionV1;
 }
 
 // export: ResearchScopeClarificationReviewResolutionV1
@@ -7454,25 +7194,6 @@ export interface ResearchSessionSteeringV1 {
     planDiff?: ResearchPlanDiffV1;
 }
 
-// export: ResearchSessionStoreConformanceFactoryV1
-export interface ResearchSessionStoreConformanceFactoryV1 {
-    create(options?: {
-        failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
-}
-
-// export: ResearchSessionStoreConformanceResultV1
-export interface ResearchSessionStoreConformanceResultV1 {
-    aggregateCommit: "passed";
-    staleCas: "passed";
-    concurrentCas: "passed";
-    failureAtomicity: "passed";
-    packetPublicationAtomicity: "passed";
-    clarificationIdentityFencing: "passed";
-    scopeCandidateIdentityFencing: "passed";
-    scopeProposalIdentityFencing: "passed";
-}
-
 // export: ResearchSessionStoreFailureContextV1
 export interface ResearchSessionStoreFailureContextV1 {
     updateKind?: ResearchSessionUpdateV1["kind"];
@@ -7935,49 +7656,6 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
-// export: ResearchTurnContextV1
-export interface ResearchTurnContextV1 {
-    schema: typeof RESEARCH_TURN_CONTEXT_SCHEMA_V1;
-    brief: {
-        revision: number;
-        objective: string;
-        asOf: string;
-        coverageTargetIds: string[];
-        scopeBindingIds: string[];
-    };
-    graph: {
-        revision: number;
-        status: ResearchGraphV1["status"];
-        unresolvedNodes: Array<{
-            id: string;
-            roleId?: string;
-            kind: ResearchGraphNodeV1["kind"];
-            status: ResearchGraphNodeV1["status"];
-            dependencies: string[];
-            objective: string;
-        }>;
-    };
-    references: {
-        packetRefs: string[];
-        artifactIds: string[];
-    };
-    latestSummary?: {
-        id: string;
-        kind: "turn" | "branch" | "session";
-        author: "host" | "model";
-        nonAuthoritative: true;
-        createdAt: string;
-        summary: string;
-        sourceEventIds: string[];
-    };
-    recentInteractionTail: Array<{
-        eventId: string;
-        createdAt: string;
-        turnId?: string;
-        content: string;
-    }>;
-}
-
 // export: ResearchUncommittedDispatchOutcomeV1
 export interface ResearchUncommittedDispatchOutcomeV1 {
     taskId: string;
@@ -8200,15 +7878,6 @@ export declare function validateResearchTaskAdmissionV1(input: {
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
-// export: verifyChatRetrievalTraceConformanceV1
-export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
-
-// export: verifyResearchDataStoreConformanceV1
-export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
-
-// export: verifyResearchSessionStoreConformanceV1
-export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
-
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
@@ -8315,58 +7984,6 @@ export declare class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenc
     chunks(id: string): Promise<ResearchEvidenceChunkV1[]>;
     remove(id: string): Promise<boolean>;
     clear(): Promise<void>;
-}
-
-// export: WorkspaceResearchMessageLineageStoreV1
-export declare class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLineageStoreV1 {
-    #private;
-    constructor(workspace: ResearchWorkspace);
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
 }
 
 // export: WorkspaceResearchOutlineStoreV1
@@ -8883,14 +8500,6 @@ export declare function buildResearchCql(scope: ResearchScopeV1, query: Research
 // export: buildResearchJql
 export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
-// export: buildResearchTurnContextV1
-export declare function buildResearchTurnContextV1(input: {
-    brief: ResearchBriefV1;
-    graph: ResearchGraphV1;
-    turn?: ResearchSessionTurnV1;
-    lineage: ResearchMessageLineageStoreV1;
-}): Promise<ResearchTurnContextV1>;
-
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -9323,12 +8932,6 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
-// export: CHAT_RELEASE_GATE_SCHEMA_V1
-export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
-
-// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
-export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
-
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -9744,7 +9347,6 @@ export declare class ChatCandidateLedgerControllerV1 {
     isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
-    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
     finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
     assessment(): ChatRetrievalAssessmentV1;
 }
@@ -10252,43 +9854,6 @@ export interface ChatRelationshipTraversalProposalV1 {
     maxDepth: 1;
 }
 
-// export: ChatReleaseGateFailureCodeV1
-export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
-
-// export: ChatReleaseGateFailureV1
-export interface ChatReleaseGateFailureV1 {
-    code: ChatReleaseGateFailureCodeV1;
-    scenarioIds: string[];
-}
-
-// export: ChatReleaseGatePolicyV1
-export interface ChatReleaseGatePolicyV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}
-
-// export: ChatReleaseGateResultV1
-export interface ChatReleaseGateResultV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    passed: boolean;
-    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
-    scenarioCount: number;
-    simpleScenarioCount: number;
-    complexScenarioCount: number;
-    failures: ChatReleaseGateFailureV1[];
-    aggregate: {
-        legacyQuality: number;
-        autoQuality: number;
-        quickSimpleQuality: number;
-        deepSimpleQuality: number;
-        quickComplexQuality: number;
-        deepComplexQuality: number;
-    };
-}
-
 // export: ChatResolvedRetrievalEntityV1
 export interface ChatResolvedRetrievalEntityV1 {
     bindingId: string;
@@ -10391,13 +9956,6 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
-}
-
-// export: ChatRetrievalTraceConformanceV1
-export interface ChatRetrievalTraceConformanceV1 {
-    plan: string;
-    candidateLedger: string;
-    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -11027,12 +10585,6 @@ export declare function createChatRetrievalPlanV1(input: {
     now?: () => number;
 }): ChatRetrievalPlanV1;
 
-// export: createChatSessionStateV1
-export declare function createChatSessionStateV1(input: {
-    conversationId: string;
-    qualityPolicy: ChatQualityPolicyV1;
-}): ChatSessionStateV1;
-
 // export: createChatSessionV1
 export declare function createChatSessionV1(input: {
     conversationId: string;
@@ -11266,15 +10818,6 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
 
-// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
-export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
-    schema: "atlcli.chat-release-gate/v1";
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}>;
-
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
 
@@ -11370,15 +10913,6 @@ export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
-
-// export: evaluateChatReleaseGatesV1
-export declare function evaluateChatReleaseGatesV1(input: {
-    cases: readonly {
-        scenario: ChatEvaluationScenarioV1;
-        comparison: ChatReleaseEvaluationComparisonResultV1;
-    }[];
-    policy?: ChatReleaseGatePolicyV1;
-}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -11624,9 +11158,6 @@ export declare function isChatPresentationStreamEventV1(value: unknown): value i
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
-// export: isResearchBriefClarificationRequiredV1
-export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
-
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
@@ -11641,9 +11172,6 @@ export declare function isResearchReconciliationReferenceKnownV1(reference: Rese
 
 // export: isResearchReconciliationTargetKnownV1
 export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
-
-// export: isResearchScopeClarificationRequiredV1
-export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -12215,9 +11743,6 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
     language?: ResearchReportLanguageV1;
 }): string;
 
-// export: renderResearchTurnContextV1
-export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
-
 // export: requestChatSteeringV1
 export declare function requestChatSteeringV1(input: {
     state: ChatInteractionStateV1;
@@ -12422,31 +11947,11 @@ export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-p
 // export: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-revision-proposal/v1";
 
-// export: RESEARCH_GRAPH_ROLES
-export declare const RESEARCH_GRAPH_ROLES: readonly [
-    "focused-researcher",
-    "document-distiller",
-    "contradiction-verifier",
-    "coverage-moderator",
-    "outline-planner",
-    "reconciler",
-    "synthesizer"
-];
-
 // export: RESEARCH_GRAPH_SCHEMA_V1
 export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
-
-// export: RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1: "atlcli.research-message-lineage-event/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-message-lineage-index/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
 // export: RESEARCH_MODEL_PROFILE_IDS_V1
 export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
@@ -12835,12 +12340,6 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "research.candidate.rank"
 ];
 
-// export: RESEARCH_TURN_CONTEXT_SCHEMA_V1
-export declare const RESEARCH_TURN_CONTEXT_SCHEMA_V1: "atlcli.research-turn-context/v1";
-
-// export: RESEARCH_WORKSPACE_SCHEMA_V1
-export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
-
 // export: ResearchAcceptedPacketReductionV1
 export interface ResearchAcceptedPacketReductionV1 {
     attempt: ResearchTaskAttemptV1;
@@ -13132,9 +12631,6 @@ export interface ResearchClarificationQuestionV1 {
     candidateIds?: string[];
 }
 
-// export: ResearchClarificationRequiredV1
-export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
-
 // export: ResearchClarificationReviewResolutionInputV1
 export interface ResearchClarificationReviewResolutionInputV1 {
     answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
@@ -13227,31 +12723,6 @@ export interface ResearchCursorVaultOptions {
     ttlMs?: number;
 }
 
-// export: ResearchDataStoreConformanceFactoryV1
-export interface ResearchDataStoreConformanceFactoryV1 {
-    create(input: {
-        sessionId: string;
-    }): ResearchDataStoreConformanceWorkspacesV1 | Promise<ResearchDataStoreConformanceWorkspacesV1>;
-    dispose?(workspaces: ResearchDataStoreConformanceWorkspacesV1): void | Promise<void>;
-}
-
-// export: ResearchDataStoreConformanceResultV1
-export interface ResearchDataStoreConformanceResultV1 {
-    evidencePublicationAtomicity: "passed";
-    claimPublicationAtomicity: "passed";
-    outlinePublicationAtomicity: "passed";
-    spanAndBindingValidation: "passed";
-    evidenceDrivenInvalidation: "passed";
-    retentionDeletion: "passed";
-}
-
-// export: ResearchDataStoreConformanceWorkspacesV1
-export interface ResearchDataStoreConformanceWorkspacesV1 {
-    evidence: ResearchWorkspace;
-    claims: ResearchWorkspace;
-    outline: ResearchWorkspace;
-}
-
 // export: ResearchDetailEvidenceV1
 export interface ResearchDetailEvidenceV1 {
     source: ResearchSourceReferenceV1;
@@ -13315,10 +12786,6 @@ export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "can
 
 // export: ResearchDynamicAgentDraftV1
 export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1>;
-
-// export: ResearchEffortV1
-// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
 
 // export: ResearchEntityKind
 export type ResearchEntityKind = "jira" | "wiki";
@@ -13943,96 +13410,6 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
-// export: ResearchMessageLineageEventKindV1
-export type ResearchMessageLineageEventKindV1 = "message" | "host_event";
-
-// export: ResearchMessageLineageEventV1
-export interface ResearchMessageLineageEventV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1;
-    id: string;
-    batchId: string;
-    ordinal: number;
-    kind: ResearchMessageLineageEventKindV1;
-    source: "langgraph" | "host";
-    createdAt: string;
-    payloadJson: string;
-    payloadHash: string;
-}
-
-// export: ResearchMessageLineageLinksV1
-export interface ResearchMessageLineageLinksV1 {
-    turnId?: string;
-    graphRevision?: number;
-    packetRefs?: string[];
-    artifactIds?: string[];
-}
-
-// export: ResearchMessageLineageStoreV1
-export interface ResearchMessageLineageStoreV1 {
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
-}
-
-// export: ResearchMessageLineageSummaryKindV1
-export type ResearchMessageLineageSummaryKindV1 = "turn" | "branch" | "session";
-
-// export: ResearchMessageLineageSummaryV1
-export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1;
-    id: string;
-    kind: ResearchMessageLineageSummaryKindV1;
-    createdAt: string;
-    author: "host" | "model";
-    nonAuthoritative: true;
-    summary: string;
-    sourceEventIds: string[];
-    parentSummaryIds: string[];
-}
-
 // export: ResearchModelBudgetCapacityV1
 export interface ResearchModelBudgetCapacityV1 {
     calls: number;
@@ -14643,10 +14020,6 @@ export interface ResearchReconciliationInputV1 {
     };
 }
 
-// export: ResearchReconciliationModeV1
-// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
-
 // export: ResearchReconciliationTriggerV1
 export type ResearchReconciliationTriggerV1 = "multi_branch" | "low_coverage" | "contradiction" | "negative_claim" | "high_impact_claim" | "stale_or_truncated" | "user_requested";
 
@@ -15121,12 +14494,6 @@ export interface ResearchScopeCatalogProvidersV1 {
     }): Promise<ResearchScopeCandidateV1 | undefined>;
 }
 
-// export: ResearchScopeClarificationPlanningActionV1
-export interface ResearchScopeClarificationPlanningActionV1 {
-    sessionId: string;
-    revision: number;
-}
-
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
@@ -15139,13 +14506,6 @@ export interface ResearchScopeClarificationRequiredV1 {
     productHint?: "jira" | "confluence";
     entityKindHint?: "project" | "space" | "issue" | "page";
     rerunGuidance: string[];
-}
-
-// export: ResearchScopeClarificationReviewActionV1
-export interface ResearchScopeClarificationReviewActionV1 {
-    sessionId: string;
-    revision: number;
-    selection: ResearchScopeCandidateSelectionV1;
 }
 
 // export: ResearchScopeClarificationReviewResolutionV1
@@ -15834,25 +15194,6 @@ export interface ResearchSessionSteeringV1 {
     planDiff?: ResearchPlanDiffV1;
 }
 
-// export: ResearchSessionStoreConformanceFactoryV1
-export interface ResearchSessionStoreConformanceFactoryV1 {
-    create(options?: {
-        failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
-}
-
-// export: ResearchSessionStoreConformanceResultV1
-export interface ResearchSessionStoreConformanceResultV1 {
-    aggregateCommit: "passed";
-    staleCas: "passed";
-    concurrentCas: "passed";
-    failureAtomicity: "passed";
-    packetPublicationAtomicity: "passed";
-    clarificationIdentityFencing: "passed";
-    scopeCandidateIdentityFencing: "passed";
-    scopeProposalIdentityFencing: "passed";
-}
-
 // export: ResearchSessionStoreFailureContextV1
 export interface ResearchSessionStoreFailureContextV1 {
     updateKind?: ResearchSessionUpdateV1["kind"];
@@ -16315,49 +15656,6 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
-// export: ResearchTurnContextV1
-export interface ResearchTurnContextV1 {
-    schema: typeof RESEARCH_TURN_CONTEXT_SCHEMA_V1;
-    brief: {
-        revision: number;
-        objective: string;
-        asOf: string;
-        coverageTargetIds: string[];
-        scopeBindingIds: string[];
-    };
-    graph: {
-        revision: number;
-        status: ResearchGraphV1["status"];
-        unresolvedNodes: Array<{
-            id: string;
-            roleId?: string;
-            kind: ResearchGraphNodeV1["kind"];
-            status: ResearchGraphNodeV1["status"];
-            dependencies: string[];
-            objective: string;
-        }>;
-    };
-    references: {
-        packetRefs: string[];
-        artifactIds: string[];
-    };
-    latestSummary?: {
-        id: string;
-        kind: "turn" | "branch" | "session";
-        author: "host" | "model";
-        nonAuthoritative: true;
-        createdAt: string;
-        summary: string;
-        sourceEventIds: string[];
-    };
-    recentInteractionTail: Array<{
-        eventId: string;
-        createdAt: string;
-        turnId?: string;
-        content: string;
-    }>;
-}
-
 // export: ResearchUncommittedDispatchOutcomeV1
 export interface ResearchUncommittedDispatchOutcomeV1 {
     taskId: string;
@@ -16569,15 +15867,6 @@ export declare function validateResearchTaskAdmissionV1(input: {
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
-// export: verifyChatRetrievalTraceConformanceV1
-export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
-
-// export: verifyResearchDataStoreConformanceV1
-export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
-
-// export: verifyResearchSessionStoreConformanceV1
-export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
-
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
@@ -16684,58 +15973,6 @@ export declare class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenc
     chunks(id: string): Promise<ResearchEvidenceChunkV1[]>;
     remove(id: string): Promise<boolean>;
     clear(): Promise<void>;
-}
-
-// export: WorkspaceResearchMessageLineageStoreV1
-export declare class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLineageStoreV1 {
-    #private;
-    constructor(workspace: ResearchWorkspace);
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
 }
 
 // export: WorkspaceResearchOutlineStoreV1
@@ -17252,14 +16489,6 @@ export declare function buildResearchCql(scope: ResearchScopeV1, query: Research
 // export: buildResearchJql
 export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
-// export: buildResearchTurnContextV1
-export declare function buildResearchTurnContextV1(input: {
-    brief: ResearchBriefV1;
-    graph: ResearchGraphV1;
-    turn?: ResearchSessionTurnV1;
-    lineage: ResearchMessageLineageStoreV1;
-}): Promise<ResearchTurnContextV1>;
-
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -17692,12 +16921,6 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
-// export: CHAT_RELEASE_GATE_SCHEMA_V1
-export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
-
-// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
-export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
-
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -18113,7 +17336,6 @@ export declare class ChatCandidateLedgerControllerV1 {
     isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
-    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
     finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
     assessment(): ChatRetrievalAssessmentV1;
 }
@@ -18621,43 +17843,6 @@ export interface ChatRelationshipTraversalProposalV1 {
     maxDepth: 1;
 }
 
-// export: ChatReleaseGateFailureCodeV1
-export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
-
-// export: ChatReleaseGateFailureV1
-export interface ChatReleaseGateFailureV1 {
-    code: ChatReleaseGateFailureCodeV1;
-    scenarioIds: string[];
-}
-
-// export: ChatReleaseGatePolicyV1
-export interface ChatReleaseGatePolicyV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}
-
-// export: ChatReleaseGateResultV1
-export interface ChatReleaseGateResultV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    passed: boolean;
-    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
-    scenarioCount: number;
-    simpleScenarioCount: number;
-    complexScenarioCount: number;
-    failures: ChatReleaseGateFailureV1[];
-    aggregate: {
-        legacyQuality: number;
-        autoQuality: number;
-        quickSimpleQuality: number;
-        deepSimpleQuality: number;
-        quickComplexQuality: number;
-        deepComplexQuality: number;
-    };
-}
-
 // export: ChatResolvedRetrievalEntityV1
 export interface ChatResolvedRetrievalEntityV1 {
     bindingId: string;
@@ -18760,13 +17945,6 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
-}
-
-// export: ChatRetrievalTraceConformanceV1
-export interface ChatRetrievalTraceConformanceV1 {
-    plan: string;
-    candidateLedger: string;
-    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -19396,12 +18574,6 @@ export declare function createChatRetrievalPlanV1(input: {
     now?: () => number;
 }): ChatRetrievalPlanV1;
 
-// export: createChatSessionStateV1
-export declare function createChatSessionStateV1(input: {
-    conversationId: string;
-    qualityPolicy: ChatQualityPolicyV1;
-}): ChatSessionStateV1;
-
 // export: createChatSessionV1
 export declare function createChatSessionV1(input: {
     conversationId: string;
@@ -19605,9 +18777,6 @@ export declare function createResearchSessionV1(input: {
     leaseExpiresAt: string;
 }): ResearchSessionV1;
 
-// export: createRestResearchBroker
-export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
-
 // export: createRestResearchProviders
 export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
 
@@ -19643,15 +18812,6 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
-
-// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
-export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
-    schema: "atlcli.chat-release-gate/v1";
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}>;
 
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
@@ -19748,15 +18908,6 @@ export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
-
-// export: evaluateChatReleaseGatesV1
-export declare function evaluateChatReleaseGatesV1(input: {
-    cases: readonly {
-        scenario: ChatEvaluationScenarioV1;
-        comparison: ChatReleaseEvaluationComparisonResultV1;
-    }[];
-    policy?: ChatReleaseGatePolicyV1;
-}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -20002,9 +19153,6 @@ export declare function isChatPresentationStreamEventV1(value: unknown): value i
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
-// export: isResearchBriefClarificationRequiredV1
-export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
-
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
@@ -20019,9 +19167,6 @@ export declare function isResearchReconciliationReferenceKnownV1(reference: Rese
 
 // export: isResearchReconciliationTargetKnownV1
 export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
-
-// export: isResearchScopeClarificationRequiredV1
-export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -20593,9 +19738,6 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
     language?: ResearchReportLanguageV1;
 }): string;
 
-// export: renderResearchTurnContextV1
-export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
-
 // export: requestChatSteeringV1
 export declare function requestChatSteeringV1(input: {
     state: ChatInteractionStateV1;
@@ -20800,31 +19942,11 @@ export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-p
 // export: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-revision-proposal/v1";
 
-// export: RESEARCH_GRAPH_ROLES
-export declare const RESEARCH_GRAPH_ROLES: readonly [
-    "focused-researcher",
-    "document-distiller",
-    "contradiction-verifier",
-    "coverage-moderator",
-    "outline-planner",
-    "reconciler",
-    "synthesizer"
-];
-
 // export: RESEARCH_GRAPH_SCHEMA_V1
 export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
-
-// export: RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1: "atlcli.research-message-lineage-event/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-message-lineage-index/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
 // export: RESEARCH_MODEL_PROFILE_IDS_V1
 export declare const RESEARCH_MODEL_PROFILE_IDS_V1: readonly [
@@ -21213,12 +20335,6 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "research.candidate.rank"
 ];
 
-// export: RESEARCH_TURN_CONTEXT_SCHEMA_V1
-export declare const RESEARCH_TURN_CONTEXT_SCHEMA_V1: "atlcli.research-turn-context/v1";
-
-// export: RESEARCH_WORKSPACE_SCHEMA_V1
-export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
-
 // export: ResearchAcceptedPacketReductionV1
 export interface ResearchAcceptedPacketReductionV1 {
     attempt: ResearchTaskAttemptV1;
@@ -21510,9 +20626,6 @@ export interface ResearchClarificationQuestionV1 {
     candidateIds?: string[];
 }
 
-// export: ResearchClarificationRequiredV1
-export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
-
 // export: ResearchClarificationReviewResolutionInputV1
 export interface ResearchClarificationReviewResolutionInputV1 {
     answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
@@ -21605,31 +20718,6 @@ export interface ResearchCursorVaultOptions {
     ttlMs?: number;
 }
 
-// export: ResearchDataStoreConformanceFactoryV1
-export interface ResearchDataStoreConformanceFactoryV1 {
-    create(input: {
-        sessionId: string;
-    }): ResearchDataStoreConformanceWorkspacesV1 | Promise<ResearchDataStoreConformanceWorkspacesV1>;
-    dispose?(workspaces: ResearchDataStoreConformanceWorkspacesV1): void | Promise<void>;
-}
-
-// export: ResearchDataStoreConformanceResultV1
-export interface ResearchDataStoreConformanceResultV1 {
-    evidencePublicationAtomicity: "passed";
-    claimPublicationAtomicity: "passed";
-    outlinePublicationAtomicity: "passed";
-    spanAndBindingValidation: "passed";
-    evidenceDrivenInvalidation: "passed";
-    retentionDeletion: "passed";
-}
-
-// export: ResearchDataStoreConformanceWorkspacesV1
-export interface ResearchDataStoreConformanceWorkspacesV1 {
-    evidence: ResearchWorkspace;
-    claims: ResearchWorkspace;
-    outline: ResearchWorkspace;
-}
-
 // export: ResearchDetailEvidenceV1
 export interface ResearchDetailEvidenceV1 {
     source: ResearchSourceReferenceV1;
@@ -21693,10 +20781,6 @@ export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "can
 
 // export: ResearchDynamicAgentDraftV1
 export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1>;
-
-// export: ResearchEffortV1
-// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
 
 // export: ResearchEntityKind
 export type ResearchEntityKind = "jira" | "wiki";
@@ -22321,96 +21405,6 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
-// export: ResearchMessageLineageEventKindV1
-export type ResearchMessageLineageEventKindV1 = "message" | "host_event";
-
-// export: ResearchMessageLineageEventV1
-export interface ResearchMessageLineageEventV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1;
-    id: string;
-    batchId: string;
-    ordinal: number;
-    kind: ResearchMessageLineageEventKindV1;
-    source: "langgraph" | "host";
-    createdAt: string;
-    payloadJson: string;
-    payloadHash: string;
-}
-
-// export: ResearchMessageLineageLinksV1
-export interface ResearchMessageLineageLinksV1 {
-    turnId?: string;
-    graphRevision?: number;
-    packetRefs?: string[];
-    artifactIds?: string[];
-}
-
-// export: ResearchMessageLineageStoreV1
-export interface ResearchMessageLineageStoreV1 {
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
-}
-
-// export: ResearchMessageLineageSummaryKindV1
-export type ResearchMessageLineageSummaryKindV1 = "turn" | "branch" | "session";
-
-// export: ResearchMessageLineageSummaryV1
-export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1;
-    id: string;
-    kind: ResearchMessageLineageSummaryKindV1;
-    createdAt: string;
-    author: "host" | "model";
-    nonAuthoritative: true;
-    summary: string;
-    sourceEventIds: string[];
-    parentSummaryIds: string[];
-}
-
 // export: ResearchModelBudgetCapacityV1
 export interface ResearchModelBudgetCapacityV1 {
     calls: number;
@@ -23021,10 +22015,6 @@ export interface ResearchReconciliationInputV1 {
     };
 }
 
-// export: ResearchReconciliationModeV1
-// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
-
 // export: ResearchReconciliationTriggerV1
 export type ResearchReconciliationTriggerV1 = "multi_branch" | "low_coverage" | "contradiction" | "negative_claim" | "high_impact_claim" | "stale_or_truncated" | "user_requested";
 
@@ -23499,12 +22489,6 @@ export interface ResearchScopeCatalogProvidersV1 {
     }): Promise<ResearchScopeCandidateV1 | undefined>;
 }
 
-// export: ResearchScopeClarificationPlanningActionV1
-export interface ResearchScopeClarificationPlanningActionV1 {
-    sessionId: string;
-    revision: number;
-}
-
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
@@ -23517,13 +22501,6 @@ export interface ResearchScopeClarificationRequiredV1 {
     productHint?: "jira" | "confluence";
     entityKindHint?: "project" | "space" | "issue" | "page";
     rerunGuidance: string[];
-}
-
-// export: ResearchScopeClarificationReviewActionV1
-export interface ResearchScopeClarificationReviewActionV1 {
-    sessionId: string;
-    revision: number;
-    selection: ResearchScopeCandidateSelectionV1;
 }
 
 // export: ResearchScopeClarificationReviewResolutionV1
@@ -24212,25 +23189,6 @@ export interface ResearchSessionSteeringV1 {
     planDiff?: ResearchPlanDiffV1;
 }
 
-// export: ResearchSessionStoreConformanceFactoryV1
-export interface ResearchSessionStoreConformanceFactoryV1 {
-    create(options?: {
-        failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
-}
-
-// export: ResearchSessionStoreConformanceResultV1
-export interface ResearchSessionStoreConformanceResultV1 {
-    aggregateCommit: "passed";
-    staleCas: "passed";
-    concurrentCas: "passed";
-    failureAtomicity: "passed";
-    packetPublicationAtomicity: "passed";
-    clarificationIdentityFencing: "passed";
-    scopeCandidateIdentityFencing: "passed";
-    scopeProposalIdentityFencing: "passed";
-}
-
 // export: ResearchSessionStoreFailureContextV1
 export interface ResearchSessionStoreFailureContextV1 {
     updateKind?: ResearchSessionUpdateV1["kind"];
@@ -24693,49 +23651,6 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
-// export: ResearchTurnContextV1
-export interface ResearchTurnContextV1 {
-    schema: typeof RESEARCH_TURN_CONTEXT_SCHEMA_V1;
-    brief: {
-        revision: number;
-        objective: string;
-        asOf: string;
-        coverageTargetIds: string[];
-        scopeBindingIds: string[];
-    };
-    graph: {
-        revision: number;
-        status: ResearchGraphV1["status"];
-        unresolvedNodes: Array<{
-            id: string;
-            roleId?: string;
-            kind: ResearchGraphNodeV1["kind"];
-            status: ResearchGraphNodeV1["status"];
-            dependencies: string[];
-            objective: string;
-        }>;
-    };
-    references: {
-        packetRefs: string[];
-        artifactIds: string[];
-    };
-    latestSummary?: {
-        id: string;
-        kind: "turn" | "branch" | "session";
-        author: "host" | "model";
-        nonAuthoritative: true;
-        createdAt: string;
-        summary: string;
-        sourceEventIds: string[];
-    };
-    recentInteractionTail: Array<{
-        eventId: string;
-        createdAt: string;
-        turnId?: string;
-        content: string;
-    }>;
-}
-
 // export: ResearchUncommittedDispatchOutcomeV1
 export interface ResearchUncommittedDispatchOutcomeV1 {
     taskId: string;
@@ -24958,15 +23873,6 @@ export declare function validateResearchTaskAdmissionV1(input: {
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
-// export: verifyChatRetrievalTraceConformanceV1
-export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
-
-// export: verifyResearchDataStoreConformanceV1
-export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
-
-// export: verifyResearchSessionStoreConformanceV1
-export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
-
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
@@ -25073,58 +23979,6 @@ export declare class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenc
     chunks(id: string): Promise<ResearchEvidenceChunkV1[]>;
     remove(id: string): Promise<boolean>;
     clear(): Promise<void>;
-}
-
-// export: WorkspaceResearchMessageLineageStoreV1
-export declare class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLineageStoreV1 {
-    #private;
-    constructor(workspace: ResearchWorkspace);
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
 }
 
 // export: WorkspaceResearchOutlineStoreV1
@@ -25653,14 +24507,6 @@ export declare function buildResearchCql(scope: ResearchScopeV1, query: Research
 // export: buildResearchJql
 export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
-// export: buildResearchTurnContextV1
-export declare function buildResearchTurnContextV1(input: {
-    brief: ResearchBriefV1;
-    graph: ResearchGraphV1;
-    turn?: ResearchSessionTurnV1;
-    lineage: ResearchMessageLineageStoreV1;
-}): Promise<ResearchTurnContextV1>;
-
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -26093,12 +24939,6 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
-// export: CHAT_RELEASE_GATE_SCHEMA_V1
-export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
-
-// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
-export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
-
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -26523,7 +25363,6 @@ export declare class ChatCandidateLedgerControllerV1 {
     isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
-    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
     finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
     assessment(): ChatRetrievalAssessmentV1;
 }
@@ -27031,43 +25870,6 @@ export interface ChatRelationshipTraversalProposalV1 {
     maxDepth: 1;
 }
 
-// export: ChatReleaseGateFailureCodeV1
-export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
-
-// export: ChatReleaseGateFailureV1
-export interface ChatReleaseGateFailureV1 {
-    code: ChatReleaseGateFailureCodeV1;
-    scenarioIds: string[];
-}
-
-// export: ChatReleaseGatePolicyV1
-export interface ChatReleaseGatePolicyV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}
-
-// export: ChatReleaseGateResultV1
-export interface ChatReleaseGateResultV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    passed: boolean;
-    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
-    scenarioCount: number;
-    simpleScenarioCount: number;
-    complexScenarioCount: number;
-    failures: ChatReleaseGateFailureV1[];
-    aggregate: {
-        legacyQuality: number;
-        autoQuality: number;
-        quickSimpleQuality: number;
-        deepSimpleQuality: number;
-        quickComplexQuality: number;
-        deepComplexQuality: number;
-    };
-}
-
 // export: ChatResolvedRetrievalEntityV1
 export interface ChatResolvedRetrievalEntityV1 {
     bindingId: string;
@@ -27170,13 +25972,6 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
-}
-
-// export: ChatRetrievalTraceConformanceV1
-export interface ChatRetrievalTraceConformanceV1 {
-    plan: string;
-    candidateLedger: string;
-    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -27910,12 +26705,6 @@ export declare function createChatRetrievalPlanV1(input: {
     now?: () => number;
 }): ChatRetrievalPlanV1;
 
-// export: createChatSessionStateV1
-export declare function createChatSessionStateV1(input: {
-    conversationId: string;
-    qualityPolicy: ChatQualityPolicyV1;
-}): ChatSessionStateV1;
-
 // export: createChatSessionV1
 export declare function createChatSessionV1(input: {
     conversationId: string;
@@ -28167,9 +26956,6 @@ export declare function createResearchSessionV1(input: {
     leaseExpiresAt: string;
 }): ResearchSessionV1;
 
-// export: createRestResearchBroker
-export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
-
 // export: createRestResearchProviders
 export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
 
@@ -28205,15 +26991,6 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
-
-// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
-export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
-    schema: "atlcli.chat-release-gate/v1";
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}>;
 
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
@@ -28354,15 +27131,6 @@ export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
-
-// export: evaluateChatReleaseGatesV1
-export declare function evaluateChatReleaseGatesV1(input: {
-    cases: readonly {
-        scenario: ChatEvaluationScenarioV1;
-        comparison: ChatReleaseEvaluationComparisonResultV1;
-    }[];
-    policy?: ChatReleaseGatePolicyV1;
-}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -28611,9 +27379,6 @@ export declare function isChatPresentationStreamEventV1(value: unknown): value i
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
-// export: isResearchBriefClarificationRequiredV1
-export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
-
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
@@ -28628,9 +27393,6 @@ export declare function isResearchReconciliationReferenceKnownV1(reference: Rese
 
 // export: isResearchReconciliationTargetKnownV1
 export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
-
-// export: isResearchScopeClarificationRequiredV1
-export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -29217,9 +27979,6 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
     language?: ResearchReportLanguageV1;
 }): string;
 
-// export: renderResearchTurnContextV1
-export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
-
 // export: requestChatSteeringV1
 export declare function requestChatSteeringV1(input: {
     state: ChatInteractionStateV1;
@@ -29438,31 +28197,11 @@ export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-p
 // export: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-revision-proposal/v1";
 
-// export: RESEARCH_GRAPH_ROLES
-export declare const RESEARCH_GRAPH_ROLES: readonly [
-    "focused-researcher",
-    "document-distiller",
-    "contradiction-verifier",
-    "coverage-moderator",
-    "outline-planner",
-    "reconciler",
-    "synthesizer"
-];
-
 // export: RESEARCH_GRAPH_SCHEMA_V1
 export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
-
-// export: RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1: "atlcli.research-message-lineage-event/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-message-lineage-index/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
@@ -29882,15 +28621,9 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "research.candidate.rank"
 ];
 
-// export: RESEARCH_TURN_CONTEXT_SCHEMA_V1
-export declare const RESEARCH_TURN_CONTEXT_SCHEMA_V1: "atlcli.research-turn-context/v1";
-
 // export: RESEARCH_WORKER_PACKET_SCHEMA_V1
 // @deprecated RESEARCH_WORKER_PACKET_SCHEMA_V1 — Use RESEARCH_PACKET_BODY_JSON_SCHEMA_V1.
 export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
-
-// export: RESEARCH_WORKSPACE_SCHEMA_V1
-export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
 // export: ResearchAcceptedPacketReductionV1
 export interface ResearchAcceptedPacketReductionV1 {
@@ -30207,9 +28940,6 @@ export interface ResearchClarificationQuestionV1 {
     candidateIds?: string[];
 }
 
-// export: ResearchClarificationRequiredV1
-export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
-
 // export: ResearchClarificationReviewResolutionInputV1
 export interface ResearchClarificationReviewResolutionInputV1 {
     answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
@@ -30315,31 +29045,6 @@ export interface ResearchCursorVaultOptions {
     ttlMs?: number;
 }
 
-// export: ResearchDataStoreConformanceFactoryV1
-export interface ResearchDataStoreConformanceFactoryV1 {
-    create(input: {
-        sessionId: string;
-    }): ResearchDataStoreConformanceWorkspacesV1 | Promise<ResearchDataStoreConformanceWorkspacesV1>;
-    dispose?(workspaces: ResearchDataStoreConformanceWorkspacesV1): void | Promise<void>;
-}
-
-// export: ResearchDataStoreConformanceResultV1
-export interface ResearchDataStoreConformanceResultV1 {
-    evidencePublicationAtomicity: "passed";
-    claimPublicationAtomicity: "passed";
-    outlinePublicationAtomicity: "passed";
-    spanAndBindingValidation: "passed";
-    evidenceDrivenInvalidation: "passed";
-    retentionDeletion: "passed";
-}
-
-// export: ResearchDataStoreConformanceWorkspacesV1
-export interface ResearchDataStoreConformanceWorkspacesV1 {
-    evidence: ResearchWorkspace;
-    claims: ResearchWorkspace;
-    outline: ResearchWorkspace;
-}
-
 // export: ResearchDetailEvidenceV1
 export interface ResearchDetailEvidenceV1 {
     source: ResearchSourceReferenceV1;
@@ -30403,10 +29108,6 @@ export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "can
 
 // export: ResearchDynamicAgentDraftV1
 export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1>;
-
-// export: ResearchEffortV1
-// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
 
 // export: ResearchEntityKind
 export type ResearchEntityKind = "jira" | "wiki";
@@ -31029,96 +29730,6 @@ export interface ResearchLimitsV1 {
     maxReportChars: number;
     maxEvidenceAgeMs: number;
     maxRunMs: number;
-}
-
-// export: ResearchMessageLineageEventKindV1
-export type ResearchMessageLineageEventKindV1 = "message" | "host_event";
-
-// export: ResearchMessageLineageEventV1
-export interface ResearchMessageLineageEventV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1;
-    id: string;
-    batchId: string;
-    ordinal: number;
-    kind: ResearchMessageLineageEventKindV1;
-    source: "langgraph" | "host";
-    createdAt: string;
-    payloadJson: string;
-    payloadHash: string;
-}
-
-// export: ResearchMessageLineageLinksV1
-export interface ResearchMessageLineageLinksV1 {
-    turnId?: string;
-    graphRevision?: number;
-    packetRefs?: string[];
-    artifactIds?: string[];
-}
-
-// export: ResearchMessageLineageStoreV1
-export interface ResearchMessageLineageStoreV1 {
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
-}
-
-// export: ResearchMessageLineageSummaryKindV1
-export type ResearchMessageLineageSummaryKindV1 = "turn" | "branch" | "session";
-
-// export: ResearchMessageLineageSummaryV1
-export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1;
-    id: string;
-    kind: ResearchMessageLineageSummaryKindV1;
-    createdAt: string;
-    author: "host" | "model";
-    nonAuthoritative: true;
-    summary: string;
-    sourceEventIds: string[];
-    parentSummaryIds: string[];
 }
 
 // export: ResearchModelBudgetCapacityV1
@@ -31772,10 +30383,6 @@ export interface ResearchReconciliationInputV1 {
     };
 }
 
-// export: ResearchReconciliationModeV1
-// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
-
 // export: ResearchReconciliationTriggerV1
 export type ResearchReconciliationTriggerV1 = "multi_branch" | "low_coverage" | "contradiction" | "negative_claim" | "high_impact_claim" | "stale_or_truncated" | "user_requested";
 
@@ -32261,12 +30868,6 @@ export interface ResearchScopeCatalogPtcOptions {
     now?: () => number;
 }
 
-// export: ResearchScopeClarificationPlanningActionV1
-export interface ResearchScopeClarificationPlanningActionV1 {
-    sessionId: string;
-    revision: number;
-}
-
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
@@ -32279,13 +30880,6 @@ export interface ResearchScopeClarificationRequiredV1 {
     productHint?: "jira" | "confluence";
     entityKindHint?: "project" | "space" | "issue" | "page";
     rerunGuidance: string[];
-}
-
-// export: ResearchScopeClarificationReviewActionV1
-export interface ResearchScopeClarificationReviewActionV1 {
-    sessionId: string;
-    revision: number;
-    selection: ResearchScopeCandidateSelectionV1;
 }
 
 // export: ResearchScopeClarificationReviewResolutionV1
@@ -32974,25 +31568,6 @@ export interface ResearchSessionSteeringV1 {
     planDiff?: ResearchPlanDiffV1;
 }
 
-// export: ResearchSessionStoreConformanceFactoryV1
-export interface ResearchSessionStoreConformanceFactoryV1 {
-    create(options?: {
-        failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
-}
-
-// export: ResearchSessionStoreConformanceResultV1
-export interface ResearchSessionStoreConformanceResultV1 {
-    aggregateCommit: "passed";
-    staleCas: "passed";
-    concurrentCas: "passed";
-    failureAtomicity: "passed";
-    packetPublicationAtomicity: "passed";
-    clarificationIdentityFencing: "passed";
-    scopeCandidateIdentityFencing: "passed";
-    scopeProposalIdentityFencing: "passed";
-}
-
 // export: ResearchSessionStoreFailureContextV1
 export interface ResearchSessionStoreFailureContextV1 {
     updateKind?: ResearchSessionUpdateV1["kind"];
@@ -33488,49 +32063,6 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
-// export: ResearchTurnContextV1
-export interface ResearchTurnContextV1 {
-    schema: typeof RESEARCH_TURN_CONTEXT_SCHEMA_V1;
-    brief: {
-        revision: number;
-        objective: string;
-        asOf: string;
-        coverageTargetIds: string[];
-        scopeBindingIds: string[];
-    };
-    graph: {
-        revision: number;
-        status: ResearchGraphV1["status"];
-        unresolvedNodes: Array<{
-            id: string;
-            roleId?: string;
-            kind: ResearchGraphNodeV1["kind"];
-            status: ResearchGraphNodeV1["status"];
-            dependencies: string[];
-            objective: string;
-        }>;
-    };
-    references: {
-        packetRefs: string[];
-        artifactIds: string[];
-    };
-    latestSummary?: {
-        id: string;
-        kind: "turn" | "branch" | "session";
-        author: "host" | "model";
-        nonAuthoritative: true;
-        createdAt: string;
-        summary: string;
-        sourceEventIds: string[];
-    };
-    recentInteractionTail: Array<{
-        eventId: string;
-        createdAt: string;
-        turnId?: string;
-        content: string;
-    }>;
-}
-
 // export: ResearchUncommittedDispatchOutcomeV1
 export interface ResearchUncommittedDispatchOutcomeV1 {
     taskId: string;
@@ -33823,15 +32355,6 @@ export declare function validateResearchTaskAdmissionV1(input: {
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
-// export: verifyChatRetrievalTraceConformanceV1
-export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
-
-// export: verifyResearchDataStoreConformanceV1
-export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
-
-// export: verifyResearchSessionStoreConformanceV1
-export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
-
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
@@ -33956,58 +32479,6 @@ export declare class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenc
     chunks(id: string): Promise<ResearchEvidenceChunkV1[]>;
     remove(id: string): Promise<boolean>;
     clear(): Promise<void>;
-}
-
-// export: WorkspaceResearchMessageLineageStoreV1
-export declare class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLineageStoreV1 {
-    #private;
-    constructor(workspace: ResearchWorkspace);
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
 }
 
 // export: WorkspaceResearchOutlineStoreV1
@@ -34536,14 +33007,6 @@ export declare function buildResearchCql(scope: ResearchScopeV1, query: Research
 // export: buildResearchJql
 export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
-// export: buildResearchTurnContextV1
-export declare function buildResearchTurnContextV1(input: {
-    brief: ResearchBriefV1;
-    graph: ResearchGraphV1;
-    turn?: ResearchSessionTurnV1;
-    lineage: ResearchMessageLineageStoreV1;
-}): Promise<ResearchTurnContextV1>;
-
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -34976,12 +33439,6 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
-// export: CHAT_RELEASE_GATE_SCHEMA_V1
-export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
-
-// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
-export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
-
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -35406,7 +33863,6 @@ export declare class ChatCandidateLedgerControllerV1 {
     isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
-    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
     finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
     assessment(): ChatRetrievalAssessmentV1;
 }
@@ -35914,43 +34370,6 @@ export interface ChatRelationshipTraversalProposalV1 {
     maxDepth: 1;
 }
 
-// export: ChatReleaseGateFailureCodeV1
-export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
-
-// export: ChatReleaseGateFailureV1
-export interface ChatReleaseGateFailureV1 {
-    code: ChatReleaseGateFailureCodeV1;
-    scenarioIds: string[];
-}
-
-// export: ChatReleaseGatePolicyV1
-export interface ChatReleaseGatePolicyV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}
-
-// export: ChatReleaseGateResultV1
-export interface ChatReleaseGateResultV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    passed: boolean;
-    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
-    scenarioCount: number;
-    simpleScenarioCount: number;
-    complexScenarioCount: number;
-    failures: ChatReleaseGateFailureV1[];
-    aggregate: {
-        legacyQuality: number;
-        autoQuality: number;
-        quickSimpleQuality: number;
-        deepSimpleQuality: number;
-        quickComplexQuality: number;
-        deepComplexQuality: number;
-    };
-}
-
 // export: ChatResolvedRetrievalEntityV1
 export interface ChatResolvedRetrievalEntityV1 {
     bindingId: string;
@@ -36053,13 +34472,6 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
-}
-
-// export: ChatRetrievalTraceConformanceV1
-export interface ChatRetrievalTraceConformanceV1 {
-    plan: string;
-    candidateLedger: string;
-    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -36782,12 +35194,6 @@ export declare function createChatRetrievalPlanV1(input: {
     now?: () => number;
 }): ChatRetrievalPlanV1;
 
-// export: createChatSessionStateV1
-export declare function createChatSessionStateV1(input: {
-    conversationId: string;
-    qualityPolicy: ChatQualityPolicyV1;
-}): ChatSessionStateV1;
-
 // export: createChatSessionV1
 export declare function createChatSessionV1(input: {
     conversationId: string;
@@ -37039,9 +35445,6 @@ export declare function createResearchSessionV1(input: {
     leaseExpiresAt: string;
 }): ResearchSessionV1;
 
-// export: createRestResearchBroker
-export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
-
 // export: createRestResearchProviders
 export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
 
@@ -37077,15 +35480,6 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
-
-// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
-export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
-    schema: "atlcli.chat-release-gate/v1";
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}>;
 
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
@@ -37235,15 +35629,6 @@ export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
-
-// export: evaluateChatReleaseGatesV1
-export declare function evaluateChatReleaseGatesV1(input: {
-    cases: readonly {
-        scenario: ChatEvaluationScenarioV1;
-        comparison: ChatReleaseEvaluationComparisonResultV1;
-    }[];
-    policy?: ChatReleaseGatePolicyV1;
-}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -37507,9 +35892,6 @@ export declare function isChatPresentationStreamEventV1(value: unknown): value i
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
-// export: isResearchBriefClarificationRequiredV1
-export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
-
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
@@ -37524,9 +35906,6 @@ export declare function isResearchReconciliationReferenceKnownV1(reference: Rese
 
 // export: isResearchReconciliationTargetKnownV1
 export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
-
-// export: isResearchScopeClarificationRequiredV1
-export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -38113,9 +36492,6 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
     language?: ResearchReportLanguageV1;
 }): string;
 
-// export: renderResearchTurnContextV1
-export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
-
 // export: requestChatSteeringV1
 export declare function requestChatSteeringV1(input: {
     state: ChatInteractionStateV1;
@@ -38334,31 +36710,11 @@ export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-p
 // export: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-revision-proposal/v1";
 
-// export: RESEARCH_GRAPH_ROLES
-export declare const RESEARCH_GRAPH_ROLES: readonly [
-    "focused-researcher",
-    "document-distiller",
-    "contradiction-verifier",
-    "coverage-moderator",
-    "outline-planner",
-    "reconciler",
-    "synthesizer"
-];
-
 // export: RESEARCH_GRAPH_SCHEMA_V1
 export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
-
-// export: RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1: "atlcli.research-message-lineage-event/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-message-lineage-index/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
@@ -38778,15 +37134,9 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "research.candidate.rank"
 ];
 
-// export: RESEARCH_TURN_CONTEXT_SCHEMA_V1
-export declare const RESEARCH_TURN_CONTEXT_SCHEMA_V1: "atlcli.research-turn-context/v1";
-
 // export: RESEARCH_WORKER_PACKET_SCHEMA_V1
 // @deprecated RESEARCH_WORKER_PACKET_SCHEMA_V1 — Use RESEARCH_PACKET_BODY_JSON_SCHEMA_V1.
 export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
-
-// export: RESEARCH_WORKSPACE_SCHEMA_V1
-export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
 // export: ResearchAcceptedPacketReductionV1
 export interface ResearchAcceptedPacketReductionV1 {
@@ -39103,9 +37453,6 @@ export interface ResearchClarificationQuestionV1 {
     candidateIds?: string[];
 }
 
-// export: ResearchClarificationRequiredV1
-export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
-
 // export: ResearchClarificationReviewResolutionInputV1
 export interface ResearchClarificationReviewResolutionInputV1 {
     answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
@@ -39211,31 +37558,6 @@ export interface ResearchCursorVaultOptions {
     ttlMs?: number;
 }
 
-// export: ResearchDataStoreConformanceFactoryV1
-export interface ResearchDataStoreConformanceFactoryV1 {
-    create(input: {
-        sessionId: string;
-    }): ResearchDataStoreConformanceWorkspacesV1 | Promise<ResearchDataStoreConformanceWorkspacesV1>;
-    dispose?(workspaces: ResearchDataStoreConformanceWorkspacesV1): void | Promise<void>;
-}
-
-// export: ResearchDataStoreConformanceResultV1
-export interface ResearchDataStoreConformanceResultV1 {
-    evidencePublicationAtomicity: "passed";
-    claimPublicationAtomicity: "passed";
-    outlinePublicationAtomicity: "passed";
-    spanAndBindingValidation: "passed";
-    evidenceDrivenInvalidation: "passed";
-    retentionDeletion: "passed";
-}
-
-// export: ResearchDataStoreConformanceWorkspacesV1
-export interface ResearchDataStoreConformanceWorkspacesV1 {
-    evidence: ResearchWorkspace;
-    claims: ResearchWorkspace;
-    outline: ResearchWorkspace;
-}
-
 // export: ResearchDetailEvidenceV1
 export interface ResearchDetailEvidenceV1 {
     source: ResearchSourceReferenceV1;
@@ -39299,10 +37621,6 @@ export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "can
 
 // export: ResearchDynamicAgentDraftV1
 export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1>;
-
-// export: ResearchEffortV1
-// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
 
 // export: ResearchEntityKind
 export type ResearchEntityKind = "jira" | "wiki";
@@ -39925,96 +38243,6 @@ export interface ResearchLimitsV1 {
     maxReportChars: number;
     maxEvidenceAgeMs: number;
     maxRunMs: number;
-}
-
-// export: ResearchMessageLineageEventKindV1
-export type ResearchMessageLineageEventKindV1 = "message" | "host_event";
-
-// export: ResearchMessageLineageEventV1
-export interface ResearchMessageLineageEventV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1;
-    id: string;
-    batchId: string;
-    ordinal: number;
-    kind: ResearchMessageLineageEventKindV1;
-    source: "langgraph" | "host";
-    createdAt: string;
-    payloadJson: string;
-    payloadHash: string;
-}
-
-// export: ResearchMessageLineageLinksV1
-export interface ResearchMessageLineageLinksV1 {
-    turnId?: string;
-    graphRevision?: number;
-    packetRefs?: string[];
-    artifactIds?: string[];
-}
-
-// export: ResearchMessageLineageStoreV1
-export interface ResearchMessageLineageStoreV1 {
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
-}
-
-// export: ResearchMessageLineageSummaryKindV1
-export type ResearchMessageLineageSummaryKindV1 = "turn" | "branch" | "session";
-
-// export: ResearchMessageLineageSummaryV1
-export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1;
-    id: string;
-    kind: ResearchMessageLineageSummaryKindV1;
-    createdAt: string;
-    author: "host" | "model";
-    nonAuthoritative: true;
-    summary: string;
-    sourceEventIds: string[];
-    parentSummaryIds: string[];
 }
 
 // export: ResearchModelBudgetCapacityV1
@@ -40668,10 +38896,6 @@ export interface ResearchReconciliationInputV1 {
     };
 }
 
-// export: ResearchReconciliationModeV1
-// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
-
 // export: ResearchReconciliationTriggerV1
 export type ResearchReconciliationTriggerV1 = "multi_branch" | "low_coverage" | "contradiction" | "negative_claim" | "high_impact_claim" | "stale_or_truncated" | "user_requested";
 
@@ -41157,12 +39381,6 @@ export interface ResearchScopeCatalogPtcOptions {
     now?: () => number;
 }
 
-// export: ResearchScopeClarificationPlanningActionV1
-export interface ResearchScopeClarificationPlanningActionV1 {
-    sessionId: string;
-    revision: number;
-}
-
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
@@ -41175,13 +39393,6 @@ export interface ResearchScopeClarificationRequiredV1 {
     productHint?: "jira" | "confluence";
     entityKindHint?: "project" | "space" | "issue" | "page";
     rerunGuidance: string[];
-}
-
-// export: ResearchScopeClarificationReviewActionV1
-export interface ResearchScopeClarificationReviewActionV1 {
-    sessionId: string;
-    revision: number;
-    selection: ResearchScopeCandidateSelectionV1;
 }
 
 // export: ResearchScopeClarificationReviewResolutionV1
@@ -41608,17 +39819,6 @@ export interface ResearchSessionLeaseV1 {
     expiresAt: string;
 }
 
-// export: ResearchSessionMemoryCheckpointerV1
-export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
-    #private;
-    constructor(sessionId: string);
-    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
-    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
-    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
-    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
-    deleteThread(threadId: string): Promise<void>;
-}
-
 // export: ResearchSessionPlanReviewV1
 export interface ResearchSessionPlanReviewV1 {
     schema: typeof RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1;
@@ -41879,25 +40079,6 @@ export interface ResearchSessionSteeringV1 {
     appliedAt?: string;
     appliedGraphRevision?: number;
     planDiff?: ResearchPlanDiffV1;
-}
-
-// export: ResearchSessionStoreConformanceFactoryV1
-export interface ResearchSessionStoreConformanceFactoryV1 {
-    create(options?: {
-        failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
-}
-
-// export: ResearchSessionStoreConformanceResultV1
-export interface ResearchSessionStoreConformanceResultV1 {
-    aggregateCommit: "passed";
-    staleCas: "passed";
-    concurrentCas: "passed";
-    failureAtomicity: "passed";
-    packetPublicationAtomicity: "passed";
-    clarificationIdentityFencing: "passed";
-    scopeCandidateIdentityFencing: "passed";
-    scopeProposalIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -42388,49 +40569,6 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
-// export: ResearchTurnContextV1
-export interface ResearchTurnContextV1 {
-    schema: typeof RESEARCH_TURN_CONTEXT_SCHEMA_V1;
-    brief: {
-        revision: number;
-        objective: string;
-        asOf: string;
-        coverageTargetIds: string[];
-        scopeBindingIds: string[];
-    };
-    graph: {
-        revision: number;
-        status: ResearchGraphV1["status"];
-        unresolvedNodes: Array<{
-            id: string;
-            roleId?: string;
-            kind: ResearchGraphNodeV1["kind"];
-            status: ResearchGraphNodeV1["status"];
-            dependencies: string[];
-            objective: string;
-        }>;
-    };
-    references: {
-        packetRefs: string[];
-        artifactIds: string[];
-    };
-    latestSummary?: {
-        id: string;
-        kind: "turn" | "branch" | "session";
-        author: "host" | "model";
-        nonAuthoritative: true;
-        createdAt: string;
-        summary: string;
-        sourceEventIds: string[];
-    };
-    recentInteractionTail: Array<{
-        eventId: string;
-        createdAt: string;
-        turnId?: string;
-        content: string;
-    }>;
-}
-
 // export: ResearchUncommittedDispatchOutcomeV1
 export interface ResearchUncommittedDispatchOutcomeV1 {
     taskId: string;
@@ -42771,15 +40909,6 @@ export declare function validateResearchTaskAdmissionV1(input: {
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
-// export: verifyChatRetrievalTraceConformanceV1
-export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
-
-// export: verifyResearchDataStoreConformanceV1
-export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
-
-// export: verifyResearchSessionStoreConformanceV1
-export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
-
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
@@ -42886,58 +41015,6 @@ export declare class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenc
     chunks(id: string): Promise<ResearchEvidenceChunkV1[]>;
     remove(id: string): Promise<boolean>;
     clear(): Promise<void>;
-}
-
-// export: WorkspaceResearchMessageLineageStoreV1
-export declare class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLineageStoreV1 {
-    #private;
-    constructor(workspace: ResearchWorkspace);
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
 }
 
 // export: WorkspaceResearchOutlineStoreV1
@@ -43678,12 +41755,6 @@ export interface ChatTurnRequestV1 {
     exactContextProducts?: ResearchProduct[];
     locale?: string;
 }
-
-// export: createChatSessionStateV1
-export declare function createChatSessionStateV1(input: {
-    conversationId: string;
-    qualityPolicy: ChatQualityPolicyV1;
-}): ChatSessionStateV1;
 
 // export: normalizeChatAgentDraftV2
 export declare function normalizeChatAgentDraftV2(value: ChatAgentDraftInputV2): ChatAgentDraftV2;
@@ -44694,17 +42765,6 @@ export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-p
 // export: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-revision-proposal/v1";
 
-// export: RESEARCH_GRAPH_ROLES
-export declare const RESEARCH_GRAPH_ROLES: readonly [
-    "focused-researcher",
-    "document-distiller",
-    "contradiction-verifier",
-    "coverage-moderator",
-    "outline-planner",
-    "reconciler",
-    "synthesizer"
-];
-
 // export: RESEARCH_GRAPH_SCHEMA_V1
 export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 
@@ -44756,10 +42816,6 @@ export interface ResearchBriefV1 {
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
-
-// export: ResearchEffortV1
-// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
 
 // export: ResearchGraphCapabilityV1
 export type ResearchGraphCapabilityV1 = (typeof RESEARCH_GRAPH_CAPABILITIES)[number];
@@ -44968,10 +43024,6 @@ export interface ResearchPlanDiffV1 {
     exceededApprovalEnvelopeFields: string[];
     requiresApproval: boolean;
 }
-
-// export: ResearchReconciliationModeV1
-// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
 
 // export: reviseResearchGraphSelectionV1
 export declare function reviseResearchGraphSelectionV1(catalogGraph: ResearchGraphV1, currentGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
@@ -45485,14 +43537,6 @@ export declare function buildResearchCql(scope: ResearchScopeV1, query: Research
 // export: buildResearchJql
 export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
 
-// export: buildResearchTurnContextV1
-export declare function buildResearchTurnContextV1(input: {
-    brief: ResearchBriefV1;
-    graph: ResearchGraphV1;
-    turn?: ResearchSessionTurnV1;
-    lineage: ResearchMessageLineageStoreV1;
-}): Promise<ResearchTurnContextV1>;
-
 // export: CAPABILITY_FREE_QUALITY_ADAPTER_V1
 export declare const CAPABILITY_FREE_QUALITY_ADAPTER_V1: ProviderQualityCapabilityAdapterV1;
 
@@ -45925,12 +43969,6 @@ export declare const CHAT_QUALITY_MODES_V1: readonly [
 // export: CHAT_QUALITY_STATE_PATH_V1
 export declare const CHAT_QUALITY_STATE_PATH_V1: "/state/chat-quality-v1.json";
 
-// export: CHAT_RELEASE_GATE_SCHEMA_V1
-export declare const CHAT_RELEASE_GATE_SCHEMA_V1: "atlcli.chat-release-gate/v1";
-
-// export: CHAT_RELEASE_MODEL_JUDGE_POLICY_V1
-export declare const CHAT_RELEASE_MODEL_JUDGE_POLICY_V1: "diagnostic-only-after-reviewed-calibration";
-
 // export: CHAT_RETRIEVAL_ASSESSMENT_PATH_V1
 export declare const CHAT_RETRIEVAL_ASSESSMENT_PATH_V1: "/.atlcli/chat/v1/retrieval-assessment.json";
 
@@ -46355,7 +44393,6 @@ export declare class ChatCandidateLedgerControllerV1 {
     isSearchPlanSaturated(product: ResearchProduct): boolean;
     assertToolInput(tool: ChatObservedCapabilityV1, input: unknown): void;
     observe(tool: ChatObservedCapabilityV1, result: unknown, callId: string, input?: unknown): Promise<void>;
-    markTraversalChecked(kind: ChatRelationshipTraversalKindV1): void;
     finalize(reason?: string): Promise<ChatRetrievalAssessmentV1>;
     assessment(): ChatRetrievalAssessmentV1;
 }
@@ -46863,43 +44900,6 @@ export interface ChatRelationshipTraversalProposalV1 {
     maxDepth: 1;
 }
 
-// export: ChatReleaseGateFailureCodeV1
-export type ChatReleaseGateFailureCodeV1 = "comparison-identity-invalid" | "wrong-source" | "unsupported-assertion" | "false-completeness" | "outcome-incorrect" | "strategy-incorrect" | "exact-context-quality" | "citation-precision" | "source-recall" | "detail-recall" | "relationship-recall" | "gap-recall" | "auto-not-better-than-legacy" | "deep-not-better-on-complex" | "deep-regressed-on-simple";
-
-// export: ChatReleaseGateFailureV1
-export interface ChatReleaseGateFailureV1 {
-    code: ChatReleaseGateFailureCodeV1;
-    scenarioIds: string[];
-}
-
-// export: ChatReleaseGatePolicyV1
-export interface ChatReleaseGatePolicyV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}
-
-// export: ChatReleaseGateResultV1
-export interface ChatReleaseGateResultV1 {
-    schema: typeof CHAT_RELEASE_GATE_SCHEMA_V1;
-    passed: boolean;
-    modelJudgePolicy: typeof CHAT_RELEASE_MODEL_JUDGE_POLICY_V1;
-    scenarioCount: number;
-    simpleScenarioCount: number;
-    complexScenarioCount: number;
-    failures: ChatReleaseGateFailureV1[];
-    aggregate: {
-        legacyQuality: number;
-        autoQuality: number;
-        quickSimpleQuality: number;
-        deepSimpleQuality: number;
-        quickComplexQuality: number;
-        deepComplexQuality: number;
-    };
-}
-
 // export: ChatResolvedRetrievalEntityV1
 export interface ChatResolvedRetrievalEntityV1 {
     bindingId: string;
@@ -47002,13 +45002,6 @@ export interface ChatRetrievalSearchProposalV1 {
 // export: ChatRetrievalSearchV1
 export interface ChatRetrievalSearchV1 extends ChatRetrievalSearchProposalV1 {
     scopeBindingIds: string[];
-}
-
-// export: ChatRetrievalTraceConformanceV1
-export interface ChatRetrievalTraceConformanceV1 {
-    plan: string;
-    candidateLedger: string;
-    assessment: string;
 }
 
 // export: ChatRunSummaryV1
@@ -47731,12 +45724,6 @@ export declare function createChatRetrievalPlanV1(input: {
     now?: () => number;
 }): ChatRetrievalPlanV1;
 
-// export: createChatSessionStateV1
-export declare function createChatSessionStateV1(input: {
-    conversationId: string;
-    qualityPolicy: ChatQualityPolicyV1;
-}): ChatSessionStateV1;
-
 // export: createChatSessionV1
 export declare function createChatSessionV1(input: {
     conversationId: string;
@@ -47988,9 +45975,6 @@ export declare function createResearchSessionV1(input: {
     leaseExpiresAt: string;
 }): ResearchSessionV1;
 
-// export: createRestResearchBroker
-export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
-
 // export: createRestResearchProviders
 export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
 
@@ -48026,15 +46010,6 @@ export declare function decodeStoredChatQualityPolicyV1(value: unknown): ChatQua
 
 // export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
 export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
-
-// export: DEFAULT_CHAT_RELEASE_GATE_POLICY_V1
-export declare const DEFAULT_CHAT_RELEASE_GATE_POLICY_V1: Readonly<{
-    schema: "atlcli.chat-release-gate/v1";
-    minimumExactContextQuality: number;
-    minimumAutoQualityGainOverLegacy: number;
-    minimumDeepComplexQualityGainOverQuick: number;
-    maximumDeepSimpleQualityRegression: number;
-}>;
 
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
@@ -48184,15 +46159,6 @@ export declare function evaluateChatDeepFinalCeilingsV1(values: readonly unknown
 
 // export: evaluateChatPerformanceRatchetV1
 export declare function evaluateChatPerformanceRatchetV1(beforeValue: unknown, afterValue: unknown, policy: ChatPerformanceRatchetPolicyV1): ChatPerformanceRatchetResultV1;
-
-// export: evaluateChatReleaseGatesV1
-export declare function evaluateChatReleaseGatesV1(input: {
-    cases: readonly {
-        scenario: ChatEvaluationScenarioV1;
-        comparison: ChatReleaseEvaluationComparisonResultV1;
-    }[];
-    policy?: ChatReleaseGatePolicyV1;
-}): ChatReleaseGateResultV1;
 
 // export: extractChatSubagentCandidateV1
 export declare function extractChatSubagentCandidateV1(value: unknown): unknown;
@@ -48456,9 +46422,6 @@ export declare function isChatPresentationStreamEventV1(value: unknown): value i
 // export: isRecoverableConsumedRetrievalContinuationV1
 export declare function isRecoverableConsumedRetrievalContinuationV1(turn: ResearchSessionTurnV1): boolean;
 
-// export: isResearchBriefClarificationRequiredV1
-export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
-
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
@@ -48473,9 +46436,6 @@ export declare function isResearchReconciliationReferenceKnownV1(reference: Rese
 
 // export: isResearchReconciliationTargetKnownV1
 export declare function isResearchReconciliationTargetKnownV1(target: ResearchReconciliationDefectV1["target"], input: ResearchReconciliationInputV1): boolean;
-
-// export: isResearchScopeClarificationRequiredV1
-export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -49062,9 +47022,6 @@ export declare function renderResearchReportWithFindingSectionsMarkdown(input: P
     language?: ResearchReportLanguageV1;
 }): string;
 
-// export: renderResearchTurnContextV1
-export declare function renderResearchTurnContextV1(context: ResearchTurnContextV1): string;
-
 // export: requestChatSteeringV1
 export declare function requestChatSteeringV1(input: {
     state: ChatInteractionStateV1;
@@ -49283,31 +47240,11 @@ export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-p
 // export: RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_GRAPH_REVISION_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-revision-proposal/v1";
 
-// export: RESEARCH_GRAPH_ROLES
-export declare const RESEARCH_GRAPH_ROLES: readonly [
-    "focused-researcher",
-    "document-distiller",
-    "contradiction-verifier",
-    "coverage-moderator",
-    "outline-planner",
-    "reconciler",
-    "synthesizer"
-];
-
 // export: RESEARCH_GRAPH_SCHEMA_V1
 export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
-
-// export: RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1: "atlcli.research-message-lineage-event/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_INDEX_SCHEMA_V1: "atlcli.research-message-lineage-index/v1";
-
-// export: RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1
-export declare const RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1: "atlcli.research-message-lineage-summary/v1";
 
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
@@ -49727,15 +47664,9 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "research.candidate.rank"
 ];
 
-// export: RESEARCH_TURN_CONTEXT_SCHEMA_V1
-export declare const RESEARCH_TURN_CONTEXT_SCHEMA_V1: "atlcli.research-turn-context/v1";
-
 // export: RESEARCH_WORKER_PACKET_SCHEMA_V1
 // @deprecated RESEARCH_WORKER_PACKET_SCHEMA_V1 — Use RESEARCH_PACKET_BODY_JSON_SCHEMA_V1.
 export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
-
-// export: RESEARCH_WORKSPACE_SCHEMA_V1
-export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
 // export: ResearchAcceptedPacketReductionV1
 export interface ResearchAcceptedPacketReductionV1 {
@@ -50052,9 +47983,6 @@ export interface ResearchClarificationQuestionV1 {
     candidateIds?: string[];
 }
 
-// export: ResearchClarificationRequiredV1
-export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
-
 // export: ResearchClarificationReviewResolutionInputV1
 export interface ResearchClarificationReviewResolutionInputV1 {
     answers: Array<Pick<ResearchBriefClarificationResponseV1, "questionId" | "response">>;
@@ -50160,31 +48088,6 @@ export interface ResearchCursorVaultOptions {
     ttlMs?: number;
 }
 
-// export: ResearchDataStoreConformanceFactoryV1
-export interface ResearchDataStoreConformanceFactoryV1 {
-    create(input: {
-        sessionId: string;
-    }): ResearchDataStoreConformanceWorkspacesV1 | Promise<ResearchDataStoreConformanceWorkspacesV1>;
-    dispose?(workspaces: ResearchDataStoreConformanceWorkspacesV1): void | Promise<void>;
-}
-
-// export: ResearchDataStoreConformanceResultV1
-export interface ResearchDataStoreConformanceResultV1 {
-    evidencePublicationAtomicity: "passed";
-    claimPublicationAtomicity: "passed";
-    outlinePublicationAtomicity: "passed";
-    spanAndBindingValidation: "passed";
-    evidenceDrivenInvalidation: "passed";
-    retentionDeletion: "passed";
-}
-
-// export: ResearchDataStoreConformanceWorkspacesV1
-export interface ResearchDataStoreConformanceWorkspacesV1 {
-    evidence: ResearchWorkspace;
-    claims: ResearchWorkspace;
-    outline: ResearchWorkspace;
-}
-
 // export: ResearchDetailEvidenceV1
 export interface ResearchDetailEvidenceV1 {
     source: ResearchSourceReferenceV1;
@@ -50248,10 +48151,6 @@ export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "can
 
 // export: ResearchDynamicAgentDraftV1
 export type ResearchDynamicAgentDraftV1 = z.infer<typeof RESEARCH_DYNAMIC_AGENT_DRAFT_SCHEMA_V1>;
-
-// export: ResearchEffortV1
-// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
 
 // export: ResearchEntityKind
 export type ResearchEntityKind = "jira" | "wiki";
@@ -50874,96 +48773,6 @@ export interface ResearchLimitsV1 {
     maxReportChars: number;
     maxEvidenceAgeMs: number;
     maxRunMs: number;
-}
-
-// export: ResearchMessageLineageEventKindV1
-export type ResearchMessageLineageEventKindV1 = "message" | "host_event";
-
-// export: ResearchMessageLineageEventV1
-export interface ResearchMessageLineageEventV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_EVENT_SCHEMA_V1;
-    id: string;
-    batchId: string;
-    ordinal: number;
-    kind: ResearchMessageLineageEventKindV1;
-    source: "langgraph" | "host";
-    createdAt: string;
-    payloadJson: string;
-    payloadHash: string;
-}
-
-// export: ResearchMessageLineageLinksV1
-export interface ResearchMessageLineageLinksV1 {
-    turnId?: string;
-    graphRevision?: number;
-    packetRefs?: string[];
-    artifactIds?: string[];
-}
-
-// export: ResearchMessageLineageStoreV1
-export interface ResearchMessageLineageStoreV1 {
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
-}
-
-// export: ResearchMessageLineageSummaryKindV1
-export type ResearchMessageLineageSummaryKindV1 = "turn" | "branch" | "session";
-
-// export: ResearchMessageLineageSummaryV1
-export interface ResearchMessageLineageSummaryV1 extends ResearchMessageLineageLinksV1 {
-    schema: typeof RESEARCH_MESSAGE_LINEAGE_SUMMARY_SCHEMA_V1;
-    id: string;
-    kind: ResearchMessageLineageSummaryKindV1;
-    createdAt: string;
-    author: "host" | "model";
-    nonAuthoritative: true;
-    summary: string;
-    sourceEventIds: string[];
-    parentSummaryIds: string[];
 }
 
 // export: ResearchModelBudgetCapacityV1
@@ -51617,10 +49426,6 @@ export interface ResearchReconciliationInputV1 {
     };
 }
 
-// export: ResearchReconciliationModeV1
-// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
-
 // export: ResearchReconciliationTriggerV1
 export type ResearchReconciliationTriggerV1 = "multi_branch" | "low_coverage" | "contradiction" | "negative_claim" | "high_impact_claim" | "stale_or_truncated" | "user_requested";
 
@@ -52106,12 +49911,6 @@ export interface ResearchScopeCatalogPtcOptions {
     now?: () => number;
 }
 
-// export: ResearchScopeClarificationPlanningActionV1
-export interface ResearchScopeClarificationPlanningActionV1 {
-    sessionId: string;
-    revision: number;
-}
-
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
@@ -52124,13 +49923,6 @@ export interface ResearchScopeClarificationRequiredV1 {
     productHint?: "jira" | "confluence";
     entityKindHint?: "project" | "space" | "issue" | "page";
     rerunGuidance: string[];
-}
-
-// export: ResearchScopeClarificationReviewActionV1
-export interface ResearchScopeClarificationReviewActionV1 {
-    sessionId: string;
-    revision: number;
-    selection: ResearchScopeCandidateSelectionV1;
 }
 
 // export: ResearchScopeClarificationReviewResolutionV1
@@ -52557,17 +50349,6 @@ export interface ResearchSessionLeaseV1 {
     expiresAt: string;
 }
 
-// export: ResearchSessionMemoryCheckpointerV1
-export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
-    #private;
-    constructor(sessionId: string);
-    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
-    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
-    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
-    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
-    deleteThread(threadId: string): Promise<void>;
-}
-
 // export: ResearchSessionPlanReviewV1
 export interface ResearchSessionPlanReviewV1 {
     schema: typeof RESEARCH_SESSION_PLAN_REVIEW_SCHEMA_V1;
@@ -52828,25 +50609,6 @@ export interface ResearchSessionSteeringV1 {
     appliedAt?: string;
     appliedGraphRevision?: number;
     planDiff?: ResearchPlanDiffV1;
-}
-
-// export: ResearchSessionStoreConformanceFactoryV1
-export interface ResearchSessionStoreConformanceFactoryV1 {
-    create(options?: {
-        failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
-}
-
-// export: ResearchSessionStoreConformanceResultV1
-export interface ResearchSessionStoreConformanceResultV1 {
-    aggregateCommit: "passed";
-    staleCas: "passed";
-    concurrentCas: "passed";
-    failureAtomicity: "passed";
-    packetPublicationAtomicity: "passed";
-    clarificationIdentityFencing: "passed";
-    scopeCandidateIdentityFencing: "passed";
-    scopeProposalIdentityFencing: "passed";
 }
 
 // export: ResearchSessionStoreFailureContextV1
@@ -53337,49 +51099,6 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
-// export: ResearchTurnContextV1
-export interface ResearchTurnContextV1 {
-    schema: typeof RESEARCH_TURN_CONTEXT_SCHEMA_V1;
-    brief: {
-        revision: number;
-        objective: string;
-        asOf: string;
-        coverageTargetIds: string[];
-        scopeBindingIds: string[];
-    };
-    graph: {
-        revision: number;
-        status: ResearchGraphV1["status"];
-        unresolvedNodes: Array<{
-            id: string;
-            roleId?: string;
-            kind: ResearchGraphNodeV1["kind"];
-            status: ResearchGraphNodeV1["status"];
-            dependencies: string[];
-            objective: string;
-        }>;
-    };
-    references: {
-        packetRefs: string[];
-        artifactIds: string[];
-    };
-    latestSummary?: {
-        id: string;
-        kind: "turn" | "branch" | "session";
-        author: "host" | "model";
-        nonAuthoritative: true;
-        createdAt: string;
-        summary: string;
-        sourceEventIds: string[];
-    };
-    recentInteractionTail: Array<{
-        eventId: string;
-        createdAt: string;
-        turnId?: string;
-        content: string;
-    }>;
-}
-
 // export: ResearchUncommittedDispatchOutcomeV1
 export interface ResearchUncommittedDispatchOutcomeV1 {
     taskId: string;
@@ -53681,15 +51400,6 @@ export declare function validateResearchTaskAdmissionV1(input: {
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
-// export: verifyChatRetrievalTraceConformanceV1
-export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
-
-// export: verifyResearchDataStoreConformanceV1
-export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
-
-// export: verifyResearchSessionStoreConformanceV1
-export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
-
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
     content: BoundedContentProjectionV1;
@@ -53796,58 +51506,6 @@ export declare class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenc
     chunks(id: string): Promise<ResearchEvidenceChunkV1[]>;
     remove(id: string): Promise<boolean>;
     clear(): Promise<void>;
-}
-
-// export: WorkspaceResearchMessageLineageStoreV1
-export declare class WorkspaceResearchMessageLineageStoreV1 implements ResearchMessageLineageStoreV1 {
-    #private;
-    constructor(workspace: ResearchWorkspace);
-    appendMessages(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        messages: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendHostEvents(input: {
-        batchId: string;
-        createdAt: string;
-        links?: ResearchMessageLineageLinksV1;
-        events: readonly unknown[];
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    appendSummary(input: {
-        kind: ResearchMessageLineageSummaryKindV1;
-        createdAt: string;
-        author: "host" | "model";
-        summary: string;
-        sourceEventIds: readonly string[];
-        parentSummaryIds?: readonly string[];
-        links?: ResearchMessageLineageLinksV1;
-    }): Promise<ResearchMessageLineageSummaryV1>;
-    describe(): Promise<{
-        eventCount: number;
-        summaryCount: number;
-        newestEventAt?: string;
-        newestSummaryAt?: string;
-    }>;
-    latestSummary(): Promise<ResearchMessageLineageSummaryV1 | undefined>;
-    recentEvents(input?: {
-        limit?: number;
-    }): Promise<ResearchMessageLineageEventV1[]>;
-    search(input: {
-        query: string;
-        limit?: number;
-        cursor?: string;
-    }): Promise<{
-        matches: Array<{
-            id: string;
-            type: "event" | "summary";
-            createdAt: string;
-            snippet: string;
-        }>;
-        exhaustive: boolean;
-        nextCursor?: string;
-    }>;
-    expand(id: string): Promise<ResearchMessageLineageEventV1 | ResearchMessageLineageSummaryV1 | undefined>;
 }
 
 // export: WorkspaceResearchOutlineStoreV1
@@ -54260,4 +51918,68 @@ export declare function validateResearchScopeMentionProposalsV1(input: {
     expectedTenantOrigin: string;
     maxMentions?: number;
 }): ResearchScopeMentionV1[];
+```
+
+### Entry point `./testing`
+
+```ts
+// export: ChatRetrievalTraceConformanceV1
+export interface ChatRetrievalTraceConformanceV1 {
+    plan: string;
+    candidateLedger: string;
+    assessment: string;
+}
+
+// export: ResearchDataStoreConformanceFactoryV1
+export interface ResearchDataStoreConformanceFactoryV1 {
+    create(input: {
+        sessionId: string;
+    }): ResearchDataStoreConformanceWorkspacesV1 | Promise<ResearchDataStoreConformanceWorkspacesV1>;
+    dispose?(workspaces: ResearchDataStoreConformanceWorkspacesV1): void | Promise<void>;
+}
+
+// export: ResearchDataStoreConformanceResultV1
+export interface ResearchDataStoreConformanceResultV1 {
+    evidencePublicationAtomicity: "passed";
+    claimPublicationAtomicity: "passed";
+    outlinePublicationAtomicity: "passed";
+    spanAndBindingValidation: "passed";
+    evidenceDrivenInvalidation: "passed";
+    retentionDeletion: "passed";
+}
+
+// export: ResearchDataStoreConformanceWorkspacesV1
+export interface ResearchDataStoreConformanceWorkspacesV1 {
+    evidence: ResearchWorkspace;
+    claims: ResearchWorkspace;
+    outline: ResearchWorkspace;
+}
+
+// export: ResearchSessionStoreConformanceFactoryV1
+export interface ResearchSessionStoreConformanceFactoryV1 {
+    create(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
+}
+
+// export: ResearchSessionStoreConformanceResultV1
+export interface ResearchSessionStoreConformanceResultV1 {
+    aggregateCommit: "passed";
+    staleCas: "passed";
+    concurrentCas: "passed";
+    failureAtomicity: "passed";
+    packetPublicationAtomicity: "passed";
+    clarificationIdentityFencing: "passed";
+    scopeCandidateIdentityFencing: "passed";
+    scopeProposalIdentityFencing: "passed";
+}
+
+// export: verifyChatRetrievalTraceConformanceV1
+export declare function verifyChatRetrievalTraceConformanceV1(workspace: ResearchWorkspace): Promise<ChatRetrievalTraceConformanceV1>;
+
+// export: verifyResearchDataStoreConformanceV1
+export declare function verifyResearchDataStoreConformanceV1(factory: ResearchDataStoreConformanceFactoryV1, prefix?: string): Promise<ResearchDataStoreConformanceResultV1>;
+
+// export: verifyResearchSessionStoreConformanceV1
+export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
 ```

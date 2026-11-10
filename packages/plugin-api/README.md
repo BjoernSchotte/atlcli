@@ -1,8 +1,7 @@
 # @atlcli/plugin-api
 
 Type definitions and helpers for writing atlcli plugins: `definePlugin`,
-`defineCommand`, `defineSubcommand`, `defineFlag` plus the `AtlcliPlugin` /
-`CommandContext` type surface.
+`defineCommand` plus the `AtlcliPlugin` / `CommandContext` type surface.
 
 - **Entry points:** `.` (the only one).
 - **Runtime:** Node ≥ 20 and Bun (pure TypeScript, no platform APIs).

@@ -12,7 +12,6 @@ import {
 } from "../contracts.js";
 import {
   CHAT_QUALITY_MODES_V1,
-  normalizeChatQualityPolicyV1,
   type ChatQualityModeV1,
   type ChatQualityPolicyV1,
 } from "../quality-policy.js";
@@ -452,15 +451,4 @@ export function providerCompatibleChatAnswerSchemaV2(): {
   [key: string]: unknown;
 } {
   return providerCompatibleChatJsonSchemaV1(CHAT_AGENT_DRAFT_JSON_SCHEMA_V2);
-}
-
-export function createChatSessionStateV1(input: {
-  conversationId: string;
-  qualityPolicy: ChatQualityPolicyV1;
-}): ChatSessionStateV1 {
-  return {
-    schema: CHAT_SESSION_STATE_SCHEMA_V1,
-    conversationId: normalizeString(input.conversationId, "Chat conversation ID", 200),
-    qualityPolicy: normalizeChatQualityPolicyV1(input.qualityPolicy),
-  };
 }

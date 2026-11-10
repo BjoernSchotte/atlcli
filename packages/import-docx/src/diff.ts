@@ -55,40 +55,64 @@ function blockText(node: AdfNode): string {
   return text.length > 60 ? `${text.slice(0, 57)}…` : text;
 }
 
+/** LCS table ceiling (Uint32 cells): 16M cells = 64 MiB. */
+const MAX_LCS_CELLS = 16 * 1024 * 1024;
+
 export function diffAdfBlocks(oldBlocks: AdfNode[], newBlocks: AdfNode[]): SemanticDiffV1 {
   const oldKeys = oldBlocks.map(blockKey);
   const newKeys = newBlocks.map(blockKey);
 
-  // LCS table over block keys.
   const n = oldKeys.length;
   const m = newKeys.length;
-  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      lcs[i][j] =
-        oldKeys[i] === newKeys[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  // A re-import changes a few blocks of a long page, so the common head and
+  // tail are aligned directly and only the differing core gets an LCS table.
+  let head = 0;
+  while (head < n && head < m && oldKeys[head] === newKeys[head]) head += 1;
+  let tail = 0;
+  while (tail < n - head && tail < m - head && oldKeys[n - 1 - tail] === newKeys[m - 1 - tail]) tail += 1;
+  const coreN = n - head - tail;
+  const coreM = m - head - tail;
+  const width = coreM + 1;
+  // ponytail: above the cell cap the core is reported as removed-then-added
+  // instead of aligned; switch to Myers O((N+M)D) if such diffs matter.
+  const aligned = coreN * coreM <= MAX_LCS_CELLS;
+  const lcs = new Uint32Array(aligned ? (coreN + 1) * width : 0);
+  if (aligned) {
+    for (let i = coreN - 1; i >= 0; i--) {
+      for (let j = coreM - 1; j >= 0; j--) {
+        lcs[i * width + j] =
+          oldKeys[head + i] === newKeys[head + j]
+            ? lcs[(i + 1) * width + j + 1] + 1
+            : Math.max(lcs[(i + 1) * width + j], lcs[i * width + j + 1]);
+      }
     }
   }
 
   const raw: SemanticDiffEntry[] = [];
-  let unchanged = 0;
+  const removed = (i: number): void => {
+    raw.push({ op: "removed", index: i, type: oldBlocks[i].type, summary: blockText(oldBlocks[i]) });
+  };
+  const added = (j: number): void => {
+    raw.push({ op: "added", index: j, type: newBlocks[j].type, summary: blockText(newBlocks[j]) });
+  };
+  let unchanged = head + tail;
   let i = 0;
   let j = 0;
-  while (i < n && j < m) {
-    if (oldKeys[i] === newKeys[j]) {
+  while (aligned && i < coreN && j < coreM) {
+    if (oldKeys[head + i] === newKeys[head + j]) {
       unchanged += 1;
       i += 1;
       j += 1;
-    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
-      raw.push({ op: "removed", index: i, type: oldBlocks[i].type, summary: blockText(oldBlocks[i]) });
+    } else if (lcs[(i + 1) * width + j] >= lcs[i * width + j + 1]) {
+      removed(head + i);
       i += 1;
     } else {
-      raw.push({ op: "added", index: j, type: newBlocks[j].type, summary: blockText(newBlocks[j]) });
+      added(head + j);
       j += 1;
     }
   }
-  for (; i < n; i++) raw.push({ op: "removed", index: i, type: oldBlocks[i].type, summary: blockText(oldBlocks[i]) });
-  for (; j < m; j++) raw.push({ op: "added", index: j, type: newBlocks[j].type, summary: blockText(newBlocks[j]) });
+  for (; i < coreN; i++) removed(head + i);
+  for (; j < coreM; j++) added(head + j);
 
   // Collapse adjacent removed+added of the same type into "changed".
   const entries: SemanticDiffEntry[] = [];

@@ -1,5 +1,6 @@
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type { ExportBlock } from "@atlcli/confluence";
+import { abortReason } from "./support.js";
 
 export interface PrepareDocxExportRuntimeOptions {
   codeTheme?: CodeThemeId;
@@ -31,11 +32,6 @@ function nowMs(): number {
   return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
-function abortReason(signal: AbortSignal): unknown {
-  return signal.reason ??
-    new DOMException("DOCX runtime preparation was cancelled.", "AbortError");
-}
-
 /**
  * Race one caller against cancellation without passing its signal into shared
  * package initialization. The owned promise keeps rejection handlers attached
@@ -43,11 +39,11 @@ function abortReason(signal: AbortSignal): unknown {
  */
 function waitForCaller<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return operation;
-  if (signal.aborted) return Promise.reject(abortReason(signal));
+  if (signal.aborted) return Promise.reject(abortReason(signal, "DOCX runtime preparation was cancelled."));
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => {
       cleanup();
-      reject(abortReason(signal));
+      reject(abortReason(signal, "DOCX runtime preparation was cancelled."));
     };
     const cleanup = (): void => signal.removeEventListener("abort", onAbort);
     signal.addEventListener("abort", onAbort, { once: true });

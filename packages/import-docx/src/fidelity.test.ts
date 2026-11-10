@@ -19,6 +19,40 @@ function withFootnotes(bytes: Uint8Array, footnotesXml: string): Uint8Array {
 }
 
 describe("blockquotes and code blocks", () => {
+  it("keeps document order when a list directly follows a quote or code group", () => {
+    const doc = parseDocx(
+      buildDocxFixture({
+        body:
+          p(r("quoted"), { style: "Quote" }) +
+          p(r("item"), { numId: "1" }) +
+          p(r("code"), { style: "SourceCode" }) +
+          p(r("item 2"), { numId: "1" }),
+        styles: STYLES_WITH_QUOTE_AND_CODE,
+      }),
+    );
+    expect(doc.blocks.map((b) => b.type)).toEqual(["blockquote", "list", "code", "list"]);
+  });
+
+  it("keeps bookmarks and comment starts that begin on list, quote and code paragraphs", () => {
+    const mark = (id: number, name: string) =>
+      `<w:bookmarkStart w:id="${id}" w:name="${name}"/><w:commentRangeStart w:id="${id}"/>`;
+    const doc = parseDocx(
+      buildDocxFixture({
+        body:
+          p(mark(1, "in_list") + r("item"), { numId: "1" }) +
+          p(mark(2, "in_quote") + r("quoted"), { style: "Quote" }) +
+          p(mark(3, "in_code") + r("code"), { style: "SourceCode" }),
+        styles: STYLES_WITH_QUOTE_AND_CODE,
+      }),
+    );
+    expect(doc.blocks.map((b) => [b.type, b.bookmarks])).toEqual([
+      ["list", ["in_list"]],
+      ["blockquote", ["in_quote"]],
+      ["code", ["in_code"]],
+    ]);
+    expect(["1", "2", "3"].map((id) => doc.commentOwners.get(id))).toEqual(doc.blocks);
+  });
+
   it("groups consecutive quote paragraphs (incl. localized style) into one blockquote", () => {
     const doc = parseDocx(
       buildDocxFixture({

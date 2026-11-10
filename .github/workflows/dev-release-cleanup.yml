@@ -25,6 +25,7 @@ jobs:
   plan:
     name: Plan protected dev release retention
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       artifact_name: ${{ steps.contract.outputs.artifact_name }}
     steps:
@@ -35,7 +36,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Resolve fixed stable and Homebrew protection pointers
         id: pointers
@@ -103,6 +104,7 @@ jobs:
     needs: plan
     if: inputs.apply && inputs.proven_tag != ''
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -113,7 +115,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Download this run's plan only
         uses: actions/download-artifact@v8

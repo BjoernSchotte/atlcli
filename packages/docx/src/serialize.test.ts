@@ -2872,3 +2872,25 @@ describe("divider — ADF Stage-0 styled rule and bodiedRule", () => {
     expect(xml).toMatch(/<w:pStyle w:val="[^"]+"\/><w:pBdr><w:bottom w:val="single" w:sz="6"[^>]*\/><\/w:pBdr>.*<w:outlineLvl/);
   });
 });
+
+describe("single-page heading anchors", () => {
+  const heading = (text: string): ExportBlock => ({ type: "heading", level: 1, content: [{ type: "text", text }] });
+  const linkTo = (anchor: string): ExportBlock => ({
+    type: "paragraph",
+    content: [{ type: "link", target: { kind: "anchor", anchor }, content: [{ type: "text", text: anchor }] }],
+  });
+
+  it("bookmarks an anchor-less heading that a link names by its text, first occurrence only", async () => {
+    const { xml } = await serializeBlocks(
+      [linkTo("Über Größe!"), heading("Über Größe!"), heading("Über Größe!")],
+      { styleNames: noStyles },
+    );
+    expect(xml).toContain('<w:hyperlink w:anchor="uber-gro-e"');
+    expect(xml.match(/<w:bookmarkStart w:id="\d+" w:name="uber-gro-e"\/>/g)).toHaveLength(1);
+  });
+
+  it("leaves headings nobody links to without a bookmark", async () => {
+    const { xml } = await serializeBlocks([heading("Intro")], { styleNames: noStyles });
+    expect(xml).not.toContain("w:bookmarkStart");
+  });
+});

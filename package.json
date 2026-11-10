@@ -7,7 +7,8 @@
   "packageManager": "bun@1.4.4",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "plugins/*"
   ],
   "scripts": {
     "start": "bun --conditions=development run --cwd apps/cli src/index.ts",
@@ -65,11 +66,6 @@
     "test:e2e:digest-flow": "bun run build:cli && ATLCLI_DIGEST_FLOW_E2E=1 bun run test apps/cli/src/e2e/digest-flow-live.e2e.test.ts",
     "test:e2e:import-pdf": "bun run build:cli && ATLCLI_IMPORT_PDF_E2E=1 bun run test apps/cli/src/e2e/wiki-import-pdf-live.e2e.test.ts",
     "check:extension-output": "bun run --cwd apps/extension check:output",
-    "obfuscate": "terser dist/index.js --compress --mangle --output dist/index.js",
-    "prebuild:prod": "bun run fonts:ensure && bun run vendor:typst && bun run vendor:pdfium && bun run clean:browser-artifacts",
-    "build:prod": "turbo run build && bun run obfuscate",
-    "version:core": "npm version --no-git-tag-version -w @atlcli/core -w @atlcli/confluence -w @atlcli/plugin-api",
-    "version:cli": "npm version --no-git-tag-version -w @atlcli/cli",
     "docs:dev": "astro dev",
     "docs:check": "astro check --tsconfig ./tsconfig.docs.json",
     "docs:build": "astro build",
@@ -78,12 +74,14 @@
   "dependencies": {
     "@astrojs/starlight": "^0.42.0",
     "@atlcli/confluence": "workspace:*",
+    "@atlcli/confluence-vfs": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/export-fixtures": "workspace:*",
     "@atlcli/export-jobs": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/export-node": "workspace:*",
     "@atlcli/export-wiring": "workspace:*",
+    "@atlcli/import-core": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
     "astro": "7.4.8",
@@ -99,7 +97,6 @@
     "bun-types": "^1.4.4",
     "github-slugger": "^2.0.0",
     "jszip": "3.10.2",
-    "terser": "^5.44.1",
     "turbo": "2.11.10",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2"

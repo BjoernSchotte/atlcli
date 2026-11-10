@@ -23,7 +23,6 @@ import {
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
 } from "./contracts.js";
 import {
-  RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
   RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
 } from "./workflow-contracts.js";

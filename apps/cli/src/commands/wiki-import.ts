@@ -280,6 +280,10 @@ export async function handleWikiImport(
   const manifestPath = getFlag(flags, "manifest");
   if (manifestPath) {
     rejectUnsupportedBatchFlags(flags, opts);
+    const ignored = manifestOwnedInputs(args, flags);
+    if (ignored.length > 0) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, `${ignored.join("; ")}.`, { inputs: ignored });
+    }
     await handleManifestBatch(manifestPath, flags, opts);
     return;
   }
@@ -865,6 +869,27 @@ interface BatchItemResult {
   rootPageId?: string;
   url?: string;
   error?: string;
+  /** Pages of a failed file that the rollback could not delete. */
+  orphanedPageIds?: string[];
+}
+
+/**
+ * Roll back the pages one batch item created. Pages the rollback could not
+ * delete stay in the space: they are named in the item's error and returned,
+ * so the report never calls a file "failed, nothing left behind" when
+ * something was.
+ */
+export async function rollbackBatchItem(
+  client: Parameters<typeof rollbackOwnedPages>[0],
+  createdPageIds: readonly string[],
+  err: unknown,
+): Promise<{ error: string; orphanedPageIds: string[] }> {
+  const { failed } = await rollbackOwnedPages(client, createdPageIds);
+  const message = err instanceof Error ? err.message : String(err);
+  return {
+    error: failed.length > 0 ? `${message} (rollback incomplete: page(s) ${failed.join(", ")} were not deleted and need manual cleanup)` : message,
+    orphanedPageIds: failed,
+  };
 }
 
 /**
@@ -892,6 +917,38 @@ export function unsupportedBatchFlags(flags: Record<string, string | boolean | s
   ].filter((name) => flags[name] !== undefined);
   if (flags["title-conflict"] !== undefined && getFlag(flags, "title-conflict") !== "fail") unsupported.push("title-conflict");
   return unsupported.map((name) => `--${name}`);
+}
+
+/** Where a `--manifest` import takes what these flags say elsewhere. */
+const MANIFEST_OWNED_FLAGS: Record<string, string> = {
+  space: "set destination.spaceKey in the manifest",
+  parent: "set destination.parentId in the manifest",
+  split: "set defaults.splitHeading or a document's splitHeading in the manifest",
+  title: "set the document's title in the manifest",
+  "skip-existing": "resume a manifest batch with --resume",
+  recipe: "set defaults.recipe in the manifest",
+  "recipe-id": "set defaults.recipe in the manifest",
+  "map-style": "put the mapping into the recipe named by defaults.recipe",
+  revisions: "put the option into the recipe named by defaults.recipe",
+  unsupported: "put the option into the recipe named by defaults.recipe",
+  comments: "put the option into the recipe named by defaults.recipe",
+  overrides: "it applies to single-file imports only",
+  "from-page": "list local files under documents in the manifest",
+  attachment: "list local files under documents in the manifest",
+};
+
+/**
+ * What a `--manifest` import would silently ignore: the manifest names the
+ * destination, titles, split levels and recipe, and its state file resumes
+ * it. One message per ignored flag or positional file; empty when none.
+ */
+export function manifestOwnedInputs(args: string[], flags: Record<string, string | boolean | string[]>): string[] {
+  return [
+    ...(args.length > 0 ? [`${args.join(", ")}: a manifest import takes its files from the manifest's documents`] : []),
+    ...Object.entries(MANIFEST_OWNED_FLAGS)
+      .filter(([name]) => flags[name] !== undefined)
+      .map(([name, instead]) => `--${name} is not used with --manifest: ${instead}`),
+  ];
 }
 
 /**
@@ -1094,8 +1151,14 @@ async function handleBatchImport(
         url: root.url,
       });
     } catch (err) {
-      await rollbackOwnedPages(client, createdPageIds);
-      results.push({ file: plan.file, title: plan.title, status: "failed", error: (err as Error).message });
+      const rollback = await rollbackBatchItem(client, createdPageIds, err);
+      results.push({
+        file: plan.file,
+        title: plan.title,
+        status: "failed",
+        error: rollback.error,
+        ...(rollback.orphanedPageIds.length > 0 ? { orphanedPageIds: rollback.orphanedPageIds } : {}),
+      });
     }
   }
 
@@ -1385,18 +1448,7 @@ export async function handleUpdateImport(
     // a deletion failure is an explicit orphan warning, never a rollback.
     const currentSourceIds = new Set(doc.assets.map((a) => a.id));
     const superseded = baseline.assetBindings.filter((b) => !currentSourceIds.has(b.sourceAssetId));
-    if (superseded.length > 0) {
-      const attachments = await client.listAttachments(pageId);
-      for (const b of superseded) {
-        const match = attachments.find((a) => a.filename === b.remoteFilename);
-        if (!match) continue;
-        try {
-          await client.deleteAttachment(match.id);
-        } catch (err) {
-          orphanWarnings.push(`orphaned attachment ${b.remoteFilename} (${match.id}): ${(err as Error).message}`);
-        }
-      }
-    }
+    orphanWarnings.push(...(await deleteSupersededAttachments(client, pageId, superseded)));
   } catch (err) {
     // Restore the previous body as a NEW version — history is preserved and
     // the page never stays in an unverified state.
@@ -1444,6 +1496,38 @@ export async function handleUpdateImport(
     if (updated.url) output(updated.url, opts);
     for (const warning of orphanWarnings) output(`  ⚠ ${warning}`, opts);
   }
+}
+
+/**
+ * Delete import-owned attachments the new source no longer has. Runs after
+ * the successor baseline is sealed, so it never throws: an error here would
+ * roll the body back under a baseline that already describes the new one, and
+ * the next update would call the page diverged. A failed listing or delete
+ * comes back as an orphan warning.
+ */
+export async function deleteSupersededAttachments(
+  client: Pick<ConfluenceClient, "listAttachments" | "deleteAttachment">,
+  pageId: string,
+  superseded: ReadonlyArray<{ remoteFilename: string }>,
+): Promise<string[]> {
+  if (superseded.length === 0) return [];
+  let attachments: Awaited<ReturnType<ConfluenceClient["listAttachments"]>>;
+  try {
+    attachments = await client.listAttachments(pageId);
+  } catch (err) {
+    return superseded.map((b) => `orphaned attachment ${b.remoteFilename}: attachments could not be listed: ${(err as Error).message}`);
+  }
+  const warnings: string[] = [];
+  for (const b of superseded) {
+    const match = attachments.find((a) => a.filename === b.remoteFilename);
+    if (!match) continue;
+    try {
+      await client.deleteAttachment(match.id);
+    } catch (err) {
+      warnings.push(`orphaned attachment ${b.remoteFilename} (${match.id}): ${(err as Error).message}`);
+    }
+  }
+  return warnings;
 }
 
 interface PublishedPageReport {
@@ -1950,6 +2034,10 @@ Options:
                           --staging-parent, --label, --content-property and
                           --title-conflict rename are single-file only; a batch
                           or --manifest import rejects them)
+  --manifest <file>       Batch described by a manifest. It names the space,
+                          parent, titles, split levels and recipe itself, so
+                          --space, --parent, --split, --title, --skip-existing,
+                          --recipe and the policy flags are rejected with it
   --map-style <s>=<t>     Repeatable; map a Word style (id or name) to
                           paragraph|heading-1..6|blockquote|code
   --revisions <mode>      accept|reject tracked changes (default accept)

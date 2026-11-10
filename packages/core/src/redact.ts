@@ -69,15 +69,3 @@ export function redactSensitive<T>(obj: T): T {
 
   return result as T;
 }
-
-/**
- * Redact a single string value if it looks like a token/secret.
- * Used for inline redaction of known sensitive values.
- */
-export function redactValue(value: string): string {
-  // If it looks like a base64 encoded token or long alphanumeric string
-  if (value.length > 20 && /^[A-Za-z0-9+/=_-]+$/.test(value)) {
-    return "[REDACTED]";
-  }
-  return value;
-}

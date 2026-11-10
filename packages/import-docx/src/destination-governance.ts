@@ -65,6 +65,7 @@ export function principalId(p: DestinationPrincipal): string {
 }
 
 const LABEL_RE = /^[^\s,]{1,255}$/;
+const JSON_NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const PROPERTY_KEY_RE = /^atlcli\.[a-z0-9][a-z0-9._-]{0,120}$/;
 const MAX_PROPERTIES = 20;
 const MAX_PROPERTY_VALUE_CHARS = 2048;
@@ -159,7 +160,9 @@ export function buildGovernance(input: GovernanceInput): {
     if (rawValue === "true") value = true;
     else if (rawValue === "false") value = false;
     else if (rawValue === "null") value = null;
-    else if (rawValue !== "" && !Number.isNaN(Number(rawValue)) && rawValue.trim() !== "") {
+    // Only a canonical JSON number becomes a number. `Number()` would also
+    // rewrite identifiers: "0012" → 12, "0x1F" → 31, "1e3" → 1000, " 7" → 7.
+    else if (JSON_NUMBER_RE.test(rawValue) && String(Number(rawValue)) === rawValue) {
       value = Number(rawValue);
     }
     contentProperties.push({ key, value });

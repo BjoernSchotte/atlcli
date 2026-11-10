@@ -14,12 +14,6 @@ export type ExportJobMetricV1 =
   | "memory.heapPeakBytes"
   | "memory.rendererPeakBytes";
 
-export const EXPORT_JOB_METRICS_V1 = [
-  "storage.spoolPeakBytes",
-  "memory.heapPeakBytes",
-  "memory.rendererPeakBytes",
-] as const satisfies readonly ExportJobMetricV1[];
-
 /** Monotonic version-1 counters and measurements for one export job. */
 export interface ExportJobStatsV1 {
   pages: { discovered: number; fetched: number; composed: number; skipped: number };

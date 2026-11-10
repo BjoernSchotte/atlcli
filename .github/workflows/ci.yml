@@ -65,7 +65,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Determine required gates
         id: routes
@@ -138,7 +138,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Scan tracked research data
         run: bun run check:research-privacy
@@ -160,10 +160,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Check docs
         run: bun run docs:check
@@ -183,7 +183,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Validate README media
         run: bun run check:readme-media
@@ -200,7 +200,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Restore Bun package cache
         uses: actions/cache@v6
@@ -218,7 +218,7 @@ jobs:
             ${{ runner.os }}-turbo-
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Type check draft
         run: bun run typecheck
@@ -275,7 +275,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Restore pinned PDF fonts
         uses: actions/cache@v6
@@ -284,7 +284,7 @@ jobs:
           key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
@@ -306,10 +306,11 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        shell: bash
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Sink commit-protocol tests
         run: bun --conditions=development test apps/cli/src/commands/export-pdf-sink.test.ts
@@ -325,7 +326,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Restore Bun package cache
         uses: actions/cache@v6
@@ -349,7 +350,7 @@ jobs:
             ${{ runner.os }}-turbo-
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
@@ -419,7 +420,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Restore Bun package cache
         uses: actions/cache@v6
@@ -440,7 +441,7 @@ jobs:
           key: ${{ runner.os }}-playwright-chromium-1.65.0
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
@@ -512,7 +513,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Restore Bun package cache
         uses: actions/cache@v6
@@ -534,7 +535,7 @@ jobs:
           key: ${{ runner.os }}-playwright-chromium-1.65.0
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
@@ -623,7 +624,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Restore Bun package cache
         uses: actions/cache@v6
@@ -638,7 +639,7 @@ jobs:
           key: ${{ runner.os }}-pdf-fonts-v1-${{ hashFiles('packages/pdf/src/runtime-assets.ts', 'packages/pdf/scripts/ensure-fonts.ts') }}
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
@@ -842,7 +843,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Prepare telemetry input
         run: mkdir -p test-results turbo-results

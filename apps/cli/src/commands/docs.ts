@@ -2311,12 +2311,8 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
 
       for (const file of batch) {
         try {
-          const conflicts: PushConflict[] = [];
-          const result = await pushFile({
-            client, filePath: file, space, opts, atlcliDir: atlcliDir ?? undefined, state, baseUrl: dirConfig?.baseUrl, force, conflicts,
-          });
-          if (atlcliDir && state) await writeState(atlcliDir, state);
-          const payload = { schemaVersion: "1", file, result, ...(conflicts.length ? { conflict: conflicts[0] } : {}) };
+          const payload = await pushWatchedFile({ client, space, opts, atlcliDir, state, baseUrl: dirConfig?.baseUrl, force }, file);
+          const { result } = payload;
           if (opts.json) {
             process.stdout.write(`${JSON.stringify(payload)}\n`);
           } else if (result !== "conflict") {
@@ -2342,6 +2338,33 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
     }
     process.exit(0);
   });
+}
+
+/**
+ * @internal
+ * What `docs watch` does with one changed file: push it, then persist the
+ * sync state. `file` is the path the watcher reports, relative to the working
+ * directory when the watched directory was given that way (`./docs`).
+ */
+export async function pushWatchedFile(
+  ctx: {
+    client: ConfluenceClient;
+    space?: string;
+    opts: OutputOptions;
+    atlcliDir: string | null;
+    state?: AtlcliState;
+    baseUrl?: string;
+    force?: boolean;
+  },
+  file: string,
+): Promise<{ schemaVersion: "1"; file: string; result: PushResult; conflict?: PushConflict }> {
+  const conflicts: PushConflict[] = [];
+  const result = await pushFile({
+    client: ctx.client, filePath: file, space: ctx.space, opts: ctx.opts, atlcliDir: ctx.atlcliDir ?? undefined,
+    state: ctx.state, baseUrl: ctx.baseUrl, force: ctx.force, conflicts,
+  });
+  if (ctx.atlcliDir && ctx.state) await writeState(ctx.atlcliDir, ctx.state);
+  return { schemaVersion: "1", file, result, ...(conflicts.length ? { conflict: conflicts[0] } : {}) };
 }
 
 type PushResult = "updated" | "created" | "skipped" | "conflict";

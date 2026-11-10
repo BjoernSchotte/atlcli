@@ -490,27 +490,6 @@ export interface UserFilter {
 }
 
 /**
- * Find users that are contributors to pages but have unknown status.
- */
-export async function findUsersWithUnknownStatus(
-  adapter: SyncDbAdapter
-): Promise<UserRecord[]> {
-  const users = await adapter.listUsers();
-  return users.filter((u) => u.isActive === null);
-}
-
-/**
- * Find users that haven't been checked in a while.
- */
-export async function findStaleUsers(
-  adapter: SyncDbAdapter,
-  ttlMs: number = DEFAULT_USER_CACHE_TTL_MS
-): Promise<UserRecord[]> {
-  const users = await adapter.listUsers();
-  return users.filter((u) => isUserCacheExpired(u, ttlMs));
-}
-
-/**
  * Get user statistics from the database.
  */
 export async function getUserStats(adapter: SyncDbAdapter): Promise<{

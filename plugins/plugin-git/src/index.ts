@@ -18,7 +18,7 @@ import {
   removeHookHandler,
   statusHookHandler,
 } from "./git-hooks.js";
-import type { AtlcliPlugin, CommandDefinition } from "./types.js";
+import type { AtlcliPlugin, CommandDefinition } from "@atlcli/plugin-api";
 
 // Git command with nested subcommands
 const gitCommands: CommandDefinition[] = [
@@ -55,6 +55,8 @@ const gitCommands: CommandDefinition[] = [
               await statusHookHandler(subCtx);
               break;
             default:
+              // An unknown verb is a usage error; a bare `git hook` only asks for the usage.
+              if (subcommand) process.exitCode = 1;
               console.log(`Usage: atlcli git hook <install|remove|status> [dir]
 
 Commands:

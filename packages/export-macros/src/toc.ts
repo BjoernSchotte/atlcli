@@ -6,11 +6,22 @@
  * never fails.
  */
 import type { ExportBlock, InlineNode, ListItem } from "@atlcli/confluence";
-import { formatAdfDateTimestamp, statusDisplayText } from "@atlcli/confluence";
+import {
+  formatAdfDateTimestamp,
+  inlineMediaDisplayText,
+  mentionDisplayText,
+  sanitizeAnchorId,
+  smartCardDisplayText,
+  statusDisplayText,
+} from "@atlcli/confluence";
 import type { MacroExportContext, MacroInstance, MacroRenderer, MacroRenderResult } from "./types.js";
 
-/** Flatten an inline node's plain text (for heading-derived anchor slugs). */
-function inlinePlainText(nodes: InlineNode[]): string {
+/**
+ * Flatten a heading's inline content to the text the engines show. Kept in step
+ * with the PDF serializer's own flattening: the PDF resolves an in-page anchor
+ * link by exactly this text.
+ */
+function inlinePlainText(nodes: readonly InlineNode[]): string {
   let out = "";
   for (const n of nodes) {
     switch (n.type) {
@@ -27,11 +38,19 @@ function inlinePlainText(nodes: InlineNode[]): string {
         out += statusDisplayText(n);
         break;
       case "mention":
-        out += n.displayName ?? n.accountId;
+        // Never the raw account id: an unresolved mention reads "Unknown user".
+        out += `@${mentionDisplayText(n)}`;
+        break;
+      case "smartCard":
+        out += smartCardDisplayText(n.card);
+        break;
+      case "media":
+        out += inlineMediaDisplayText(n);
+        break;
+      case "lineBreak":
+        out += " ";
         break;
       case "placeholder":
-        break;
-      default:
         break;
     }
   }
@@ -39,9 +58,9 @@ function inlinePlainText(nodes: InlineNode[]): string {
 }
 
 /**
- * Sanitize a heading's text into a stable, ASCII-safe in-page slug. Matches the
- * shape `composeChapters` uses (minus its `p<id>-` chapter prefix, which only
- * exists in composed multi-page documents).
+ * Sanitize a heading's text into a stable, ASCII-safe in-page slug: the anchor
+ * a web TOC links to. DOCX/PDF link by heading text instead (see
+ * `collectHeadings`).
  */
 export function slugifyHeading(text: string): string {
   let s = text
@@ -58,19 +77,36 @@ export function slugifyHeading(text: string): string {
 interface HeadingRef {
   level: number;
   text: string;
-  anchor: string;
+  /** Absent: no anchor the target engine would resolve; rendered as plain text. */
+  anchor?: string;
 }
 
-function collectHeadings(blocks: ExportBlock[], out: HeadingRef[]): void {
+function collectHeadings(blocks: ExportBlock[], out: HeadingRef[], target: TocAnchorTarget): void {
+  const seen = new Set<string>();
   for (const b of blocks) {
     if (b.type === "heading") {
       const text = inlinePlainText(b.content);
-      out.push({ level: b.level, text, anchor: b.explicitAnchor || slugifyHeading(text) });
+      let anchor = b.explicitAnchor;
+      if (!anchor && target === "web") {
+        anchor = slugifyHeading(text);
+      } else if (!anchor) {
+        // A single-page DOCX/PDF export has no composed anchors. Both engines
+        // resolve a link to an anchor-less heading by the heading's own text,
+        // and only its first occurrence: a repeated heading stays unlinked
+        // rather than jumping to its namesake.
+        const key = sanitizeAnchorId(text);
+        if (!seen.has(key)) anchor = text;
+        seen.add(key);
+      }
+      out.push({ level: b.level, text, ...(anchor ? { anchor } : {}) });
     }
     // Headings only appear at the top level of a document body; nested
     // containers are not scanned (matches Confluence's own TOC behavior).
   }
 }
+
+/** Which engine's in-page anchor scheme the TOC links must match. */
+export type TocAnchorTarget = "document" | "web";
 
 /**
  * Build a nested `{ type: "list" }` of `link` inline nodes for every heading in
@@ -78,12 +114,12 @@ function collectHeadings(blocks: ExportBlock[], out: HeadingRef[]): void {
  */
 export function tocFromHeadings(
   blocks: ExportBlock[],
-  opts: { minLevel?: number; maxLevel?: number } = {}
+  opts: { minLevel?: number; maxLevel?: number; target?: TocAnchorTarget } = {}
 ): ExportBlock[] {
   const minLevel = opts.minLevel ?? 1;
   const maxLevel = opts.maxLevel ?? 6;
   const headings: HeadingRef[] = [];
-  collectHeadings(blocks, headings);
+  collectHeadings(blocks, headings, opts.target ?? "document");
   const inRange = headings.filter((h) => h.level >= minLevel && h.level <= maxLevel);
   if (inRange.length === 0) return [];
 
@@ -94,11 +130,10 @@ export function tocFromHeadings(
 
   for (const h of inRange) {
     while (stack.length > 1 && h.level <= stack[stack.length - 1].level) stack.pop();
-    const linkNode: InlineNode = {
-      type: "link",
-      target: { kind: "anchor", anchor: h.anchor },
-      content: [{ type: "text", text: h.text }],
-    };
+    const textNode: InlineNode = { type: "text", text: h.text };
+    const linkNode: InlineNode = h.anchor
+      ? { type: "link", target: { kind: "anchor", anchor: h.anchor }, content: [textNode] }
+      : textNode;
     const item: ListItem = { content: [{ type: "paragraph", content: [linkNode] }] };
     stack[stack.length - 1].items.push(item);
     // A nested list is attached as the last block of the parent item when a
@@ -154,7 +189,11 @@ export function tocRenderer(): MacroRenderer {
       // Scan the whole composed document for headings (a real TOC), falling back
       // to the macro's own body only when the resolver did not supply the tree.
       const source = ctx.documentBlocks ? [...ctx.documentBlocks] : m.body ?? [];
-      const toc = tocFromHeadings(source, { minLevel, maxLevel });
+      const toc = tocFromHeadings(source, {
+        minLevel,
+        maxLevel,
+        target: ctx.flags?.targetEngine === "web" ? "web" : "document",
+      });
       if (toc.length === 0) return { kind: "skip" };
       return {
         kind: "blocks",

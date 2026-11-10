@@ -114,6 +114,27 @@ export function planTaskStatusSync(
   return plan;
 }
 
+/**
+ * Note in the ledger what a sync did to the page: issues whose task it ticked
+ * carry `tickedBySync`, issues whose task it unticked lose it. Without the
+ * second half a task ticked by hand after a reopen counted as "ticked by
+ * sync" forever and the next sync unticked it. Returns whether the ledger changed.
+ */
+export function recordSyncedTasks(ledger: TaskLedger, done: { ticked: readonly string[]; reopened: readonly string[] }): boolean {
+  let changed = false;
+  for (const key of done.ticked) {
+    ledger.issues[key] = { ...ledger.issues[key], tickedBySync: true };
+    changed = true;
+  }
+  for (const key of done.reopened) {
+    const { tickedBySync, ...entry } = ledger.issues[key] ?? {};
+    if (!tickedBySync) continue;
+    ledger.issues[key] = entry;
+    changed = true;
+  }
+  return changed;
+}
+
 function summaryOf(task: PageTask): string {
   return task.text.length > 255 ? `${task.text.slice(0, 254)}…` : task.text;
 }
@@ -190,8 +211,7 @@ export async function handlePageTasksToIssues(
     mark: !hasFlag(flags, "no-mark"),
     sync,
   });
-  if (sync && ledgerWritable && pageUpdated.ticked.length > 0) {
-    for (const key of pageUpdated.ticked) ledger.issues[key] = { ...ledger.issues[key], tickedBySync: true };
+  if (sync && ledgerWritable && recordSyncedTasks(ledger, pageUpdated)) {
     await confluence.upsertPageProperty(pageId, TASK_LEDGER_KEY, ledger);
   }
 
@@ -279,11 +299,12 @@ async function updatePageTasks(
   ledger: TaskLedger,
   states: ReadonlyMap<string, IssueState>,
   options: { mark: boolean; sync: boolean }
-): Promise<{ updated: boolean; ticked: string[] }> {
+): Promise<{ updated: boolean; ticked: string[]; reopened: string[] }> {
   for (let attempt = 0; ; attempt++) {
     const page = await confluence.getPage(pageId);
     let storage = page.storage;
     const ticked: string[] = [];
+    const reopened: string[] = [];
 
     if (options.sync) {
       const statuses = new Map<number, PageTask["status"]>();
@@ -293,6 +314,7 @@ async function updatePageTasks(
           ticked.push(...entry.keys);
         } else if (entry.action === "reopen") {
           statuses.set(entry.index, "incomplete");
+          reopened.push(...entry.keys);
         }
       }
       storage = setTaskStatuses(storage, extractPageTasks(storage), statuses);
@@ -307,10 +329,10 @@ async function updatePageTasks(
       storage = annotateTasksWithIssueLinks(storage, tasks, links);
     }
 
-    if (storage === page.storage) return { updated: false, ticked: [] };
+    if (storage === page.storage) return { updated: false, ticked: [], reopened: [] };
     try {
       await confluence.updatePage({ id: pageId, title: page.title, storage, version: (page.version ?? 1) + 1 });
-      return { updated: true, ticked };
+      return { updated: true, ticked, reopened };
     } catch (err) {
       // Someone saved the page in between: re-read and redo once.
       if (attempt === 0 && (err as { status?: number }).status === 409) continue;

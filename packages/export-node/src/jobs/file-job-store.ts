@@ -42,6 +42,7 @@ import {
 } from "@atlcli/export-jobs";
 import { ensurePrivateDirectory, writeDurableAtomic } from "./atomic-fs.js";
 import { FileExportLock } from "./file-lock.js";
+import { canonical } from "./file-byte-utils.js";
 
 const JOURNAL_NAME = /^([0-9]{20})\.json$/;
 const DEFAULT_LIST_LIMIT = 100;
@@ -121,12 +122,6 @@ function emptyCatalog(): FileExportCatalogV1 {
 }
 
 function clone<T>(value: T): T { return structuredClone(value); }
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
-}
 function boundedLimit(value: number | undefined, fallback = DEFAULT_LIST_LIMIT): number {
   if (value === undefined) return fallback;
   if (!Number.isSafeInteger(value) || value < 0) throw new RangeError("Query limit must be non-negative.");
@@ -220,6 +215,11 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
 
   async get(id: string): Promise<ExportJobSnapshotV1 | undefined> { return this.#read((c) => c.jobs[id] ? clone(c.jobs[id]) : undefined); }
   async getRequest(ref: string): Promise<ExportJobRequestV1 | undefined> { return this.#read((c) => c.requests[ref] ? clone(c.requests[ref]) : undefined); }
+  /** Batch form of `getRequest`: one lock and one journal load, results in `refs` order. */
+  async getRequests(refs: readonly string[]): Promise<Array<ExportJobRequestV1 | undefined>> {
+    if (refs.length === 0) return [];
+    return this.#read((c) => refs.map((ref) => c.requests[ref] ? clone(c.requests[ref]) : undefined));
+  }
   async list(query: ExportJobQueryV1 & { createdAfter?: number } = {}): Promise<ExportJobSnapshotV1[]> {
     return this.#read((catalog) => Object.values(catalog.jobs)
       .filter((j) => !query.formats || query.formats.includes(j.format))
@@ -435,18 +435,24 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
    * marker was committed. Metadata rows are retained until the file deletion
    * succeeds, so a process crash can safely retry this operation.
    */
-  async cleanupReleasedReportPayloads(jobId: string): Promise<number> {
+  async cleanupReleasedReportPayloads(jobIds: string | readonly string[]): Promise<number> {
+    // One lock and one journal load for the whole batch: the retention sweep
+    // passes every released historical job on every export start.
+    const requested = typeof jobIds === "string" ? [jobIds] : jobIds;
+    if (requested.length === 0) return 0;
     const lease = await this.#lock.acquire({ label: "journal-report-retention" });
     try {
       const catalog = await this.#load();
-      const job = catalog.jobs[jobId];
-      if (!job || job.reportReleasedAt === undefined || job.reportRef !== undefined) {
-        return 0;
-      }
+      const released = new Set(requested.filter((jobId) => {
+        const job = catalog.jobs[jobId];
+        return job !== undefined && job.reportReleasedAt !== undefined && job.reportRef === undefined;
+      }));
+      if (released.size === 0) return 0;
       const reportsRoot = resolve(this.rootDir, "reports");
       const retained = Object.entries(catalog.executorResults).filter(([, stored]) => {
         const intent = stored.intent as { key?: { jobId?: unknown }; jobId?: unknown };
-        return (intent.key?.jobId ?? intent.jobId) === jobId;
+        const owner = intent.key?.jobId ?? intent.jobId;
+        return typeof owner === "string" && released.has(owner);
       });
       for (const [, stored] of retained) {
         const reportPath = resolve(stored.reportPath);

@@ -15,7 +15,7 @@ import {
   writeDurableAtomic,
 } from "./atomic-fs.js";
 import { FileExportLock } from "./file-lock.js";
-import { readJsonFiles } from "./file-byte-utils.js";
+import { readJsonFiles, throwIfAborted } from "./file-byte-utils.js";
 
 interface FileTemplatePackRecordV1 extends TemplatePackRecordV1 {
   schema: "atlcli.template-pack-record/1";
@@ -34,15 +34,6 @@ function digest(bytes: Uint8Array): string {
 
 function keyDigest(recordKey: string): string {
   return createHash("sha256").update(recordKey).digest("hex");
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw (
-      signal.reason ??
-      new DOMException("Template pack operation was cancelled.", "AbortError")
-    );
-  }
 }
 
 function validateLimits(limits: TemplatePackStoreLimitsV1): void {

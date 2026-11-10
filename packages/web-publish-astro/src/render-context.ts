@@ -7,7 +7,7 @@ import {
   type AstroResolvedLinkV1,
 } from "@atlcli/export-blocks-astro";
 import { visitExportBlocksV1, type ExportBlock, type ImageSource } from "@atlcli/export-blocks";
-import { normalizePublicationAnchorReferenceV1, planPublicationAnchorsV1, type PublicationBundleV1, type PublicationPageV1 } from "@atlcli/web-publish";
+import { normalizePublicationAnchorReferenceV1, planPublicationAnchorsV1, publicationNamespacedRouteV1, type PublicationBundleV1, type PublicationPageV1 } from "@atlcli/web-publish";
 
 export interface CreatePublicationRenderContextOptionsV1 {
   page: PublicationPageV1;
@@ -45,7 +45,8 @@ function routeHref(base: string, prefix: string, route: string): string {
     throw new TypeError(`publication route is not safe: ${route}`);
   }
   const normalizedRoute = route === "/" ? "" : route.replace(/^\/+|\/+$/gu, "");
-  return `${base}${prefix}${normalizedRoute ? `/${normalizedRoute}/` : "/"}`;
+  const namespaced = publicationNamespacedRouteV1(normalizedRoute ? `/${normalizedRoute}/` : "/", prefix);
+  return `${base}${namespaced}`;
 }
 
 function outputAssetHref(base: string, path: string): string {
@@ -55,8 +56,77 @@ function outputAssetHref(base: string, path: string): string {
   return `${base}/${path}`;
 }
 
+type PlannedAnchorsV1 = ReturnType<typeof planPublicationAnchorsV1>;
+
+interface AnchorPlanV1 {
+  anchors: PlannedAnchorsV1;
+  /** Normalized anchor id or source anchor to the first matching rendered anchor id. */
+  byReference: ReadonlyMap<string, string>;
+}
+
+// One render context is created per page, but all of them share the loaded
+// bundle. Everything derived from the bundle as a whole is computed once per
+// loaded object instead of once per rendered page.
+const anchorPlans = new WeakMap<readonly ExportBlock[], AnchorPlanV1>();
+const pageIndexes = new WeakMap<readonly PublicationPageV1[], ReadonlyMap<string, PublicationPageV1>>();
+const bundleIndexes = new WeakMap<PublicationBundleV1, Map<string, BundleIndexV1>>();
+
+interface BundleIndexV1 {
+  routeBySourceId: ReadonlyMap<string, string>;
+  assetById: ReadonlyMap<string, PublicationBundleV1["assets"][number]>;
+}
+
+function anchorPlan(blocks: readonly ExportBlock[]): AnchorPlanV1 {
+  let plan = anchorPlans.get(blocks);
+  if (plan === undefined) {
+    const anchors = planPublicationAnchorsV1(blocks);
+    const byReference = new Map<string, string>();
+    for (const anchor of anchors) {
+      if (!byReference.has(anchor.anchorId)) byReference.set(anchor.anchorId, anchor.anchorId);
+      if (anchor.sourceAnchor !== undefined && !byReference.has(anchor.sourceAnchor)) byReference.set(anchor.sourceAnchor, anchor.anchorId);
+    }
+    plan = { anchors, byReference };
+    anchorPlans.set(blocks, plan);
+  }
+  return plan;
+}
+
+function pageIndex(pages: readonly PublicationPageV1[]): ReadonlyMap<string, PublicationPageV1> {
+  let index = pageIndexes.get(pages);
+  if (index === undefined) {
+    index = new Map(pages.map((page) => [page.sourceId, page]));
+    pageIndexes.set(pages, index);
+  }
+  return index;
+}
+
+function bundleIndex(bundle: PublicationBundleV1, base: string, prefix: string): BundleIndexV1 {
+  let byLocation = bundleIndexes.get(bundle);
+  if (byLocation === undefined) {
+    byLocation = new Map();
+    bundleIndexes.set(bundle, byLocation);
+  }
+  const location = `${base}\u0000${prefix}`;
+  let index = byLocation.get(location);
+  if (index === undefined) {
+    const routeBySourceId = new Map<string, string>();
+    for (const route of bundle.routes) {
+      if (route.state !== "active") continue;
+      routeHref(base, prefix, route.route); // rejects an unsafe route before any link uses it
+      routeBySourceId.set(route.sourceId, route.route);
+    }
+    const assetById = new Map<string, PublicationBundleV1["assets"][number]>();
+    for (const asset of bundle.assets) {
+      if (!assetById.has(asset.assetId)) assetById.set(asset.assetId, asset);
+    }
+    index = { routeBySourceId, assetById };
+    byLocation.set(location, index);
+  }
+  return index;
+}
+
 function collectHeadings(blocks: readonly ExportBlock[]): readonly AstroResolvedHeadingV1[] {
-  return planPublicationAnchorsV1(blocks)
+  return anchorPlan(blocks).anchors
     .filter((anchor) => anchor.kind === "heading")
     .map((anchor) => ({
       id: anchor.anchorId,
@@ -66,7 +136,7 @@ function collectHeadings(blocks: readonly ExportBlock[]): readonly AstroResolved
 }
 
 function collectHeadingAnchors(blocks: readonly ExportBlock[]): Readonly<Record<string, string>> {
-  const planned = planPublicationAnchorsV1(blocks);
+  const planned = anchorPlan(blocks).anchors;
   const headingAnchors: Record<string, string> = {};
   let anchorIndex = 0;
   visitExportBlocksV1(blocks, {
@@ -109,10 +179,9 @@ function collectAssetSources(pageId: string, blocks: readonly ExportBlock[]): re
 
 function assetContext(
   page: PublicationPageV1,
-  bundle: PublicationBundleV1,
+  entries: BundleIndexV1["assetById"],
   base: string,
 ): { assets: Readonly<Record<string, AstroResolvedAssetV1>>; bySource: Readonly<Record<string, AstroResolvedAssetV1>> } {
-  const entries = new Map(bundle.assets.map((asset) => [asset.assetId, asset]));
   const context: Record<string, AstroResolvedAssetV1> = {};
   const bySource: Record<string, AstroResolvedAssetV1> = {};
   const sources = collectAssetSources(page.sourceId, page.blocks);
@@ -145,17 +214,13 @@ export function createPublicationRenderContextV1(
 ): AstroExportBlockRenderContextV1 {
   const base = normalizedBase(options.base);
   const prefix = normalizedPrefix(options.routePrefix);
-  const routeBySourceId = new Map(
-    options.bundle.routes.filter((route) => route.state === "active").map((route) => [route.sourceId, route.route]),
-  );
-  for (const route of options.bundle.routes) {
-    if (route.state === "active") routeHref(base, prefix, route.route);
-  }
+  const { routeBySourceId, assetById } = bundleIndex(options.bundle, base, prefix);
   const links: Record<string, AstroResolvedLinkV1> = {};
-  const pages = options.pages ?? [options.page];
-  const anchorsBySourceId = new Map(
-    pages.map((page) => [page.sourceId, planPublicationAnchorsV1(page.blocks)]),
-  );
+  // Anchors of a link target are planned on demand: most pages are never the
+  // target of an anchored link from the page being rendered.
+  const targetPage = (sourceId: string): PublicationPageV1 | undefined => options.pages === undefined
+    ? (sourceId === options.page.sourceId ? options.page : undefined)
+    : pageIndex(options.pages).get(sourceId);
   for (const reference of options.page.links) {
     if (reference.kind === "page") {
       const route = routeBySourceId.get(reference.sourceId);
@@ -166,9 +231,8 @@ export function createPublicationRenderContextV1(
         if (reference.anchorId !== undefined) {
           try {
             const normalized = normalizePublicationAnchorReferenceV1(reference.anchorId);
-            anchorId = anchorsBySourceId.get(reference.sourceId)?.find((anchor) =>
-              anchor.anchorId === normalized || anchor.sourceAnchor === normalized,
-            )?.anchorId;
+            const target = targetPage(reference.sourceId);
+            anchorId = target === undefined ? undefined : anchorPlan(target.blocks).byReference.get(normalized);
           } catch {
             anchorId = undefined;
           }
@@ -185,7 +249,7 @@ export function createPublicationRenderContextV1(
         links[astroExportLinkKeyV1({ kind: "page", contentTitle: "", contentId: reference.sourceId, ...(reference.anchorId === undefined ? {} : { anchor: reference.anchorId }) })] = resolved;
       }
     } else if (reference.kind === "asset") {
-      const asset = options.bundle.assets.find((entry) => entry.assetId === reference.assetId);
+      const asset = assetById.get(reference.assetId);
       const resolved: AstroResolvedLinkV1 = asset === undefined
         ? { kind: "unresolved", href: "#" }
         : { kind: "asset", href: outputAssetHref(base, asset.path) };
@@ -213,7 +277,7 @@ export function createPublicationRenderContextV1(
   // reference manifest. Resolve them against the page-local anchor plan so a
   // stale Confluence anchor becomes the render kit's visible unresolved
   // fallback instead of a dead `#fragment` that fails output verification.
-  const pageAnchors = planPublicationAnchorsV1(options.page.blocks);
+  const pageAnchors = anchorPlan(options.page.blocks).byReference;
   visitExportBlocksV1(options.page.blocks, {
     inline(node) {
       if (node.type !== "link" || node.target.kind !== "anchor") return;
@@ -224,15 +288,13 @@ export function createPublicationRenderContextV1(
         links[astroExportLinkKeyV1(node.target)] = { kind: "unresolved", href: "#" };
         return;
       }
-      const anchor = pageAnchors.find((candidate) =>
-        candidate.anchorId === normalized || candidate.sourceAnchor === normalized,
-      );
-      links[astroExportLinkKeyV1(node.target)] = anchor === undefined
+      const anchorId = pageAnchors.get(normalized);
+      links[astroExportLinkKeyV1(node.target)] = anchorId === undefined
         ? { kind: "unresolved", href: "#" }
-        : { kind: "page", href: `#${encodeURIComponent(anchor.anchorId)}` };
+        : { kind: "page", href: `#${encodeURIComponent(anchorId)}` };
     },
   });
-  const resolvedAssets = assetContext(options.page, options.bundle, base);
+  const resolvedAssets = assetContext(options.page, assetById, base);
   for (const source of collectAssetSources(options.page.sourceId, options.page.blocks)) {
     if (source.kind !== "attachment") continue;
     const asset = resolvedAssets.bySource[astroExportAssetKeyV1(source)];

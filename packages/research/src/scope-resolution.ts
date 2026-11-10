@@ -61,22 +61,6 @@ export interface ResearchBriefClarificationRequiredV1 {
   assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
 }
 
-export type ResearchClarificationRequiredV1 =
-  | ResearchScopeClarificationRequiredV1
-  | ResearchBriefClarificationRequiredV1;
-
-export function isResearchScopeClarificationRequiredV1(
-  value: ResearchClarificationRequiredV1,
-): value is ResearchScopeClarificationRequiredV1 {
-  return "mentionId" in value;
-}
-
-export function isResearchBriefClarificationRequiredV1(
-  value: ResearchClarificationRequiredV1,
-): value is ResearchBriefClarificationRequiredV1 {
-  return "briefRevision" in value;
-}
-
 export interface ResearchScopeCandidateSelectionV1 {
   schema: typeof RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1;
   mentionId: string;

@@ -25,6 +25,8 @@ import {
   type ActionPaletteRequestV1,
   type ActionPaletteResponseV1,
 } from "../../utils/action-palette/protocol.js";
+import { isAtlassianCloudOrigin } from "../../utils/profile.js";
+import { resolveLocale, translate, type MessageKey } from "../../utils/i18n/messages.js";
 import "@atlcli/action-palette-react/styles.css";
 import "./style.css";
 
@@ -74,7 +76,7 @@ function isContentMessageV1(value: unknown): value is ContentToFrameMessageV1 {
 
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (event.source !== window.parent ||
-      !/^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.atlassian\.net$/iu.test(event.origin) ||
+      !isAtlassianCloudOrigin(event.origin) ||
       !event.data || typeof event.data !== "object" ||
       Object.keys(event.data).length !== 1 ||
       (event.data as { kind?: unknown }).kind !== "action-palette-frame:connect" ||
@@ -162,6 +164,11 @@ function actionIcon(token: ActionIconTokenV1): ReactNode {
   return <Icon size={18} strokeWidth={1.8} />;
 }
 
+/** The frame has no settings port; like the catalog request it follows the browser language. */
+function t(key: MessageKey): string {
+  return translate(resolveLocale([navigator.language, ...navigator.languages]), key);
+}
+
 function HostStatus({
   phase,
   onRetry,
@@ -174,7 +181,7 @@ function HostStatus({
   const loading = phase === "loading";
   return (
     <div className="atlcli-action-palette-layer" data-testid={`palette-host-${phase}`}>
-      <button type="button" className="atlcli-action-palette-backdrop" aria-label="Close" onClick={onClose} />
+      <button type="button" className="atlcli-action-palette-backdrop" aria-label={t("paletteHost.close")} onClick={onClose} />
       <section
         className="atlcli-action-palette-frame atlcli-action-palette-host-status"
         role="dialog"
@@ -192,16 +199,14 @@ function HostStatus({
           {loading ? "" : "!"}
         </span>
         <h1 id="atlcli-action-palette-host-title">
-          {loading ? "Loading actions…" : "Actions are temporarily unavailable"}
+          {t(loading ? "paletteHost.loading.title" : "paletteHost.error.title")}
         </h1>
         <p aria-live="polite">
-          {loading
-            ? "Checking the current Atlassian context and available capabilities."
-            : "The extension could not validate this page. You can try again without reloading it."}
+          {t(loading ? "paletteHost.loading.detail" : "paletteHost.error.detail")}
         </p>
         <div className="atlcli-action-palette-host-actions">
-          {!loading ? <button type="button" className="atlcli-action-palette-primary" onClick={onRetry}>Try again</button> : null}
-          <button type="button" className="atlcli-action-palette-secondary" onClick={onClose}>Close</button>
+          {!loading ? <button type="button" className="atlcli-action-palette-primary" onClick={onRetry}>{t("paletteHost.retry")}</button> : null}
+          <button type="button" className="atlcli-action-palette-secondary" onClick={onClose}>{t("paletteHost.close")}</button>
         </div>
       </section>
     </div>
@@ -354,8 +359,8 @@ function App(): ReactNode {
       contextLabel={contextLabel(projection)}
       resolveIcon={actionIcon}
       footerLeading={view.shortcut.status === "assigned"
-        ? <span><kbd>{view.shortcut.value}</kbd> Toggle</span>
-        : <span>Shortcut not assigned · configure in Settings</span>}
+        ? <span><kbd>{view.shortcut.value}</kbd> {t("paletteHost.shortcut.toggle")}</span>
+        : <span>{t("paletteHost.shortcut.unassigned")}</span>}
       lifecycle={{ onCloseRequested: close }}
     />
   );

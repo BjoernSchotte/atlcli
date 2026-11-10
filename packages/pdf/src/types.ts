@@ -274,7 +274,7 @@ export interface PdfTheme {
 export interface PdfWatermarkSettings {
   /** Watermark text. Required when a watermark is requested; must be non-empty. */
   text: string;
-  /** `#RRGGBB`; default `#DE350B`. */
+  /** `#RRGGBB`; default: the template's `tokens.colors.watermark` (`#DE350B` built in). */
   color?: string;
   /** In `(0, 1]`; default `0.08`. `0`, `NaN`, and `Infinity` are rejected. */
   opacity?: number;

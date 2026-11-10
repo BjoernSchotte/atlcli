@@ -29,19 +29,25 @@ export interface CommandContext {
   signal?: AbortSignal;
 }
 
-/** Flag definition for a command */
+/**
+ * Flag definition for a command. atlcli applies it before the handler runs:
+ * `ctx.flags` is keyed by `name` whichever spelling was typed.
+ */
 export interface FlagDefinition {
   /** Flag name (without --) */
   name: string;
-  /** Short alias (single char, without -) */
+  /** Short alias (single char, without -); `-f` then sets `ctx.flags[name]` */
   alias?: string;
   /** Description for help text */
   description: string;
-  /** Whether flag takes a value (default: false = boolean flag) */
+  /**
+   * Whether flag takes a value (default: false = switch). A switch never
+   * consumes the argument after it; a value flag without a value is a usage error.
+   */
   hasValue?: boolean;
-  /** Default value if not provided */
+  /** Value of `ctx.flags[name]` when the flag is not given */
   default?: FlagValue;
-  /** Whether this flag is required */
+  /** A missing required flag is a usage error and the handler does not run */
   required?: boolean;
 }
 
@@ -69,7 +75,11 @@ export interface CommandDefinition {
   subcommands?: Subcommand[];
   /** Global flags for all subcommands */
   flags?: FlagDefinition[];
-  /** Handler for command without subcommand (shows help by default) */
+  /**
+   * Runs when the first argument names no subcommand (all arguments are then
+   * in `ctx.args`). Without it, atlcli prints the command help, or a usage
+   * error for an unknown subcommand.
+   */
   handler?: (ctx: CommandContext) => Promise<void>;
 }
 
@@ -133,13 +143,4 @@ export interface PluginMetadata {
   location: string;
   /** Whether plugin is enabled */
   enabled: boolean;
-}
-
-/** Plugin manifest in package.json */
-export interface PluginManifest {
-  name: string;
-  version: string;
-  atlcli?: {
-    plugin: boolean;
-  };
 }

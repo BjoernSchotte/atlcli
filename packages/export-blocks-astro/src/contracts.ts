@@ -1,16 +1,5 @@
 import type { ExportBlock, InlineNode } from "@atlcli/export-blocks";
 
-export const EXPORT_BLOCK_TYPES_V1 = [
-  "heading", "paragraph", "smartCard", "codeBlock", "callout", "expand",
-  "list", "layout", "table", "image", "mediaFallback", "blockquote",
-  "chart", "divider", "pageBreak", "orientation", "anchor", "unknown",
-] as const satisfies readonly ExportBlock["type"][];
-
-export const INLINE_NODE_TYPES_V1 = [
-  "text", "link", "mention", "date", "status", "smartCard", "media",
-  "placeholder", "lineBreak",
-] as const satisfies readonly InlineNode["type"][];
-
 export function assertNeverExportBlockV1(value: never): never {
   throw new TypeError(`Unsupported ExportBlock discriminator: ${JSON.stringify(value)}`);
 }

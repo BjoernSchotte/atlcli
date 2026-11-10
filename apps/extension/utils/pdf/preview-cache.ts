@@ -316,22 +316,6 @@ export async function getLatestPreview(
   return { entry, bytes: pdfBytesFromUint8Array(pdf) };
 }
 
-/**
- * Bytes **Download** may reuse.
- *
- * Refuses a `truncated` entry on purpose: those bytes are a prefix of the
- * document, and emitting them as the export would hand the user a cut-off PDF
- * that looks complete. The caller falls through to a full compile.
- */
-export async function getReusableExportBytes(
-  parts: PreviewCacheKeyParts,
-  options: { now?: number; factory?: IDBFactory } = {}
-): Promise<PreviewCacheHit | undefined> {
-  const hit = await getPreviewEntry(parts, options);
-  if (!hit || hit.entry.truncated) return undefined;
-  return hit;
-}
-
 /** Drop the cached preview (panel teardown, or an explicit invalidation). */
 export async function clearPreview(factory?: IDBFactory): Promise<void> {
   await withDb(factory, (db) =>

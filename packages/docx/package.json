@@ -89,7 +89,6 @@
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/diagram": "workspace:*",
-    "@atlcli/export-blocks": "workspace:*",
     "@atlcli/export-charts-tanstack": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/export-media": "workspace:*",
@@ -97,5 +96,8 @@
     "docxtemplater": "^3.69.0",
     "fflate": "0.8.3",
     "pizzip": "^3.2.0"
+  },
+  "devDependencies": {
+    "@atlcli/export-blocks": "workspace:*"
   }
 }

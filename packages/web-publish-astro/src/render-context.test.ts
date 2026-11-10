@@ -127,3 +127,18 @@ test("marks stale page-local anchor links unresolved", () => {
   });
   expect(context.links[astroExportLinkKeyV1(anchor)]).toEqual({ kind: "unresolved", href: "#" });
 });
+
+test("plans anchors only for pages the rendered page links into", () => {
+  let reads = 0;
+  const unrelated = Object.defineProperty({ ...targetPage, sourceId: "unrelated" }, "blocks", {
+    enumerable: true,
+    get() {
+      reads += 1;
+      return targetPage.blocks;
+    },
+  }) as PublicationPageV1;
+  const context = createPublicationRenderContextV1({ page, bundle, pages: [page, targetPage, unrelated], base: "/docs", routePrefix: "/publish" });
+  expect(context.links["page-link"]).toEqual({ kind: "page", href: "/docs/publish/target/#details" });
+  // Each page render used to plan the anchors of every page in the bundle.
+  expect(reads).toBe(0);
+});

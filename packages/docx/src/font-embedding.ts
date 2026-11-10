@@ -6,6 +6,8 @@
  * the first two 16-byte blocks of the original OpenType/TrueType file.
  */
 import PizZip from "pizzip";
+import { EMPTY_RELS, ensureContentTypeDefault, ensureContentTypeOverride } from "./opc-parts.js";
+import { sha256Hex } from "./support.js";
 
 export const CODE_FONT_FAMILY = "JetBrains Mono";
 export const CODE_FONT_FILE = "JetBrainsMono-Regular.ttf";
@@ -25,8 +27,6 @@ const WORDPROCESSING_NS =
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const OFFICE_REL_NS =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const PACKAGE_REL_NS =
-  "http://schemas.openxmlformats.org/package/2006/relationships";
 
 const FONT_PART_NAME =
   "word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf";
@@ -114,10 +114,7 @@ export function assertEmbeddableSfnt(bytes: Uint8Array): void {
 /** Verify that a host delivered the exact committed face named by the OOXML. */
 export async function assertBundledCodeFont(bytes: Uint8Array): Promise<void> {
   assertEmbeddableSfnt(bytes);
-  const owned = Uint8Array.from(bytes);
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", owned.buffer));
-  const actual = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
-  if (actual !== CODE_FONT_SHA256) {
+  if ((await sha256Hex(bytes)) !== CODE_FONT_SHA256) {
     throw new DocxFontEmbeddingError(
       `The DOCX code font checksum does not match the committed ${CODE_FONT_FILE} asset.`,
     );
@@ -145,13 +142,6 @@ export function obfuscateFont(bytes: Uint8Array, fontKey = CODE_FONT_KEY): Uint8
   return output;
 }
 
-function relationshipsXml(): string {
-  return (
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-    `<Relationships xmlns="${PACKAGE_REL_NS}"></Relationships>`
-  );
-}
-
 function removeRelationshipById(xml: string, id: string): string {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   return xml.replace(
@@ -175,25 +165,11 @@ function appendRelationship(
 }
 
 function ensureContentTypes(zip: PizZip): void {
-  const path = "[Content_Types].xml";
-  const source = zip.file(path)?.asText();
-  if (!source) {
+  if (!zip.file("[Content_Types].xml")?.asText()) {
     throw new DocxFontEmbeddingError("The DOCX package has no [Content_Types].xml part.");
   }
-  let xml = source;
-  if (!/Extension=(["'])odttf\1/iu.test(xml)) {
-    xml = xml.replace(
-      "</Types>",
-      `<Default Extension="odttf" ContentType="${OBFUSCATED_FONT_CONTENT_TYPE}"/></Types>`,
-    );
-  }
-  if (!xml.includes(`PartName="/${FONT_TABLE_PART}"`)) {
-    xml = xml.replace(
-      "</Types>",
-      `<Override PartName="/${FONT_TABLE_PART}" ContentType="${FONT_TABLE_CONTENT_TYPE}"/></Types>`,
-    );
-  }
-  zip.file(path, xml);
+  ensureContentTypeDefault(zip, "odttf", OBFUSCATED_FONT_CONTENT_TYPE);
+  ensureContentTypeOverride(zip, FONT_TABLE_PART, FONT_TABLE_CONTENT_TYPE);
 }
 
 function codeFontXml(): string {
@@ -235,7 +211,7 @@ function ensureFontTable(zip: PizZip): void {
 
 function ensureFontRelationships(zip: PizZip): void {
   const fontTableRels = appendRelationship(
-    zip.file(FONT_TABLE_RELS_PART)?.asText() ?? relationshipsXml(),
+    zip.file(FONT_TABLE_RELS_PART)?.asText() ?? EMPTY_RELS,
     {
       id: FONT_REL_ID,
       type: FONT_RELATIONSHIP,
@@ -244,7 +220,7 @@ function ensureFontRelationships(zip: PizZip): void {
   );
   zip.file(FONT_TABLE_RELS_PART, fontTableRels);
 
-  const documentRels = zip.file(DOCUMENT_RELS_PART)?.asText() ?? relationshipsXml();
+  const documentRels = zip.file(DOCUMENT_RELS_PART)?.asText() ?? EMPTY_RELS;
   if (!new RegExp(`Type=(["'])${FONT_TABLE_RELATIONSHIP}\\1`, "u").test(documentRels)) {
     zip.file(
       DOCUMENT_RELS_PART,

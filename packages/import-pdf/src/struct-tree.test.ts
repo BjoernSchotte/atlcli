@@ -119,6 +119,17 @@ describe("PdfObjectReader", () => {
     expect(onlyElement(tree).kids).toHaveLength(2);
   });
 
+  it("finds the catalog by scanning past an unreadable object", () => {
+    const body = "%PDF-1.7\n1 0 obj\n<< /A [ >>\nendobj\n2 0 obj\n<< /Type /Catalog >>\nendobj\nstartxref\n9\n%%EOF\n";
+    const reader = new PdfObjectReader(latin1(body));
+    expect(reader.trailer.entries.get("Root")).toEqual({ kind: "ref", num: 2, gen: 0 });
+  });
+
+  it("classifies marked content only when the correlation audit asks for it", () => {
+    expect(readDocStructTree(classicPdf(TREE_OBJECTS))?.markedContent).toEqual([]);
+    expect(readDocStructTree(classicPdf(TREE_OBJECTS), { markedContent: true })?.markedContent).toHaveLength(2);
+  });
+
   it("keeps page identity for content references on different pages", () => {
     const table = onlyElement(readDocStructTree(classicPdf(TREE_OBJECTS)));
     const cells = table.kids.map((row) => (row.kind === "element" ? row.element.kids[0] : null));
@@ -195,7 +206,7 @@ describe("classifyMarkedContent", () => {
 describe("full-document structure tree on neutral producers", () => {
   const load = async (name: string) => {
     const bytes = new Uint8Array(await readFile(resolve(fixtureRoot, name)));
-    const tree = readDocStructTree(bytes)!;
+    const tree = readDocStructTree(bytes, { markedContent: true })!;
     const { facts } = await (await createNodePdfiumFactsAdapterV2()).analyze(bytes);
     return { tree, facts, correlation: correlateDocStructTree(tree, facts.pages) };
   };

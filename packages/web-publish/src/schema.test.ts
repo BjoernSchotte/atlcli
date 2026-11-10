@@ -7,7 +7,6 @@ import {
   PUBLICATION_PAGE_SCHEMA_V1,
   PUBLICATION_PROJECT_SCHEMA_V1,
   PUBLICATION_REFRESH_PLAN_SCHEMA_V1,
-  PUBLISH_RUN_REQUEST_SCHEMA_V1,
   STATIC_PUBLICATION_MANIFEST_SCHEMA_V1,
   PublicationValidationErrorV1,
   parsePublicationBuildRequestV1,
@@ -18,7 +17,6 @@ import {
   parsePublicationProjectV1,
   parsePublicationRefreshPlanV1,
   parsePublicationRendererDescriptorV1,
-  parsePublishRunRequestV1,
   parseStaticPublicationManifestV1,
   type PublicationBundleV1,
   type PublicationExperienceDescriptorV1,
@@ -287,14 +285,7 @@ const manifest = {
 
 describe("web publication runtime schemas v1", () => {
   test("accept and return the exact schema-bearing values", () => {
-    const request = {
-      schema: PUBLISH_RUN_REQUEST_SCHEMA_V1,
-      projectRef: "projects/docs.json",
-      operation: "run",
-      dryRun: false,
-    } as const;
     expect(parsePublicationProjectV1(project)).toBe(project);
-    expect(parsePublishRunRequestV1(request)).toBe(request);
     expect(parsePublicationRefreshPlanV1(refreshPlan)).toBe(refreshPlan);
     expect(parsePublicationPageV1(page)).toBe(page);
     expect(parsePublicationBundleV1(bundle)).toBe(bundle);
@@ -331,6 +322,44 @@ describe("web publication runtime schemas v1", () => {
       ...project,
       renderers: { ...project.renderers, maxChartAggregateBytes: Number.POSITIVE_INFINITY },
     })).toThrow("$.renderers.maxChartAggregateBytes");
+  });
+
+  test("require tenant-disclosure acknowledgement for public Confluence edit links", () => {
+    const editLink = { provider: "confluence", label: "Edit", placement: "page-actions", visibility: "all", fallback: "omit" } as const;
+    expect(() => parsePublicationProjectV1({ ...project, visibility: "public", editLink }))
+      .toThrow("$.editLink.publicTenantDisclosureAcknowledged: public Confluence edit links require");
+    for (const accepted of [
+      { ...project, visibility: "public", editLink: { ...editLink, publicTenantDisclosureAcknowledged: true } },
+      { ...project, visibility: "public", editLink: { ...editLink, visibility: "internal" } },
+      { ...project, visibility: "internal", editLink },
+    ]) {
+      expect(parsePublicationProjectV1(accepted) as unknown).toBe(accepted);
+    }
+  });
+
+  test("a bundle carries only origin-checked edit links for its own pages, and a manifest names their origin", () => {
+    const origin = "https://confluence.example.test";
+    const editLinks = { origin, label: "Edit", placement: "page-actions", fallback: "open-page", links: [{ sourceId: "100", href: `${origin}/wiki/pages/resumedraft.action?draftId=100` }] };
+    const accepted = { ...bundle, editLinks };
+    expect(parsePublicationBundleV1(accepted) as unknown).toBe(accepted);
+    for (const [links, path] of [
+      [[{ sourceId: "100", href: "https://evil.example.test/wiki/pages/100" }], "$.editLinks.links[0].href"],
+      [[{ sourceId: "100", href: "http://confluence.example.test/wiki/pages/100" }], "$.editLinks.links[0].href"],
+      [[{ sourceId: "100", href: `${origin}/wiki/rest/api/content/100` }], "$.editLinks.links[0].href"],
+      [[{ sourceId: "999", href: `${origin}/wiki/pages/999` }], "$.editLinks.links[0].sourceId"],
+      [[editLinks.links[0], editLinks.links[0]], "$.editLinks.links[1].sourceId"],
+    ] as const) {
+      expect(() => parsePublicationBundleV1({ ...bundle, editLinks: { ...editLinks, links } })).toThrow(path);
+    }
+    expect(() => parsePublicationBundleV1({ ...bundle, editLinks: { ...editLinks, origin: `${origin}/wiki` } })).toThrow("$.editLinks.origin: expected an https origin");
+    expect(() => parsePublicationBundleV1({ ...bundle, editLinks: { ...editLinks, origin: "http://confluence.example.test" } })).toThrow("$.editLinks.origin");
+
+    const built = { ...manifest, editLinks: { provider: "confluence", origin, includedSourceIds: ["100"], omittedSourceIds: [] } };
+    expect(parseStaticPublicationManifestV1(built) as unknown).toBe(built);
+    expect(() => parseStaticPublicationManifestV1({ ...manifest, editLinks: { provider: "confluence", includedSourceIds: ["100"], omittedSourceIds: [] } }))
+      .toThrow("$.editLinks.includedSourceIds");
+    expect(() => parseStaticPublicationManifestV1({ ...manifest, editLinks: { provider: "none", origin, includedSourceIds: ["100"], omittedSourceIds: [] } }))
+      .toThrow("$.editLinks.includedSourceIds");
   });
 
   test("reject unknown fields and wrong schema revisions at their exact paths", () => {

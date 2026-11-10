@@ -99,6 +99,14 @@ describe("resolveOne — every direct + derivable mapping row", () => {
     expect(notes.some((n) => n.code === "placeholder-empty")).toBe(true);
   });
 
+  it("exportdate keeps a quoted literal inside the format argument", () => {
+    const notes: import("@atlcli/confluence").ExportNote[] = [];
+    const out = resolveOne(`$scroll.exportdate.("dd 'de' MM yyyy")`, ctx, { space, currentUser, owner }, notes);
+    expect(out).toBe("14 de 07 2026");
+    expect(resolveOne(`$scroll.exportdate.('HH''mm')`, ctx, { space, currentUser, owner }, notes)).toBe("09'05");
+    expect(notes).toEqual([]);
+  });
+
   it("exportdate with a quarter token formats without a note", () => {
     const notes: import("@atlcli/confluence").ExportNote[] = [];
     const out = resolveOne('$scroll.exportdate.("QQQ")', ctx, { space, currentUser, owner }, notes);

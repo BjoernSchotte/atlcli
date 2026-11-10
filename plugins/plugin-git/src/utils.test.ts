@@ -5,15 +5,10 @@ import { tmpdir } from "node:os";
 import {
   isGitRepo,
   getGitRoot,
-  getGitChanges,
   getAllGitChanges,
-  gitAdd,
   gitAddAll,
   gitCommit,
   gitExec,
-  hasStagedChanges,
-  getCurrentBranch,
-  getHeadHash,
 } from "./utils.js";
 
 describe("git utils", () => {
@@ -74,51 +69,6 @@ describe("git utils", () => {
     });
   });
 
-  describe("getGitChanges", () => {
-    beforeEach(async () => {
-      await gitExec(tempDir, ["init"]);
-      await gitExec(tempDir, ["config", "user.email", "test@test.com"]);
-      await gitExec(tempDir, ["config", "user.name", "Test"]);
-    });
-
-    test("returns empty array for clean repo", async () => {
-      await writeFile(join(tempDir, "file.txt"), "content");
-      await gitExec(tempDir, ["add", "."]);
-      await gitExec(tempDir, ["commit", "-m", "initial"]);
-
-      const changes = await getGitChanges(tempDir);
-      expect(changes).toEqual([]);
-    });
-
-    test("detects untracked files", async () => {
-      await writeFile(join(tempDir, "file.txt"), "content");
-      await gitExec(tempDir, ["add", "."]);
-      await gitExec(tempDir, ["commit", "-m", "initial"]);
-
-      // Add new untracked file
-      await writeFile(join(tempDir, "new.txt"), "new content");
-
-      const changes = await getGitChanges(tempDir);
-      expect(changes.length).toBe(1);
-      expect(changes[0].path).toBe("new.txt");
-      expect(changes[0].status).toBe("?");
-    });
-
-    test("detects modified files", async () => {
-      await writeFile(join(tempDir, "file.txt"), "content");
-      await gitExec(tempDir, ["add", "."]);
-      await gitExec(tempDir, ["commit", "-m", "initial"]);
-
-      // Modify file
-      await writeFile(join(tempDir, "file.txt"), "modified content");
-
-      const changes = await getGitChanges(tempDir);
-      expect(changes.length).toBe(1);
-      expect(changes[0].path).toBe("file.txt");
-      expect(changes[0].status).toBe("M");
-    });
-  });
-
   describe("getAllGitChanges", () => {
     beforeEach(async () => {
       await gitExec(tempDir, ["init"]);
@@ -151,41 +101,6 @@ describe("git utils", () => {
 
       const changes = await getAllGitChanges(docsDir);
       expect(changes.map((change) => change.path)).toEqual(["docs/inside.md"]);
-    });
-  });
-
-  describe("gitAdd", () => {
-    beforeEach(async () => {
-      await gitExec(tempDir, ["init"]);
-    });
-
-    test("stages specified files", async () => {
-      await writeFile(join(tempDir, "file1.txt"), "content1");
-      await writeFile(join(tempDir, "file2.txt"), "content2");
-
-      await gitAdd(tempDir, ["file1.txt"]);
-
-      const { stdout } = await gitExec(tempDir, ["diff", "--cached", "--name-only"]);
-      expect(stdout.trim()).toBe("file1.txt");
-    });
-
-    test("handles FileChange objects", async () => {
-      await writeFile(join(tempDir, "file.txt"), "content");
-
-      await gitAdd(tempDir, [{ path: "file.txt", status: "?" }]);
-
-      const { stdout } = await gitExec(tempDir, ["diff", "--cached", "--name-only"]);
-      expect(stdout.trim()).toBe("file.txt");
-    });
-
-    test("preserves file paths containing spaces", async () => {
-      const filename = "file with spaces.txt";
-      await writeFile(join(tempDir, filename), "content");
-
-      await gitAdd(tempDir, [filename]);
-
-      const { stdout } = await gitExec(tempDir, ["diff", "--cached", "--name-only"]);
-      expect(stdout.trim()).toBe(filename);
     });
   });
 
@@ -252,60 +167,6 @@ describe("git utils", () => {
 
       const { stdout } = await gitExec(tempDir, ["log", "-1", "--format=%s"]);
       expect(stdout.trim()).toBe("Keep $HOME literal");
-    });
-  });
-
-  describe("hasStagedChanges", () => {
-    beforeEach(async () => {
-      await gitExec(tempDir, ["init"]);
-    });
-
-    test("returns false when nothing staged", async () => {
-      await writeFile(join(tempDir, "file.txt"), "content");
-
-      const result = await hasStagedChanges(tempDir);
-      expect(result).toBe(false);
-    });
-
-    test("returns true when files staged", async () => {
-      await writeFile(join(tempDir, "file.txt"), "content");
-      await gitExec(tempDir, ["add", "."]);
-
-      const result = await hasStagedChanges(tempDir);
-      expect(result).toBe(true);
-    });
-  });
-
-  describe("getCurrentBranch", () => {
-    beforeEach(async () => {
-      await gitExec(tempDir, ["init"]);
-      await gitExec(tempDir, ["config", "user.email", "test@test.com"]);
-      await gitExec(tempDir, ["config", "user.name", "Test"]);
-      await writeFile(join(tempDir, "file.txt"), "content");
-      await gitExec(tempDir, ["add", "."]);
-      await gitExec(tempDir, ["commit", "-m", "initial"]);
-    });
-
-    test("returns current branch name", async () => {
-      const branch = await getCurrentBranch(tempDir);
-      // Modern git uses main or master
-      expect(["main", "master"]).toContain(branch);
-    });
-  });
-
-  describe("getHeadHash", () => {
-    beforeEach(async () => {
-      await gitExec(tempDir, ["init"]);
-      await gitExec(tempDir, ["config", "user.email", "test@test.com"]);
-      await gitExec(tempDir, ["config", "user.name", "Test"]);
-      await writeFile(join(tempDir, "file.txt"), "content");
-      await gitExec(tempDir, ["add", "."]);
-      await gitExec(tempDir, ["commit", "-m", "initial"]);
-    });
-
-    test("returns short hash of HEAD", async () => {
-      const hash = await getHeadHash(tempDir);
-      expect(hash).toMatch(/^[a-f0-9]{7,}$/);
     });
   });
 });

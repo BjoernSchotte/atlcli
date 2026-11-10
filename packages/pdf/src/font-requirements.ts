@@ -14,6 +14,7 @@ import type {
   TypographyRoleV3,
 } from "@atlcli/template-pack";
 import { isCompleteDesignPdfRevision } from "./catalog-runtime.js";
+import { exportedDateLabel } from "./locale.js";
 import type {
   AnyPdfTemplateManifest,
   PdfTemplateManifestV5,
@@ -220,27 +221,6 @@ function annotationText(
         { kind: "renderer-synthetic", detail: "comment-reply" },
       );
     }
-  }
-}
-
-function exportedDateLabel(metadata: PdfExportMetadata): string {
-  const requested = [metadata.language, metadata.region]
-    .filter(Boolean)
-    .join("-") || "en";
-  try {
-    return new Intl.DateTimeFormat(requested, {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC",
-    }).format(metadata.exportedAt);
-  } catch {
-    return new Intl.DateTimeFormat("en", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC",
-    }).format(metadata.exportedAt);
   }
 }
 
@@ -927,7 +907,7 @@ export function resolvePdfFontRequirementsV1(
       sha256: asset.sha256,
       fileName: asset.fileName,
       reasons: [...reasonsByAsset.get(asset.assetId)!.values()].sort((left, right) =>
-        reasonKey(left).localeCompare(reasonKey(right))
+        reasonKey(left).localeCompare(reasonKey(right), "en")
       ),
     }));
   return {
@@ -940,6 +920,7 @@ export function resolvePdfFontRequirementsV1(
     diagnostics: [...diagnostics.values()].sort((left, right) =>
       `${left.code}:${left.family}:${left.role}:${left.requested}`.localeCompare(
         `${right.code}:${right.family}:${right.role}:${right.requested}`,
+        "en",
       )
     ),
   };

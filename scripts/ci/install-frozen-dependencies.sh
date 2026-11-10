@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Extra arguments (e.g. --ignore-scripts, --os='*') are passed through to bun.
 for attempt in 1 2 3; do
-  if bun install --frozen-lockfile; then
+  if bun install --frozen-lockfile "$@"; then
     exit 0
   fi
   if [[ "$attempt" -eq 3 ]]; then
