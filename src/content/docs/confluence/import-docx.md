@@ -419,7 +419,10 @@ The batch preview lists every file with its resolved title, page count,
 attachments, issues, and editability rating; files that fail to parse are
 reported without stopping the preview. Titles are taken from each document
 (`--title` is rejected in batch mode), and duplicate titles across the
-batch fail closed before anything is published.
+batch fail closed before anything is published. Directory, multi-file, ZIP
+and manifest batches also reject `--restriction`, `--viewer`, `--editor`,
+`--staging-parent`, `--label`, `--content-property`, `--title-conflict rename`,
+`--update-page` and `--expect-version`: these apply to single-file imports only.
 
 Each file publishes as its **own transaction**: a failure rolls back only
 that file's pages, is recorded in the result list, and the batch continues.

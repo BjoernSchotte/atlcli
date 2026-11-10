@@ -62,7 +62,8 @@ interface FileExportCatalogV1 {
   lastClaimedGroup: Partial<Record<"interactive" | "retry", string>>;
   finalizations: Record<string, ExportArtifactFinalizationIntentV1>;
   executorCheckpoints: Record<string, { checkpoint: unknown; manifestRef: import("@atlcli/export-jobs").SpoolRefV1 }>;
-  executorResults: Record<string, { intent: unknown; reportRef: string; reportPath: string; result?: import("@atlcli/export-jobs").ExportJobExecutionResultV1 }>;
+  /** `leaseEpoch` is absent on rows written before it was recorded; a completed row's epoch is its staged artifact's. */
+  executorResults: Record<string, { intent: unknown; reportRef: string; reportPath: string; leaseEpoch?: number; result?: import("@atlcli/export-jobs").ExportJobExecutionResultV1 }>;
   quarantined: Record<string, FileExportQuarantinedRecordV1>;
 }
 
@@ -341,10 +342,35 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
     return (await this.get(input.id))!;
   }
 
-  async reconcilePreparedArtifactFinalizations(): Promise<number> {
+  /**
+   * Finish every prepared finalization that can still be finished and drop the
+   * ones that cannot (job gone, failed/cancelled/requeued, or finalized with a
+   * different artifact). Intents are isolated: with `onFailure` each failure is
+   * reported and the rest still run; without it the first failure is rethrown
+   * after all intents were tried. Returns the number of finished intents.
+   */
+  async reconcilePreparedArtifactFinalizations(onFailure?: (error: unknown, intent: ExportArtifactFinalizationIntentV1) => void): Promise<number> {
     const prepared = await this.#read((catalog) => Object.values(catalog.finalizations).filter((i) => i.status === "prepared").map(clone));
-    for (const intent of prepared) await this.#finishFinalization(intent);
-    return prepared.length;
+    let finished = 0; const failures: unknown[] = [];
+    for (const intent of prepared) {
+      try {
+        const abandoned = await this.#mutate((catalog) => {
+          if (!catalog.finalizations[intent.ref] || this.#finalizable(catalog, intent)) return { result: false, changed: false };
+          delete catalog.finalizations[intent.ref]; return { result: true, changed: true };
+        });
+        if (abandoned) continue;
+        await this.#finishFinalization(intent); finished += 1;
+      } catch (error) { failures.push(error); onFailure?.(error, intent); }
+    }
+    if (!onFailure && failures.length > 0) throw failures[0];
+    return finished;
+  }
+  /** Whether the prepared intent's job is still exactly where the intent was fenced, or already succeeded with its artifact. */
+  #finalizable(catalog: FileExportCatalogV1, intent: ExportArtifactFinalizationIntentV1): boolean {
+    const job = catalog.jobs[intent.finalize.id];
+    if (!job) return false;
+    if (job.state === "succeeded") return canonical(job.artifact) === canonical(intent.artifact);
+    return job.state === "running" && job.revision === intent.finalize.expectedRevision && job.leaseEpoch === intent.finalize.leaseEpoch;
   }
 
   async loadExecutorCheckpoint<T>(key: string): Promise<{ checkpoint: T; manifestRef: import("@atlcli/export-jobs").SpoolRefV1 } | undefined> {
@@ -389,12 +415,15 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
     return this.#mutate((catalog) => {
       const current = this.#require(catalog, input.jobId); this.#assertLiveLease(current, input.leaseEpoch);
       const existing = catalog.executorResults[input.key];
-      if (existing) { if (canonical(existing.intent) !== canonical(input.intent) || existing.reportRef !== input.reportRef || existing.reportPath !== input.reportPath) throw new FileExportJobStoreConflict("result-conflict", "Result key was reused."); return { result: clone(existing.intent), changed: false }; }
-      catalog.executorResults[input.key] = { intent: clone(input.intent), reportRef: input.reportRef, reportPath: input.reportPath }; return { result: clone(input.intent), changed: true };
+      // A row from an earlier lease epoch belongs to an attempt that can no
+      // longer finish (its staged artifact is fenced to that epoch), so the
+      // restarted attempt replaces it, as the extension store does.
+      if (existing && (existing.leaseEpoch ?? existing.result?.stagedArtifact.leaseEpoch) === input.leaseEpoch) { if (canonical(existing.intent) !== canonical(input.intent) || existing.reportRef !== input.reportRef || existing.reportPath !== input.reportPath) throw new FileExportJobStoreConflict("result-conflict", "Result key was reused."); return { result: clone(existing.intent), changed: false }; }
+      catalog.executorResults[input.key] = { intent: clone(input.intent), reportRef: input.reportRef, reportPath: input.reportPath, leaseEpoch: input.leaseEpoch }; return { result: clone(input.intent), changed: true };
     });
   }
   async completeExecutorResult(input: { key: string; jobId: string; leaseEpoch: number; intent: unknown; result: import("@atlcli/export-jobs").ExportJobExecutionResultV1 }): Promise<void> {
-    await this.#mutate((catalog) => { const current = this.#require(catalog, input.jobId); this.#assertLiveLease(current, input.leaseEpoch); const stored = catalog.executorResults[input.key]; if (!stored || canonical(stored.intent) !== canonical(input.intent)) throw new FileExportJobStoreConflict("result-conflict", "Prepared result is missing."); if (stored.result && canonical(stored.result) !== canonical(input.result)) throw new FileExportJobStoreConflict("result-conflict", "Different result is already complete."); stored.result ??= clone(input.result); return { result: undefined, changed: true }; });
+    await this.#mutate((catalog) => { const current = this.#require(catalog, input.jobId); this.#assertLiveLease(current, input.leaseEpoch); const stored = catalog.executorResults[input.key]; if (!stored || canonical(stored.intent) !== canonical(input.intent) || (stored.leaseEpoch !== undefined && stored.leaseEpoch !== input.leaseEpoch)) throw new FileExportJobStoreConflict("result-conflict", "Prepared result is missing."); if (stored.result && canonical(stored.result) !== canonical(input.result)) throw new FileExportJobStoreConflict("result-conflict", "Different result is already complete."); stored.result ??= clone(input.result); return { result: undefined, changed: true }; });
   }
   async loadExecutorResult<TIntent>(key: string): Promise<{ intent: TIntent; result?: import("@atlcli/export-jobs").ExportJobExecutionResultV1 } | undefined> {
     return this.#read((catalog) => { const stored = catalog.executorResults[key]; return stored ? { intent: clone(stored.intent as TIntent), ...(stored.result ? { result: clone(stored.result) } : {}) } : undefined; });

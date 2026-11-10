@@ -20,12 +20,15 @@ let home: string;
 let issues = new Map<string, Issue>();
 let rejectComments = new Set<string>();
 let searches: string[] = [];
+/** Issue id → HTTP status: left out of `id in (…)` batches, and the single read answers with that status. */
+let unreadable = new Map<string, number>();
 let clock = 0;
 const tick = () => `2026-10-25T10:${String(Math.floor(clock / 60) % 60).padStart(2, "0")}:${String(clock++ % 60).padStart(2, "0")}.000+0000`;
 
 function reset(count = 250): void {
   clock = 0;
   searches = [];
+  unreadable = new Map();
   rejectComments = new Set();
   issues = new Map();
   for (let n = 1; n <= count; n++) {
@@ -47,13 +50,15 @@ beforeAll(async () => {
       if (path === "/rest/api/3/search/jql" && req.method === "POST") {
         searches.push(body.jql);
         const ids = /^id in \(([^)]*)\)$/.exec(body.jql);
-        const all = ids ? ids[1]!.split(",").map((id) => issues.get(id.trim())).filter((i): i is Issue => Boolean(i)) : [...issues.values()];
+        const all = ids ? ids[1]!.split(",").map((id) => issues.get(id.trim())).filter((i): i is Issue => Boolean(i) && !unreadable.has(i!.id)) : [...issues.values()];
         const start = Number(body.nextPageToken ?? 0);
         const end = start + Math.min(body.maxResults ?? 50, 100);
         return Response.json({ issues: all.slice(start, end).map(view), ...(end < all.length ? { nextPageToken: String(end) } : {}) });
       }
       if ((m = /^\/rest\/api\/3\/issue\/([A-Z0-9-]+)$/.exec(path))) {
         const issue = byKeyOrId(m[1]!);
+        const status = issue && unreadable.get(issue.id);
+        if (status) return Response.json({ errorMessages: [`stub ${status}`] }, { status });
         if (!issue) return Response.json({ errorMessages: ["Issue does not exist"] }, { status: 404 });
         if (req.method === "PUT") {
           for (const change of body.update?.labels ?? []) {
@@ -223,6 +228,31 @@ export default async (issue, { label }) => {
     const resumed = await run(["resume", id!, "--script", fixed]);
     expect(resumed.exitCode).toBe(0);
     expect(resumed.stdout).toContain("Nothing was changed. Review the plans");
+  });
+
+  test("an issue that cannot be read is an error to retry, not gone; only a 404 is gone", async () => {
+    const file = await script("stale.ts", STALE);
+    unreadable.set("1", 403); // e.g. an expired token or a permission hiccup
+    unreadable.set("2", 404); // deleted after the snapshot
+    const out = await run(["run", file, "--each", "project = ATLCLI", "--max-items", "10"]);
+    expect(out.stderr).toContain("ATLCLI-1: could not read the issue: Jira API error (403)");
+    const [id] = await jobIds();
+    const plans = async () =>
+      (await readFile(join(home, ".atlcli", "jobs", id!, "plans.jsonl"), "utf8")).trim().split("\n").map((l) => JSON.parse(l) as { key: string; status: string });
+    expect((await plans()).filter((o) => o.key === "ATLCLI-1" || o.key === "ATLCLI-2").map((o) => `${o.key} ${o.status}`).sort()).toEqual(["ATLCLI-1 error", "ATLCLI-2 gone"]);
+
+    unreadable.delete("1");
+    const resumed = await run(["resume", id!, "--max-items", "1"]);
+    expect(resumed.exitCode).toBe(0);
+    expect((await plans()).at(-1)).toMatchObject({ key: "ATLCLI-1", status: "planned" });
+  });
+
+  test("unreadable issues count toward --max-failures", async () => {
+    const file = await script("stale.ts", STALE);
+    for (const n of [1, 2, 3]) unreadable.set(String(n), 403);
+    const out = await run(["run", file, "--each", "project = ATLCLI", "--max-failures", "3", "--concurrency", "1"]);
+    expect(out.exitCode).toBe(1);
+    expect(out.stdout).toContain("Stopped: 3 failures");
   });
 
   test("a script without a function export is rejected in per-issue mode", async () => {

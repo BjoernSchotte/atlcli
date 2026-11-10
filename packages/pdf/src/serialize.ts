@@ -36,7 +36,7 @@ import {
   isCompleteDesignPdfRevision,
   resolvePdfCatalogRuntime,
 } from "./catalog-runtime.js";
-import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
+import { safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
@@ -1914,7 +1914,7 @@ function serializeBlock(
         : block.adfExtension
         ? `Extension: ${block.adfExtension.extensionKey}`
         : `${block.macroName} macro not rendered`;
-      const placeholder = `#text(style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.placeholder)}))[${escapeTypstContent(
+      const placeholder = `#text(style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.placeholder)}))[${literalText(
         `[${fallbackLabel}]`
       )}]`;
       const parts = [`#par[${placeholder}]`];

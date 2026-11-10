@@ -156,6 +156,9 @@ atlcli wiki import --manifest batch.yaml --confirm --resume
 - A directory imports every `.docx` directly inside it. A `.zip` of `.docx`
   files works too.
 - `--title` is rejected in batch mode. Titles come from each document.
+- Batches (also `--manifest`) reject `--restriction`, `--viewer`, `--editor`,
+  `--staging-parent`, `--label`, `--content-property`, `--title-conflict rename`,
+  `--update-page` and `--expect-version`; import single files to use them.
 - Each file is its own transaction. A failure rolls back that file only and
   the batch continues. The exit code is non-zero if any file failed.
 - A killed batch is resumed with `--skip-existing` (skips existing titles) or,

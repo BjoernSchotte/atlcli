@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
-import { lstat, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import type { PublicationBuildRequestV1 } from "@atlcli/web-publish";
 import { createAstroStaticPublicationBuilderV1 } from "./builder.js";
 
@@ -175,3 +176,52 @@ test("fails closed on a symlinked output target without touching its referent", 
     await rm(inventoryPath, { force: true });
   }
 }, 30_000);
+
+test("keeps the previous output backup and names it when the rollback itself fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "atlcli-astro-builder-"));
+  const output = join(root, "dist");
+  const inventory = join(root, "evidence", "inventory.json");
+  await mkdir(output); await writeFile(join(output, "index.html"), "previous good output");
+  await mkdir(join(root, "evidence")); await writeFile(inventory, "previous inventory");
+  // The failed build leaves partial output that cannot be removed, so restoring
+  // the previous output over it fails for real.
+  const command: readonly [string, ...string[]] = [process.execPath, "-e", `const fs = require("node:fs"); const locked = ${JSON.stringify(join(output, "locked"))}; fs.mkdirSync(locked, { recursive: true }); fs.writeFileSync(locked + "/partial", "x"); fs.chmodSync(locked, 0o500); process.exit(1);`];
+  try {
+    const failure = await createAstroStaticPublicationBuilderV1({
+      version: "0.1.0-test", astroVersion: "7.1.6", inventoryPath: inventory, outputDirectory: output,
+      experience: { id: "test.experience", version: "1", digest: "experience-digest" },
+    }).build({ ...request, project: { ...request.project, builder: { ...request.project.builder, projectDir: root, buildCommand: command } } })
+      .then(() => undefined, (error: Error) => error);
+    const backup = (await readdir(root)).find((name) => name.startsWith("dist.atlcli-previous-"));
+    expect(backup).toBeDefined();
+    expect(await readFile(join(root, backup!, "index.html"), "utf8")).toBe("previous good output");
+    const inventoryBackup = (await readdir(join(root, "evidence"))).find((name) => name.startsWith("inventory.json.atlcli-previous-"));
+    expect(await readFile(join(root, "evidence", inventoryBackup!), "utf8")).toBe("previous inventory");
+    expect(failure?.message).toContain(join(root, backup!));
+    expect(failure?.message).toContain(join(root, "evidence", inventoryBackup!));
+    expect(failure?.cause).toBeInstanceOf(Error);
+  } finally {
+    await chmod(join(output, "locked"), 0o700).catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+test("a successful build stays successful when the previous output backup cannot be removed", async () => {
+  const locked = resolve(outputDirectory, "locked-previous");
+  const backups = async () => (await readdir(fixtureDirectory)).filter((name) => name.startsWith("dist.atlcli-previous-"));
+  try {
+    await builder();
+    await mkdir(locked); await writeFile(resolve(locked, "file"), "x"); await chmod(locked, 0o500);
+    const result = await builder();
+    expect(result.manifest.verification.valid).toBe(true);
+    expect(await readFile(resolve(outputDirectory, "publish/guide/index.html"), "utf8")).toContain('data-atlcli-source-id="guide"');
+    expect(await backups()).toHaveLength(1);
+  } finally {
+    await chmod(locked, 0o700).catch(() => undefined);
+    for (const name of await backups()) {
+      await chmod(resolve(fixtureDirectory, name, "locked-previous"), 0o700).catch(() => undefined);
+      await rm(resolve(fixtureDirectory, name), { recursive: true, force: true });
+    }
+    await rm(inventoryPath, { force: true });
+  }
+}, 60_000);

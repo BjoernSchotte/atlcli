@@ -105,11 +105,15 @@ atlcli supports flexible time input formats:
 | Hours | `2h`, `1.5h` | Hours (decimal supported) |
 | Minutes | `30m`, `45m` | Minutes |
 | Combined | `1h 30m`, `1h30m` | Hours and minutes |
-| Days | `1d` | Days (= 8h by default) |
-| Weeks | `1w` | Weeks (= 5d by default) |
+| Days | `1d`, `1.5d` | Days (= 8h by default, decimal supported) |
+| Weeks | `1w`, `0.5w` | Weeks (= 5d by default, decimal supported) |
 | Full | `1w 2d 3h 4m` | All units combined |
 | Colon | `1:30` | Hours:minutes format |
 | Verbose | `1 hour 30 minutes` | Natural language |
+
+The whole value must be made of `<number><unit>` parts (optionally joined by
+`,` or `and`). Anything else, such as `5m extra`, is rejected instead of being
+partly read.
 
 ### Date/Time Formats
 

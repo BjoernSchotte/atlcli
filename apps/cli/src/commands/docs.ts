@@ -40,7 +40,6 @@ import {
   // Local storage
   findAtlcliDir,
   getAtlcliPath,
-  initAtlcliDir,
   isInitialized,
   readConfig,
   readState,
@@ -677,7 +676,13 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     const profile = getActiveProfile(appConfig, profileName);
     if (profile) {
       await ensureDir(outDir);
-      await initAtlcliDir(outDir, {
+      // Persist the scope that was asked for. Storing only the space made the
+      // next scope-less pull of a single page or tree fetch the whole space.
+      await initAtlcliDirV2(outDir, {
+        scope:
+          scope.type === "page" ? { type: "page", pageId: scope.pageId }
+          : scope.type === "tree" ? { type: "tree", ancestorId: scope.ancestorId }
+          : { type: "space" },
         space,
         baseUrl: profile.baseUrl,
         profile: profile.name,
@@ -1521,29 +1526,28 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
         const pagePath = resolvedPaths.get(detail.id) ?? pathMap.get(detail.id)?.relativePath;
         if (!pagePath) continue;
 
+        // writeState above already stored the sync fields: fresh ones for a
+        // page written in this run, the untouched old base for a page skipped
+        // because of local modifications. Recomputing them from the remote
+        // here marked skipped pages as synced at the remote version, and the
+        // next push overwrote the remote edit without a conflict.
+        const synced = state.pages[detail.id];
+        if (!synced) continue;
+
         const pageRecord = createPageRecord({
           pageId: detail.id,
           path: pagePath,
           title: detail.title,
           spaceKey: detail.spaceKey,
-          version: detail.version,
-          lastSyncedAt: new Date().toISOString(),
-          localHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, conversionOptions),
-            basename(pagePath, ".md")
-          ))),
-          remoteHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, conversionOptions),
-            basename(pagePath, ".md")
-          ))),
-          baseHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
-            storageToMarkdown(detail.storage, conversionOptions),
-            basename(pagePath, ".md")
-          ))),
-          syncState: "synced",
+          version: synced.version,
+          lastSyncedAt: synced.lastSyncedAt,
+          localHash: synced.localHash,
+          remoteHash: synced.remoteHash,
+          baseHash: synced.baseHash,
+          syncState: synced.syncState,
           parentId: detail.parentId,
           ancestors: detail.ancestors.map((a) => a.id),
-          hasAttachments: false, // Updated later if attachments exist
+          hasAttachments: synced.hasAttachments ?? false,
           createdBy: detail.createdBy?.accountId ?? null,
           createdAt: detail.created ?? new Date().toISOString(),
           lastModifiedBy: detail.modifiedBy?.accountId ?? null,
@@ -2528,6 +2532,7 @@ async function pushFile(params: {
   const attachmentRefs = extractAttachmentRefs(markdownContent);
   const attachmentsDir = join(pageDir, getAttachmentsDirName(pageFilename));
   const updatedDrawioVersions = new Map<string, number>();
+  let attachmentsChanged = false;
 
   if (pageId) {
     // Upload attachments before updating the page
@@ -2574,6 +2579,7 @@ async function pushFile(params: {
 
           if (existing) {
             // Update existing attachment
+            attachmentsChanged = true;
             const updatedAttachment = await client.updateAttachment({
               attachmentId: existing.id,
               pageId,
@@ -2596,6 +2602,7 @@ async function pushFile(params: {
             }
           } else {
             // Upload new attachment
+            attachmentsChanged = true;
             const newAttachment = await client.uploadAttachment({
               pageId,
               filename,
@@ -2651,6 +2658,7 @@ async function pushFile(params: {
           if (!existsSync(localAttPath) && !referencedFiles.has(attState.filename)) {
             try {
               await client.deleteAttachment(attId);
+              attachmentsChanged = true;
               removeAttachmentState(state, pageId, attId);
               await deleteAttachmentBase(atlcliDir, pageId, attId, extname(attState.filename));
               if (!opts.json) {
@@ -2724,6 +2732,20 @@ async function pushFile(params: {
           }
         }
       }
+    }
+
+    // Nothing changed locally: do not write. Re-sending an unchanged page
+    // creates a new version and replaces the stored body with its markdown
+    // round trip, which is lossy for content markdown cannot express.
+    if (
+      !force
+      && !pageMoved
+      && !attachmentsChanged
+      && existingPageState !== undefined
+      && existingPageState.baseHash === hashContent(normalizeMarkdown(markdownContent))
+      && (!frontmatter?.title || frontmatter.title === existingPageState.title)
+    ) {
+      return "skipped";
     }
 
     // Update existing page

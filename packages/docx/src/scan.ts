@@ -206,8 +206,7 @@ export interface ScanResult {
  */
 export function collectStylerefFields(xml: string): string[] {
   const names: string[] = [];
-  const decode = (s: string): string =>
-    s.replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&amp;/g, "&");
+  const decode = decodeFieldInstruction;
   const matchRefs = (instr: string): void => {
     for (const m of decode(instr).matchAll(/STYLEREF\s+"([^"]+)"/gi)) names.push(m[1].trim());
   };
@@ -633,10 +632,24 @@ function relationshipPartNames(zip: PizZip): string[] {
  * not `k` — is not over-decoded.
  */
 function decodeXmlEntities(value: string): string {
+  // A reference outside the Unicode range is not well-formed; leave it as text
+  // rather than let `String.fromCodePoint` throw an untyped RangeError.
+  const codePoint = (ref: string, n: number): string => (n <= 0x10ffff ? String.fromCodePoint(n) : ref);
   return value
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (ref, hex: string) => codePoint(ref, parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (ref, dec: string) => codePoint(ref, parseInt(dec, 10)))
     .replace(/&amp;/g, "&");
+}
+
+/**
+ * Field-instruction text as Word sees it: numeric character references and the
+ * predefined entities resolved. Without this `D&#68;E` is a `DDE` field to Word
+ * and an unknown word to the keyword match.
+ */
+function decodeFieldInstruction(value: string): string {
+  return decodeXmlEntities(
+    value.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+  );
 }
 
 /**
@@ -752,7 +765,10 @@ export function assertNoActiveContent(zip: PizZip): void {
       );
     }
   }
-  for (const part of documentPartNames(zip)) {
+  // Every WordprocessingML part, like the altChunk sweep above: a field is
+  // valid wherever a run is, so footnotes, endnotes, comments and glossary
+  // parts carry a DDE field just as well as the main story.
+  for (const part of wordprocessingPartNames(zip)) {
     const hits = collectFieldInstructions(readPartText(zip, part), REJECTED_FIELD_INSTRUCTIONS);
     if (hits.length > 0) {
       throw new DocxError(
@@ -813,8 +829,7 @@ export function collectFieldInstructions(
   xml: string,
   keywords: ReadonlyArray<string> = AUDITED_FIELD_INSTRUCTIONS
 ): string[] {
-  const decode = (s: string): string =>
-    s.replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&amp;/g, "&");
+  const decode = decodeFieldInstruction;
   let haystack = "";
   for (const m of xml.matchAll(/<w:fldSimple\b[^>]*\bw:instr="([^"]*)"/g)) haystack += ` ${decode(m[1])}`;
   haystack += ` ${decode(
@@ -985,7 +1000,7 @@ const FIELD_PART_RE =
 
 /** Resolve the XML entities Word writes inside a field instruction. */
 function decodeInstruction(s: string): string {
-  return s.replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&amp;/g, "&");
+  return decodeFieldInstruction(s);
 }
 
 /**
@@ -1250,27 +1265,30 @@ export function scanZip(zip: PizZip): ScanResult {
   const byBase = new Map<string, ScanHit>();
   let hasContent = false;
   const stylerefStyleNames: string[] = [];
-  const riskyFieldInstructions: string[] = [];
   const foreignPlaceholders: string[] = [];
 
   // Template-origin SEQ inventory (see ScanResult.seqSequenceNames). Its own
   // loop, over the BROADER part list `needsFieldRefresh` uses: a caption in a
   // footnote or a counter in a header numbers the same sequence as one in the
   // body, and `documentPartNames` above covers neither footnotes nor endnotes.
+  // The risky-field inventory shares that breadth for the same reason: an
+  // INCLUDETEXT in a footnote is fetched on refresh like one in the body.
   const seqSequenceNames: string[] = [];
+  const riskyFound = new Set<string>();
   for (const part of wordprocessingPartNames(zip)) {
-    for (const name of collectSeqSequenceNames(readPartText(zip, part))) {
+    const xml = readPartText(zip, part);
+    for (const name of collectSeqSequenceNames(xml)) {
       if (!seqSequenceNames.includes(name)) seqSequenceNames.push(name);
     }
+    for (const keyword of collectFieldInstructions(xml, AUDITED_FIELD_INSTRUCTIONS)) riskyFound.add(keyword);
   }
+  // Declaration order, independent of the archive's member order.
+  const riskyFieldInstructions = AUDITED_FIELD_INSTRUCTIONS.filter((keyword) => riskyFound.has(keyword));
 
   for (const part of parts) {
     const xml = readPartText(zip, part);
     for (const name of collectStylerefFields(xml)) {
       if (!stylerefStyleNames.includes(name)) stylerefStyleNames.push(name);
-    }
-    for (const keyword of collectFieldInstructions(xml, AUDITED_FIELD_INSTRUCTIONS)) {
-      if (!riskyFieldInstructions.includes(keyword)) riskyFieldInstructions.push(keyword);
     }
     // Walk every paragraph the replacement will touch — including text-box
     // (mc:Choice + mc:Fallback) and drawing-adjacent occurrences — so the panel's
