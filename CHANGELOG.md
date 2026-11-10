@@ -2,6 +2,96 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [2026.11.2] - 2026-11-10
+
+### Bug Fixes
+
+- **confluence:** Keep quotes, table layout and spacer paragraphs on round-trip ([8179d28](https://github.com/bjoernschotte/atlcli/commit/8179d2863ed7c083921ae632e741e47389fb8ce3))
+- **confluence:** Keep hard breaks before lines that start with inline macros ([b09a9a2](https://github.com/bjoernschotte/atlcli/commit/b09a9a236b74002d2a855f91711ba40221f4b6bf))
+- **confluence:** Docs push no longer ignores --dry-run or folderizes its root ([772456f](https://github.com/bjoernschotte/atlcli/commit/772456fe740368f5e50626da200aaace2344bddb))
+- **deps:** Update dependency @opentui/core to v0.8.3 ([7b54d8e](https://github.com/bjoernschotte/atlcli/commit/7b54d8e76759dc8b87f47a6ed307a17fcee31719))
+- **deps:** Update dependency astro to v7.4.7 ([df1206b](https://github.com/bjoernschotte/atlcli/commit/df1206b6b5607bc9a1362cb37c00459dd5bda728))
+- **deps:** Update @opentui/react to 0.8.3 with core, refresh lockfile ([f257e81](https://github.com/bjoernschotte/atlcli/commit/f257e817d290c059337f8d17edce4f84b6dd58f1))
+- **deps:** Update dependency @tanstack/charts to v1 ([34ce8a0](https://github.com/bjoernschotte/atlcli/commit/34ce8a09fc81c0fbf7d9cb312aedf789db2cb630))
+- **deps:** Record @tanstack/charts 1.5.0 in the chart adapter ([16c34b9](https://github.com/bjoernschotte/atlcli/commit/16c34b9383c94b7aedbe83334698fbc52bc5e070))
+- **deps:** Update dependency entities to v9 ([fc49de3](https://github.com/bjoernschotte/atlcli/commit/fc49de37767286f5f4fd9083f95960c88e7ab243))
+- **deps:** Update langchain and deepagents ([331a7b7](https://github.com/bjoernschotte/atlcli/commit/331a7b7c23511187aed81f67e9bd2e60edd68c86))
+- **deps:** Port the deepagents config-forwarding patch to 1.16.3 ([24a482e](https://github.com/bjoernschotte/atlcli/commit/24a482e025731a9f411ed5a8fcf585a53d7da585))
+- **deps:** Port the @langchain/anthropic d.ts patch to 1.6.1 ([2fc9d55](https://github.com/bjoernschotte/atlcli/commit/2fc9d552957864c61d7cc2d95dd69e6e3d43f227))
+- **research:** Stream tool-call-delta argument slices into the chat answer ([764fd4a](https://github.com/bjoernschotte/atlcli/commit/764fd4adf57a1165a180a8e69d10f3039170fc21))
+- **extension:** Stub langsmith/traceable in the browser research worker ([9519735](https://github.com/bjoernschotte/atlcli/commit/9519735af69e921d59644559fbabc3ee5dfca33d))
+- **research:** Stop sending temperature to Anthropic ([9d1eb66](https://github.com/bjoernschotte/atlcli/commit/9d1eb6604cebf2f3f6266a4e53dd4809b8ddd9f9))
+- **deps:** Align CI Playwright pins and evidence types with 1.65.0 ([f84311c](https://github.com/bjoernschotte/atlcli/commit/f84311cab9588abf50cd9d60a84993a2c8c477aa))
+- **deps:** Update stable non-major dependencies ([bc62b74](https://github.com/bjoernschotte/atlcli/commit/bc62b741147d35139c5aa5b0592f007a015d714a))
+- **deps:** Record d3-scale 4.0.3 in the render-kit manifest test ([510ad21](https://github.com/bjoernschotte/atlcli/commit/510ad21d7795a554a3c24300cb5bf6b7544f59ba))
+- **confluence:** Adopt @atlaskit/adf-schema 57.7.39 pin and hex status colors ([e89a83a](https://github.com/bjoernschotte/atlcli/commit/e89a83a9f6e856f1b5f616256849243fab33ebba))
+- **research:** Find Confluence pages for keyword-bag chat queries ([19ee16a](https://github.com/bjoernschotte/atlcli/commit/19ee16a35065577921b55c26883444ae313cfff2))
+- **deps:** Update dependency astro to v7.4.8 ([1b89e28](https://github.com/bjoernschotte/atlcli/commit/1b89e28b3f501d4eee37c5890c1e08c1ee342e43))
+- **deps:** Update dependency react to v19.3.1 ([f17305b](https://github.com/bjoernschotte/atlcli/commit/f17305bf692ec310ad47009939ba556229c8fe30))
+- **deps:** Move react-dom to 19.3.1 together with react ([98dd1e5](https://github.com/bjoernschotte/atlcli/commit/98dd1e54278319d78ac213ac91e343175e1797fa))
+- **extension:** Stop a detached export from writing into the new page's panel ([a09e1f3](https://github.com/bjoernschotte/atlcli/commit/a09e1f332f4a9a9cf44099ab1bb5f7d103734cbc))
+- **confluence,core:** Folder state, pagination, update rollback and dead imports ([e62673e](https://github.com/bjoernschotte/atlcli/commit/e62673e3a8cfac8f9baa033e1cc3e4e8768f4cbc))
+- **research,import,web-publish:** Secret redaction, untrusted input and broken paths ([08b1243](https://github.com/bjoernschotte/atlcli/commit/08b12430d3df1477ed1a67ee62d68320ee8c0bd1))
+- **cli:** Ignored files synced, silent flag errors, wrong exit codes and dead code ([1514f99](https://github.com/bjoernschotte/atlcli/commit/1514f992d557e40eaa5b671f4010e1fbdda007a2))
+- **export:** Malformed DOCX output, corrupt JPEG decode and job-store edge cases ([9e6544b](https://github.com/bjoernschotte/atlcli/commit/9e6544baaa359ffee997064f93cf19d306ddf127))
+- **core,jira,confluence:** Unverified self-update, worklog parsing, retried writes ([d05af3e](https://github.com/bjoernschotte/atlcli/commit/d05af3e2ce0b11887cf4d8aac11d86a9580449ef))
+- **export,web-publish,docx,pdf:** Job-store recovery, rollback safety, DDE scan, Typst escaping ([ca69c73](https://github.com/bjoernschotte/atlcli/commit/ca69c73c759d3417479e61992fa9e2194d918f1d))
+- **cli:** Pull/push overwrite, script job errors, relative sync dir, batch import flags, template delete ([4dc469a](https://github.com/bjoernschotte/atlcli/commit/4dc469a43ab71681d59a97c070ea43d889464112))
+- **cli:** Docs push re-sent every tracked page; pull forgot its --page-id scope ([8473ae9](https://github.com/bjoernschotte/atlcli/commit/8473ae976f676b5cd7e352983732b23103fe1794))
+- **confluence,jira,core:** Complete listings, folder discovery, webhook hardening, dead API removal ([31a5d5c](https://github.com/bjoernschotte/atlcli/commit/31a5d5ced648da892a286577ef6a911162f29484))
+- **export:** Page-geometry image widths, revision 7 decorations, TOC links, placeholders in notes ([648d541](https://github.com/bjoernschotte/atlcli/commit/648d541662f38dba64e58bb396c496d6cf259992))
+- **import:** DOCX import budget, gridSpan, anchors on list items, rotated PDF pages ([15f0694](https://github.com/bjoernschotte/atlcli/commit/15f06942116d23ac91f4a9625d8bd499356da025))
+- **research:** Internal aborts are failures, dispatch race, quota without rescans ([08245e9](https://github.com/bjoernschotte/atlcli/commit/08245e9fcc83ff2c717ac646d0d53a078184ffb6))
+- **extension:** Job polling recovery, research run claims, stale preview guard, one host gate ([6dd391f](https://github.com/bjoernschotte/atlcli/commit/6dd391f826aaac7cb52d089cfdbaedd4f36d175d))
+- **cli:** Complete reads, single JSON documents, persisted --no-live-macros, webhook scope checks ([ec6bf7f](https://github.com/bjoernschotte/atlcli/commit/ec6bf7f79ef235980d345e9bd5701700cd769dd2))
+- **publish:** Do not prefix routes that already carry the publication namespace ([565ec41](https://github.com/bjoernschotte/atlcli/commit/565ec411bbc8bc73b66d6e9605db0073be242ea3))
+- **security:** Harden webhook servers, publish verifier, DOCX field scan and task JQL ([c89c049](https://github.com/bjoernschotte/atlcli/commit/c89c049d30aea900600b638ba8dc0d93823dc983))
+
+### Documentation
+
+- **skill:** Restore pages structure heading after blog posts section ([ea65c25](https://github.com/bjoernschotte/atlcli/commit/ea65c2500d585d0c0e11d30d0ef68cd416e6e2f9))
+- Align guides and agent skill with the fixed behaviour ([89c59a7](https://github.com/bjoernschotte/atlcli/commit/89c59a7c58c55c800637eb4799c07963c986311a))
+
+### Features
+
+- **confluence:** Add wiki blog commands, keep blog post type on update ([ef54200](https://github.com/bjoernschotte/atlcli/commit/ef542006a3144cdd4ddfa70fab83de43ef1b64a4))
+- **confluence:** Read and export Stage-0 styled rules and bodiedRule ([d32e854](https://github.com/bjoernschotte/atlcli/commit/d32e854a801acb4787575993fb91d3e843449cbf))
+- **publish:** Wire Confluence edit links end to end; structural output verification ([288a9cc](https://github.com/bjoernschotte/atlcli/commit/288a9cca21d28ecaf32841ac059a1d9d3dea62d7))
+
+### Miscellaneous
+
+- **deps:** Update dependency jsondiffpatch to v0.7.7 ([43dc490](https://github.com/bjoernschotte/atlcli/commit/43dc490e2de122783251e26344618f5f68ef6da9))
+- Bump Homebrew/actions/setup-homebrew to 2026.11.02.1 ([dce5123](https://github.com/bjoernschotte/atlcli/commit/dce5123e40a16d9fa2895ed2f8e7a77832913dc5))
+- **deps:** Update dependency happy-dom to v21 ([09b6e9b](https://github.com/bjoernschotte/atlcli/commit/09b6e9bf7281e53e7510b6625f17a9a4469d3dae))
+- **deps:** Update dependency node to v26 ([628612b](https://github.com/bjoernschotte/atlcli/commit/628612beba7ea0775ffc5724b4be8d22c7a22571))
+- **deps:** Update dependency @playwright/test to v1.65.0 ([816377e](https://github.com/bjoernschotte/atlcli/commit/816377efac5980573ae361cd491da98cba1f184c))
+- **deps:** Update dependency ubuntu to v26 ([8ababd0](https://github.com/bjoernschotte/atlcli/commit/8ababd0559cd528b90d76acdcabb9de39bae5de9))
+- Unpin Playwright jobs from ubuntu-24.04 ([826d44d](https://github.com/bjoernschotte/atlcli/commit/826d44d9b5f025e4c5c642cb3eaba036194d403a))
+- **web-publish-starlight:** Stop tracking generated consumer inventory ([aba3aa7](https://github.com/bjoernschotte/atlcli/commit/aba3aa73c21d71c4a36b4de3785bf6bcbd5c4816))
+- **confluence:** Drop deprecated @types/diff ([b622a39](https://github.com/bjoernschotte/atlcli/commit/b622a399e1360f435d1ac51be82122e99335ae99))
+- **renovate:** Track Homebrew/actions with a four-part version manager ([84b6068](https://github.com/bjoernschotte/atlcli/commit/84b60682b2a55627665bb70ab90958bda90af6ae))
+- Remove stray files and docs for commands that do not exist ([7d43e4f](https://github.com/bjoernschotte/atlcli/commit/7d43e4f844c5bfcb5488a96d0a692b6755ef601e))
+- Sync bun.lock with the dependency declarations ([6d17393](https://github.com/bjoernschotte/atlcli/commit/6d17393643a0352daff3fb0749f5217bf649919f))
+- **repo:** One specs layout, workflow timeouts and retried installs, dead scripts and workflows removed ([62b7ffe](https://github.com/bjoernschotte/atlcli/commit/62b7ffec6a5b61c2fe8182158fe0ae48b378aa54))
+
+### Refactoring
+
+- **extension:** Remove dead modules, shims and unused message keys ([b0ed38a](https://github.com/bjoernschotte/atlcli/commit/b0ed38ab2619eea8305230df5cb2b961ad1ca559))
+- Clear the leftovers from the repo audit ([69f77f8](https://github.com/bjoernschotte/atlcli/commit/69f77f8e7421e779a59954bd375b5c20eb4ac14c))
+
+### Styling
+
+- Drop the blank line at EOF left by the helper extraction ([2199894](https://github.com/bjoernschotte/atlcli/commit/21998941f54b6217af0bcebb9487ea78385ec3c9))
+
+### Testing
+
+- **research:** Characterize deepagents 1.16 middleware stack and SDK 1.x auth ([d912a80](https://github.com/bjoernschotte/atlcli/commit/d912a803a96d80e01f34107f017f19042114ad55))
+- **renovate:** Look up the Bun rule by group and cover the Homebrew manager ([a2fab27](https://github.com/bjoernschotte/atlcli/commit/a2fab27dc193fb0750046b0ffbff53f7da86abc6))
+- **cli:** Drop the file-watcher timing test that hangs on Linux CI ([6bf0cf1](https://github.com/bjoernschotte/atlcli/commit/6bf0cf10fffc22cc9c45567ffce59822472d895d))
+
+### Build
+
+- Require Node 26.13.0 as the runtime floor ([71ee415](https://github.com/bjoernschotte/atlcli/commit/71ee415c0780ec86d5e190019b1a2c9fccee05d6))
 ## [2026.11.1] - 2026-11-05
 
 ### Bug Fixes
