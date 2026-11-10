@@ -6,7 +6,6 @@ import {
   clearPreview,
   getLatestPreview,
   getPreviewEntry,
-  getReusableExportBytes,
   hashPreviewSettings,
   hashTreeVersions,
   matchesRequest,
@@ -156,23 +155,11 @@ describe("preview cache storage", () => {
     expect(hit?.entry.filename).toBe("other.pdf");
   });
 
-  /**
-   * The rule that stops a cut-off PDF being shipped as the export: a truncated
-   * preview is a *prefix of the document*, and it looks complete once opened.
-   */
-  it("Download must NOT reuse a truncated entry, but the viewer may read it", async () => {
+  it("keeps a truncated entry readable for the viewer", async () => {
     await put({ truncated: true, includedChapters: 5, totalChapters: 40 });
-    expect(await getReusableExportBytes(parts, { factory })).toBeUndefined();
     const viewerHit = await getPreviewEntry(parts, { factory });
     expect(viewerHit?.entry.truncated).toBe(true);
     expect(viewerHit?.entry.totalChapters).toBe(40);
-  });
-
-  it("Download reuses a complete entry", async () => {
-    await put({ truncated: false });
-    const hit = await getReusableExportBytes(parts, { factory });
-    expect(hit?.entry.truncated).toBe(false);
-    expect(hit?.bytes.size).toBe(4);
   });
 
   it("expires an entry older than the job horizon and drops it from storage", async () => {

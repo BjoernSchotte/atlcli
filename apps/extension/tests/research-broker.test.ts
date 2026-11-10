@@ -9,7 +9,7 @@ import {
   RESEARCH_CAPABILITY_SCHEMAS,
   RESEARCH_LANGCHAIN_TOOL_NAMES,
   type ResearchSearchOutputV1,
-} from "../utils/research/capability-contracts.js";
+} from "@atlcli/research/capability-contracts";
 import {
   ResearchCapabilityBroker,
   WorkspaceResearchClaimLedgerV1,

@@ -23,7 +23,6 @@ const preparation = {
   codeFontBytes: 273_900,
 };
 const okRouterDeps: RouterDeps = {
-  runWasmSmoke: async (a, b) => a + b,
   getCurrentEntity: async (windowId) => ({ windowId, url: null, entity: null, seq: 0 }),
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
@@ -31,7 +30,6 @@ const okRouterDeps: RouterDeps = {
   runJobsWake: async (jobIds) => jobIds?.[0],
 };
 const okOffscreenDeps: OffscreenListenerDeps = {
-  runWasmAdd: async (a, b) => a + b,
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
   prepareDocxRuntime: async () => preparation,
@@ -63,7 +61,7 @@ describe("handleExtMessage (background listener adapter)", () => {
   it("returns false and never responds for non-request messages", () => {
     const cap = captureResponse<ExtResponse>();
     const ret = handleExtMessage(
-      { kind: "offscreen:wasm-add", a: 1, b: 2 },
+      { kind: "offscreen:pdf-cancel", jobId: "123e4567-e89b-42d3-a456-426614174000" },
       cap.sendResponse,
       okRouterDeps
     );
@@ -79,37 +77,22 @@ describe("handleExtMessage (background listener adapter)", () => {
     expect(cap.values).toEqual([{ kind: "pong" }]);
   });
 
-  it("returns true and responds with the routed wasm-smoke result", async () => {
+  it("answers instead of hanging when the entity lookup rejects", async () => {
     const cap = captureResponse<ExtResponse>();
     const ret = handleExtMessage(
-      { kind: "wasm-smoke", a: 40, b: 2 },
-      cap.sendResponse,
-      okRouterDeps
-    );
-    expect(ret).toBe(true);
-    await cap.called;
-    expect(cap.values).toEqual([{ kind: "wasm-smoke-result", ok: true, result: 42 }]);
-  });
-
-  it("responds with an error response when the effect rejects", async () => {
-    const cap = captureResponse<ExtResponse>();
-    const ret = handleExtMessage(
-      { kind: "wasm-smoke", a: 1, b: 2 },
+      { kind: "get-current-entity", windowId: 7 },
       cap.sendResponse,
       {
-        runWasmSmoke: async () => {
+        ...okRouterDeps,
+        getCurrentEntity: async () => {
           throw new Error("boom");
         },
-        getCurrentEntity: async (windowId) => ({ windowId, url: null, entity: null, seq: 0 }),
-        runPdfCompile: okRouterDeps.runPdfCompile,
-        runPdfCancel: okRouterDeps.runPdfCancel,
       }
     );
     expect(ret).toBe(true);
     await cap.called;
-    expect(cap.values).toEqual([
-      { kind: "wasm-smoke-result", ok: false, error: "boom" },
-    ]);
+    // Never another request's result kind: the panel must not mistake it.
+    expect(cap.values).toEqual([{ kind: "request-failed", error: "boom" }]);
   });
 
   it("returns true and responds to PDF compile", async () => {
@@ -292,40 +275,6 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     const ret = handleOffscreenMessage({ kind: "ping" }, cap.sendResponse, okOffscreenDeps);
     expect(ret).toBe(false);
     expect(cap.values).toEqual([]);
-  });
-
-  it("returns true and eventually responds with the wasm-add result", async () => {
-    const cap = captureResponse<OffscreenResponse>();
-    const ret = handleOffscreenMessage(
-      { kind: "offscreen:wasm-add", a: 40, b: 2 },
-      cap.sendResponse,
-      okOffscreenDeps
-    );
-    expect(ret).toBe(true); // channel kept open
-    await cap.called;
-    expect(cap.values).toEqual([
-      { kind: "offscreen:wasm-add-result", ok: true, result: 42 },
-    ]);
-  });
-
-  it("returns true and responds with an error when instantiation rejects", async () => {
-    const cap = captureResponse<OffscreenResponse>();
-    const ret = handleOffscreenMessage(
-      { kind: "offscreen:wasm-add", a: 1, b: 2 },
-      cap.sendResponse,
-      {
-        runWasmAdd: async () => {
-          throw new Error("instantiate boom");
-        },
-        runPdfCompile: okOffscreenDeps.runPdfCompile,
-        runPdfCancel: okOffscreenDeps.runPdfCancel,
-      }
-    );
-    expect(ret).toBe(true);
-    await cap.called;
-    expect(cap.values).toEqual([
-      { kind: "offscreen:wasm-add-result", ok: false, error: "instantiate boom" },
-    ]);
   });
 
   it("returns true and responds to an offscreen PDF compile", async () => {

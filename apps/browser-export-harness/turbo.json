@@ -39,6 +39,7 @@
         "$TURBO_ROOT$/packages/import-pdf/scripts/**",
         "$TURBO_ROOT$/packages/import-pdf/vendor/**",
         "$TURBO_ROOT$/patches/**",
+        "$TURBO_ROOT$/apps/extension/scripts/output-scan-rules.ts",
         "$TURBO_ROOT$/LICENSE"
       ]
     },

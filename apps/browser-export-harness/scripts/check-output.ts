@@ -4,36 +4,30 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join, relative } from "node:path";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf/browser";
 import { PDFIUM_WASM_SHA256 } from "@atlcli/import-pdf/browser-worker";
+// Rules both built-output gates enforce identically. The module is
+// dependency-free; nothing else of the extension is imported here.
+import {
+  AGGREGATE_SHIKI_CHUNK_RE,
+  AGGREGATE_SHIKI_RUNTIME_RES,
+  DYNAMIC_CODE_RES,
+  ONIGURUMA_ENGINE_CHUNK_RE,
+  ONIGURUMA_RUNTIME_RES,
+  ONIGURUMA_WASM_RE,
+  REMOTE_SCRIPT_RES,
+  withoutGrammarKeywordFindings,
+} from "../../extension/scripts/output-scan-rules.js";
 
 const NODE_SPECIFIER_RE = /["'`](?:node|bun):[A-Za-z0-9_./-]*["'`]/g;
 const NODE_RUNTIME_RE = /(?<![\w.])Buffer\.[A-Za-z_$]|\bprocess\.(?:env|versions)\b|\brequire\s*\(\s*["'`]|\b__dirname\b|\b__filename\b/g;
-const DYNAMIC_CODE_RES = [
-  /\bnew\s+Function\s*\(/g,
-  /(?:^|[=(:,!&|?;{}])\s*Function\s*\(\s*["'`]/g,
-  /(?:^|[^\w.])eval\s*\(/g,
-];
-const REMOTE_EXECUTABLE_RES = [
-  /\bimport\s*(?:[^"'`()]*\bfrom\s*)?["'`]https?:\/\/[^"'`]+["'`]/g,
-  /\bimport\s*\(\s*["'`]https?:\/\/[^"'`]+["'`]/g,
-  /\bimportScripts\s*\(\s*["'`]https?:\/\/[^"'`]+["'`]/g,
-  /<script\b[^>]*\bsrc\s*=\s*["']?https?:\/\/[^"'\s>]+/gi,
-  /\b(?:fetch|Worker|SharedWorker|URL)\s*\(\s*["'`]https?:\/\/[^"'`]+\.(?:js|mjs|wasm|ttf|otf|woff2?|txt)(?:[?#][^"'`]*)?["'`]/g,
-];
+// Harness-only: a runtime asset fetched or spawned from a remote origin.
+const REMOTE_ASSET_RE =
+  /\b(?:fetch|Worker|SharedWorker|URL)\s*\(\s*["'`]https?:\/\/[^"'`]+\.(?:js|mjs|wasm|ttf|otf|woff2?|txt)(?:[?#][^"'`]*)?["'`]/g;
 const EXTENSION_RUNTIME_RE = /\bchrome\.|chrome-extension:\/\/|\bwxt(?:\/|["'`])|["'`](?:pdf:compile|pdf:cancel)["'`]/g;
 const ROOT_RELATIVE_RES = [
   /\b(?:src|href)\s*=\s*["']\/(?!\/)[^"']+["']/gi,
   /url\(\s*["']?\/(?!\/)[^)"']+/gi,
   /\b(?:fetch|Worker|SharedWorker|URL|importScripts)\s*\(\s*["'`]\/(?!\/)[^"'`]+["'`]/g,
   /["'`]\/assets\/[^"'`]+\.(?:js|mjs|wasm|ttf|otf|woff2?|txt)["'`]/g,
-];
-const ONIGURUMA_RUNTIME_RES = [
-  /\bfindNextOnigScannerMatch\b/g,
-  /Must invoke loadWasm first[.]/g,
-];
-const AGGREGATE_SHIKI_RUNTIME_RES = [
-  /\bbundle_full_exports\b/g,
-  /\blangs-bundle-full\b/g,
-  /["'`]shiki(?:\/(?:langs|themes))?["'`]/g,
 ];
 const IMPORT_ENGINE_BOUNDARY_RES = [
   /pdfjs-dist/g,
@@ -54,7 +48,7 @@ export interface OutputArtifact {
   sha256?: string;
 }
 
-function matches(text: string, expressions: RegExp[]): string[] {
+function matches(text: string, expressions: readonly RegExp[]): string[] {
   const findings = new Set<string>();
   for (const expression of expressions) {
     for (const match of text.matchAll(expression)) findings.add(match[0].trim());
@@ -78,24 +72,14 @@ export function scanHarnessText(text: string): string[] {
   const findings = [
     ...matches(reviewed, [NODE_SPECIFIER_RE, NODE_RUNTIME_RE]),
     ...matches(reviewed, DYNAMIC_CODE_RES),
-    ...matches(reviewed, REMOTE_EXECUTABLE_RES),
+    ...matches(reviewed, [...REMOTE_SCRIPT_RES, REMOTE_ASSET_RE]),
     ...matches(reviewed, [EXTENSION_RUNTIME_RE]),
     ...matches(reviewed, ROOT_RELATIVE_RES),
     ...matches(reviewed, ONIGURUMA_RUNTIME_RES),
     ...matches(reviewed, AGGREGATE_SHIKI_RUNTIME_RES),
     ...matches(reviewed, IMPORT_ENGINE_BOUNDARY_RES),
   ];
-  // Shiki grammar chunks are inert JSON payloads. Some grammars list Node
-  // globals as source-language keywords; those strings are not runtime use.
-  if (
-    reviewed.includes("Object.freeze(JSON.parse(`") &&
-    reviewed.includes('"scopeName"')
-  ) {
-    return findings.filter(
-      (finding) => finding !== "__dirname" && finding !== "__filename",
-    );
-  }
-  return findings;
+  return withoutGrammarKeywordFindings(reviewed, findings);
 }
 
 function walk(root: string): string[] {
@@ -159,17 +143,13 @@ function requireOne(
 export function validateHarnessInventory(artifacts: OutputArtifact[]): string[] {
   const issues: string[] = [];
   for (const artifact of artifacts) {
-    if (/(?:^|\/)engine-oniguruma-[^/]+[.]js$/i.test(artifact.path)) {
+    if (ONIGURUMA_ENGINE_CHUNK_RE.test(artifact.path)) {
       issues.push(`Oniguruma engine: unexpected browser artifact ${artifact.path}`);
     }
-    if (/(?:^|\/)(?:onig|shiki)[^/]*[.]wasm$/i.test(artifact.path)) {
+    if (ONIGURUMA_WASM_RE.test(artifact.path)) {
       issues.push(`Oniguruma WASM: unexpected browser artifact ${artifact.path}`);
     }
-    if (
-      /(?:^|\/)(?:langs|themes|bundle-full|bundle-web)-[^/]+[.]js$/i.test(
-        artifact.path,
-      )
-    ) {
+    if (AGGREGATE_SHIKI_CHUNK_RE.test(artifact.path)) {
       issues.push(`aggregate Shiki catalogue: unexpected browser artifact ${artifact.path}`);
     }
   }

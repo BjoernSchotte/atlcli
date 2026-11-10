@@ -1,12 +1,11 @@
 /**
  * Pure helpers behind the DOCX export panel (spec 010 Phase 0).
  *
- * All four are host-neutral and DOM-free, which is why they live next to the
+ * All three are host-neutral and DOM-free, which is why they live next to the
  * screen rather than in the Chrome shell.
  */
 import type { ExportReport } from "@atlcli/docx/browser";
 import type { ScanResult } from "@atlcli/docx/scan";
-import type { RasterizerStats } from "../../utils/docx/env.js";
 import type { MessageKey, MessageParams } from "../../utils/i18n/messages.js";
 
 export type Translate = (key: MessageKey, params?: MessageParams) => string;
@@ -62,26 +61,6 @@ export async function loadCurrentTemplate(
     bytes: stored.bytes,
     ...(stored.recordKey ? { recordKey: stored.recordKey } : {}),
     ...(stored.sha256 ? { sha256: stored.sha256 } : {}),
-  };
-}
-
-/**
- * Build the extension-owned rasterizer timing note, if any call succeeded.
- *
- * Untranslated on purpose: it joins `ExportReport.notes`, which is engine
- * vocabulary shared with the CLI.
- */
-export function rasterizerTimingNote(
-  stats: RasterizerStats
-): ExportReport["notes"][number] | null {
-  if (stats.calls === 0) return null;
-  return {
-    level: "info",
-    code: "perf-timing",
-    message:
-      `Panel rasterizer: ${stats.calls} call(s) — decode ${stats.decodeMs} ms, ` +
-      `draw ${stats.drawMs} ms, encode ${stats.encodeMs} ms (sums; per call ` +
-      `${stats.encodeCallsMs.join("/")} ms).`,
   };
 }
 

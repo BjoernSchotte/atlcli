@@ -524,6 +524,40 @@ describe("PreviewScreen", () => {
     });
   });
 
+  it("ignores a compile that settles after a newer one", async () => {
+    const pending: Array<(result: PdfPreviewResult) => void> = [];
+    const older = ready();
+    const newer = ready();
+    const runtime: PreviewRuntime = {
+      compile: () => new Promise((resolve) => pending.push(resolve)),
+      async readCached() {
+        return null;
+      },
+      async openViewer(bytes) {
+        return fakeViewer(bytes === newer.bytes ? 9 : 2);
+      },
+    };
+    await mountEmbeddedDraft(loadedState(), runtime);
+    await click("preview-generate");
+    // The button is disabled while compiling; the live refresh is what starts
+    // a second compile over a first one that is still running.
+    await click("change-preview-scope-tree");
+    const { act } = await import("react");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    expect(pending).toHaveLength(2);
+
+    await act(async () => pending[1]!(newer));
+    await flush();
+    await act(async () => pending[0]!(older));
+    await flush();
+
+    // The older compile must not replace the newer preview.
+    expect(find("preview-page-label").textContent).toContain("9");
+    expect(find("preview-status").getAttribute("data-status")).toBe("current");
+  });
+
   it("navigates page by page without re-compiling", async () => {
     const viewer = fakeViewer(3);
     const runtime = runtimeFor(ready(), viewer);

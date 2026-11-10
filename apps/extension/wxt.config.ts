@@ -67,7 +67,7 @@ export default defineConfig({
     // the session fetch's `credentials: "include"` unless the host permission
     // exempts that hop from CORS too (spec 005 image embedding, E2E finding).
     host_permissions: [
-      "*://*.atlassian.net/*",
+      "https://*.atlassian.net/*",
       "https://api.media.atlassian.com/*",
       "https://api.anthropic.com/*",
     ],

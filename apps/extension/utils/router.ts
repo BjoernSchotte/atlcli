@@ -52,8 +52,6 @@ import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/re
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {
-  /** Runs the WASM smoke computation (in practice: round-trip to offscreen). */
-  runWasmSmoke: (a: number, b: number) => Promise<number>;
   /** Resolves the active tab's current entity (queries `chrome.tabs`). */
   getCurrentEntity: (windowId: number) => Promise<EntityDetection>;
   /**
@@ -199,9 +197,9 @@ export interface RouterDeps {
 }
 
 /**
- * Route one request to its response. Never throws: the `wasm-smoke` failure
- * path is captured and returned as an error response so the panel gets a
- * message instead of a hang (Task 5 failure path).
+ * Route one request to its response. An effect failure becomes that request's
+ * own error result wherever the protocol has one, so the panel gets a message
+ * instead of a hang; `get-current-entity` has no error variant and rejects.
  */
 export async function routeMessage(
   msg: ExtRequest,
@@ -210,18 +208,6 @@ export async function routeMessage(
   switch (msg.kind) {
     case "ping":
       return { kind: "pong" };
-    case "wasm-smoke": {
-      try {
-        const result = await deps.runWasmSmoke(msg.a, msg.b);
-        return { kind: "wasm-smoke-result", ok: true, result };
-      } catch (err) {
-        return {
-          kind: "wasm-smoke-result",
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }
     case "get-current-entity": {
       const detection = await deps.getCurrentEntity(msg.windowId);
       return { kind: "current-entity", detection };

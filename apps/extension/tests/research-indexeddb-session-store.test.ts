@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { IDBFactory } from "fake-indexeddb";
+import { IDBFactory, IDBIndex as FakeIDBIndex } from "fake-indexeddb";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,11 +15,13 @@ import {
   createResearchOutlineV1,
   createResearchSessionV1,
   researchCheckpointConfigV1,
+  openDurableChatConversationWorkspaceV1,
+} from "@atlcli/research";
+import {
+  verifyChatRetrievalTraceConformanceV1,
   verifyResearchDataStoreConformanceV1,
   verifyResearchSessionStoreConformanceV1,
-  openDurableChatConversationWorkspaceV1,
-  verifyChatRetrievalTraceConformanceV1,
-} from "@atlcli/research";
+} from "@atlcli/research/testing";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "@atlcli/research/browser/agent";
 
@@ -497,5 +499,86 @@ describe("IndexedDB durable research session store", () => {
     expect(await evidenceWorkspace.list()).toEqual(["/.atlcli/evidence/v1/chunks/two.json"]);
     expect(await claimsWorkspace.list()).toEqual(["/.atlcli/claims/v1/index.json"]);
     expect(await outlineWorkspace.list()).toEqual(["/.atlcli/outline/v1/index.json"]);
+  });
+
+  async function quotaStore(factory: IDBFactory, databaseName: string, evidence: number) {
+    const store = await IndexedDbResearchSessionStoreV1.open({
+      factory: factory as unknown as IDBFactory,
+      databaseName,
+      dataWorkspaceLimits: { evidence },
+    });
+    stores.push(store);
+    return store;
+  }
+
+  test("enforces the namespace quota to the byte across store instances without rescanning the rows", async () => {
+    const factory = new IDBFactory();
+    const first = await quotaStore(factory, "research-session-quota-exact", 100);
+    const created = await first.create(createResearchSessionV1({
+      sessionId: "research-session:indexeddb-quota-exact",
+      ownerId: "owner:indexeddb-quota-exact",
+      createdAt: "2026-08-01T14:00:00.000Z",
+      leaseExpiresAt: "2026-08-01T14:10:00.000Z",
+    }));
+    const evidence = await first.researchDataWorkspace(created.sessionId, "evidence");
+    await evidence.writeFile("/one", "a".repeat(60));
+
+    const getAll = FakeIDBIndex.prototype.getAll;
+    let scans = 0;
+    FakeIDBIndex.prototype.getAll = function (...args: Parameters<typeof getAll>) {
+      scans += 1;
+      return getAll.apply(this, args);
+    };
+    try {
+      // Exactly at the limit; "é" is two UTF-8 bytes.
+      await evidence.writeFile("/two", `${"b".repeat(38)}é`);
+      await expect(evidence.writeFile("/three", "c")).rejects.toThrow("quota is exhausted");
+      await expect(evidence.writeFile("/two", `${"b".repeat(39)}é`)).rejects.toThrow("quota is exhausted");
+      // Replacing a file frees its old bytes first.
+      await evidence.writeFile("/two", "b".repeat(40));
+
+      const second = await quotaStore(factory, "research-session-quota-exact", 100);
+      const sameEvidence = await second.researchDataWorkspace(created.sessionId, "evidence");
+      await expect(sameEvidence.writeFile("/three", "c")).rejects.toThrow("quota is exhausted");
+      await sameEvidence.remove("/one");
+      await evidence.writeFile("/three", "c".repeat(60));
+      await expect(sameEvidence.writeFile("/four", "d")).rejects.toThrow("quota is exhausted");
+      expect(scans).toBe(0);
+    } finally {
+      FakeIDBIndex.prototype.getAll = getAll;
+    }
+    expect(await evidence.list()).toEqual(["/three", "/two"]);
+  });
+
+  test("counts rows written before the running quota total existed", async () => {
+    const factory = new IDBFactory();
+    const databaseName = "research-session-quota-legacy-rows";
+    const store = await quotaStore(factory, databaseName, 100);
+    const created = await store.create(createResearchSessionV1({
+      sessionId: "research-session:indexeddb-quota-legacy",
+      ownerId: "owner:indexeddb-quota-legacy",
+      createdAt: "2026-08-01T14:00:00.000Z",
+      leaseExpiresAt: "2026-08-01T14:10:00.000Z",
+    }));
+    const raw = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = factory.open(databaseName);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => resolve(open.result);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = raw.transaction("evidenceWorkspace", "readwrite");
+      tx.objectStore("evidenceWorkspace").put({ sessionId: created.sessionId, path: "/legacy", contents: "l".repeat(70) });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    raw.close();
+
+    const evidence = await store.researchDataWorkspace(created.sessionId, "evidence");
+    await expect(evidence.writeFile("/new", "n".repeat(31))).rejects.toThrow("quota is exhausted");
+    await evidence.writeFile("/new", "n".repeat(30));
+    await expect(evidence.writeFile("/more", "m")).rejects.toThrow("quota is exhausted");
+    await evidence.remove("/legacy");
+    await evidence.writeFile("/more", "m".repeat(70));
+    expect(await evidence.list()).toEqual(["/more", "/new"]);
   });
 });

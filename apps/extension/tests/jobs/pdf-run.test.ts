@@ -203,4 +203,53 @@ describe("sidepanel durable PDF observer", () => {
       .rejects.toThrow("Typst worker failed");
     expect(emitted).toBe(false);
   });
+
+  it("waits at the parked cadence while the job is waiting, and at the active one otherwise", async () => {
+    const waits: number[] = [];
+    const deps = baseDeps([
+      snapshot(0, "queued"),
+      snapshot(1, "waiting"),
+      snapshot(2, "running", { stage: "render" }),
+      snapshot(3, "failed", { finishedAt: 3 }),
+    ]);
+    deps.sleep = async (milliseconds) => {
+      waits.push(milliseconds);
+    };
+    await expect(runSubmittedExtensionPdfExport(request(), deps)).rejects.toThrow();
+    expect(waits).toEqual([200, 1_000, 200]);
+  });
+
+  it("ends a wait early when the queue announces a change to this job", async () => {
+    let announce: (jobId: string) => void = () => undefined;
+    let unsubscribed = false;
+    const waited: string[] = [];
+    const deps = baseDeps([
+      snapshot(1, "waiting"),
+      snapshot(2, "failed", { finishedAt: 2 }),
+    ]);
+    deps.onChanged = (listener) => {
+      announce = listener;
+      return () => {
+        unsubscribed = true;
+      };
+    };
+    // A wait that only an abort of its signal can end, like the real timer
+    // with an hour on the clock.
+    deps.sleep = (_milliseconds, signal) =>
+      new Promise((_resolve, reject) => {
+        signal!.addEventListener("abort", () => {
+          waited.push("woken");
+          reject(signal!.reason);
+        });
+        queueMicrotask(() => {
+          announce("another-job");
+          queueMicrotask(() => announce("pdf-run"));
+        });
+      });
+    await expect(runSubmittedExtensionPdfExport(request(), deps)).rejects.toThrow(
+      "PDF export ended as failed.",
+    );
+    expect(waited).toEqual(["woken"]);
+    expect(unsubscribed).toBe(true);
+  });
 });

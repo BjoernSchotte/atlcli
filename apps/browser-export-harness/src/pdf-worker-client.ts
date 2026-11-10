@@ -54,6 +54,19 @@ function copiedBundle(bundle: PdfSourceBundle): {
   };
 }
 
+/** Clients that currently hold a Worker (a warm Typst compiler plus its fonts). */
+const warmClients = new Set<HarnessPdfWorkerClient>();
+
+/**
+ * Terminate every warm harness Worker. Each case module keeps its own client
+ * so a case starts cold and its font requests are attributable to it; without
+ * this, every case run left one more warm compiler alive for the page's
+ * lifetime. The clients stay usable and start a new Worker on demand.
+ */
+export function disposeHarnessPdfWorkers(): void {
+  for (const client of [...warmClients]) client.dispose();
+}
+
 /** Direct, in-memory module-Worker compile port; no IndexedDB or host messages. */
 export class HarnessPdfWorkerClient implements PdfCompilePort {
   private readonly queue: QueueItem[] = [];
@@ -107,6 +120,7 @@ export class HarnessPdfWorkerClient implements PdfCompilePort {
     worker.onmessage = (event) => this.handleMessage(event.data);
     worker.onerror = (event) => this.handleWorkerError(event.message || "PDF Worker failed.");
     this.worker = worker;
+    warmClients.add(this);
     return worker;
   }
 
@@ -176,5 +190,6 @@ export class HarnessPdfWorkerClient implements PdfCompilePort {
     this.worker.onerror = null;
     this.worker.terminate();
     this.worker = null;
+    warmClients.delete(this);
   }
 }

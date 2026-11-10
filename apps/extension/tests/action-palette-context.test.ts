@@ -65,6 +65,8 @@ describe("authoritative action palette context", () => {
       () => derive("https://example.atlassian.net/home", { documentId: "" }),
       () => deriveActionPaletteContextV1({ sender, tab: { id: 99, url: sender.url }, locale: "en-US", capabilities: [] }),
       () => derive("https://example.com/wiki/spaces/DOC/pages/123"),
+      () => derive("http://example.atlassian.net/home", { origin: "http://example.atlassian.net" }),
+      () => derive("https://example.atlassian.net:8443/home", { origin: "https://example.atlassian.net:8443" }),
     ];
     for (const run of cases) expect(run).toThrow(ActionPaletteContextError);
   });

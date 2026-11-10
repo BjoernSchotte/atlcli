@@ -755,7 +755,7 @@ describe("the session ports carry a real JiraClient", () => {
     const ref = await ports.jira.getIssue("ATL-1");
 
     // The URL is JiraClient's own Cloud v3 path on the SAME origin Confluence
-    // uses — covered by the manifest's existing `*://*.atlassian.net/*`.
+    // uses — covered by the manifest's existing `https://*.atlassian.net/*`.
     expect(log.urls).toHaveLength(1);
     expect(log.urls[0]).toStartWith(`${SITE}/rest/api/3/issue/ATL-1`);
     // Session fingerprint, inherited from the client rather than re-implemented.

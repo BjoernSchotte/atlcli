@@ -16,12 +16,8 @@ import {
 } from "@atlcli/pdf/browser";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { MemoryOutputSink } from "./memory-output.js";
-import { deterministicClock as clock, failingPdfAssets } from "./pdf-run.js";
+import { deterministicClock as clock, noPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
-
-const noAssets = failingPdfAssets(
-  "The chart acceptance corpus has no external assets.",
-);
 
 
 export interface ChartCaseResult {
@@ -119,7 +115,7 @@ export async function runChartCase(): Promise<ChartCaseResult> {
       filename: "chart-browser-proof.pdf",
     },
     {
-      assets: noAssets,
+      assets: noPdfAssets,
       compiler: capturingCompiler,
       output: pdfOutput,
       now: clock(),

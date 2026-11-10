@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { PdfCompileResult, PdfSourceBundle } from "@atlcli/pdf/browser";
 import {
   HarnessPdfWorkerClient,
+  disposeHarnessPdfWorkers,
   type HarnessWorkerLike,
 } from "../src/pdf-worker-client.js";
 import type { PdfWorkerRequest, PdfWorkerResponse } from "../src/pdf-worker-protocol.js";
@@ -128,5 +129,29 @@ describe("HarnessPdfWorkerClient", () => {
     expect(worker.messages).toHaveLength(1);
     worker.respond(worker.messages[0]!.requestId);
     await first;
+  });
+
+  it("releases every warm Worker at once and leaves the clients usable", async () => {
+    const workers: FakeWorker[] = [];
+    const create = () => {
+      const worker = new FakeWorker();
+      workers.push(worker);
+      return worker;
+    };
+    const first = new HarnessPdfWorkerClient(create);
+    const second = new HarnessPdfWorkerClient(create);
+    const cold = new HarnessPdfWorkerClient(create);
+    await first.compile(bundle());
+    await second.compile(bundle());
+
+    disposeHarnessPdfWorkers();
+    expect(workers.map((worker) => worker.terminated)).toEqual([true, true]);
+    expect(cold.workerGeneration).toBe(0);
+
+    expect((await first.compile(bundle())).compilerVersion).toBe("fixture");
+    expect(first.workerGeneration).toBe(2);
+    expect(workers).toHaveLength(3);
+    disposeHarnessPdfWorkers();
+    expect(workers[2]!.terminated).toBe(true);
   });
 });

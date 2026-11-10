@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ACTION_GROUP_IDS, type ActionModuleV1 } from "@atlcli/action-registry";
 import {
   ACTION_IDS,
   isStructuredCloneSafeV1,
@@ -14,12 +15,42 @@ import {
 import {
   EXTENSION_ACTION_CAPABILITIES_V1,
   EXTENSION_ACTION_MODULES_V1,
-  EXTENSION_CONTRIBUTION_INTENT_KINDS_V1,
-  SYNTHETIC_EXTENSION_ACTION_MODULE_V1,
 } from "../utils/action-palette/catalog.js";
 import type { ActionPaletteSenderV1, ActionPaletteTabV1 } from "../utils/action-palette/context.js";
 
 const syntheticId = "atlcli.test.synthetic-action";
+const SYNTHETIC_CAPABILITY = "atlcli.capability.test.synthetic";
+const EXTENSION_CONTRIBUTION_INTENT_KINDS_V1 = ["contribution.extension-test"] as const;
+
+/** A contributed module: inert unless the host registers its exact capability and executor. */
+const SYNTHETIC_EXTENSION_ACTION_MODULE_V1: ActionModuleV1 = {
+  schemaVersion: 1,
+  id: "atlcli.module.synthetic-fixture",
+  actions: [{
+    schemaVersion: 1,
+    id: "atlcli.test.synthetic-action",
+    moduleId: "atlcli.module.synthetic-fixture",
+    title: { key: "atlcli.action.synthetic.title", fallback: "Synthetic contribution" },
+    group: ACTION_GROUP_IDS.suggested,
+    icon: "extension",
+    intent: { kind: "contribution.extension-test", payload: { fixture: true } },
+    requirements: [{ kind: "capability", capability: SYNTHETIC_CAPABILITY }],
+    effect: "read",
+    input: {
+      schemaVersion: 1,
+      fields: [{
+        type: "select",
+        id: "fixture",
+        label: { key: "atlcli.action.synthetic.fixture", fallback: "Fixture" },
+        required: true,
+        options: [{ id: "yes", label: { key: "atlcli.action.synthetic.yes", fallback: "Yes" } }],
+      }],
+      submitLabel: { key: "atlcli.action.synthetic.submit", fallback: "Run fixture" },
+    },
+    order: 999,
+  }],
+};
+
 const sender: ActionPaletteSenderV1 = {
   tabId: 4,
   documentId: "doc-1",
@@ -34,7 +65,7 @@ function syntheticExecutor(
 ): ActionPaletteExecutorEntryV1 {
   return {
     actionId: syntheticId,
-    capability: EXTENSION_ACTION_CAPABILITIES_V1.synthetic,
+    capability: SYNTHETIC_CAPABILITY,
     effect: "read",
     intentKind: "contribution.extension-test",
     execute,
@@ -117,7 +148,7 @@ describe("authoritative action palette background host", () => {
       calls.push(request);
       return { status: "completed", messageKey: "atlcli.test.done" };
     })]);
-    expect(h.host.capabilities).toEqual([EXTENSION_ACTION_CAPABILITIES_V1.synthetic]);
+    expect(h.host.capabilities).toEqual([SYNTHETIC_CAPABILITY]);
     const listed = await h.catalog();
     expect(listed.kind).toBe("action-palette:catalog-result");
     if (listed.kind !== "action-palette:catalog-result") return;

@@ -197,7 +197,6 @@ export interface DocxRuntimePreparationMessage {
 /** Request messages sent from the panel to the service worker. */
 export type ExtRequest =
   | { kind: "ping" }
-  | { kind: "wasm-smoke"; a: number; b: number }
   | { kind: "get-current-entity"; windowId: number }
   | ({ kind: "pdf:compile"; jobId: string } & PdfCompileHints)
   | { kind: "pdf:cancel"; jobId: string }
@@ -291,8 +290,8 @@ export type ExtRequest =
 /** Response messages returned to the panel. */
 export type ExtResponse =
   | { kind: "pong" }
-  | { kind: "wasm-smoke-result"; ok: true; result: number }
-  | { kind: "wasm-smoke-result"; ok: false; error: string }
+  /** The listener's answer when routing itself failed; no request kind maps to it. */
+  | { kind: "request-failed"; error: string }
   | { kind: "current-entity"; detection: EntityDetection }
   | { kind: "pdf:compile-result"; jobId: string; ok: true }
   | { kind: "pdf:compile-result"; jobId: string; ok: false; error: string }
@@ -687,7 +686,6 @@ function isChatCheckpointResumeV1(value: unknown): value is {
  * (no self-delivery loop over the shared `chrome.runtime` message bus).
  */
 export type OffscreenRequest =
-  | { kind: "offscreen:wasm-add"; a: number; b: number }
   | ({ kind: "offscreen:pdf-compile"; jobId: string } & PdfCompileHints)
   | { kind: "offscreen:pdf-cancel"; jobId: string }
   | { kind: "offscreen:docx-prepare-runtime"; codeTheme?: CodeThemeId }
@@ -724,8 +722,6 @@ export type OffscreenRequest =
   | { kind: "offscreen:research-pause"; runId: string }
   | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
-  | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
-  | { kind: "offscreen:wasm-add-result"; ok: false; error: string }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: true }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: false; error: string }
   | { kind: "offscreen:pdf-cancel-result"; jobId: string; cancelled: boolean }
@@ -800,7 +796,6 @@ export type ExtRequestKind = ExtRequest["kind"];
  */
 export interface ResponseMap {
   ping: Extract<ExtResponse, { kind: "pong" }>;
-  "wasm-smoke": Extract<ExtResponse, { kind: "wasm-smoke-result" }>;
   "get-current-entity": Extract<ExtResponse, { kind: "current-entity" }>;
   "pdf:compile": Extract<ExtResponse, { kind: "pdf:compile-result" }>;
   "pdf:cancel": Extract<ExtResponse, { kind: "pdf:cancel-result" }>;
@@ -1083,10 +1078,7 @@ export function isExtRequest(value: unknown): value is ExtRequest {
     return hasOnlyKeys(value, ["kind", "runId"]) && isResearchRunId(cancel.runId);
   }
   if (kind === "get-current-entity") return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
-  if (kind === "ping") return hasOnlyKeys(value, ["kind"]);
-  return kind === "wasm-smoke"
-    && hasOnlyKeys(value, ["kind", "a", "b"])
-    && hasFiniteOperands(value);
+  return kind === "ping" && hasOnlyKeys(value, ["kind"]);
 }
 
 /** Narrowing type guard for the SW→panel `entity-changed` push message. */
@@ -1238,9 +1230,7 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
     const cancel = value as { runId?: unknown };
     return hasOnlyKeys(value, ["kind", "runId"]) && isResearchRunId(cancel.runId);
   }
-  return candidate.kind === "offscreen:wasm-add"
-    && hasOnlyKeys(value, ["kind", "a", "b"])
-    && hasFiniteOperands(value);
+  return false;
 }
 
 function hasOnlyKeys(value: unknown, allowed: readonly string[]): boolean {
@@ -1308,12 +1298,6 @@ function isResearchPlanRevisionInstruction(value: unknown): value is string {
 /** Mirrors the host-neutral export-job contract: opaque, non-empty, bounded text. */
 function isOpaqueExportJobId(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= 4_096;
-}
-
-function hasFiniteOperands(value: unknown): boolean {
-  const candidate = value as { a?: unknown; b?: unknown };
-  return typeof candidate.a === "number" && Number.isFinite(candidate.a)
-    && typeof candidate.b === "number" && Number.isFinite(candidate.b);
 }
 
 /**

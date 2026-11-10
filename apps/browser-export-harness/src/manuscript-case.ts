@@ -29,14 +29,10 @@ import {
 import { MANUSCRIPT_BLOCKS, MANUSCRIPT_FILENAME, MANUSCRIPT_METADATA } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes, sha256Hex } from "./digest.js";
-import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
+import { deterministicClock, noPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const compiler = new HarnessPdfWorkerClient();
-
-const noAssets = failingPdfAssets(
-  "The Manuscript conformance fixture has no external assets.",
-);
 
 async function compileWith(
   templateManifest?: TemplateManifest,
@@ -50,7 +46,7 @@ async function compileWith(
       filename: MANUSCRIPT_FILENAME,
       ...(templateManifest ? { templateManifest } : {}),
     },
-    { assets: noAssets, compiler, output, now: deterministicClock() },
+    { assets: noPdfAssets, compiler, output, now: deterministicClock() },
   );
   return { report, bytes: output.single.bytes };
 }

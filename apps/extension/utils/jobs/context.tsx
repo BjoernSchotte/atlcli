@@ -61,7 +61,6 @@ export interface DurableJobsView {
   /** False until the first read settles, so an empty list is never shown too early. */
   loaded: boolean;
   error: string | null;
-  refresh: () => void;
   cancel: (id: string) => void;
   dismiss: (id: string) => void;
   download: (id: string) => void;
@@ -102,6 +101,7 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
   const [detailLoading, setDetailLoading] = useState(false);
   const [pulseEnabled, setPulseEnabledState] = useState(true);
   const alive = useRef(true);
+  const lastSignature = useRef("[]");
 
   const refresh = useCallback(() => setTick((value) => value + 1), []);
 
@@ -114,6 +114,7 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
 
   useEffect(() => {
     if (!port) {
+      lastSignature.current = "[]";
       setJobs([]);
       setLoaded(true);
       return;
@@ -122,25 +123,29 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const read = async (): Promise<void> => {
+      let delay = JOBS_IDLE_POLL_MS;
       try {
         const next = await port.list({
           ...(siteOrigin === null ? {} : { siteOrigin }),
         });
         if (cancelled) return;
-        setJobs(next);
+        // An unchanged read keeps the previous array, so a poll that found
+        // nothing new does not re-render the whole screen.
+        const signature = JSON.stringify(next);
+        if (signature !== lastSignature.current) {
+          lastSignature.current = signature;
+          setJobs(next);
+        }
         setError(null);
-        setLoaded(true);
-        timer = setTimeout(
-          () => void read(),
-          next.some((job) => job.actions.cancel)
-            ? JOBS_POLL_MS
-            : JOBS_IDLE_POLL_MS
-        );
+        if (next.some((job) => job.actions.cancel)) delay = JOBS_POLL_MS;
       } catch (reason) {
         if (cancelled) return;
         setError(reason instanceof Error ? reason.message : String(reason));
-        setLoaded(true);
       }
+      setLoaded(true);
+      // Rescheduled after a failed read too: one transient IndexedDB error
+      // must not freeze the list until the panel is reopened.
+      timer = setTimeout(() => void read(), delay);
     };
     void read();
     return () => {
@@ -148,6 +153,9 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       if (timer !== null) clearTimeout(timer);
     };
   }, [port, siteOrigin, tick]);
+
+  // A settled job announces itself, so the idle cadence is only the fallback.
+  useEffect(() => port?.onChanged?.(refresh), [port, refresh]);
 
   useEffect(() => {
     if (!port) return;
@@ -209,7 +217,6 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       jobs,
       loaded,
       error,
-      refresh,
       cancel: (id) => act((p) => p.cancel(id)),
       dismiss: (id) => act((p) => p.dismiss(id)),
       download: (id) => act((p) => p.download(id)),
@@ -231,7 +238,6 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       jobs,
       loaded,
       error,
-      refresh,
       act,
       detail,
       detailLoading,

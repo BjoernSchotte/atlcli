@@ -56,6 +56,13 @@ describe("message catalogues", () => {
     expect(CATALOGS.de["nav.sections"]).toBe("Bereiche");
     expect(CATALOGS.de["screen.settings.label"]).toBe("Einstellungen");
     expect(CATALOGS.de["screen.activity.label"]).toBe("Verlauf");
+    // The export detail view and the palette's host status used to be
+    // hardcoded English inside otherwise localized screens.
+    expect(translate("de", "jobs.event.stage", { stage: "render" })).toBe("Phase: render");
+    expect(translate("de", "jobs.detail.reportSummary", {
+      completeness: "complete", info: 1, warning: 2, error: 0,
+    })).toBe("complete · 1 Infos · 2 Warnungen · 0 Fehler");
+    expect(CATALOGS.de["paletteHost.retry"]).toBe("Erneut versuchen");
   });
 
   it("presents every durable Chat activity state in both locales", () => {

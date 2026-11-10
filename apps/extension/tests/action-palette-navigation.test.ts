@@ -112,6 +112,13 @@ describe("action palette navigation", () => {
       { ...sender, frameId: 1 },
       () => { throw new Error("must not open"); },
     )).toBe(false);
+    for (const origin of ["http://fixture.atlassian.net", "https://fixture.atlassian.net:8443", "https://fixture.example"]) {
+      expect(openActionPaletteSidePanelForGestureV1(
+        executeMessage(ACTION_IDS.openActivity),
+        { ...sender, origin },
+        () => { throw new Error("must not open"); },
+      ), origin).toBe(false);
+    }
   });
 
   test("queues the validated target while keeping shell-open and target selection separate", async () => {

@@ -1,6 +1,7 @@
 import { ACTION_IDS } from "@atlcli/action-registry";
 import type { ActionPaletteSenderV1 } from "./context.js";
 import { isActionPaletteRequestV1 } from "./protocol.js";
+import { isAtlassianCloudOrigin } from "../profile.js";
 
 const SURFACE_ACTION_IDS = new Set<string>([
   ACTION_IDS.configureDocx,
@@ -23,7 +24,7 @@ export function openActionPaletteSidePanelForGestureV1(
   if (!isActionPaletteRequestV1(message) || message.kind !== "action-palette:execute" ||
       !SURFACE_ACTION_IDS.has(message.actionId) || sender.frameId !== 0 ||
       !Number.isSafeInteger(sender.tabId) || sender.tabId < 0 || !sender.documentId ||
-      !/^https:\/\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.atlassian\.net$/iu.test(sender.origin)) {
+      !isAtlassianCloudOrigin(sender.origin)) {
     return false;
   }
   open(sender.tabId);

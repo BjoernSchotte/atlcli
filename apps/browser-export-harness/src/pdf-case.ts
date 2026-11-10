@@ -10,14 +10,10 @@ import { ATLCLI_TYPST_TEMPLATE, validatePdfOutput } from "@atlcli/pdf/internal";
 import { PDF_BLOCKS, PDF_FILENAME, PDF_METADATA } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes } from "./digest.js";
-import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
+import { deterministicClock, noPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const compiler = new HarnessPdfWorkerClient();
-
-const noAssets = failingPdfAssets(
-  "The deterministic harness fixture has no external assets.",
-);
 
 function assertNormalizedDiagnostic(diagnostic: PdfCompilerDiagnostic): void {
   const raw = diagnostic as PdfCompilerDiagnostic & { package?: unknown; range?: unknown };
@@ -77,7 +73,7 @@ async function onePdfRun(): Promise<{
       filename: PDF_FILENAME,
     },
     {
-      assets: noAssets,
+      assets: noPdfAssets,
       compiler,
       output,
       now: deterministicClock(),
@@ -182,7 +178,7 @@ export async function runPdfAbortCase(): Promise<PdfAbortCaseResult> {
         signal: controller.signal,
       },
       {
-        assets: noAssets,
+        assets: noPdfAssets,
         compiler: abortingCompiler,
         output,
         now: deterministicClock(),

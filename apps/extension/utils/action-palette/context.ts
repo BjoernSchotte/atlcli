@@ -4,6 +4,7 @@ import {
   type ActionEntityV1,
   type ActionSurfaceContextV1,
 } from "@atlcli/action-registry";
+import { isAtlassianCloudOrigin } from "../profile.js";
 
 export interface ActionPaletteSenderV1 {
   readonly tabId: number;
@@ -32,16 +33,6 @@ export class ActionPaletteContextError extends Error {
   constructor(readonly code: "unsupported-context" | "stale-context") {
     super(code);
     this.name = "ActionPaletteContextError";
-  }
-}
-
-function isAtlassianCloudOrigin(origin: string): boolean {
-  try {
-    const url = new URL(origin);
-    return url.protocol === "https:" && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.atlassian\.net$/iu.test(url.hostname) &&
-      url.origin === origin;
-  } catch {
-    return false;
   }
 }
 

@@ -39,7 +39,7 @@ import {
 } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { equalBytes, sha256Hex } from "./digest.js";
-import { deterministicClock, failingPdfAssets } from "./pdf-run.js";
+import { deterministicClock, noPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const compiler = new HarnessPdfWorkerClient();
@@ -55,10 +55,6 @@ const M1_METADATA: PdfExportMetadata = {
   region: "GB",
   exportedAt: new Date("2026-07-17T08:00:00.000Z"),
 };
-
-const noAssets = failingPdfAssets(
-  "The M1 corpus has no external assets (the diagram floors offline).",
-);
 
 /**
  * Digest every part of a DOCX package by its DECOMPRESSED bytes.
@@ -145,7 +141,7 @@ async function exportPdf(blocks: Awaited<ReturnType<typeof composeM1Document>>["
   const output = new MemoryOutputSink();
   const report = await runPdfExport(
     { blocks, metadata: M1_METADATA, profile: "tagged", filename: "M1 Acceptance Handbook.pdf" },
-    { assets: noAssets, compiler, output, now: deterministicClock() },
+    { assets: noPdfAssets, compiler, output, now: deterministicClock() },
   );
   return { bytes: output.single.bytes, report };
 }

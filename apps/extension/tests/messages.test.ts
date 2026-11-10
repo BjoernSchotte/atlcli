@@ -38,7 +38,7 @@ describe("message guards", () => {
     const jobId = "123e4567-e89b-42d3-a456-426614174000";
     const opaqueJobId = "job-1";
     expect(isExtRequest({ kind: "ping" })).toBe(true);
-    expect(isExtRequest({ kind: "wasm-smoke", a: 1, b: 2 })).toBe(true);
+    expect(isExtRequest({ kind: "wasm-smoke", a: 1, b: 2 })).toBe(false);
     expect(isExtRequest({ kind: "get-current-entity", windowId: 7 })).toBe(true);
     const panelChatRun = {
       kind: "research:run",
@@ -447,7 +447,7 @@ describe("message guards", () => {
       apiKey: "must-not-cross",
     })).toBe(false);
     expect(isExtRequest({ kind: "pdf:compile", jobId: "bad" })).toBe(false);
-    expect(isExtRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(false);
+    expect(isExtRequest({ kind: "offscreen:pdf-cancel", jobId })).toBe(false);
     expect(isExtRequest({ kind: "pong" })).toBe(false);
     expect(isExtRequest({ kind: "entity-changed", detection: { windowId: 7, url: null, entity: null } })).toBe(
       false
@@ -784,7 +784,7 @@ describe("message guards", () => {
 
   it("isOffscreenRequest accepts offscreen-bound requests only", () => {
     const jobId = "123e4567-e89b-42d3-a456-426614174000";
-    expect(isOffscreenRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(true);
+    expect(isOffscreenRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:research-pause", runId: "run-1" })).toBe(true);
     const offscreenChatRun = {
       kind: "offscreen:research-run",
@@ -905,7 +905,7 @@ describe("message guards", () => {
     expect(isOffscreenRequest({ kind: "offscreen:jobs-wake", jobIds: ["job-1"] })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:jobs-wake", bytes: new Uint8Array([1]) })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:pdf-compile", jobId: "bad" })).toBe(false);
-    expect(isOffscreenRequest({ kind: "wasm-smoke", a: 1, b: 2 })).toBe(false);
+    expect(isOffscreenRequest({ kind: "ping" })).toBe(false);
     expect(isOffscreenRequest(undefined)).toBe(false);
   });
 });

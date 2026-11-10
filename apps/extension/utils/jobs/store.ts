@@ -16,6 +16,7 @@ import {
 } from "@atlcli/export-jobs";
 import { pdfBytesFromUint8Array, type PdfBytesHandle } from "@atlcli/pdf/browser";
 import { collectArtifactHandleV1 } from "../export-jobs/artifact-delivery.js";
+import { chromeExportJobsChanged } from "../export-jobs/run-observer.js";
 import {
   cancelPdfJob,
   deletePdfJob,
@@ -92,6 +93,8 @@ export interface DurableJobsPort {
   download(route: string): Promise<boolean>;
   getPreferences(): Promise<ExportActivityPreferences>;
   setPulseEnabled(enabled: boolean): Promise<void>;
+  /** Optional push hint that some job changed; returns the unsubscribe. */
+  onChanged?(listener: () => void): () => void;
 }
 
 export interface DurableJobsDeps {
@@ -719,7 +722,7 @@ export function chromeDurableJobsStore(): DurableJobsPort {
       });
     },
   });
-  return createExtensionDurableJobsStore({
+  const store = createExtensionDurableJobsStore({
     catalog: new IndexedDbExportJobCatalog(),
     bytes: new IndexedDbExportByteStore(),
     legacy,
@@ -780,4 +783,8 @@ export function chromeDurableJobsStore(): DurableJobsPort {
       await downloadBytes({ name: filename, bytes, mimeType });
     },
   });
+  // The offscreen queue and the service worker announce every settlement; the
+  // panel re-reads on that hint instead of waiting out its idle poll.
+  store.onChanged = (listener) => chromeExportJobsChanged(() => listener());
+  return store;
 }

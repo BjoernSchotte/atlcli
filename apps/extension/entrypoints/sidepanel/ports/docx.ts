@@ -94,6 +94,11 @@ export function chromeDocxTemplateStore(site: SiteContext): DocxTemplateStore {
 }
 
 export function chromeDocxExportPort(): DocxExportPort {
+  // One dependency bag (catalog, byte store, change listener) per panel, as
+  // for PDF, instead of a fresh set of IndexedDB handles on every export.
+  let deps: ReturnType<
+    typeof import("../../../utils/export-jobs/docx-run.js")["chromeExtensionDocxRunDeps"]
+  > | undefined;
   return {
     async scan(bytes): Promise<ScanResult> {
       const { scanTemplate } = await loadScan();
@@ -117,12 +122,9 @@ export function chromeDocxExportPort(): DocxExportPort {
     },
 
     async run(request) {
-      const { chromeExtensionDocxRunDeps, runSubmittedExtensionDocxExport } =
-        await loadRun();
-      return runSubmittedExtensionDocxExport(
-        request,
-        chromeExtensionDocxRunDeps(),
-      );
+      const module = await loadRun();
+      deps ??= module.chromeExtensionDocxRunDeps();
+      return module.runSubmittedExtensionDocxExport(request, deps);
     },
   };
 }

@@ -4,8 +4,8 @@
  * Owns three responsibilities and nothing else; all decision logic lives in the
  * pure `routeMessage` core and the injectable `ensureOffscreen` helper:
  *   1. open the side panel on the toolbar action click,
- *   2. route panel requests (`ping`, `wasm-smoke`) via the pure router,
- *   3. manage the offscreen document lifecycle for the WASM round-trip.
+ *   2. route panel requests via the pure router,
+ *   3. manage the offscreen document lifecycle for the workers it hosts.
  */
 import { defineBackground } from "wxt/utils/define-background";
 import {
@@ -219,7 +219,7 @@ const offscreenIdle = createIdleTimer({
  * counter still decides "did this worker's own traffic stop"; whether the timer
  * may actually be armed is decided by {@link createDurableIdleGate} from the
  * durable job records, which survived the restart. Both former call sites
- * (`runWasmSmoke`'s `touch()`, `runPdfCompile`'s `end()`) funnel through the
+ * (the runtime preparation's `touch()`, `runPdfCompile`'s `end()`) funnel through the
  * gate's `reset()`, so neither can arm the timer under a running compile.
  */
 const durableIdle = createDurableIdleGate({
@@ -330,28 +330,6 @@ async function restoreCommonExportQueueAfterHostStart(): Promise<void> {
       job.waiting?.until !== undefined,
   );
   if (hasRecoverableWork) await ensureOffscreen();
-}
-
-/**
- * Effect wired into the pure router: ensure the offscreen document exists,
- * then round-trip the WASM computation through it. Rejects on failure so the
- * router turns it into an error response. Each call (re)arms the idle-close
- * timer so the document is closed once traffic stops.
- */
-async function runWasmSmoke(a: number, b: number): Promise<number> {
-  offscreenActivity.touch();
-  await ensureOffscreen();
-  const res = (await chrome.runtime.sendMessage({
-    kind: "offscreen:wasm-add",
-    a,
-    b,
-  })) as OffscreenResponse | undefined;
-
-  if (!res || res.kind !== "offscreen:wasm-add-result") {
-    throw new Error("offscreen document returned no result");
-  }
-  if (!res.ok) throw new Error(res.error);
-  return res.result;
 }
 
 async function runPdfCompile(
@@ -2286,7 +2264,6 @@ export default defineBackground({
       return false;
     }
     const handled = handleExtMessage(message, sendResponse, {
-      runWasmSmoke,
       getCurrentEntity,
       runPdfCompile,
       runPdfCancel,

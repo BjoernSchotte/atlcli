@@ -198,6 +198,15 @@ describe("toPdfSettings — the engine hand-off", () => {
     expect(toPdfSettings({ headerText: "", accentColor: "" })).toBeUndefined();
   });
 
+  it("leaves the untouched default watermark colour out so the template's colour applies", () => {
+    expect(toPdfSettings({ watermarkText: "DRAFT", watermarkColor: "#de350b" })).toEqual({
+      watermark: { text: "DRAFT" },
+    });
+    expect(toPdfSettings({ watermarkText: "DRAFT", watermarkColor: "#112233" })).toEqual({
+      watermark: { text: "DRAFT", color: "#112233" },
+    });
+  });
+
   it("maps the flat keys onto the closed PdfTemplateSettings shape", () => {
     expect(
       toPdfSettings({
@@ -225,8 +234,8 @@ describe("toPdfSettings — the engine hand-off", () => {
     // would be an export-time rejection for a watermark nobody asked for.
     expect(toPdfSettings({ watermarkColor: "#DE350B", watermarkSize: 120 })).toBeUndefined();
     expect(
-      toPdfSettings({ watermarkText: "DRAFT", watermarkColor: "#de350b", watermarkOpacity: 0.2 })
-    ).toEqual({ watermark: { text: "DRAFT", color: "#DE350B", opacity: 0.2 } });
+      toPdfSettings({ watermarkText: "DRAFT", watermarkColor: "#0052cc", watermarkOpacity: 0.2 })
+    ).toEqual({ watermark: { text: "DRAFT", color: "#0052CC", opacity: 0.2 } });
   });
 
   it("decodes a logo asset, and refuses to emit one without alt text", () => {

@@ -1,7 +1,7 @@
 /**
  * `chrome.runtime.onMessage` adapters (imperative-shell glue — spec 002).
  *
- * These wrap the pure router / WASM effects onto the listener contract. The
+ * These wrap the pure router / offscreen effects onto the listener contract. The
  * synchronous `true` return is LOAD-BEARING: MV3 keeps the message channel open
  * for an asynchronous `sendResponse` only when the listener returns `true`.
  * Returning `false` (or nothing) for a handled async request would drop the
@@ -26,7 +26,6 @@ import type {
   ResearchOneShotPolicyV1,
 } from "./research/contracts.js";
 import { routeMessage, type RouterDeps } from "./router.js";
-import { runWasmAdd } from "./wasm-smoke.js";
 import { ChatUserQuestionRequiredError, classifyResearchError } from "@atlcli/research";
 import type {
   ChatHostIdentityV1,
@@ -37,7 +36,6 @@ import type {
 
 /** Effects the offscreen listener depends on (injectable for tests). */
 export interface OffscreenListenerDeps {
-  runWasmAdd: (a: number, b: number, bytes?: Uint8Array) => Promise<number>;
   runPdfCompile: (
     jobId: string,
     hints?: PdfCompileHints
@@ -96,266 +94,25 @@ export function handleExtMessage(
 ): boolean {
   if (!isExtRequest(message)) return false;
 
-  // routeMessage never throws (it captures the wasm failure path itself); the
-  // catch is belt-and-suspenders so a listener bug still yields a response.
+  // The router turns an effect failure into that request's own error result
+  // wherever the protocol has one. What can still reject (the entity lookup
+  // has no error variant) is answered rather than left hanging: every caller
+  // already treats an unexpected `kind` as "no result".
   routeMessage(message, deps)
     .then((response) => sendResponse(response))
-    .catch((err) => {
-      switch (message.kind) {
-        case "pdf:compile":
-          sendResponse({ kind: "pdf:compile-result", jobId: message.jobId, ok: false, error: toMessage(err) });
-          break;
-        case "pdf:cancel":
-          sendResponse({ kind: "pdf:cancel-result", jobId: message.jobId, cancelled: false });
-          break;
-        case "jobs:wake":
-          sendResponse({ kind: "jobs:wake-result", error: toMessage(err) });
-          break;
-        case "docx:prepare-runtime":
-          sendResponse({
-            kind: "docx:prepare-runtime-result",
-            ok: false,
-            error: toMessage(err),
-          });
-          break;
-        case "research:run":
-          sendResponse({
-            kind: "research:run-result",
-            runId: message.runId,
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:resume":
-          sendResponse({
-            kind: "research:resume-result",
-            runId: message.runId,
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:list-resumable-sessions":
-          sendResponse({
-            kind: "research:list-resumable-sessions-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:steer-session":
-          sendResponse({
-            kind: "research:steer-session-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:delete-session":
-          sendResponse({
-            kind: "research:delete-session-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:list-scope-reviews":
-          sendResponse({
-            kind: "research:list-scope-reviews-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:list-scope-plan-reviews":
-          sendResponse({
-            kind: "research:list-scope-plan-reviews-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:approve-scope-review":
-          sendResponse({
-            kind: "research:approve-scope-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:reject-scope-review":
-          sendResponse({
-            kind: "research:reject-scope-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:approve-scope-plan-review":
-          sendResponse({
-            kind: "research:approve-scope-plan-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:prepare-plan-review":
-          sendResponse({
-            kind: "research:prepare-plan-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:list-plan-reviews":
-          sendResponse({
-            kind: "research:list-plan-reviews-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:approve-plan-review":
-          sendResponse({
-            kind: "research:approve-plan-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:reject-plan-review":
-          sendResponse({
-            kind: "research:reject-plan-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:prepare-clarification-review":
-          sendResponse({
-            kind: "research:prepare-clarification-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:list-clarification-reviews":
-          sendResponse({
-            kind: "research:list-clarification-reviews-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:resolve-clarification-review":
-          sendResponse({
-            kind: "research:resolve-clarification-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:continue-clarification-review":
-          sendResponse({
-            kind: "research:continue-clarification-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:prepare-scope-clarification-review":
-          sendResponse({
-            kind: "research:prepare-scope-clarification-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:list-scope-clarification-reviews":
-          sendResponse({
-            kind: "research:list-scope-clarification-reviews-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:resolve-scope-clarification-review":
-          sendResponse({
-            kind: "research:resolve-scope-clarification-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:continue-scope-clarification-review":
-          sendResponse({
-            kind: "research:continue-scope-clarification-review-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:cancel-session":
-          sendResponse({
-            kind: "research:cancel-session-result",
-            runId: message.runId,
-            cancelled: false,
-          });
-          break;
-        case "research:chat-control":
-          sendResponse({
-            kind: "research:chat-control-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:pause-session":
-          sendResponse({
-            kind: "research:pause-session-result",
-            runId: message.runId,
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:resolve-scope":
-          sendResponse({
-            kind: "research:resolve-scope-result",
-            ok: false,
-            code: "provider-error",
-            error: toMessage(err),
-          });
-          break;
-        case "research:cancel":
-          sendResponse({
-            kind: "research:cancel-result",
-            runId: message.runId,
-            cancelled: false,
-          });
-          break;
-        case "ping":
-        case "wasm-smoke":
-        case "get-current-entity":
-          sendResponse({ kind: "wasm-smoke-result", ok: false, error: toMessage(err) });
-          break;
-      }
-    });
+    .catch((err) => sendResponse({ kind: "request-failed", error: toMessage(err) }));
 
   return true;
 }
 
 /**
- * Offscreen-document adapter: run the WASM computation for `offscreen:wasm-add`
- * requests and answer via `sendResponse`. Returns `true` for a handled request,
- * `false` otherwise.
+ * Offscreen-document adapter: run the requested effect and answer via
+ * `sendResponse`. Returns `true` for a handled request, `false` otherwise.
  */
 export function handleOffscreenMessage(
   message: unknown,
   sendResponse: (response: OffscreenResponse) => void,
   deps: OffscreenListenerDeps = {
-    runWasmAdd,
     runPdfCompile: async () => ({ ok: false, error: "PDF compiler host is not configured." }),
     runPdfCancel: async () => false,
     prepareDocxRuntime: async () => {
@@ -367,11 +124,6 @@ export function handleOffscreenMessage(
   if (!isOffscreenRequest(message)) return false;
 
   switch (message.kind) {
-    case "offscreen:wasm-add":
-      deps.runWasmAdd(message.a, message.b)
-        .then((result) => sendResponse({ kind: "offscreen:wasm-add-result", ok: true, result }))
-        .catch((err) => sendResponse({ kind: "offscreen:wasm-add-result", ok: false, error: toMessage(err) }));
-      break;
     case "offscreen:pdf-compile":
       deps.runPdfCompile(message.jobId, { job: message.job, pages: message.pages })
         .then((result) => sendResponse(result.ok

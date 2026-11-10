@@ -326,6 +326,8 @@ export function PreviewScreen({
   const fullscreenRootRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<PdfPreviewViewer | null>(null);
   viewerRef.current = viewer;
+  const compileTurn = useRef(0);
+  const showTurn = useRef(0);
 
   /**
    * The width and height a page is fitted to, measured from the frame that holds the
@@ -402,8 +404,14 @@ export function PreviewScreen({
         setError(t("preview.failed", { message: "no output" }));
         return;
       }
+      const turn = ++showTurn.current;
       await viewerRef.current?.destroy().catch(() => undefined);
       const opened = await runtime.openViewer(next.bytes);
+      // A newer result started opening while this one was: it owns the screen.
+      if (turn !== showTurn.current) {
+        void opened.destroy().catch(() => undefined);
+        return;
+      }
       setResult(next);
       setViewer(opened);
       setRenderedRequest(shownRequest);
@@ -418,10 +426,14 @@ export function PreviewScreen({
 
   const compile = useCallback(async () => {
     if (!previewRequest) return;
+    // Compiles are never aborted (that would terminate the warm worker), so an
+    // older one can settle after a newer one. Only the latest may touch state.
+    const turn = ++compileTurn.current;
     setPhase("compiling");
     setError(null);
     try {
       const next = await runtime.compile(previewRequest);
+      if (turn !== compileTurn.current) return;
       // A superseded preview is not an error and not a result: a newer request
       // is already in flight, so the previous view simply stays on screen.
       if (next.status === "superseded") {
@@ -430,6 +442,7 @@ export function PreviewScreen({
       }
       await show(next, previewRequest);
     } catch (cause) {
+      if (turn !== compileTurn.current) return;
       setPhase("error");
       setError(t("preview.failed", { message: messageOf(cause) }));
     }
