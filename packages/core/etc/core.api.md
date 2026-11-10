@@ -2639,6 +2639,9 @@ export declare function isAtlassianLoginTarget(target: URL): boolean;
 // export: isAtlassianMediaTarget
 export declare function isAtlassianMediaTarget(target: URL): boolean;
 
+// export: isLoopbackHost
+export declare function isLoopbackHost(hostname: string): boolean;
+
 // export: isSessionRedirectBlockedError
 export declare function isSessionRedirectBlockedError(err: unknown): err is SessionRedirectBlockedError;
 

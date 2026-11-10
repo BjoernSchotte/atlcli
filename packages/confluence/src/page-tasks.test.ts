@@ -26,6 +26,17 @@ describe("extractPageTasks", () => {
     expect(tasks[2]!.linkedIssueKeys).toEqual(["AB-12"]);
   });
 
+  // The keys are joined into `key in (...)` JQL by `page tasks-to-issues --sync`.
+  test("a Jira macro key that is not an issue key is ignored", () => {
+    const macro = (key: string): string =>
+      `<ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">${key}</ac:parameter></ac:structured-macro>`;
+    const storage =
+      `<ac:task-list><ac:task><ac:task-id>1</ac:task-id><ac:task-status>incomplete</ac:task-status><ac:task-body>` +
+      `${macro("AB-1) OR project = SECRET OR key in (AB-2")}${macro("ab-3")}${macro("AB-4, AB-5")}${macro("AB-6\nOR 1")}${macro(" A1_B-7 ")} text` +
+      `</ac:task-body></ac:task></ac:task-list>`;
+    expect(extractPageTasks(storage)[0]!.linkedIssueKeys).toEqual(["A1_B-7"]);
+  });
+
   test("works on atlcli's own markdown push, where task ids repeat per list", () => {
     const storage = markdownToStorage("- [ ] one\n- [x] two\n\ntext\n\n- [ ] three\n");
     const tasks = extractPageTasks(storage);

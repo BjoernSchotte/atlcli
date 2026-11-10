@@ -8,6 +8,10 @@ import { createHmac } from "node:crypto";
 // builds of the barrel (the polyfill lacks it), which the build gate measures.
 import * as nodeCrypto from "node:crypto";
 import type { Server } from "bun";
+import { isLoopbackHost } from "@atlcli/core/internal";
+
+/** Largest request body the server reads (1 MiB); Bun answers 413 beyond it. */
+const MAX_BODY_BYTES = 1 << 20;
 
 /** Jira webhook event types */
 export type JiraWebhookEventType =
@@ -82,7 +86,13 @@ export type JiraWebhookHandler = (payload: JiraWebhookPayload) => void | Promise
 export interface JiraWebhookServerOptions {
   port: number;
   path?: string;
+  /** Shared secret. When set, every event must carry `X-Hub-Signature: sha256=<HMAC-SHA256 of the body>`. */
   secret?: string;
+  /**
+   * Interface to bind. Default `127.0.0.1`. Anything but a loopback address
+   * needs a `secret`: {@link JiraWebhookServer.start} throws otherwise.
+   */
+  hostname?: string;
   filterProjects?: Set<string>;
   filterEvents?: Set<string>;
 }
@@ -103,6 +113,7 @@ export class JiraWebhookServer {
       port: options.port,
       path: options.path ?? "/webhook",
       secret: options.secret,
+      hostname: options.hostname ?? "127.0.0.1",
       filterProjects: options.filterProjects,
       filterEvents: options.filterEvents,
     };
@@ -124,10 +135,19 @@ export class JiraWebhookServer {
       throw new Error("Server is already running");
     }
 
+    // Without a secret every caller is trusted, so only this machine may call.
+    if (!this.options.secret && !isLoopbackHost(this.options.hostname)) {
+      throw new Error(
+        `Webhook server refuses to bind ${this.options.hostname} without a secret; only a loopback address is allowed.`
+      );
+    }
+
     const self = this;
 
     this.server = Bun.serve({
       port: this.options.port,
+      hostname: this.options.hostname,
+      maxRequestBodySize: MAX_BODY_BYTES,
       async fetch(req) {
         const url = new URL(req.url);
 
@@ -140,6 +160,14 @@ export class JiraWebhookServer {
 
         // Webhook endpoint
         if (url.pathname === self.options.path && req.method === "POST") {
+          // A page in the user's browser can POST form or text bodies to a
+          // loopback port without a preflight, but not JSON.
+          if (req.headers.get("Content-Type")?.split(";")[0]!.trim().toLowerCase() !== "application/json") {
+            return new Response(JSON.stringify({ error: "Unsupported media type" }), {
+              status: 415,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
           return self.handleWebhook(req);
         }
 
@@ -164,7 +192,9 @@ export class JiraWebhookServer {
   /** Get server URL */
   getUrl(): string | null {
     if (!this.server) return null;
-    return `http://localhost:${this.getPort()}${this.options.path}`;
+    const bound = this.options.hostname;
+    const host = isLoopbackHost(bound) ? (bound.includes(":") ? `[${bound}]` : bound) : "localhost";
+    return `http://${host}:${this.getPort()}${this.options.path}`;
   }
 
   /** Get the bound port (the configured one until the server runs; `port: 0` binds a free port) */
@@ -255,22 +285,27 @@ export class JiraWebhookServer {
   }
 }
 
+/** Request-controlled text must not carry terminal control sequences or forge extra lines. */
+function clean(value: unknown): string {
+  return String(value).replace(/[\x00-\x1f\x7f-\x9f]/g, "");
+}
+
 /** Format webhook event for display */
 export function formatWebhookEvent(payload: JiraWebhookPayload): string {
   const timestamp = new Date(payload.timestamp).toISOString();
-  const event = payload.webhookEvent;
+  const event = clean(payload.webhookEvent);
 
   if (payload.issue) {
     const issue = payload.issue;
-    const key = issue.key;
-    const summary = issue.fields?.summary;
-    const status = issue.fields?.status?.name;
+    const key = clean(issue.key);
+    const summary = clean(issue.fields?.summary);
+    const status = clean(issue.fields?.status?.name);
 
     if (event === "jira:issue_created") {
       return `[${timestamp}] CREATED: ${key} - ${summary}`;
     } else if (event === "jira:issue_updated") {
       const changes = payload.changelog?.items
-        .map((i) => `${i.field}: ${i.fromString || "(none)"} → ${i.toString || "(none)"}`)
+        .map((i) => clean(`${i.field}: ${i.fromString || "(none)"} → ${i.toString || "(none)"}`))
         .join(", ");
       return `[${timestamp}] UPDATED: ${key} - ${summary} (${changes || status})`;
     } else if (event === "jira:issue_deleted") {
@@ -279,8 +314,8 @@ export function formatWebhookEvent(payload: JiraWebhookPayload): string {
   }
 
   if (payload.comment && payload.issue) {
-    const key = payload.issue.key;
-    const author = payload.comment.author?.displayName;
+    const key = clean(payload.issue.key);
+    const author = clean(payload.comment.author?.displayName);
     if (event === "comment_created") {
       return `[${timestamp}] COMMENT: ${key} - New comment by ${author}`;
     } else if (event === "comment_updated") {
@@ -291,8 +326,7 @@ export function formatWebhookEvent(payload: JiraWebhookPayload): string {
   }
 
   if (payload.sprint) {
-    const sprint = payload.sprint;
-    return `[${timestamp}] SPRINT: ${sprint.name} - ${event.replace("sprint_", "")}`;
+    return `[${timestamp}] SPRINT: ${clean(payload.sprint.name)} - ${event.replace("sprint_", "")}`;
   }
 
   return `[${timestamp}] ${event}`;

@@ -119,6 +119,8 @@ With a secret, `POST /webhook` answers `401` unless the request proves it in one
 
 A request that carries an `X-Hub-Signature` header is judged by that signature alone. `GET /health` needs no secret.
 
+With or without a secret, `POST /webhook` must carry `Content-Type: application/json` (`415` otherwise) and a body of at most 1 MiB (`413` otherwise). Events of a type other than `page_created`, `page_updated`, `page_removed` and `page_trashed` are acknowledged and ignored.
+
 Not every sender can sign. If your Confluence does not send `X-Hub-Signature` (a test delivery answered with `401` shows it), deliver the events through a sender that can set a header, such as an automation rule's **Send web request** action, and add the `Authorization` header there.
 
 ### Bind address
@@ -169,6 +171,12 @@ atlcli wiki docs sync ./docs --space DEV \
 **Cause**: A secret is set and the request carries neither a matching `X-Hub-Signature` nor `Authorization: Bearer <secret>`.
 
 **Fix**: Configure the same secret on the sender. For a signature, the HMAC must cover the exact bytes of the body.
+
+### Events are answered with `415`
+
+**Cause**: The request has no `Content-Type: application/json` header.
+
+**Fix**: Set the header on the sender. For a hand-written test, add `-H 'Content-Type: application/json'` to `curl`.
 
 ### Events arrive but nothing is pulled
 

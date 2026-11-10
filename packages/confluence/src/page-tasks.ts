@@ -36,6 +36,8 @@ export interface PageTask {
 
 const TASK_OPEN = /<ac:task(?:\s[^>]*)?>/g;
 const BROWSE_KEY = /\/browse\/([A-Z][A-Z0-9_]*-\d+)\b/;
+/** A Jira macro's `key` parameter is free text; callers join the keys into JQL. */
+const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
 
 /** All tasks on a page, in document order. */
 export function extractPageTasks(storage: string): PageTask[] {
@@ -130,7 +132,7 @@ function collectBodyFacts(nodes: XmlNode[]): BodyFacts {
               (child) => child.type === "element" && child.name === "ac:parameter" && child.attrs["ac:name"] === "key"
             );
             const text = key?.type === "element" ? textOf(key.children).trim() : "";
-            if (text) facts.keys.push(text);
+            if (ISSUE_KEY.test(text)) facts.keys.push(text);
           }
           continue;
         }

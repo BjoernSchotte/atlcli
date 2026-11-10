@@ -249,9 +249,15 @@ atlcli jira webhook delete <id> --json
 `register` requires `--url` and `--events`; `--jql` is optional and defaults
 to all issues. `refresh` and `delete` take one id or a comma-separated list.
 
-`atlcli jira webhook serve [--port 8080] [--path /webhook] [--secret <s>]
-[--projects PROJ,TEAM] [--events <list>]` starts a **blocking** local server
-that prints events until SIGINT or SIGTERM. Never run it in a foreground shell
+`atlcli jira webhook serve [--port 8080] [--host <addr>] [--path /webhook]
+[--secret <s>] [--projects PROJ,TEAM] [--events <list>]` starts a **blocking**
+local server that prints events until SIGINT or SIGTERM. It listens on
+`127.0.0.1`; `--host` with a non-loopback address is a usage error without a
+secret. Pass the secret as env `ATLCLI_WEBHOOK_SECRET`, not as `--secret`;
+callers must then send `X-Hub-Signature: sha256=<HMAC of body>`, else 401.
+Without a secret it warns on stderr. Requests need
+`Content-Type: application/json` (else 415) and a body of at most 1 MiB (else
+413). Never run it in a foreground shell
 you need back; it does not return. Registering a webhook creates site-level
 configuration pointing at a URL. Confirm both the URL and the event list with
 the user first.

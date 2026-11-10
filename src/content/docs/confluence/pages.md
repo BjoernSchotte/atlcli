@@ -430,7 +430,7 @@ For each created issue atlcli:
 
 #### Running it again
 
-Running the command again creates nothing twice. A task that already links to an issue (the smart link atlcli added, or any link to `/browse/KEY` or a Jira macro you added yourself) is skipped. On Confluence Cloud atlcli also records each new issue in the page property `atlcli.tasks-to-issues` right after creating it, so a run that stops before updating the page still does not create the issue again. The issue links survive `atlcli wiki docs pull` and `push`.
+Running the command again creates nothing twice. A task that already links to an issue (the smart link atlcli added, or any link to `/browse/KEY` or a Jira macro you added yourself) is skipped. A Jira macro counts only when its key is an issue key such as `PROJ-123`; a macro with any other text is ignored. On Confluence Cloud atlcli also records each new issue in the page property `atlcli.tasks-to-issues` right after creating it, so a run that stops before updating the page still does not create the issue again. The issue links survive `atlcli wiki docs pull` and `push`.
 
 #### Keep task status in sync
 

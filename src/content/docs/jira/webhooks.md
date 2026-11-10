@@ -21,7 +21,7 @@ atlcli jira webhook serve
 atlcli jira webhook serve --port 3000 --projects PROJ,TEAM --events jira:issue_created,comment_created
 ```
 
-The server accepts `POST` requests on `--path` and answers `GET /health`. Each received event is printed as one line:
+The server listens on `127.0.0.1` and accepts `POST` requests with `Content-Type: application/json` on `--path`. It answers `GET /health`. Each received event is printed as one line, with control characters removed from the text Jira sent:
 
 ```
 [2025-01-14T10:00:00.000Z] CREATED: PROJ-123 - Fix login bug
@@ -34,12 +34,37 @@ Options:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | `8080` | Server port |
+| `--host` | `127.0.0.1` | Interface to bind. Any address that is not loopback (`0.0.0.0`, `::`, a LAN address) requires a secret |
 | `--path` | `/webhook` | Endpoint path |
-| `--secret` | none | Shared secret; requests without a valid `X-Hub-Signature: sha256=<hmac>` header are rejected with 401 |
+| `--secret` | none | Shared secret; requests without a valid `X-Hub-Signature: sha256=<hmac>` header are rejected with 401. Prefer the environment variable, which keeps the secret out of the shell history and the process list |
 | `--projects` | all | Comma-separated project keys to accept |
 | `--events` | all | Comma-separated event types to accept |
 
+| Environment variable | Description |
+|----------------------|-------------|
+| `ATLCLI_WEBHOOK_SECRET` | The shared secret. `--secret` wins when both are set |
+
 Stop the server with Ctrl+C.
+
+### Authentication and bind address
+
+Set a secret whenever events come from another machine, and enter the same secret in the Jira webhook:
+
+```bash
+export ATLCLI_WEBHOOK_SECRET="$(openssl rand -hex 32)"
+atlcli jira webhook serve --port 3000
+```
+
+| Secret | `--host` | Result |
+|--------|----------|--------|
+| not set | not set or loopback | Listens on loopback only and prints a warning. Any local process can post events |
+| not set | any other address | Usage error, the server does not start |
+| set | not set | Listens on `127.0.0.1` |
+| set | `0.0.0.0` or another address | Listens there |
+
+A tunnel client or reverse proxy on the same machine connects through loopback and needs no `--host`. A tunnel forwards requests from the internet to loopback, so set a secret for tunnels as well.
+
+A request body may be at most 1 MiB; a larger one is answered with `413`.
 
 ## Events
 
@@ -98,6 +123,9 @@ atlcli jira webhook delete 12345
 ## Troubleshooting
 
 - **401 Invalid signature**: the sender's secret differs from `--secret`, or it sends no `X-Hub-Signature` header. Drop `--secret` to test.
+- **415 Unsupported media type**: the request has no `Content-Type: application/json` header. Jira sends it; add `-H 'Content-Type: application/json'` to a hand-written `curl` test.
+- **413**: the request body is larger than 1 MiB.
+- **`--host ... needs a webhook secret`**: the server was asked to bind a non-loopback address without a secret. Set `ATLCLI_WEBHOOK_SECRET`, or drop `--host` and reach the server through loopback.
 - **400 Invalid JSON**: the request body is not a JSON object. Jira always sends one; check a hand-written test request.
 - **Events arrive but nothing prints**: check `--projects` and `--events`; filtered events are acknowledged but not printed.
 - **403 "Only Connect and OAuth 2.0 apps can use this operation"** on `list`, `register`, `delete` or `refresh`: the profile uses an API token. Create the webhook in the Jira admin UI and run `serve` to receive it.
@@ -106,3 +134,4 @@ atlcli jira webhook delete 12345
 
 - [Issues](issues.md) - Issue events and lifecycle
 - [Boards & Sprints](boards-sprints.md) - Sprint events
+- [Confluence webhooks](../confluence/webhooks.md) - the sync daemon's webhook server

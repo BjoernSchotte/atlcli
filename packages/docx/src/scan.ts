@@ -214,12 +214,13 @@ export function collectStylerefFields(xml: string): string[] {
   const matchRefs = (instr: string): void => {
     for (const m of decode(instr).matchAll(/STYLEREF\s+"([^"]+)"/gi)) names.push(m[1].trim());
   };
-  for (const m of xml.matchAll(/<w:fldSimple\b[^>]*\bw:instr="([^"]*)"/g)) matchRefs(m[1]);
   // Reassemble run-split complex-field instruction text: concatenate adjacent
   // instrText runs so ` STYL` + `EREF "…"` split across runs still matches.
-  const instrConcat = [...xml.matchAll(/<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>/g)]
-    .map((m) => m[1])
-    .join("");
+  let instrConcat = "";
+  for (const part of fieldParts(xml)) {
+    if (part.simpleInstr !== undefined) matchRefs(part.simpleInstr);
+    else instrConcat += part.instrText ?? "";
+  }
   matchRefs(instrConcat);
   return names;
 }
@@ -725,6 +726,20 @@ export function findActiveContentRelationship(relsXml: string): string | undefin
  * @throws {DocxError} `active-content` naming the offending part.
  */
 export function assertNoActiveContent(zip: PizZip): void {
+  // The sweeps below read text. Word also opens UTF-16 parts, which read here
+  // as letters separated by NULs and would pass every one of them; a NUL never
+  // occurs in a UTF-8 XML part, and Word itself never writes anything else.
+  const readSweptPart = (part: string): string => {
+    const xml = readPartText(zip, part);
+    if (xml.includes("\u0000")) {
+      throw new DocxError(
+        "corrupt-entry",
+        `Template part "${part}" is not UTF-8 encoded, so it cannot be checked for active content. Re-save the file with Word as a plain .docx.`,
+        part
+      );
+    }
+    return xml;
+  };
   for (const name of Object.keys(zip.files)) {
     const what = classifyActiveContentPart(name);
     if (what) {
@@ -736,7 +751,7 @@ export function assertNoActiveContent(zip: PizZip): void {
     }
   }
   for (const part of wordprocessingPartNames(zip)) {
-    const xml = readPartText(zip, part);
+    const xml = readSweptPart(part);
     // Any namespace prefix, or none: `<w:altChunk`, `<x:altChunk`, `<altChunk`.
     if (/<(?:[A-Za-z_][\w.-]*:)?altChunk[\s/>]/.test(xml)) {
       throw new DocxError(
@@ -747,7 +762,7 @@ export function assertNoActiveContent(zip: PizZip): void {
     }
   }
   for (const part of relationshipPartNames(zip)) {
-    const what = findActiveContentRelationship(readPartText(zip, part));
+    const what = findActiveContentRelationship(readSweptPart(part));
     if (what) {
       throw new DocxError(
         "active-content",
@@ -760,7 +775,7 @@ export function assertNoActiveContent(zip: PizZip): void {
   // valid wherever a run is, so footnotes, endnotes, comments and glossary
   // parts carry a DDE field just as well as the main story.
   for (const part of wordprocessingPartNames(zip)) {
-    const hits = collectFieldInstructions(readPartText(zip, part), REJECTED_FIELD_INSTRUCTIONS);
+    const hits = collectFieldInstructions(readSweptPart(part), REJECTED_FIELD_INSTRUCTIONS);
     if (hits.length > 0) {
       throw new DocxError(
         "active-content",
@@ -822,10 +837,12 @@ export function collectFieldInstructions(
 ): string[] {
   const decode = decodeFieldInstruction;
   let haystack = "";
-  for (const m of xml.matchAll(/<w:fldSimple\b[^>]*\bw:instr="([^"]*)"/g)) haystack += ` ${decode(m[1])}`;
-  haystack += ` ${decode(
-    [...xml.matchAll(/<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>/g)].map((m) => m[1]).join("")
-  )}`;
+  let instrConcat = "";
+  for (const part of fieldParts(xml)) {
+    if (part.simpleInstr !== undefined) haystack += ` ${decode(part.simpleInstr)}`;
+    else instrConcat += part.instrText ?? "";
+  }
+  haystack += ` ${decode(instrConcat)}`;
   const found: string[] = [];
   for (const keyword of keywords) {
     // Word-boundary match so DDEAUTO is not also reported as a bare DDE hit.
@@ -978,8 +995,74 @@ export const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string> = new Set([
  * `<w:instrText>` runs → optional `fldChar separate` + cached result →
  * `fldChar end`.
  */
-const FIELD_PART_RE =
-  /<w:fldSimple\b[^>]*\bw:instr="([^"]*)"|<w:fldChar\b[^>]*\bw:fldCharType="([^"]*)"|<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>/g;
+interface FieldPart {
+  /** `instr` of a `fldSimple`, still entity-encoded. */
+  simpleInstr?: string;
+  /** `fldCharType` of a `fldChar`. */
+  fldCharType?: string;
+  /** Text of an `instrText`, still entity-encoded. */
+  instrText?: string;
+}
+
+// A comment, a CDATA section (1), a processing instruction, or a tag: closing
+// slash (2), local name (3), attributes (4). The attribute alternatives do not
+// overlap, so a hostile part cannot make the match backtrack.
+const XML_TOKEN_RE =
+  /<!--[\s\S]*?-->|<!\[CDATA\[([\s\S]*?)\]\]>|<\?[\s\S]*?\?>|<(\/?)(?:[^\s<>\/:="']+:)?([^\s<>\/:="']+)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
+const XML_ATTRIBUTE_RE = /(?:[^\s=\/"']+:)?([^\s=\/"':]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+
+/** The value of the attribute with local name `name`, whatever its prefix and quoting. */
+function xmlAttribute(attributes: string, name: string): string | undefined {
+  // Whole attributes are consumed one by one, so `name="…"` spelled inside
+  // another attribute's value is never mistaken for the attribute.
+  for (const m of attributes.matchAll(XML_ATTRIBUTE_RE)) if (m[1] === name) return m[2] ?? m[3];
+  return undefined;
+}
+
+/**
+ * The field markup of one part, in document order, read the way an XML parser
+ * reads it rather than the way Word happens to write it. A `w:`-prefixed,
+ * double-quoted regex missed every other spelling of the same infoset:
+ *
+ *  - elements and attributes are matched by LOCAL name, so `<x:instrText>` and
+ *    `x:instr=` count (the altChunk sweep does the same);
+ *  - attribute values may be single-quoted, with whitespace around `=`;
+ *  - inside `instrText`, comments and processing instructions vanish and CDATA
+ *    sections contribute their text, so `DD<!---->E` and `DD<![CDATA[E]]>AUTO`
+ *    read as the keywords they are.
+ */
+function fieldParts(xml: string): FieldPart[] {
+  const parts: FieldPart[] = [];
+  /** Text of the open `instrText`, and where its next text chunk starts. */
+  let open: { text: string; from: number } | undefined;
+  for (const m of xml.matchAll(XML_TOKEN_RE)) {
+    const [token, cdata, closing, name, attributes] = m;
+    if (open) {
+      open.text += xml.slice(open.from, m.index);
+      open.from = m.index + token.length;
+      // CDATA text is literal; re-encode it so the later entity decoding returns it unchanged.
+      if (cdata !== undefined) open.text += cdata.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      if (closing && name === "instrText") {
+        parts.push({ instrText: open.text });
+        open = undefined;
+      }
+      continue;
+    }
+    if (closing || name === undefined) continue;
+    if (name === "fldSimple") {
+      const simpleInstr = xmlAttribute(attributes!, "instr");
+      if (simpleInstr !== undefined) parts.push({ simpleInstr });
+    } else if (name === "fldChar") {
+      const fldCharType = xmlAttribute(attributes!, "fldCharType");
+      if (fldCharType !== undefined) parts.push({ fldCharType });
+    } else if (name === "instrText" && !attributes!.endsWith("/")) {
+      open = { text: "", from: m.index + token.length };
+    }
+  }
+  // An unterminated `instrText` is still classified, not dropped.
+  if (open) parts.push({ instrText: open.text + xml.slice(open.from) });
+  return parts;
+}
 
 /** Resolve the XML entities Word writes inside a field instruction. */
 function decodeInstruction(s: string): string {
@@ -1060,8 +1143,7 @@ export function collectFieldUses(xml: string): FieldUse[] {
     if (keyword) uses.push({ keyword, instruction: frame.instruction });
   };
 
-  for (const m of xml.matchAll(FIELD_PART_RE)) {
-    const [, simpleInstr, fldCharType, instrText] = m;
+  for (const { simpleInstr, fldCharType, instrText } of fieldParts(xml)) {
     if (simpleInstr !== undefined) {
       const keyword = fieldKeyword(simpleInstr);
       if (keyword) uses.push({ keyword, instruction: simpleInstr });

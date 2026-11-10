@@ -279,7 +279,8 @@ Options: `--type` (default `Task`), `--label` (repeatable), `--parent <key>`,
 `--include-done`, `--no-link` (skip the remote link), `--no-mark` (leave the
 page tasks unannotated). `--id` must be the numeric page ID.
 
-`--sync` ticks tasks whose linked issues are all done, and unticks a task only
+A Jira macro on a task counts as a link only when its key is an issue key
+(`PROJ-123`). `--sync` ticks tasks whose linked issues are all done, and unticks a task only
 if an earlier sync ticked it and an issue reopened. A task ticked by hand while
 its issue is open is reported, not changed. Both steps are Jira and Confluence
 writes: preview first, then confirm with the user.

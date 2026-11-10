@@ -133,7 +133,7 @@ describe("WebhookServer", () => {
       const url = startServer(server);
 
       for (const body of ["null", "[]", "42", '"text"']) {
-        expect((await fetch(url, { method: "POST", body })).status).toBe(400);
+        expect((await fetch(url, { method: "POST", body, headers: { "Content-Type": "application/json" } })).status).toBe(400);
       }
     });
 
@@ -143,7 +143,11 @@ describe("WebhookServer", () => {
       const body = JSON.stringify({ eventType: "page_updated", timestamp: "" });
       const good = `sha256=${createHmac("sha256", "fixture-secret").update(body).digest("hex")}`;
       const post = (signature?: string) =>
-        fetch(url, { method: "POST", body, headers: signature ? { "X-Hub-Signature": signature } : {} });
+        fetch(url, {
+          method: "POST",
+          body,
+          headers: { "Content-Type": "application/json", ...(signature ? { "X-Hub-Signature": signature } : {}) },
+        });
 
       expect((await post(good)).status).toBe(200);
       expect((await post(good.slice(0, -1) + (good.endsWith("0") ? "1" : "0"))).status).toBe(401);
@@ -159,7 +163,11 @@ describe("WebhookServer", () => {
       server = createTestServer({ secret: "fixture-secret" });
       const url = startServer(server);
       const post = (headers: Record<string, string>) =>
-        fetch(url, { method: "POST", body: JSON.stringify({ eventType: "page_updated" }), headers });
+        fetch(url, {
+          method: "POST",
+          body: JSON.stringify({ eventType: "page_updated" }),
+          headers: { "Content-Type": "application/json", ...headers },
+        });
 
       expect((await post({ Authorization: "Bearer fixture-secret" })).status).toBe(200);
       expect((await post({ Authorization: "Bearer wrong-secret!!" })).status).toBe(401);
@@ -168,6 +176,41 @@ describe("WebhookServer", () => {
       expect(
         (await post({ Authorization: "Bearer fixture-secret", "X-Hub-Signature": "sha256=00" })).status
       ).toBe(401);
+    });
+  });
+
+  describe("request limits", () => {
+    // A page in the user's browser can send form or text bodies to a loopback
+    // port without a CORS preflight; JSON it cannot.
+    test("answers 415 to a POST that is not application/json", async () => {
+      server = createTestServer();
+      const url = startServer(server);
+      const seen: WebhookPayload[] = [];
+      server.on((payload) => void seen.push(payload));
+      const body = JSON.stringify({ eventType: "page_updated", page: { id: "1" } });
+
+      for (const type of ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data"]) {
+        expect((await fetch(url, { method: "POST", body, headers: { "Content-Type": type } })).status).toBe(415);
+      }
+      expect(seen).toEqual([]);
+      expect(
+        (await fetch(url, { method: "POST", body, headers: { "Content-Type": "Application/JSON; charset=utf-8" } })).status
+      ).toBe(200);
+      expect(seen).toHaveLength(1);
+    });
+
+    test("answers 413 to a body over 1 MiB", async () => {
+      server = createTestServer();
+      const url = startServer(server);
+      const post = (padding: number) =>
+        fetch(url, {
+          method: "POST",
+          body: JSON.stringify({ eventType: "page_updated", pad: "x".repeat(padding) }),
+          headers: { "Content-Type": "application/json" },
+        });
+
+      expect((await post(1 << 20)).status).toBe(413);
+      expect((await post(1 << 19)).status).toBe(200);
     });
   });
 

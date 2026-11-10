@@ -158,12 +158,12 @@ async function startDaemon(scope: string[], env: Record<string, string> = {}): P
 }
 
 /** A page event that claims to belong to the synced space, whatever is true. */
-function event(pageId: string, headers: Record<string, string> = {}): RequestInit {
+function event(pageId: string, headers: Record<string, string> = {}, eventType = "page_updated"): RequestInit {
   return {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify({
-      eventType: "page_updated",
+      eventType,
       timestamp: "2026-01-01T00:00:00Z",
       page: { id: pageId, title: "Child", spaceKey: "DOC", version: 2 },
     }),
@@ -195,6 +195,29 @@ describe("wiki docs sync webhook scope", () => {
       expect(await syncedText(h.dir)).not.toContain("out-of-scope-body");
     }, 90_000);
   }
+});
+
+describe("wiki docs sync webhook event type", () => {
+  // The event type is the caller's string; it used to be printed and put into
+  // the JSON event before the allow-list was consulted.
+  it("ignores an unknown event type without echoing it", async () => {
+    const h = (harness = await startDaemon(["--ancestor", "200"]));
+
+    expect((await fetch(h.webhook, event("300", {}, "forged\u001b]0;pwned\u0007-type"))).status).toBe(200);
+    // The handler runs before the response; a known event still gets through.
+    expect((await fetch(h.webhook, event("300", {}, "page_trashed"))).status).toBe(200);
+    const out = h.lines.join("\n");
+    expect(out).toContain("Webhook received: page_trashed for page 300");
+    expect(out).not.toContain("forged");
+    expect(out).not.toContain("pwned");
+    expect(await syncedText(h.dir)).not.toContain("child-body");
+  }, 90_000);
+
+  it("answers 415 to a POST a browser could send without a preflight", async () => {
+    const h = (harness = await startDaemon(["--ancestor", "200"]));
+    expect((await fetch(h.webhook, event("300", { "Content-Type": "text/plain" }))).status).toBe(415);
+    expect(await syncedText(h.dir)).not.toContain("child-body");
+  }, 90_000);
 });
 
 describe("wiki docs sync webhook authentication", () => {

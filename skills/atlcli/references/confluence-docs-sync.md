@@ -388,7 +388,8 @@ by file watching, and merges when both changed. Options:
 | `--webhook-host <addr>` | Bind another interface. Usage error without a secret. |
 | `--webhook-secret <s>` / env `ATLCLI_WEBHOOK_SECRET` | Callers must send `X-Hub-Signature: sha256=<HMAC of body>` or `Authorization: Bearer <secret>`, else 401. Use the env var, not the flag. Without a secret: loopback only, with a warning. |
 
-A webhook event only names a page id. The daemon pulls an untracked page only
+`POST /webhook` needs `Content-Type: application/json` (else 415) and a body of
+at most 1 MiB (else 413). A webhook event only names a page id. The daemon pulls an untracked page only
 after Confluence confirms it is inside the scope (page, tree or space);
 anything else is logged as `Webhook ignored: page <id> is outside the sync scope`.
 
