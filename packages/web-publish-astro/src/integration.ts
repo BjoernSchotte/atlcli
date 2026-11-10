@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { constants as fsConstants, createReadStream } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
+import { isPathInside } from "./path-containment.js";
 import { fileURLToPath } from "node:url";
 import {
   canonicalPublicationJsonV1,
@@ -603,8 +604,7 @@ export function atlcliPublishingIntegration(
       "astro:build:done": async ({ dir, pages }) => {
         const outputRoot = fileURLToPath(dir);
         const manifestPath = resolve(options.manifestPath);
-        const outputRelative = relative(outputRoot, manifestPath);
-        if (outputRelative === "" || (!outputRelative.startsWith("..") && !outputRelative.startsWith("/"))) {
+        if (isPathInside(outputRoot, manifestPath)) {
           throw new Error("atlcli publishing manifestPath must be outside Astro's public output directory");
         }
         const loaded = await readPublicationNavigationV1(options);

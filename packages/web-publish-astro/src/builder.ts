@@ -1,5 +1,6 @@
 import { lstat, mkdir, rename, rm } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { isPathInside } from "./path-containment.js";
 import {
   readBoundedPublicationJsonV1,
 } from "@atlcli/web-publish/node";
@@ -36,8 +37,7 @@ function assertNonEmpty(value: string, name: string): void {
 }
 
 function privatePathOutsideOutput(inventoryPath: string, outputDirectory: string): void {
-  const relativePath = relative(resolve(outputDirectory), resolve(inventoryPath));
-  if (relativePath === "" || (!relativePath.startsWith("..") && !relativePath.startsWith("/"))) {
+  if (isPathInside(outputDirectory, inventoryPath)) {
     throw new TypeError("inventoryPath must be outside outputDirectory");
   }
 }

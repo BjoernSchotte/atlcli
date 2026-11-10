@@ -2,7 +2,9 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [2026.11.2] - 2026-11-10
+## [Unreleased]
+
+2026.11.2 was tagged but never published: a release-only Windows canary failed on a path check that read a file on another drive as inside the build output. Everything it contained ships in this release.
 
 ### Bug Fixes
 
