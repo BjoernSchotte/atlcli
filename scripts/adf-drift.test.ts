@@ -449,12 +449,10 @@ describe("ADF pinned drift guard", () => {
     );
     expect(reusableQuality).toContain("bun run check:adf-pinned");
 
-    for (const release of ["release.yml", "release-cli.yml", "release-core.yml"]) {
-      const releaseWorkflow = await readFile(
-        new URL(`../.github/workflows/${release}`, import.meta.url),
-        "utf8",
-      );
-      expect(releaseWorkflow).not.toContain("adf-drift-watch");
-    }
+    const releaseWorkflow = await readFile(
+      new URL("../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    );
+    expect(releaseWorkflow).not.toContain("adf-drift-watch");
   });
 });

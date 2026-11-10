@@ -79,6 +79,14 @@ async function workflowBunPins(): Promise<Pin[]> {
   for (const file of files) {
     const text = await readFile(join(WORKFLOWS_DIR, file), "utf8");
     text.split("\n").forEach((raw, index) => {
+      // `bun-version-file: package.json` makes setup-bun read `packageManager`
+      // itself, so there is no second literal to drift. Any other file would
+      // be a second source of truth.
+      const versionFile = /^\s*bun-version-file:\s*(.+?)\s*$/.exec(raw);
+      if (versionFile) {
+        expect(versionFile[1], `${file}:${index + 1} must read the Bun version from package.json`).toBe("package.json");
+        return;
+      }
       const match = /^\s*(?:bun-version|BUN_VERSION):\s*(.+?)\s*$/.exec(raw);
       if (!match) return;
       pins.push({ file, line: index + 1, value: match[1]!.replace(/^['"]|['"]$/g, "") });

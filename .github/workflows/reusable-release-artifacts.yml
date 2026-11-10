@@ -46,6 +46,7 @@ jobs:
   build-cli:
     name: Build CLI (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -88,7 +89,7 @@ jobs:
       # could not embed it. Install every platform's optional packages.
       - name: Install the cross-compiled target's native packages
         if: matrix.target == 'windows-x64'
-        run: bun install --frozen-lockfile --os='*' --cpu='*'
+        run: bash scripts/ci/install-frozen-dependencies.sh --os='*' --cpu='*'
 
       - name: Provision pinned PDF fonts
         run: bun run fonts:ensure
@@ -187,6 +188,7 @@ jobs:
   build-extension:
     name: Build Chrome MV3 extension
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -247,6 +249,7 @@ jobs:
     name: Assemble and consume exact release bundle
     needs: [build-cli, smoke-windows, build-extension]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       bundle_artifact: ${{ steps.contract.outputs.name }}
     steps:

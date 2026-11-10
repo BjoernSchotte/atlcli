@@ -42,7 +42,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Find a proved commit that differs only in release bookkeeping
         id: proof
@@ -78,6 +78,7 @@ jobs:
     name: Freeze stable release identity
     needs: preflight
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.identity.outputs.version }}
       build_id: ${{ steps.identity.outputs.build_id }}
@@ -95,7 +96,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Resolve and validate stable identity
         id: identity
@@ -147,6 +148,7 @@ jobs:
     name: Create complete stable draft
     needs: [resolve, artifacts]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     outputs:
@@ -161,7 +163,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Download this run's manifested bundle only
         uses: actions/download-artifact@v8
@@ -184,7 +186,7 @@ jobs:
           '
 
       - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Reverify complete bundle before GitHub write
         run: bun scripts/verify-release-artifacts.ts --dir release > pre-upload-verification.json
@@ -228,6 +230,7 @@ jobs:
     name: Download and consume stable draft assets
     needs: [resolve, create-draft]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       # GitHub draft downloads require a repository-writer token.
       contents: write
@@ -240,10 +243,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Download draft bytes from release API and verify contracts
         env:
@@ -302,6 +305,7 @@ jobs:
             runner: windows-2025
             archive: atlcli-windows-x64.zip
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     permissions:
       # GitHub draft downloads require a repository-writer token.
       contents: write
@@ -314,7 +318,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Download one exact native archive from the complete draft
         shell: bash
@@ -385,6 +389,7 @@ jobs:
       && needs.native-cli-consumer.result == 'success'
       && (needs.tag-canaries.result == 'success' || needs.tag-canaries.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -396,7 +401,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Publish stable and make it latest
         env:
@@ -425,6 +430,7 @@ jobs:
     # Explicit: the default would skip this whenever tag-canaries was skipped upstream.
     if: ${{ !cancelled() && needs.publish-draft.result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -436,10 +442,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install frozen dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Redownload published stable release and verify latest
         env:

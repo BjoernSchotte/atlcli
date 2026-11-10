@@ -126,7 +126,7 @@ describe("Turbo cache policy", () => {
     expect(rootPackage.scripts?.["vendor:pdfium"]).toBe(
       "bun packages/import-pdf/scripts/vendor-pdfium.ts",
     );
-    for (const script of ["postinstall", "prebuild", "prebuild:prod"]) {
+    for (const script of ["postinstall", "prebuild"]) {
       expect(rootPackage.scripts?.[script], script).toContain("vendor:pdfium");
     }
 

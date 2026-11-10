@@ -31,10 +31,11 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: package.json
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        shell: bash
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Build the production MV3 extension
         run: bun run --cwd apps/extension build

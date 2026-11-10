@@ -42,8 +42,8 @@ behaviour is proven against real concurrent Confluence editing
 
 Supersedes: none
 
-Builds on: `spec/mcp-over-code.md`, `spec/local-storage-plan.md`,
-`spec/sqlite-sync-foundation.md`
+Builds on: `specs/roadmap/mcp-over-code.md`, `specs/confluence-sync/local-storage-plan.md`,
+`specs/confluence-sync/sqlite-sync-foundation.md`
 
 **Goal:** coding agents (Claude Code, Codex, Cursor, and others) work on Confluence content directly with `ls`, `cd`, `cat`, `grep`, `find` and `sed`. Visibility matches the authenticated user exactly. No MCP tool calls required.
 
@@ -346,7 +346,7 @@ missing from the Confluence index can be omitted from the candidate set.
 ### Security
 - **Mode as a parameter** (decision 6): `--mode ro|rw`, default `ro`, with config `vfs.mode` per profile. `rw` enables create, update, rename and move, and `--allow-delete` additionally enables trash. In `ro` mode every write attempt returns `EROFS`. This mirrors Atlassian's Rovo MCP permission groups, where delete is off by default.
 - Confirmation per decision 10: with a terminal, `rm` and cross-space `mv` prompt, and `--confirm` skips the prompts. Without a terminal, `--allow-delete` is the confirmation and no further flag exists.
-- Audit log: every write operation is recorded as JSONL under the cache directory, reusing the existing JSONL logging described in `spec/jsonl-logging.md`.
+- Audit log: every write operation is recorded as JSONL under the cache directory, reusing the existing JSONL logging described in `specs/jsonl-logging/PLAN.md`.
 - Tokens never leave the process. The WebDAV server is unauthenticated on loopback only; any other binding requires a bearer token.
 - Visibility: Cloud v2 filters spaces, pages and children server-side, stating that only pages the user may view are returned. Rovo MCP and the Teamwork Graph CLI give the same guarantee. The VFS must therefore never share caches across profiles, and must map 401, 403 and 404 consistently to `ENOENT` or `EACCES` rather than guessing.
 
@@ -384,7 +384,7 @@ Conventions for every work package:
 
 ### WP0 - Spike and de-risking (2 days)
 
-Results: [`spikes/vfs-just-bash/README.md`](../../spikes/vfs-just-bash/README.md).
+Results: [SPIKE-JUST-BASH.md](SPIKE-JUST-BASH.md).
 
 - [x] **WP0.1** Add `just-bash@3.4.2` as a dependency of `apps/cli`, pin the exact version, and confirm `bun install` completes without postinstall errors.
 - [x] **WP0.2** Spike script `spikes/vfs-just-bash/spike.ts` constructing `new Bash({ defenseInDepth: false, fs: new MountableFs({ mounts: [{ mountPoint: "/DOCSY", filesystem: fakeFs }] }) })` and running `ls -R`, `cat`, `grep -rn`, `find -name`, `sed`, `jq` and `echo > file` against a fake `IFileSystem` under Bun 1.3.14. Expectation: all succeed with no `DefenseInDepthBox` error.
@@ -757,8 +757,8 @@ All sources retrieved on 2026-09-15. **[dated]** marks anything older than six m
 ---
 
 ## Related documents
-- `spec/mcp-over-code.md`, an MCP server that calls the CLI, the counterpart to the VFS approach
-- `spec/local-storage-plan.md`, the frontmatter and `.atlcli/` layout the VFS adopts
-- `spec/sqlite-sync-foundation.md`, the SQLite adapter that serves as the model for the body cache
-- `spec/large-space-sync.md` and `spec/partial-sync.md`, on loading the tree of a large space
+- `specs/roadmap/mcp-over-code.md`, an MCP server that calls the CLI, the counterpart to the VFS approach
+- `specs/confluence-sync/local-storage-plan.md`, the frontmatter and `.atlcli/` layout the VFS adopts
+- `specs/confluence-sync/sqlite-sync-foundation.md`, the SQLite adapter that serves as the model for the body cache
+- `specs/confluence-sync/large-space-sync.md` and `specs/confluence-sync/partial-sync.md`, on loading the tree of a large space
 - `packages/confluence/src/hierarchy.ts`, the index pattern and the slug rules

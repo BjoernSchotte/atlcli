@@ -45,7 +45,7 @@
     (rasterizer gating, lines 811–830) and `apps/cli/src/commands/export-internals.ts`
     (`mightContainMermaid`, lines 162–166) — Lane K/CLI owns this file
     nominally; see the Dependencies section for the coordination note.
-  - Competitor convention reference: `spec/scroll-word-exporter-features.md`
+  - Competitor convention reference: `specs/confluence-docx-export/scroll-word-exporter-features.md`
     (§3 "Styling Capabilities") — the authoritative source for the real
     `Scroll List …` / `Scroll Table …` style-name convention used below.
   - `specs/export-expansion/BASELINE-DESIGN.md` §"B9 — Tabellen-Stilquelle
@@ -193,7 +193,7 @@ All four packages respect the engine's existing patterns:
   style-name convention, then the builtin names (`List Bullet` /
   `List Number`), then `ListParagraph`. **The real Scroll naming convention
   is asymmetric, not `<name> <level>` for every level**
-  (`spec/scroll-word-exporter-features.md` §3, "List Styles"): level 1
+  (`specs/confluence-docx-export/scroll-word-exporter-features.md` §3, "List Styles"): level 1
   (`ilvl 0`) is **suffixless** — `Scroll List Bullet` / `Scroll List Number`
   — and only levels 2–8 (`ilvl 1–7`) carry a numeric suffix — `Scroll List
   Bullet 2`…`Scroll List Bullet 8`. `resolveListStyleId` must special-case
@@ -417,7 +417,7 @@ column-width work; … out of Lane P").
       template's house table style actually controls appearance.
 - [x] `ExportInput` (`export.ts`) gains `tableStyle?: { source; styleId? }`;
       resolve `styleId` against `word/styles.xml` via `parseStyleNames`
-      (name `Scroll Table Normal` per `spec/scroll-word-exporter-features.md`
+      (name `Scroll Table Normal` per `specs/confluence-docx-export/scroll-word-exporter-features.md`
       §3, fallback to `TableGrid`/`source: "confluence"` with a report note
       when the named style is not defined in the template).
 - [x] `serializeTable`'s render phase suppresses per-cell `w:shd`

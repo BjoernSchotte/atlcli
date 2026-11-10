@@ -63,7 +63,7 @@ jobs:
           key: ${{ runner.os }}-bun-${{ inputs.leg }}-${{ hashFiles('bun.lock') }}
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bash scripts/ci/install-frozen-dependencies.sh
 
       - name: Consumer smoke + install matrix
         run: bun --conditions=development test scripts/consumer-smoke.test.ts scripts/install-matrix.test.ts

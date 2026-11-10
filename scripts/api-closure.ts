@@ -295,7 +295,7 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
 
 type EntryStability = "stable" | "experimental" | "internal";
 
-const INTERNAL_SUBPATHS = new Set(["./internal", "./scan", "./fixtures", "./template"]);
+const INTERNAL_SUBPATHS = new Set(["./internal", "./scan", "./fixtures", "./template", "./testing"]);
 const EXPERIMENTAL_SUBPATHS = new Set(["./browser-runtime", "./vite"]);
 
 export function entrypointStability(pkgName: string, label: string): EntryStability {
