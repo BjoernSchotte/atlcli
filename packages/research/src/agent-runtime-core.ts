@@ -21,7 +21,6 @@ import {
   RESEARCH_REPORT_ARTIFACT_PATH_V1,
   ResearchContractError,
   type ResearchOneShotEventV1,
-  type ResearchOneShotPolicyV1,
   type ResearchProduct,
   type ResearchProgressV1,
   type ResearchReport,
@@ -188,6 +187,7 @@ import {
   type ResearchSupportRefV1,
   type ResearchTaskOutputSchemaV1,
 } from "./workflow-contracts.js";
+import { fnv1a32Utf8Hex } from "./hash.js";
 
 export const RESEARCH_MODEL_ID = "claude-sonnet-4-6" as const;
 const MODEL_SPEC = `anthropic:${RESEARCH_MODEL_ID}` as const;
@@ -2507,12 +2507,7 @@ export function shouldRepairRejectedCheckpointContinuationV1(input: {
 }
 
 function workflowCodeHashV1(code: string): string {
-  let hash = 0x811c9dc5;
-  for (const byte of new TextEncoder().encode(code)) {
-    hash ^= byte;
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
+  return `fnv1a32:${fnv1a32Utf8Hex(code)}`;
 }
 
 /**

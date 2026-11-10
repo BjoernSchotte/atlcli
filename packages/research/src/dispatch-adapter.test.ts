@@ -144,3 +144,45 @@ test("keeps an aborted provider error outcome unknown instead of quarantining a 
     quarantined: 0,
   });
 });
+
+test("rejects a concurrent second dispatch of a task still awaiting its durable admission", async () => {
+  const responseSchema = { type: "object" };
+  let upstreamCalls = 0;
+  let releaseJournal!: () => void;
+  const journal = new Promise<void>((resolve) => {
+    releaseJournal = resolve;
+  });
+  const adapter = createResearchDispatchInterceptionAdapter({
+    admissions: [{
+      taskId: "task:twice",
+      subagentType: "researcher",
+      objective: "Read one admitted source.",
+      grantedCapabilityIds: [],
+      responseSchema,
+      maxResultBytes: 1_024,
+      maxDurationMs: 1_000,
+    }],
+    maxTasks: 2,
+    maxConcurrency: 2,
+    beforeInvoke: () => journal,
+    invokeUpstream: async () => {
+      upstreamCalls += 1;
+      return { ok: true };
+    },
+  });
+  const invoke = () => adapter.invoke({
+    description: encodeResearchTaskDescriptionV1({
+      taskId: "task:twice",
+      objective: "Read one admitted source.",
+    }),
+    subagent_type: "researcher",
+  }, {
+    configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: responseSchema },
+  });
+  const first = invoke();
+  const second = invoke();
+  releaseJournal();
+  await expect(second).rejects.toMatchObject({ code: "task-already-dispatched" });
+  await expect(first).resolves.toEqual({ ok: true });
+  expect(upstreamCalls).toBe(1);
+});

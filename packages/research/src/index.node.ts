@@ -1,5 +1,4 @@
 export * from "./index.js";
-export * from "./langgraph-checkpointer.js";
 export * from "./filesystem-workspace.js";
 export * from "./rest-provider.js";
 export * from "./scope-catalog-provider.js";

@@ -473,6 +473,36 @@ describe("Chat retrieval plan", () => {
     expect(result.searches[0]?.variants).toHaveLength(3);
   });
 
+  test("never drops a host-required Jira key variant for the injected core term", () => {
+    const result = createChatRetrievalPlanV1({
+      conversationId: "conversation:synthetic",
+      turnId: "turn:synthetic",
+      question: "Wie hängen DEMO-1, DEMO-2 und DEMO-3 mit GitHub zusammen?",
+      anchors: [],
+      scopeBindings: [binding({
+        id: "binding:project",
+        product: "jira",
+        entityKind: "project",
+        key: "DEMO",
+        name: "Demo project",
+      })],
+      searchProducts: ["jira"],
+      exactContextProducts: [],
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      agentic: true,
+      proposal: {
+        searches: [{
+          searchId: "search:jira",
+          product: "jira",
+          variants: [{ variantId: "model", query: { text: "GitHub Zusammenhang" } }],
+          maxPages: 2,
+        }],
+      },
+    });
+    const texts = result.searches[0]?.variants.map((variant) => variant.query.text);
+    expect(texts).toEqual(expect.arrayContaining(["DEMO-1", "DEMO-2", "DEMO-3", "github"]));
+  });
+
   test("preserves a technical identifier as a host core query beside one verbose variant", () => {
     const result = createChatRetrievalPlanV1({
       conversationId: "conversation:synthetic",

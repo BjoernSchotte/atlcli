@@ -1,13 +1,17 @@
 import { Database } from "bun:sqlite";
-import { mkdir, rename, rm, unlink, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { mkdir, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { ResearchContractError } from "./contracts.js";
 import { FileSystemResearchWorkspace } from "./filesystem-workspace.js";
 import {
-  RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1,
-  RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
-  RESEARCH_SESSION_EVENT_SCHEMA_V1,
+  MAXIMUM_ARTIFACTS_PER_SESSION_V1,
+  MAXIMUM_EVENTS_PER_SESSION_V1,
+  MAXIMUM_SESSIONS_V1,
+  sessionEventFor as eventFor,
+  validateArtifact,
+  validateSourceRefs,
+} from "./session-store-validation.js";
+import {
   type ResearchOpaqueSourceRefV1,
   type ResearchSessionArtifactV1,
   type ResearchSessionCommitV1,
@@ -27,11 +31,6 @@ import type { ResearchGraphV1 } from "./graph.js";
 import type { ResearchWorkspace } from "./workspace.js";
 import type { ResearchAcceptedPacketV1, ResearchTaskAttemptV1 } from "./workflow-contracts.js";
 
-const MAXIMUM_SESSIONS_V1 = 128;
-const MAXIMUM_EVENTS_PER_SESSION_V1 = 2_000;
-// Match the host-neutral store: 64 retained reports plus current operating projections.
-const MAXIMUM_ARTIFACTS_PER_SESSION_V1 = 72;
-const MAXIMUM_SOURCE_REFS_PER_SESSION_V1 = 4_096;
 
 type SessionRow = { session_id: string; revision: number; lease_epoch: number; state_json: string };
 type EventRow = { event_json: string };
@@ -58,31 +57,6 @@ function turnFor(session: ResearchSessionV1, turnId: string) {
   return session.turns.find((turn) => turn.id === turnId);
 }
 
-function eventFor(session: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionEventV1 {
-  const turnId = session.activeTurnId ?? session.turns.at(-1)?.id;
-  return {
-    schema: RESEARCH_SESSION_EVENT_SCHEMA_V1,
-    sessionId: session.sessionId,
-    sessionRevision: session.revision,
-    leaseEpoch: session.lease.epoch,
-    kind: update.kind,
-    status: session.status,
-    ...(turnId ? { turnId } : {}),
-    at: update.at,
-  };
-}
-
-async function writeAtomic(path: string, contents: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = `${path}.tmp-${randomUUID()}`;
-  try {
-    await writeFile(temporary, contents, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    await rename(temporary, path);
-  } finally {
-    await unlink(temporary).catch(() => undefined);
-  }
-}
-
 function parseJson<T>(value: string, label: string): T {
   try {
     return JSON.parse(value) as T;
@@ -91,22 +65,11 @@ function parseJson<T>(value: string, label: string): T {
   }
 }
 
-function validateSourceRefs(refs: readonly ResearchOpaqueSourceRefV1[]): void {
-  if (refs.length > MAXIMUM_SOURCE_REFS_PER_SESSION_V1 || new Set(refs.map((ref) => ref.id)).size !== refs.length) invalid("Research source references exceed their bounded limit.");
-  for (const ref of refs) {
-    if (ref.schema !== RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1 || !/^source:[A-Za-z0-9._:-]{1,180}$/.test(ref.id) || !["jira", "confluence"].includes(ref.product) || !ref.sourceRef.trim() || ref.sourceRef.length > 512 || !Number.isFinite(Date.parse(ref.capturedAt))) invalid("Research source reference is invalid.");
-  }
-}
-
-function validateArtifact(artifact: ResearchSessionArtifactV1, contents: string): void {
-  if (artifact.schema !== RESEARCH_SESSION_ARTIFACT_SCHEMA_V1 || !/^artifact:[A-Za-z0-9._:-]{1,180}$/.test(artifact.id) || !/^\/artifacts\/[A-Za-z0-9._/-]{1,240}$/.test(artifact.path) || !["text/markdown", "application/json"].includes(artifact.contentType) || !Number.isSafeInteger(artifact.bytes) || artifact.bytes !== new TextEncoder().encode(contents).byteLength || artifact.bytes > 2_000_000 || !Number.isFinite(Date.parse(artifact.createdAt))) invalid("Research artifact is invalid.");
-}
-
 /**
  * Bun/SQLite durable implementation used by the CLI. The SQLite transaction
  * is the authority for the revision-fenced session snapshot and body-free
  * journal event; each retained session also has a private 0700 directory for
- * its atomic manifest, workspace, and artifact bodies.
+ * its workspace and artifact bodies.
  */
 export class SqliteResearchSessionStoreV1 implements ResearchSessionStoreV1 {
   readonly #db: Database;
@@ -170,10 +133,6 @@ export class SqliteResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     return join(this.#root, "sessions", sessionDirectoryName(sessionId));
   }
 
-  #manifestPath(sessionId: string): string {
-    return join(this.#sessionRoot(sessionId), "manifest.json");
-  }
-
   #readRow(sessionId: string): SessionRow | undefined {
     return this.#db.query<SessionRow, [string]>("SELECT session_id, revision, lease_epoch, state_json FROM research_sessions_v1 WHERE session_id = ?").get(sessionId) ?? undefined;
   }
@@ -197,7 +156,6 @@ export class SqliteResearchSessionStoreV1 implements ResearchSessionStoreV1 {
       if (String(error).includes("UNIQUE constraint failed")) invalid("Research session already exists.");
       throw error;
     }
-    await writeAtomic(this.#manifestPath(session.sessionId), JSON.stringify(session));
     return clone(session);
   }
 
@@ -233,7 +191,6 @@ export class SqliteResearchSessionStoreV1 implements ResearchSessionStoreV1 {
       this.#fail("after_state_commit", sessionId, { updateKind: update.kind });
       this.#db.query("INSERT INTO research_session_events_v1 (session_id, session_revision, event_json) VALUES (?, ?, ?)").run(sessionId, next.revision, JSON.stringify(event));
     })();
-    await writeAtomic(this.#manifestPath(sessionId), JSON.stringify(next));
     return { session: clone(next), event: clone(event) };
   }
 

@@ -5,6 +5,7 @@ import {
   type ResearchEvidenceStoreV1,
 } from "./evidence-store.js";
 import type { ResearchWorkspace } from "./workspace.js";
+import { sha256Hex as sha256 } from "./hash.js";
 
 export const RESEARCH_CLAIM_SCHEMA_V1 = "atlcli.research-claim/v1" as const;
 export const RESEARCH_CLAIM_LEDGER_SCHEMA_V1 = "atlcli.research-claim-ledger/v1" as const;
@@ -178,11 +179,6 @@ function parseLedger(contents: string): PersistedLedgerV1 {
   const claims = candidate.claims.map((claim) => validateClaim(claim as ResearchClaimV1));
   if (new Set(claims.map((claim) => claim.id)).size !== claims.length) invalid("Claim ledger contains duplicate IDs.");
   return { schema: RESEARCH_CLAIM_LEDGER_SCHEMA_V1, claims: claims.sort((left, right) => left.id.localeCompare(right.id)) };
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function validateCurrentSupport(

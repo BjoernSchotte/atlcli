@@ -2,7 +2,6 @@ import {
   RESEARCH_SCOPE_BINDING_SCHEMA_V1,
   RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1,
   type ResearchProduct,
-  type ResearchScopeAuthorityV1,
   type ResearchScopeBindingV1,
   type ResearchScopeEntityKindV1,
   type ResearchScopeSeedV1,

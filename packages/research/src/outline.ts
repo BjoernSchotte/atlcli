@@ -4,6 +4,7 @@ import type { ResearchClaimLedgerV1, ResearchClaimV1 } from "./claim-ledger.js";
 import type { ResearchEvidenceRecordV1, ResearchEvidenceStoreV1 } from "./evidence-store.js";
 import type { ResearchPacketBodyV2 } from "./workflow-contracts.js";
 import type { ResearchWorkspace } from "./workspace.js";
+import { sha256Hex as sha256 } from "./hash.js";
 
 export const RESEARCH_CONTRADICTION_SCHEMA_V1 = "atlcli.research-contradiction/v1" as const;
 export const RESEARCH_COVERAGE_ASSESSMENT_SCHEMA_V1 = "atlcli.research-coverage-assessment/v1" as const;
@@ -312,11 +313,6 @@ function parseIndex(value: string): PersistedOutlineIndexV1 {
 
 function outlinePath(id: string): string {
   return `${ROOT_PATH}/outlines/${encodeURIComponent(id)}.json`;
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /**

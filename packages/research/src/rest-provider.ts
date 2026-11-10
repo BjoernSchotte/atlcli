@@ -16,7 +16,6 @@ import type {
   JiraResearchSummary,
   WikiResearchSummary,
 } from "./broker.js";
-import { ResearchCapabilityBroker } from "./broker.js";
 import { ResearchRunBudget } from "./budget.js";
 import {
   projectConfluenceStorage,
@@ -328,7 +327,13 @@ export function createRestResearchProviders(
             ],
             signal: input.signal,
           }),
-          jira.getRemoteLinks(input.issueKey, { signal: input.signal }),
+          // Remote links only add related-page hints. A failing endpoint (for
+          // example a 403 on the link permission) must not lose the issue that
+          // was read; the link list is reported as incomplete instead.
+          jira.getRemoteLinks(input.issueKey, { signal: input.signal }).catch((error) => {
+            if (input.signal?.aborted || error instanceof ResearchContractError) throw error;
+            return undefined;
+          }),
         ]);
         const description = projectJiraDescription(
           issue.fields.description,
@@ -336,7 +341,9 @@ export function createRestResearchProviders(
           limits
         );
         const relations = jiraRelationKeys(issue);
-        const remoteWikiLinks = jiraRemoteWikiLinks(remoteLinks, request.scope.siteOrigin);
+        const remoteWikiLinks = remoteLinks
+          ? jiraRemoteWikiLinks(remoteLinks, request.scope.siteOrigin)
+          : { values: [], truncated: true };
         const comments = input.includeComments
           ? projectJiraComments(issue, request.scope.siteOrigin, limits)
           : undefined;
@@ -464,13 +471,4 @@ export function createRestResearchProviders(
       },
     },
   };
-}
-
-export function createRestResearchBroker(
-  profile: Profile,
-  request: ResearchRequestV1
-): ResearchCapabilityBroker {
-  const budget = new ResearchRunBudget(request.limits);
-  const providers = createRestResearchProviders(profile, request, budget);
-  return new ResearchCapabilityBroker(request, providers, { budget });
 }

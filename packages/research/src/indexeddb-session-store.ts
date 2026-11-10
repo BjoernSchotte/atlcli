@@ -5,9 +5,14 @@ import {
   type ResearchWorkspace,
 } from "./workspace.js";
 import {
-  RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1,
-  RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
-  RESEARCH_SESSION_EVENT_SCHEMA_V1,
+  MAXIMUM_ARTIFACTS_PER_SESSION_V1,
+  MAXIMUM_EVENTS_PER_SESSION_V1,
+  MAXIMUM_SESSIONS_V1,
+  sessionEventFor as eventFor,
+  validateArtifact,
+  validateSourceRefs,
+} from "./session-store-validation.js";
+import {
   type ResearchOpaqueSourceRefV1,
   type ResearchSessionArtifactV1,
   type ResearchSessionCommitV1,
@@ -40,11 +45,6 @@ const WORKSPACE = "workspace";
 const EVIDENCE_WORKSPACE = "evidenceWorkspace";
 const CLAIMS_WORKSPACE = "claimsWorkspace";
 const OUTLINE_WORKSPACE = "outlineWorkspace";
-const MAXIMUM_SESSIONS_V1 = 128;
-const MAXIMUM_EVENTS_PER_SESSION_V1 = 2_000;
-// Match the host-neutral store: 64 retained reports plus current operating projections.
-const MAXIMUM_ARTIFACTS_PER_SESSION_V1 = 72;
-const MAXIMUM_SOURCE_REFS_PER_SESSION_V1 = 4_096;
 export const MAXIMUM_RESEARCH_EVIDENCE_WORKSPACE_BYTES_V1 = 48 * 1024 * 1024;
 export const MAXIMUM_RESEARCH_CLAIMS_WORKSPACE_BYTES_V1 = 8 * 1024 * 1024;
 export const MAXIMUM_RESEARCH_OUTLINE_WORKSPACE_BYTES_V1 = 8 * 1024 * 1024;
@@ -60,6 +60,18 @@ interface StoredEvent { sessionId: string; sessionRevision: number; event: Resea
 interface StoredSourceRef { sessionId: string; id: string; ref: ResearchOpaqueSourceRefV1 }
 interface StoredArtifact { sessionId: string; id: string; metadata: ResearchSessionArtifactV1; contents: string }
 interface StoredWorkspaceFile { sessionId: string; path: string; contents: string }
+/**
+ * Running byte total of one session in a quota'd namespace, kept in the same
+ * object store under a key no file can have (a normalized path never contains
+ * NUL). It is read and rewritten inside the transaction of every write and
+ * remove, so every context sharing the database sees the same total.
+ */
+const QUOTA_TOTAL_PATH = "\u0000quota";
+interface StoredWorkspaceQuota { sessionId: string; path: typeof QUOTA_TOTAL_PATH; bytes: number }
+
+function utf8Bytes(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
 
 function invalid(message: string): never {
   throw new ResearchContractError("invalid-request", message);
@@ -179,31 +191,6 @@ function openDatabase(input: {
       resolve(open.result);
     };
   });
-}
-
-function eventFor(session: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionEventV1 {
-  const turnId = session.activeTurnId ?? session.turns.at(-1)?.id;
-  return {
-    schema: RESEARCH_SESSION_EVENT_SCHEMA_V1,
-    sessionId: session.sessionId,
-    sessionRevision: session.revision,
-    leaseEpoch: session.lease.epoch,
-    kind: update.kind,
-    status: session.status,
-    ...(turnId ? { turnId } : {}),
-    at: update.at,
-  };
-}
-
-function validateSourceRefs(refs: readonly ResearchOpaqueSourceRefV1[]): void {
-  if (refs.length > MAXIMUM_SOURCE_REFS_PER_SESSION_V1 || new Set(refs.map((ref) => ref.id)).size !== refs.length) invalid("Research source references exceed their bounded limit.");
-  for (const ref of refs) {
-    if (ref.schema !== RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1 || !/^source:[A-Za-z0-9._:-]{1,180}$/.test(ref.id) || !["jira", "confluence"].includes(ref.product) || !ref.sourceRef.trim() || ref.sourceRef.length > 512 || !Number.isFinite(Date.parse(ref.capturedAt))) invalid("Research source reference is invalid.");
-  }
-}
-
-function validateArtifact(artifact: ResearchSessionArtifactV1, contents: string): void {
-  if (artifact.schema !== RESEARCH_SESSION_ARTIFACT_SCHEMA_V1 || !/^artifact:[A-Za-z0-9._:-]{1,180}$/.test(artifact.id) || !/^\/artifacts\/[A-Za-z0-9._/-]{1,240}$/.test(artifact.path) || !["text/markdown", "application/json"].includes(artifact.contentType) || !Number.isSafeInteger(artifact.bytes) || artifact.bytes !== new TextEncoder().encode(contents).byteLength || artifact.bytes > 2_000_000 || !Number.isFinite(Date.parse(artifact.createdAt))) invalid("Research artifact is invalid.");
 }
 
 function deleteIndexRows(index: IDBIndex, sessionId: string): void {
@@ -368,6 +355,12 @@ export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, 
     return clone((await this.#required(sessionId)).turns.flatMap((turn) => turn.acceptedPackets).find((packet) => packet.packetRef === packetRef));
   }
 
+  /** Paths only: the primary key is [sessionId, path], so no file body is read. */
+  async #workspacePaths(storeName: string, sessionId: string): Promise<string[]> {
+    const keys = await request(this.#db.transaction(storeName, "readonly").objectStore(storeName).index("bySession").getAllKeys(sessionId));
+    return keys.map((key) => (key as [string, string])[1]).filter((path) => path !== QUOTA_TOTAL_PATH);
+  }
+
   async #workspaceForStore(
     sessionId: string,
     storeName: string,
@@ -386,40 +379,84 @@ export class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1, 
         await this.#required(sessionId);
         await transaction(this.#db, [storeName], "readwrite", (stores, finish, fail) => {
           const store = stores[storeName]!;
-          const rows = store.index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>;
-          rows.onsuccess = () => {
+          const write = (): void => {
+            const put = store.put({ sessionId, path: normalized, contents } satisfies StoredWorkspaceFile);
+            put.onsuccess = () => finish(undefined);
+            put.onerror = () => fail(put.error ?? new Error("Research workspace write failed."));
+          };
+          // The unbounded session workspace (LangGraph checkpoints) has no
+          // quota: never load every retained file just to write one.
+          if (maximumBytes === undefined) {
+            write();
+            return;
+          }
+          const totalRequest = store.get([sessionId, QUOTA_TOTAL_PATH]) as IDBRequest<StoredWorkspaceQuota | undefined>;
+          const existingRequest = store.get([sessionId, normalized]) as IDBRequest<StoredWorkspaceFile | undefined>;
+          const commit = (retainedBytes: number): void => {
             try {
-              if (maximumBytes !== undefined) {
-                const existing = rows.result.find((row) => row.path === normalized);
-                const retainedBytes = rows.result.reduce(
-                  (total, row) => total + new TextEncoder().encode(row.contents).byteLength,
-                  0,
-                ) - (existing ? new TextEncoder().encode(existing.contents).byteLength : 0);
-                const nextBytes = retainedBytes + new TextEncoder().encode(contents).byteLength;
-                if (nextBytes > maximumBytes) {
-                  throw new ResearchContractError("limit-exceeded", "Research data namespace quota is exhausted.");
-                }
+              const bytes = retainedBytes + utf8Bytes(contents);
+              if (bytes > maximumBytes) {
+                throw new ResearchContractError("limit-exceeded", "Research data namespace quota is exhausted.");
               }
-              const put = store.put({ sessionId, path: normalized, contents } satisfies StoredWorkspaceFile);
-              put.onsuccess = () => finish(undefined);
-              put.onerror = () => fail(put.error ?? new Error("Research workspace write failed."));
+              store.put({ sessionId, path: QUOTA_TOTAL_PATH, bytes } satisfies StoredWorkspaceQuota);
+              write();
             } catch (error) { fail(error); }
           };
-          rows.onerror = () => fail(rows.error ?? new Error("Research workspace quota read failed."));
+          // Requests of one transaction settle in order: the total is known here.
+          existingRequest.onsuccess = () => {
+            const total = totalRequest.result;
+            if (total) {
+              commit(total.bytes - utf8Bytes(existingRequest.result?.contents ?? ""));
+              return;
+            }
+            // No total yet (new session, or rows written before the total
+            // existed): count the rows once; the put above records the result.
+            const rows = store.index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>;
+            rows.onsuccess = () => commit(rows.result.reduce(
+              (sum, row) => row.path === normalized ? sum : sum + utf8Bytes(row.contents),
+              0,
+            ));
+            rows.onerror = () => fail(rows.error ?? new Error("Research workspace quota read failed."));
+          };
+          existingRequest.onerror = () => fail(existingRequest.error ?? new Error("Research workspace quota read failed."));
         });
       },
       remove: async (path) => {
         const normalized = normalizeResearchWorkspacePath(path);
-        const rows = await request(this.#db.transaction(storeName, "readonly").objectStore(storeName).index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>);
         await transaction(this.#db, [storeName], "readwrite", (stores, finish) => {
-          for (const row of rows) if (researchWorkspacePathMatchesPrefix(row.path, normalized)) stores[storeName]!.delete([sessionId, row.path]);
+          const store = stores[storeName]!;
+          const keys = store.index("bySession").getAllKeys(sessionId);
+          keys.onsuccess = () => {
+            const doomed = keys.result.map((key) => (key as [string, string])[1])
+              .filter((path) => path !== QUOTA_TOTAL_PATH && researchWorkspacePathMatchesPrefix(path, normalized));
+            let freedBytes = 0;
+            for (const path of doomed) {
+              if (maximumBytes !== undefined) {
+                const row = store.get([sessionId, path]) as IDBRequest<StoredWorkspaceFile | undefined>;
+                row.onsuccess = () => { freedBytes += utf8Bytes(row.result?.contents ?? ""); };
+              }
+              store.delete([sessionId, path]);
+            }
+            if (maximumBytes === undefined || doomed.length === 0) return;
+            // Issued last, so every freed row above has been measured. A
+            // missing total stays missing: the next write counts the rows.
+            const totalRequest = store.get([sessionId, QUOTA_TOTAL_PATH]) as IDBRequest<StoredWorkspaceQuota | undefined>;
+            totalRequest.onsuccess = () => {
+              if (!totalRequest.result) return;
+              store.put({
+                sessionId,
+                path: QUOTA_TOTAL_PATH,
+                bytes: Math.max(0, totalRequest.result.bytes - freedBytes),
+              } satisfies StoredWorkspaceQuota);
+            };
+          };
           finish(undefined);
         });
       },
       list: async (prefix = "/") => {
         const normalized = normalizeResearchWorkspacePath(prefix);
-        const rows = await request(this.#db.transaction(storeName, "readonly").objectStore(storeName).index("bySession").getAll(sessionId) as IDBRequest<StoredWorkspaceFile[]>);
-        return rows.map((row) => row.path).filter((path) => researchWorkspacePathMatchesPrefix(path, normalized)).sort();
+        return (await this.#workspacePaths(storeName, sessionId))
+          .filter((path) => researchWorkspacePathMatchesPrefix(path, normalized)).sort();
       },
     };
   }

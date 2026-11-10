@@ -110,8 +110,6 @@ export const RESEARCH_SUBAGENT_MODEL_MAX_OUTPUT_TOKENS_V1: Readonly<
 
 const RESEARCH_DEPENDENCY_PACKET_SCHEMA_V1 =
   "atlcli.research-dependency-packet/v1" as const;
-const RESEARCH_DEPENDENCY_PACKET_SCHEMA_V2 =
-  "atlcli.research-dependency-packet/v2" as const;
 const RESEARCH_DEPENDENCY_RECONCILIATION_SCHEMA_V1 =
   "atlcli.research-dependency-reconciliation/v1" as const;
 

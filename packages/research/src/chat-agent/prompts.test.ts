@@ -19,6 +19,10 @@ describe("Chat supervisor prompt", () => {
     expect(prompt).toContain("gaps field MUST be an actual JSON array");
     expect(prompt).toContain("below 700 words");
     expect(prompt).toContain("Headings and non-factual transitions use assertion=none");
+    // Production retrieval can never satisfy the host's bound-scope rule, so
+    // the prompt must not offer that scope.
+    expect(prompt).toContain("Never use scope=bound-scope");
+    expect(prompt).not.toContain("bound-scope only when");
     expect(prompt).toContain("sourceRefs");
     expect(prompt).toContain("list item, or table row");
     expect(prompt).not.toContain("tools.researchCandidateRank");

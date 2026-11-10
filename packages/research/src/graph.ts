@@ -30,6 +30,7 @@ import {
   type ResearchSubagentRoleIdV1,
   type ResearchTaskOutputSchemaV1,
 } from "./workflow-contracts.js";
+import { fnv1a32Utf16Hex } from "./hash.js";
 
 export { RESEARCH_BRIEF_SCHEMA_V1 } from "./brief.js";
 export type { ResearchBriefV1 } from "./brief.js";
@@ -68,7 +69,6 @@ export const RESEARCH_GRAPH_CAPABILITIES = [
 export type ResearchGraphCapabilityV1 =
   (typeof RESEARCH_GRAPH_CAPABILITIES)[number];
 
-export const RESEARCH_GRAPH_ROLES = RESEARCH_SUBAGENT_ROLE_IDS_V1;
 export const RESEARCH_T3_GRAPH_ROLES = RESEARCH_SUBAGENT_ROLE_IDS_V1.filter(
   (roleId) => RESEARCH_SUBAGENT_ROLE_REGISTRY_V1[roleId].availableFromPhase === "T3",
 );
@@ -77,10 +77,6 @@ export const RESEARCH_T5_GRAPH_ROLES = RESEARCH_SUBAGENT_ROLE_IDS_V1.filter(
     roleId === "outline-planner",
 );
 export type ResearchGraphRoleV1 = ResearchSubagentRoleIdV1;
-/** @deprecated Use ResearchResolvedEffortV1 from the brief contract. */
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
-/** @deprecated Use ResearchRequestedReconciliationV1 from the brief contract. */
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
 
 export type ResearchNodeStatusV1 =
   | "proposed"
@@ -306,13 +302,7 @@ function fingerprint(value: unknown): string {
     const serialized = JSON.stringify(candidate);
     return serialized === undefined ? "null" : serialized;
   };
-  const canonical = canonicalJson(value);
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < canonical.length; index += 1) {
-    hash ^= canonical.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
+  return `fnv1a32:${fnv1a32Utf16Hex(canonicalJson(value))}`;
 }
 
 function stableAdded<T extends string>(from: readonly T[], to: readonly T[]): T[] {

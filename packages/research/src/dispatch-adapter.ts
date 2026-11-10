@@ -397,6 +397,7 @@ export function createAgenticDispatchInterceptionAdapter(
   let dispatchedTasks = 0;
   let activeInvocations = 0;
   let pendingAdmissions = 0;
+  const pendingTaskIds = new Set<string>();
   let observedStatus = false;
   let activeMaxConcurrency = options.maxConcurrency;
 
@@ -641,7 +642,9 @@ export function createAgenticDispatchInterceptionAdapter(
         taskId,
       );
     }
-    if (taskStatuses.has(taskId)) {
+    // A task awaiting its durable beforeInvoke has no status yet; the pending
+    // set closes that window for a concurrent invoke() of the same task.
+    if (taskStatuses.has(taskId) || pendingTaskIds.has(taskId)) {
       reject(
         "task-already-dispatched",
         `Research task was already dispatched: ${taskId}`,
@@ -667,14 +670,16 @@ export function createAgenticDispatchInterceptionAdapter(
     }
 
     pendingAdmissions += 1;
+    pendingTaskIds.add(taskId);
     try {
       await options.beforeInvoke?.({ taskId, admission });
     } catch (error) {
-      pendingAdmissions -= 1;
       emit({ taskId, status: "failed", code: "durable-journal-failed" });
       throw error;
+    } finally {
+      pendingAdmissions -= 1;
+      pendingTaskIds.delete(taskId);
     }
-    pendingAdmissions -= 1;
 
     dispatchedTasks += 1;
     activeInvocations += 1;

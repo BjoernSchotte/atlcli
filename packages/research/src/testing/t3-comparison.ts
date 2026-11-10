@@ -11,6 +11,7 @@ import {
   type ResearchEvaluationObservationV1,
   type T3DirectionalValueDecisionV1,
 } from "./evaluation.js";
+import { fnv1a32Utf8Hex } from "../hash.js";
 
 export const RESEARCH_T3_COMPARISON_SCHEMA_V1 =
   "atlcli.research-t3-comparison/v1" as const;
@@ -122,12 +123,7 @@ function stableJson(value: unknown): string {
 }
 
 function fnv1a32(value: string): string {
-  let hash = 0x811c9dc5;
-  for (const byte of new TextEncoder().encode(value)) {
-    hash ^= byte;
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
+  return `fnv1a32:${fnv1a32Utf8Hex(value)}`;
 }
 
 /**

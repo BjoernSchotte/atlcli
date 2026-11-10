@@ -22,7 +22,6 @@ import {
 } from "../dynamic-subagents.js";
 import {
   RESEARCH_DYNAMIC_AGENT_DRAFT_JSON_SCHEMA_V1,
-  RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
 } from "../agent-draft.js";
 import {
   RESEARCH_EVALUATION_SCHEMA_V1,

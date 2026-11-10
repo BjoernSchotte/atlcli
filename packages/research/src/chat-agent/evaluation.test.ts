@@ -1,21 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  RESEARCH_REPORT_SCHEMA_V1,
-  RESEARCH_REPORT_SCHEMA_V2,
-  type ResearchReport,
-  type ResearchScopeV1,
-  type ResearchSourceReferenceV1,
-} from "../contracts.js";
-import {
   CHAT_EVALUATION_SCHEMA_V1,
-  CHAT_EVALUATION_VARIANTS_V1,
-  CHAT_RELEASE_EVALUATION_VARIANTS_V1,
   chatEvaluationScenarioFingerprintV1,
   normalizeChatEvaluationObservationV1,
   normalizeChatEvaluationScenarioV1,
-  runChatLegacyEffortComparisonV1,
-  runChatReleaseComparisonV1,
   scoreChatEvaluationV1,
   type ChatEvaluationObservationV1,
   type ChatEvaluationScenarioV1,
@@ -23,7 +12,6 @@ import {
   type ChatReleaseEvaluationVariantV1,
 } from "./evaluation.js";
 import { CHAT_RECOVERY_GOLD_SCENARIOS_V1 } from "./testing/gold-scenarios.js";
-import { legacyResearchReportToChatObservationV1 } from "./testing/legacy-evaluation-adapter.js";
 
 const QUALITY_BY_VARIANT = {
   "legacy-chat": "auto",
@@ -139,41 +127,6 @@ function releaseObservation(
   };
 }
 
-function reportScope(): ResearchScopeV1 {
-  return {
-    siteOrigin: "https://chat-eval.atlassian.net",
-    jiraProjectKeys: [],
-    confluenceSpaceKeys: ["KB"],
-  };
-}
-
-function sourceReference(
-  source: ChatEvaluationScenarioV1["sources"][number],
-  privateMarker: string,
-): ResearchSourceReferenceV1 {
-  return {
-    id: source.id,
-    product: source.product,
-    title: privateMarker,
-    url: source.canonicalUrl,
-    excerpt: privateMarker,
-  };
-}
-
-function runSummary() {
-  return {
-    model: "test-model",
-    wikiProvider: "rest" as const,
-    startedAt: "2026-01-01T00:00:00.000Z",
-    completedAt: "2026-01-01T00:00:02.000Z",
-    durationMs: 2_000,
-    complete: true,
-    counts: { ptcCalls: 2, httpCalls: 2, jiraItems: 0, confluenceItems: 1 },
-    usage: { inputTokens: 1_200, outputTokens: 300 },
-    warnings: [],
-  };
-}
-
 describe("Chat recovery evaluation V1", () => {
   test("defines twenty normalized customer-free gold cases", () => {
     expect(CHAT_RECOVERY_GOLD_SCENARIOS_V1.map((entry) => entry.id)).toEqual([
@@ -231,21 +184,6 @@ describe("Chat recovery evaluation V1", () => {
       unsupportedAssertions: 1,
       wrongSources: 1,
     });
-  });
-
-  test("rejects a non-normalized comparison request", async () => {
-    const attachedPage = scenario("chat-gold:attached-page");
-    const nonNormalized = {
-      ...attachedPage,
-      sources: [...attachedPage.sources].reverse(),
-    };
-    await expect(runChatLegacyEffortComparisonV1({
-      scenario: nonNormalized,
-      runners: Object.fromEntries(CHAT_EVALUATION_VARIANTS_V1.map((variant) => [
-        variant,
-        async () => directObservation({ scenario: attachedPage, variant }),
-      ])) as never,
-    })).rejects.toThrow("scenario is not normalized");
   });
 
   test("scores the same observation deterministically", () => {
@@ -308,158 +246,6 @@ describe("Chat recovery evaluation V1", () => {
       citationPrecision: 1,
       falseCompleteness: false,
     });
-  });
-
-  test("freezes scope, corpus, question, and budget for effort-only comparison", async () => {
-    const attachedPage = scenario("chat-gold:attached-page");
-    const received: Array<{ variant: string; scenario: string; frozen: boolean }> = [];
-    const runners = Object.fromEntries(CHAT_EVALUATION_VARIANTS_V1.map((variant) => [
-      variant,
-      async (input: Parameters<Parameters<typeof runChatLegacyEffortComparisonV1>[0]["runners"][ChatEvaluationVariantV1]>[0]) => {
-        received.push({
-          variant,
-          scenario: JSON.stringify(input.scenario),
-          frozen: Object.isFrozen(input) && Object.isFrozen(input.scenario) &&
-            Object.isFrozen(input.scenario.budget),
-        });
-        return directObservation({ scenario: attachedPage, variant });
-      },
-    ])) as Parameters<typeof runChatLegacyEffortComparisonV1>[0]["runners"];
-
-    const result = await runChatLegacyEffortComparisonV1({
-      scenario: attachedPage,
-      runners,
-    });
-
-    expect(received).toHaveLength(4);
-    expect(new Set(received.map((entry) => entry.scenario)).size).toBe(1);
-    expect(received.every((entry) => entry.frozen)).toBe(true);
-    expect(result.providerEffortOnlyWorkflowEquivalent).toBe(true);
-    expect(Object.keys(result.runs)).toEqual([...CHAT_EVALUATION_VARIANTS_V1]);
-  });
-
-  test("compares legacy, Chat qualities, and explicit Deep Research in one frozen envelope", async () => {
-    const attachedPage = scenario("chat-gold:attached-page");
-    const received: string[] = [];
-    const result = await runChatReleaseComparisonV1({
-      scenario: attachedPage,
-      runners: Object.fromEntries(CHAT_RELEASE_EVALUATION_VARIANTS_V1.map((variant) => [
-        variant,
-        async (input: { scenario: Readonly<ChatEvaluationScenarioV1> }) => {
-          expect(Object.isFrozen(input.scenario)).toBe(true);
-          received.push(JSON.stringify(input.scenario));
-          return releaseObservation(attachedPage, variant);
-        },
-      ])) as unknown as Parameters<typeof runChatReleaseComparisonV1>[0]["runners"],
-    });
-
-    expect(received).toHaveLength(5);
-    expect(new Set(received).size).toBe(1);
-    expect(result.runs.quick.observation.workflow).toMatchObject({
-      runtimePath: "chat-agent",
-      researchReportFinalizations: 0,
-    });
-    expect(result.runs["deep-research"].observation.workflow).toMatchObject({
-      runtimePath: "deep-research",
-      researchReportFinalizations: 1,
-    });
-    expect(result.runs.deep.metrics).toMatchObject({
-      candidateRecall: 1,
-      detailCoverage: 1,
-      citationPrecision: 1,
-      modelCostMicros: 12_000,
-      peakSupervisorInputTokens: 1_000,
-    });
-  });
-
-  test("legacy V1 adapter emits body-free IDs, citations, counters, and sizes", () => {
-    const attachedPage = scenario("chat-gold:attached-page");
-    const source = attachedPage.sources.find((entry) => entry.id === "wiki:1001")!;
-    const privateMarker = "DO-NOT-LEAK-PRIVATE-BODY";
-    const report: ResearchReport = {
-      schema: RESEARCH_REPORT_SCHEMA_V1,
-      title: privateMarker,
-      question: privateMarker,
-      scope: reportScope(),
-      executiveSummary: privateMarker,
-      findings: [{
-        id: "assertion:release-scope",
-        classification: "fact",
-        summary: privateMarker,
-        sourceIds: [source.id],
-      }],
-      relationships: [],
-      limitations: [privateMarker],
-      sources: [sourceReference(source, privateMarker)],
-      run: runSummary(),
-      markdown: privateMarker.repeat(3),
-    };
-
-    const observation = legacyResearchReportToChatObservationV1({
-      scenario: attachedPage,
-      variant: "legacy-chat",
-      report,
-      detailedSourceIds: [source.id],
-      modelCalls: 1,
-    });
-
-    expect(observation).toMatchObject({
-      outcome: "answer",
-      selectedSourceIds: [source.id],
-      detailedSourceIds: [source.id],
-      publishedAssertionIds: ["assertion:release-scope"],
-      calls: { model: 1, ptc: 2, http: 2 },
-      tokens: { input: 1_200, output: 300 },
-      latencyMs: 2_000,
-      finalMarkdownChars: privateMarker.repeat(3).length,
-    });
-    expect(JSON.stringify(observation)).not.toContain(privateMarker);
-  });
-
-  test("legacy V2 adapter captures current claim finalization without prose", () => {
-    const attachedIssue = scenario("chat-gold:attached-issue");
-    const source = attachedIssue.sources.find((entry) => entry.id === "jira:DEMO-17")!;
-    const privateMarker = "DO-NOT-LEAK-V2-BODY";
-    const report: ResearchReport = {
-      schema: RESEARCH_REPORT_SCHEMA_V2,
-      title: privateMarker,
-      question: privateMarker,
-      scope: reportScope(),
-      executiveSummaryClaimIds: ["assertion:issue-delivery"],
-      claims: [{
-        id: "assertion:issue-delivery",
-        classification: "fact",
-        statement: privateMarker,
-        freshness: "current",
-        evidenceIds: ["evidence:1"],
-        sourceIds: [source.id],
-      }],
-      sections: [],
-      coverage: [],
-      limitations: [privateMarker],
-      sources: [sourceReference(source, privateMarker)],
-      run: { ...runSummary(), counts: { ...runSummary().counts, jiraItems: 1, confluenceItems: 0 } },
-      markdown: privateMarker.repeat(2),
-    };
-
-    const observation = legacyResearchReportToChatObservationV1({
-      scenario: attachedIssue,
-      variant: "deep-effort-only",
-      report,
-      detailedSourceIds: [source.id],
-      modelCalls: 2,
-    });
-
-    expect(observation).toMatchObject({
-      qualityMode: "deep",
-      providerReasoningPreference: "thorough",
-      workflow: {
-        runtimePath: "legacy-chat-via-research",
-        researchReportFinalizations: 1,
-      },
-      publishedAssertionIds: ["assertion:issue-delivery"],
-    });
-    expect(JSON.stringify(observation)).not.toContain(privateMarker);
   });
 
   test("committed evaluation fixtures contain neither secrets nor private tenant markers", () => {

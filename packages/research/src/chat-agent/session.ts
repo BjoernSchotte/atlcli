@@ -7,6 +7,7 @@ import {
   type ChatAnswerV1,
   type ChatStrategyV1,
 } from "./contracts.js";
+import { sha256Hex } from "../hash.js";
 
 export const CHAT_SESSION_SCHEMA_V1 = "atlcli.chat-session/v1" as const;
 export const CHAT_TURN_SCHEMA_V1 = "atlcli.chat-turn/v1" as const;
@@ -227,12 +228,6 @@ export function normalizeChatHostIdentityV1(
   };
 }
 
-function hex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
-}
-
 /** Body-free, deterministic scope identity used only as a resume fence. */
 export async function chatScopeFingerprintV1(input: {
   scope: ResearchScopeV1;
@@ -244,10 +239,7 @@ export async function chatScopeFingerprintV1(input: {
     confluenceSpaceKeys: [...input.scope.confluenceSpaceKeys].sort(),
     bindingIds: [...new Set(input.scopeBindings.map((binding) => binding.id))].sort(),
   });
-  return `chat-scope:${hex(await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(projection),
-  )).slice(0, 48)}`;
+  return `chat-scope:${(await sha256Hex(projection)).slice(0, 48)}`;
 }
 
 export function createChatSessionV1(input: {
@@ -585,16 +577,20 @@ export function interruptChatTurnV1(input: {
   if (input.session.operations.activeTurnId !== input.turnId) {
     return input.session;
   }
-  const turns = input.session.conversation.recentTurns.map((turn) =>
-    turn.id === input.turnId && turn.status === "running"
-      ? {
-          ...turn,
-          revision: turn.revision + 1,
-          status: input.status,
-          completedAt: iso(input.at, "Chat turn interruption time"),
-        }
-      : turn
-  );
+  // A waiting turn is active too: leaving it "waiting" while clearing
+  // activeTurnId would publish a session that parseChatSessionV1 rejects.
+  const turns = input.session.conversation.recentTurns.map((turn) => {
+    if (turn.id !== input.turnId || (turn.status !== "running" && turn.status !== "waiting")) {
+      return turn;
+    }
+    const { waitingReason: _waitingReason, ...active } = turn;
+    return {
+      ...active,
+      revision: turn.revision + 1,
+      status: input.status,
+      completedAt: iso(input.at, "Chat turn interruption time"),
+    };
+  });
   return {
     ...input.session,
     revision: input.session.revision + 1,

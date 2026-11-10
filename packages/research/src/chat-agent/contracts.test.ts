@@ -25,7 +25,6 @@ import {
 import {
   CHAT_AGENT_DRAFT_SCHEMA_V2,
   CHAT_SESSION_STATE_PATH_V1,
-  ChatContractError,
   normalizeChatAgentDraftV2,
   normalizeChatGapCodeV1,
   providerCompatibleChatAnswerSchemaV1,

@@ -2,7 +2,6 @@ import { briefRequiresClarificationV1 } from "./brief.js";
 import type { ResearchResumableSessionV1, ResearchSessionV1 } from "./session.js";
 import type { ResearchSessionClarificationReviewV1 } from "./session-clarification-review.js";
 import type { ResearchSessionPlanReviewV1 } from "./session-plan-review.js";
-import type { ResearchScopeCandidateSelectionV1 } from "./scope-resolution.js";
 
 /**
  * Tenant-filtered projection of the durable pre-brief scope decision. It
@@ -35,17 +34,6 @@ export interface ResearchSessionScopeClarificationReviewV1 {
       status?: "current" | "archived";
     }>;
   };
-}
-
-export interface ResearchScopeClarificationReviewActionV1 {
-  sessionId: string;
-  revision: number;
-  selection: ResearchScopeCandidateSelectionV1;
-}
-
-export interface ResearchScopeClarificationPlanningActionV1 {
-  sessionId: string;
-  revision: number;
 }
 
 /**

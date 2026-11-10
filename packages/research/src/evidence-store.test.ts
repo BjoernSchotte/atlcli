@@ -335,6 +335,31 @@ describe("research evidence store", () => {
     await expect(recovered.get(secondRecord.record.id)).resolves.toBeUndefined();
   });
 
+  test("an identity lookup does not re-read records it already knows belong elsewhere", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const created = await record();
+    await new WorkspaceResearchEvidenceStoreV1(workspace).put(created.record, created.chunks);
+    let recordReads = 0;
+    const store = new WorkspaceResearchEvidenceStoreV1({
+      ...workspace,
+      readFile: (path) => {
+        if (path.includes("/records/")) recordReads += 1;
+        return workspace.readFile(path);
+      },
+    });
+    await expect(store.recordsForCanonicalIdentity("some-other-identity")).resolves.toEqual([]);
+    expect(recordReads).toBe(1);
+    await expect(store.recordsForCanonicalIdentity("some-other-identity")).resolves.toEqual([]);
+    expect(recordReads).toBe(1);
+    // The matching identity is still read and validated from storage.
+    await expect(store.recordsForCanonicalIdentity(created.record.identity.canonicalId))
+      .resolves.toHaveLength(1);
+    expect(recordReads).toBe(2);
+    await store.remove(created.record.id);
+    await expect(store.recordsForCanonicalIdentity(created.record.identity.canonicalId))
+      .resolves.toEqual([]);
+  });
+
   test("releases all chunks when a retained evidence version is removed", async () => {
     const workspace = createMemoryResearchWorkspace();
     const created = await record({ text: "Deletion must release the private evidence chunks." });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createResearchSessionV1, type ResearchSessionUpdateV1, type ResearchSessionV1 } from "./session.js";
@@ -119,7 +119,7 @@ describe("SQLite durable research session store", () => {
     }
   });
 
-  test("survives reopen and creates a private per-session manifest, workspace, and artifact directory", async () => {
+  test("survives reopen and creates a private per-session workspace and artifact directory", async () => {
     const root = await mkdtemp(join(tmpdir(), "atlcli-research-sqlite-reopen-"));
     const databasePath = join(root, "catalog.sqlite");
     const sessionRoot = join(root, "session-data");
@@ -144,8 +144,8 @@ describe("SQLite durable research session store", () => {
         expect(await reopened.read(committed.sessionId)).toMatchObject({ revision: 2, status: "planning" });
         expect(await (await reopened.workspace(committed.sessionId)).readFile("/workspace/notes.md")).toBe("durable scratch");
         expect(await reopened.artifact(committed.sessionId, "artifact:report")).toMatchObject({ contents: "# Report\n" });
-        const manifest = JSON.parse(await readFile(join(sessionRoot, "sessions", "sqlite-test", "manifest.json"), "utf8"));
-        expect(manifest.revision).toBe(2);
+        // SQLite is the only session authority: no second copy on disk.
+        expect(await readdir(join(sessionRoot, "sessions", "sqlite-test"))).not.toContain("manifest.json");
       } finally {
         reopened.close();
       }

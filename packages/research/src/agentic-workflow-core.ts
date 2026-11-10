@@ -1,4 +1,5 @@
 import type { AgenticTaskAdmissionV1 } from "./dispatch-adapter.js";
+import { fnv1a32Utf16Hex } from "./hash.js";
 
 export const AGENTIC_WORKFLOW_SCHEMA_V1 =
   "atlcli.agentic-workflow/v1" as const;
@@ -106,12 +107,7 @@ function positiveInteger(value: number, name: string): number {
 }
 
 function stableFingerprint(value: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  return `fnv1a32:${fnv1a32Utf16Hex(value)}`;
 }
 
 /**

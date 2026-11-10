@@ -1194,7 +1194,15 @@ export function createKiteweaveChatAgent(
       let strategyForFinalReviewReserve: ChatStrategyDecisionV1 | undefined;
       let activeBroker: ResearchCapabilityBroker | undefined;
       const controller = new AbortController();
-      const forwardAbort = (): void => controller.abort(input.signal?.reason);
+      // Only a host signal that aborts first is a user stop. The max-duration
+      // timer and a failed specialist abort the same controller, and those are
+      // failures, not cancellations.
+      let userStopped = false;
+      const forwardAbort = (): void => {
+        if (controller.signal.aborted) return;
+        userStopped = true;
+        controller.abort(input.signal?.reason);
+      };
       if (input.signal?.aborted) forwardAbort();
       else input.signal?.addEventListener("abort", forwardAbort, { once: true });
       const timeout = globalThis.setTimeout(
@@ -1208,7 +1216,7 @@ export function createKiteweaveChatAgent(
           "code" in input.signal.reason
           ? String(input.signal.reason.code)
           : undefined;
-        if (input.signal?.aborted && reasonCode !== "paused") {
+        if (userStopped && reasonCode !== "paused") {
           emitActivity("stop", "started");
         }
       };
@@ -2830,14 +2838,14 @@ export function createKiteweaveChatAgent(
           );
         }
         const steeringPause = Boolean(
-          controller.signal.aborted &&
+          userStopped &&
           interactionController?.snapshot().pendingSteering &&
           input.signal?.reason &&
           typeof input.signal.reason === "object" &&
           "code" in input.signal.reason &&
           input.signal.reason.code === "paused",
         );
-        if (controller.signal.aborted && interactionController && !steeringPause) {
+        if (userStopped && interactionController && !steeringPause) {
           try {
             let interaction = interactionController.snapshot();
             if (!interaction.stop || interaction.stop.acknowledgedAt) {
@@ -2859,7 +2867,7 @@ export function createKiteweaveChatAgent(
                 })
               );
             }
-            if (input.signal?.aborted) emitActivity("stop", "completed");
+            emitActivity("stop", "completed");
           } catch {
             // Cancellation remains authoritative even if its best-effort
             // interaction acknowledgement cannot be published.
@@ -2888,7 +2896,7 @@ export function createKiteweaveChatAgent(
                 session: durableChatSession,
                 expectedSessionRevision: durableChatSession.revision,
                 turnId: turn.turnId,
-                status: controller.signal.aborted ? "cancelled" : "failed",
+                status: userStopped ? "cancelled" : "failed",
                 at: interruptedAt,
               });
             }
