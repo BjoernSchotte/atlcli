@@ -4,7 +4,7 @@
  * Provides functions for reading/writing page comments to JSON files.
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join, dirname, basename } from "node:path";
 import type { PageComments, FooterComment, InlineComment } from "./client.js";
 import { commentBodyToText } from "./comment-text.js";
@@ -19,22 +19,6 @@ export function getCommentsFilePath(markdownPath: string): string {
   const dir = dirname(markdownPath);
   const base = basename(markdownPath, ".md");
   return join(dir, `${base}.comments.json`);
-}
-
-/**
- * Read comments from a JSON file.
- *
- * Returns null if the file doesn't exist.
- */
-export async function readCommentsFile(
-  commentsPath: string
-): Promise<PageComments | null> {
-  try {
-    const content = await readFile(commentsPath, "utf-8");
-    return JSON.parse(content) as PageComments;
-  } catch {
-    return null;
-  }
 }
 
 /**

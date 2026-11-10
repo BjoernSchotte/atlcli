@@ -424,9 +424,6 @@ export type Profile = {
 // export: redactSensitive
 export declare function redactSensitive<T>(obj: T): T;
 
-// export: redactValue
-export declare function redactValue(value: string): string;
-
 // export: renderAdf
 export declare function renderAdf<T>(doc: T, scope: TemplateScope, opts: RenderOptions & {
     unit: string;
@@ -1408,9 +1405,6 @@ export declare function readTextFile(path: string): Promise<string>;
 // export: redactSensitive
 export declare function redactSensitive<T>(obj: T): T;
 
-// export: redactValue
-export declare function redactValue(value: string): string;
-
 // export: ReleaseBuildChannel
 export type ReleaseBuildChannel = "stable" | "dev" | "source";
 
@@ -1648,10 +1642,6 @@ export declare class SpaceTemplateStorage extends BaseTemplateStorage {
 // export: StorageConfig
 export type StorageConfig = {
     adapter?: "sqlite" | "postgres" | "json";
-    sqlite?: {
-        enableVectors?: boolean;
-        customSqlitePath?: string;
-    };
     postgres?: {
         connectionString: string;
         schema?: string;
@@ -1906,9 +1896,6 @@ export declare function validateTemplate(template: Template): ValidationResult;
 
 // export: validateVariableValue
 export declare function validateVariableValue(value: unknown, variable: TemplateVariable): VariableValidationResult;
-
-// export: validateVariableValues
-export declare function validateVariableValues(values: Record<string, unknown>, variables: TemplateVariable[]): ValidationResult;
 
 // export: ValidationError
 export interface ValidationError {
@@ -2392,9 +2379,6 @@ export type Profile = {
 // export: redactSensitive
 export declare function redactSensitive<T>(obj: T): T;
 
-// export: redactValue
-export declare function redactValue(value: string): string;
-
 // export: renderAdf
 export declare function renderAdf<T>(doc: T, scope: TemplateScope, opts: RenderOptions & {
     unit: string;
@@ -2628,6 +2612,9 @@ export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: 
 ### Entry point `./internal`
 
 ```ts
+// export: abortableSleep
+export declare function abortableSleep(ms: number, signal?: AbortSignal): Promise<void>;
+
 // export: ATLASSIAN_LOGIN_HOSTS
 export declare const ATLASSIAN_LOGIN_HOSTS: readonly string[];
 
@@ -3448,9 +3435,6 @@ export declare function readTextFile(path: string): Promise<string>;
 // export: redactSensitive
 export declare function redactSensitive<T>(obj: T): T;
 
-// export: redactValue
-export declare function redactValue(value: string): string;
-
 // export: ReleaseBuildChannel
 export type ReleaseBuildChannel = "stable" | "dev" | "source";
 
@@ -3688,10 +3672,6 @@ export declare class SpaceTemplateStorage extends BaseTemplateStorage {
 // export: StorageConfig
 export type StorageConfig = {
     adapter?: "sqlite" | "postgres" | "json";
-    sqlite?: {
-        enableVectors?: boolean;
-        customSqlitePath?: string;
-    };
     postgres?: {
         connectionString: string;
         schema?: string;
@@ -3946,9 +3926,6 @@ export declare function validateTemplate(template: Template): ValidationResult;
 
 // export: validateVariableValue
 export declare function validateVariableValue(value: unknown, variable: TemplateVariable): VariableValidationResult;
-
-// export: validateVariableValues
-export declare function validateVariableValues(values: Record<string, unknown>, variables: TemplateVariable[]): ValidationResult;
 
 // export: ValidationError
 export interface ValidationError {

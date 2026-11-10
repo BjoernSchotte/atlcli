@@ -21,8 +21,8 @@
  * `index.browser.ts` and MUST NOT import any `node:`/`bun:` module. `crypto`
  * is the Web Crypto global (available in browsers, Bun, and Node >= 18).
  *
- * Scan verdicts for DOCX templates (see `@atlcli/template-pack` `validatePack`
- * / `@atlcli/docx` `scanTemplate`) are **never** persisted on a
+ * Scan verdicts for DOCX templates (see `@atlcli/docx` `scanTemplate`) are
+ * **never** persisted on a
  * {@link TemplateLibraryEntry}. A scan is always re-derived from the bytes at
  * the point of use, so a persisted verdict can never drift from the bytes it
  * once described.

@@ -48,8 +48,6 @@ export {
   type ContentPropertyRecord,
   type PageFilter,
   type SyncDbExport,
-  type SimilarityResult,
-  type EmbeddingRecord,
   type SyncDbAdapter,
   type SqliteAdapterConfig,
   type PostgresAdapterConfig,
@@ -96,16 +94,6 @@ export interface CreateSyncDbOptions {
    * Enable WAL mode for SQLite (better concurrent access). Defaults to true.
    */
   walMode?: boolean;
-
-  /**
-   * Enable vector support via sqlite-vec. Defaults to false.
-   */
-  enableVectors?: boolean;
-
-  /**
-   * Custom SQLite library path (macOS only, for sqlite-vec support).
-   */
-  customSqlitePath?: string;
 }
 
 /**
@@ -135,8 +123,6 @@ export async function createSyncDb(
     adapter: adapterType = "sqlite",
     autoMigrate = true,
     walMode = true,
-    enableVectors = false,
-    customSqlitePath,
   } = options;
 
   let adapter: SyncDbAdapter;
@@ -147,8 +133,6 @@ export async function createSyncDb(
       adapter = new SqliteAdapter({
         dbPath,
         walMode,
-        enableVectors,
-        customSqlitePath,
       });
       break;
     }

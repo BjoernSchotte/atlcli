@@ -1,4 +1,4 @@
-import { parseRetryAfterMs } from "./retry-after.js";
+import { abortableSleep, parseRetryAfterMs } from "./retry-after.js";
 import { DEFAULT_JQL_FUNCTION_LIMITS, expandJqlFunctions, hasJqlFunctions, type JqlFunctionLimits } from "./jql-functions.js";
 import {
   assertNotAuthRedirect,
@@ -46,7 +46,6 @@ import type {
   CreateRemoteLinkInput,
   BulkCreateResult,
   AdfDocument,
-  AdfNode,
 } from "./types.js";
 
 export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission, JiraAttachment, JiraRemoteLink, CreateRemoteLinkInput } from "./types.js";
@@ -245,35 +244,14 @@ export class JiraClient {
   /**
    * Sleep utility for rate limiting / retry backoff.
    *
-   * Abortable: when `signal` is provided and already/becomes aborted, the sleep
-   * rejects immediately with the signal's reason instead of blocking for the
-   * full delay — otherwise a cancel issued during a multi-second 429/5xx
-   * backoff would not be observed until the backoff elapsed. Mirrors
-   * `ConfluenceClient.sleep`.
+   * Abortable (see `abortableSleep`); tests replace the timer through the
+   * scheduler hook.
    */
   private sleep(ms: number, signal?: AbortSignal): Promise<void> {
     const injectedScheduler = (
       globalThis as typeof globalThis & Record<symbol, RetryScheduler | undefined>
     )[retrySchedulerHook];
-    if (injectedScheduler) {
-      return injectedScheduler(ms, signal);
-    }
-
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted) {
-        reject(signal.reason ?? new Error("Aborted"));
-        return;
-      }
-      const timer = setTimeout(() => {
-        signal?.removeEventListener("abort", onAbort);
-        resolve();
-      }, ms);
-      const onAbort = () => {
-        clearTimeout(timer);
-        reject(signal?.reason ?? new Error("Aborted"));
-      };
-      signal?.addEventListener("abort", onAbort, { once: true });
-    });
+    return injectedScheduler ? injectedScheduler(ms, signal) : abortableSleep(ms, signal);
   }
 
   /**
@@ -2791,29 +2769,6 @@ export class JiraClient {
         },
       ],
     };
-  }
-
-  /**
-   * Convert ADF to plain text (basic extraction).
-   *
-   * @deprecated Drops all structure. Use `adfToMarkdown`.
-   */
-  adfToText(adf: AdfDocument | string | null | undefined): string {
-    if (!adf) return "";
-    if (typeof adf === "string") return adf;
-
-    const extractText = (nodes: AdfNode[] | undefined): string => {
-      if (!nodes) return "";
-      return nodes
-        .map((node) => {
-          if (node.text) return node.text;
-          if (node.content) return extractText(node.content);
-          return "";
-        })
-        .join("");
-    };
-
-    return extractText(adf.content);
   }
 }
 

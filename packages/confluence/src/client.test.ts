@@ -1125,6 +1125,59 @@ describe("ConfluenceClient", () => {
       expect(pages[0].title).toBe("Page 1");
     });
 
+    // One request was read, so a label with more pages than the page size came back cut.
+    test("getPagesByLabel follows pagination; limit caps the total", async () => {
+      const urls: string[] = [];
+      const item = (id: number) => ({ id: String(id), title: `Page ${id}`, version: { number: 1 }, space: { key: "TEST" } });
+      globalThis.fetch = mock((url: string) => {
+        urls.push(url);
+        const second = url.includes("cursor=two");
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              second
+                ? { results: [item(3)] }
+                : { results: [item(1), item(2)], _links: { next: "/rest/api/content/search?cursor=two" } }
+            ),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      expect((await client.getPagesByLabel("architecture")).map((p) => p.id)).toEqual(["1", "2", "3"]);
+      expect(urls.length).toBe(2);
+      expect((await client.getPagesByLabel("architecture", { limit: 2 })).map((p) => p.id)).toEqual(["1", "2"]);
+    });
+
+    test("getPagesByLabel quotes the label and space as CQL literals", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      await new ConfluenceClient(mockProfile).getPagesByLabel('a" OR type = blogpost OR label = "b', { spaceKey: "DEV" });
+      expect(new URL(capturedUrl).searchParams.get("cql")).toBe(
+        'label = "a\\" OR type = blogpost OR label = \\"b" AND type = page AND space = "DEV"'
+      );
+    });
+
+    test("registerWebhook hands the secret to Confluence only when one is set", async () => {
+      const bodies: any[] = [];
+      globalThis.fetch = mock((_url: string, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return Promise.resolve(new Response(JSON.stringify({ id: "7", name: "n", url: "u" }), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const hook = { name: "n", url: "https://hooks.example.test/webhook", events: ["page_updated"] };
+      await client.registerWebhook({ ...hook, secret: "fixture-secret" });
+      await client.registerWebhook(hook);
+      expect(bodies[0].configuration).toEqual({ secret: "fixture-secret" });
+      expect(bodies[1]).not.toHaveProperty("configuration");
+    });
+
     test("getPagesByLabel filters by space when provided", async () => {
       let capturedUrl = "";
 

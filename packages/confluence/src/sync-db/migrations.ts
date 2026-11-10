@@ -219,24 +219,6 @@ export const migrations: Migration[] = [
       -- For development rollback, just drop and recreate the database
     `,
   },
-  // Future migrations will be added here:
-  // {
-  //   version: 3,
-  //   description: "Add embeddings table for vector search",
-  //   up: `
-  //     CREATE TABLE IF NOT EXISTS embeddings (
-  //       page_id TEXT PRIMARY KEY,
-  //       embedding BLOB NOT NULL,
-  //       model TEXT NOT NULL,
-  //       dimensions INTEGER NOT NULL,
-  //       created_at TEXT NOT NULL,
-  //       updated_at TEXT NOT NULL,
-  //       FOREIGN KEY (page_id) REFERENCES pages(page_id) ON DELETE CASCADE
-  //     );
-  //     INSERT INTO schema_info (version, migrated_at) VALUES (3, datetime('now'));
-  //   `,
-  //   down: `DROP TABLE IF EXISTS embeddings;`,
-  // },
 ];
 
 /**
@@ -274,53 +256,4 @@ export function runMigrations(db: Database): { applied: number; version: number 
 
   const newVersion = getCurrentSchemaVersion(db);
   return { applied: pending.length, version: newVersion };
-}
-
-/**
- * Rollback to a specific version (for development/testing only).
- */
-export function rollbackTo(db: Database, targetVersion: number): void {
-  const currentVersion = getCurrentSchemaVersion(db);
-
-  if (targetVersion >= currentVersion) {
-    throw new Error(
-      `Cannot rollback from ${currentVersion} to ${targetVersion} (not a rollback)`
-    );
-  }
-
-  // Find migrations to rollback (in reverse order)
-  const toRollback = migrations
-    .filter((m) => m.version > targetVersion && m.version <= currentVersion)
-    .reverse();
-
-  db.transaction(() => {
-    for (const migration of toRollback) {
-      if (!migration.down) {
-        throw new Error(
-          `Migration ${migration.version} has no rollback SQL (down property)`
-        );
-      }
-      db.exec(migration.down);
-      db.prepare(`DELETE FROM schema_info WHERE version = ?`).run(migration.version);
-    }
-  })();
-}
-
-/**
- * Create trigger for auto-updating sync_updated_at on page modifications.
- * Note: SQLite doesn't support updating the same table in an AFTER UPDATE trigger,
- * so we need to handle this at the application level instead.
- */
-export function createUpdateTrigger(db: Database): void {
-  // Note: This trigger pattern causes issues in SQLite.
-  // Instead, we update sync_updated_at explicitly in the adapter's upsertPage method.
-  // Keeping this function for documentation purposes.
-  //
-  // The problematic trigger was:
-  // CREATE TRIGGER IF NOT EXISTS pages_sync_updated_at
-  //     AFTER UPDATE ON pages
-  //     FOR EACH ROW
-  // BEGIN
-  //     UPDATE pages SET sync_updated_at = datetime('now') WHERE page_id = NEW.page_id;
-  // END;
 }

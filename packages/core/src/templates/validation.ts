@@ -188,30 +188,3 @@ export function validateTemplate(template: Template): ValidationResult {
     warnings,
   };
 }
-
-/**
- * Validate all provided variable values against their definitions.
- */
-export function validateVariableValues(
-  values: Record<string, unknown>,
-  variables: TemplateVariable[]
-): ValidationResult {
-  const errors: ValidationError[] = [];
-  const warnings: ValidationWarning[] = [];
-
-  for (const variable of variables) {
-    const result = validateVariableValue(values[variable.name], variable);
-    if (!result.valid && result.error) {
-      errors.push({
-        message: result.error,
-        type: "variable",
-      });
-    }
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-}

@@ -65,7 +65,6 @@ export class JsonAdapter implements SyncDbAdapter {
 
   readonly adapterType: AdapterType = "json";
   readonly version = CURRENT_SCHEMA_VERSION;
-  readonly supportsVectors = false;
 
   constructor(config: JsonAdapterConfig) {
     this.filePath = join(config.atlcliDir, "sync-state.json");

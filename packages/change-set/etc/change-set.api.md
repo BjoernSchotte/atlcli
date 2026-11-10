@@ -526,6 +526,9 @@ export interface SpillSubtreeReadV1 {
     readonly maxBytes: number;
 }
 
+// export: summarizeOperationsV1
+export declare function summarizeOperationsV1(operations: readonly ChangeOperationV1[]): ChangeSetV1["summary"];
+
 // export: TransitionOperationV1
 export interface TransitionOperationV1 extends ChangeOperationBaseV1 {
     kind: "transition";

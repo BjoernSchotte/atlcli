@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { autoCommitAfterPull } from "./auto-commit.js";
 import { gitExec } from "./utils.js";
-import type { CommandContext } from "./types.js";
+import type { CommandContext } from "@atlcli/plugin-api";
 
 describe("autoCommitAfterPull", () => {
   let tempDir: string;

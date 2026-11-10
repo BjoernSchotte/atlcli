@@ -37,14 +37,6 @@ export type StorageConfig = {
   /** Adapter type: sqlite (default), postgres, json */
   adapter?: "sqlite" | "postgres" | "json";
 
-  /** SQLite-specific options */
-  sqlite?: {
-    /** Enable vector support via sqlite-vec extension */
-    enableVectors?: boolean;
-    /** Custom SQLite library path (macOS only, for sqlite-vec) */
-    customSqlitePath?: string;
-  };
-
   /** PostgreSQL-specific options (future) */
   postgres?: {
     /** Connection string */

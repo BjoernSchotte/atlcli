@@ -33,15 +33,19 @@ export class ConfluencePoller {
   private timer: NodeJS.Timeout | null = null;
   private handlers: Set<PollEventHandler> = new Set();
   private isPolling = false;
+  private onError: ((error: unknown) => void) | undefined;
 
   constructor(params: {
     client: ConfluenceClient;
     scope: SyncScope;
     intervalMs?: number;
+    /** Receives the error of a scheduled poll that failed. */
+    onError?: (error: unknown) => void;
   }) {
     this.client = params.client;
     this.scope = params.scope;
     this.intervalMs = params.intervalMs ?? 30000;
+    this.onError = params.onError;
     this.state = {
       lastPollAt: new Date().toISOString(),
       knownPages: new Map(),
@@ -75,7 +79,9 @@ export class ConfluencePoller {
    * older of the two and the first poll reports it.
    */
   async initialize(synced?: ReadonlyMap<string, number>): Promise<void> {
-    const baseline = (id: string, version: number) => Math.min(version, synced?.get(id) ?? version);    // Initialize pages
+    const baseline = (id: string, version: number) => Math.min(version, synced?.get(id) ?? version);
+
+    // Initialize pages
     const pages = await this.client.getAllPages({ scope: this.scope });
     this.state.knownPages.clear();
     for (const page of pages) {
@@ -104,13 +110,13 @@ export class ConfluencePoller {
   start(): void {
     if (this.timer) return;
 
-    this.timer = setInterval(async () => {
-      if (this.isPolling) return; // Skip if previous poll still running
-      await this.poll();
-    }, this.intervalMs);
+    // A failed poll (network, rate limit) changes no state and is retried on
+    // the next tick; it must not surface as an unhandled rejection.
+    const tick = () => this.poll().catch((error) => this.onError?.(error));
+    this.timer = setInterval(tick, this.intervalMs);
 
     // Run initial poll immediately
-    this.poll();
+    tick();
   }
 
   /** Stop polling */
@@ -129,16 +135,11 @@ export class ConfluencePoller {
     const events: PollChangeEvent[] = [];
 
     try {
-      // Poll for page changes
-      const pages = await this.client.getPagesSince({
-        scope: this.scope,
-        since: this.state.lastPollAt,
-      });
-
-      const currentPageIds = new Set<string>();
+      // One listing drives created, changed and deleted: it carries every
+      // page's version, and a page missing from it is gone.
+      const pages = await this.client.getAllPages({ scope: this.scope });
 
       for (const page of pages) {
-        currentPageIds.add(page.id);
         const known = this.state.knownPages.get(page.id);
 
         if (!known) {
@@ -176,8 +177,7 @@ export class ConfluencePoller {
       // For space/tree scope, check for deleted pages and poll folders
       if (this.scope.type !== "page") {
         // Check for deleted pages
-        const allPages = await this.client.getAllPages({ scope: this.scope });
-        const allPageIds = new Set(allPages.map((p) => p.id));
+        const allPageIds = new Set(pages.map((p) => p.id));
 
         for (const [id, info] of this.state.knownPages) {
           if (!allPageIds.has(id)) {

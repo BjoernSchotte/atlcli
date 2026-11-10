@@ -4,6 +4,9 @@
  * Receives webhook events from Jira and emits them for processing.
  */
 import { createHmac } from "node:crypto";
+// Namespace import: a named import of timingSafeEqual breaks browser-target
+// builds of the barrel (the polyfill lacks it), which the build gate measures.
+import * as nodeCrypto from "node:crypto";
 import type { Server } from "bun";
 
 /** Jira webhook event types */
@@ -161,12 +164,12 @@ export class JiraWebhookServer {
   /** Get server URL */
   getUrl(): string | null {
     if (!this.server) return null;
-    return `http://localhost:${this.options.port}${this.options.path}`;
+    return `http://localhost:${this.getPort()}${this.options.path}`;
   }
 
-  /** Get server port */
+  /** Get the bound port (the configured one until the server runs; `port: 0` binds a free port) */
   getPort(): number {
-    return this.options.port;
+    return this.server?.port ?? this.options.port;
   }
 
   /** Handle incoming webhook request */
@@ -185,12 +188,23 @@ export class JiraWebhookServer {
         }
       }
 
-      const payload = JSON.parse(body) as JiraWebhookPayload;
+      let payload: JiraWebhookPayload | null = null;
+      try {
+        payload = JSON.parse(body) as JiraWebhookPayload | null;
+      } catch {
+        // rejected below, together with JSON that is not an object
+      }
+      if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+        return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
-      // Filter by project if configured
+      // Filter by project if configured. An issue without a project key cannot match.
       if (this.options.filterProjects && payload.issue) {
-        const projectKey = payload.issue.fields.project.key;
-        if (!this.options.filterProjects.has(projectKey)) {
+        const projectKey: string | undefined = payload.issue.fields?.project?.key;
+        if (projectKey === undefined || !this.options.filterProjects.has(projectKey)) {
           return new Response(JSON.stringify({ status: "filtered", reason: "project" }), {
             headers: { "Content-Type": "application/json" },
           });
@@ -235,15 +249,9 @@ export class JiraWebhookServer {
       .update(body)
       .digest("hex");
 
-    // Constant-time comparison to prevent timing attacks
-    const expectedStr = `sha256=${expected}`;
-    if (expectedStr.length !== signature.length) return false;
-
-    let result = 0;
-    for (let i = 0; i < expectedStr.length; i++) {
-      result |= expectedStr.charCodeAt(i) ^ signature.charCodeAt(i);
-    }
-    return result === 0;
+    const expectedBuf = Buffer.from(`sha256=${expected}`);
+    const signatureBuf = Buffer.from(signature);
+    return expectedBuf.length === signatureBuf.length && nodeCrypto.timingSafeEqual(expectedBuf, signatureBuf);
   }
 }
 
@@ -255,8 +263,8 @@ export function formatWebhookEvent(payload: JiraWebhookPayload): string {
   if (payload.issue) {
     const issue = payload.issue;
     const key = issue.key;
-    const summary = issue.fields.summary;
-    const status = issue.fields.status.name;
+    const summary = issue.fields?.summary;
+    const status = issue.fields?.status?.name;
 
     if (event === "jira:issue_created") {
       return `[${timestamp}] CREATED: ${key} - ${summary}`;
@@ -272,7 +280,7 @@ export function formatWebhookEvent(payload: JiraWebhookPayload): string {
 
   if (payload.comment && payload.issue) {
     const key = payload.issue.key;
-    const author = payload.comment.author.displayName;
+    const author = payload.comment.author?.displayName;
     if (event === "comment_created") {
       return `[${timestamp}] COMMENT: ${key} - New comment by ${author}`;
     } else if (event === "comment_updated") {

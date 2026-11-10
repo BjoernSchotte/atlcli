@@ -205,27 +205,6 @@ export interface SyncDbExport {
   contentProperties: ContentPropertyRecord[];
 }
 
-/**
- * Similarity search result for vector operations.
- */
-export interface SimilarityResult {
-  pageId: string;
-  distance: number; // Lower is more similar (L2 distance)
-  similarity: number; // Higher is more similar (cosine similarity)
-}
-
-/**
- * Embedding record for vector storage.
- */
-export interface EmbeddingRecord {
-  pageId: string;
-  embedding: Float32Array;
-  model: string; // e.g., "text-embedding-3-small"
-  dimensions: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
 // ============ Adapter Interface ============
 
 /**
@@ -318,23 +297,6 @@ export interface SyncDbAdapter {
   // Adapter info
   readonly adapterType: AdapterType;
   readonly version: number;
-
-  // Vector operations (optional - only if adapter supports)
-  readonly supportsVectors: boolean;
-
-  // Embeddings (available if supportsVectors is true)
-  storeEmbedding?(
-    pageId: string,
-    embedding: Float32Array,
-    model: string
-  ): Promise<void>;
-  findSimilar?(
-    embedding: Float32Array,
-    limit: number,
-    threshold?: number
-  ): Promise<SimilarityResult[]>;
-  deleteEmbedding?(pageId: string): Promise<void>;
-  hasEmbedding?(pageId: string): Promise<boolean>;
 }
 
 // ============ Configuration Types ============
@@ -347,10 +309,6 @@ export interface SqliteAdapterConfig {
   dbPath: string;
   /** Enable WAL mode for better concurrent access (default: true) */
   walMode?: boolean;
-  /** Enable vector support via sqlite-vec (default: false) */
-  enableVectors?: boolean;
-  /** Custom SQLite library path (macOS only, for sqlite-vec support) */
-  customSqlitePath?: string;
 }
 
 /**

@@ -846,6 +846,7 @@ export declare class ConfluenceClient {
     private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
+    private fetchWithRetry;
     private request;
     private requestV2;
     getCurrentUser(options?: {
@@ -926,6 +927,7 @@ export declare class ConfluenceClient {
         title: string;
         spaceKey?: string;
     }>>;
+    private v1NextPath;
     private searchByUrl;
     private parseSearchResult;
     listPageCommentsV1(pageId: string, options: {
@@ -1096,11 +1098,6 @@ export declare class ConfluenceClient {
     }): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
-    getPagesSince(params: {
-        scope: SyncScope;
-        since: string;
-        limit?: number;
-    }): Promise<PageChangeInfo[]>;
     getAllPages(params: {
         scope: SyncScope;
         limit?: number;
@@ -1154,6 +1151,7 @@ export declare class ConfluenceClient {
         name: string;
         url: string;
         events: string[];
+        secret?: string;
     }): Promise<WebhookRegistration>;
     listWebhooks(): Promise<WebhookRegistration[]>;
     deleteWebhook(webhookId: string): Promise<void>;
@@ -1189,6 +1187,7 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    private listComments;
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
@@ -1223,6 +1222,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
+    private searchFolders;
     createFolder(params: {
         spaceId: string;
         title: string;
@@ -1323,6 +1323,7 @@ export type ConfluenceFolder = {
     parentId: string | null;
     url?: string;
     createdAt?: string;
+    version?: number;
 };
 
 // export: ConfluencePage
@@ -1357,6 +1358,7 @@ export type ConfluencePageDetails = ConfluencePage & {
     modifiedBy?: ConfluenceUser;
     labels?: string[];
     tinyUrl?: string;
+    editUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
 
@@ -2811,9 +2813,6 @@ export declare function parseExportBlockDocumentV1(value: unknown, budget?: Expo
 
 // export: parseExportBlocksV1
 export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
-
-// export: parseExportNotesV1
-export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
 
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
@@ -4405,6 +4404,7 @@ export declare class ConfluenceClient {
     private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
+    private fetchWithRetry;
     private request;
     private requestV2;
     getCurrentUser(options?: {
@@ -4485,6 +4485,7 @@ export declare class ConfluenceClient {
         title: string;
         spaceKey?: string;
     }>>;
+    private v1NextPath;
     private searchByUrl;
     private parseSearchResult;
     listPageCommentsV1(pageId: string, options: {
@@ -4655,11 +4656,6 @@ export declare class ConfluenceClient {
     }): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
-    getPagesSince(params: {
-        scope: SyncScope;
-        since: string;
-        limit?: number;
-    }): Promise<PageChangeInfo[]>;
     getAllPages(params: {
         scope: SyncScope;
         limit?: number;
@@ -4713,6 +4709,7 @@ export declare class ConfluenceClient {
         name: string;
         url: string;
         events: string[];
+        secret?: string;
     }): Promise<WebhookRegistration>;
     listWebhooks(): Promise<WebhookRegistration[]>;
     deleteWebhook(webhookId: string): Promise<void>;
@@ -4748,6 +4745,7 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    private listComments;
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
@@ -4782,6 +4780,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
+    private searchFolders;
     createFolder(params: {
         spaceId: string;
         title: string;
@@ -4882,6 +4881,7 @@ export type ConfluenceFolder = {
     parentId: string | null;
     url?: string;
     createdAt?: string;
+    version?: number;
 };
 
 // export: ConfluencePage
@@ -4916,6 +4916,7 @@ export type ConfluencePageDetails = ConfluencePage & {
     modifiedBy?: ConfluenceUser;
     labels?: string[];
     tinyUrl?: string;
+    editUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
 
@@ -6370,9 +6371,6 @@ export declare function parseExportBlockDocumentV1(value: unknown, budget?: Expo
 
 // export: parseExportBlocksV1
 export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
-
-// export: parseExportNotesV1
-export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
 
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
@@ -7964,6 +7962,7 @@ export declare class ConfluenceClient {
     private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
+    private fetchWithRetry;
     private request;
     private requestV2;
     getCurrentUser(options?: {
@@ -8044,6 +8043,7 @@ export declare class ConfluenceClient {
         title: string;
         spaceKey?: string;
     }>>;
+    private v1NextPath;
     private searchByUrl;
     private parseSearchResult;
     listPageCommentsV1(pageId: string, options: {
@@ -8214,11 +8214,6 @@ export declare class ConfluenceClient {
     }): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
-    getPagesSince(params: {
-        scope: SyncScope;
-        since: string;
-        limit?: number;
-    }): Promise<PageChangeInfo[]>;
     getAllPages(params: {
         scope: SyncScope;
         limit?: number;
@@ -8272,6 +8267,7 @@ export declare class ConfluenceClient {
         name: string;
         url: string;
         events: string[];
+        secret?: string;
     }): Promise<WebhookRegistration>;
     listWebhooks(): Promise<WebhookRegistration[]>;
     deleteWebhook(webhookId: string): Promise<void>;
@@ -8307,6 +8303,7 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    private listComments;
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
@@ -8341,6 +8338,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
+    private searchFolders;
     createFolder(params: {
         spaceId: string;
         title: string;
@@ -8441,6 +8439,7 @@ export type ConfluenceFolder = {
     parentId: string | null;
     url?: string;
     createdAt?: string;
+    version?: number;
 };
 
 // export: ConfluencePage
@@ -8475,6 +8474,7 @@ export type ConfluencePageDetails = ConfluencePage & {
     modifiedBy?: ConfluenceUser;
     labels?: string[];
     tinyUrl?: string;
+    editUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
 
@@ -9929,9 +9929,6 @@ export declare function parseExportBlockDocumentV1(value: unknown, budget?: Expo
 
 // export: parseExportBlocksV1
 export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
-
-// export: parseExportNotesV1
-export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
 
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
@@ -11216,6 +11213,7 @@ export declare class ConfluenceClient {
     private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
+    private fetchWithRetry;
     private request;
     private requestV2;
     getCurrentUser(options?: {
@@ -11296,6 +11294,7 @@ export declare class ConfluenceClient {
         title: string;
         spaceKey?: string;
     }>>;
+    private v1NextPath;
     private searchByUrl;
     private parseSearchResult;
     listPageCommentsV1(pageId: string, options: {
@@ -11466,11 +11465,6 @@ export declare class ConfluenceClient {
     }): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
-    getPagesSince(params: {
-        scope: SyncScope;
-        since: string;
-        limit?: number;
-    }): Promise<PageChangeInfo[]>;
     getAllPages(params: {
         scope: SyncScope;
         limit?: number;
@@ -11524,6 +11518,7 @@ export declare class ConfluenceClient {
         name: string;
         url: string;
         events: string[];
+        secret?: string;
     }): Promise<WebhookRegistration>;
     listWebhooks(): Promise<WebhookRegistration[]>;
     deleteWebhook(webhookId: string): Promise<void>;
@@ -11559,6 +11554,7 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    private listComments;
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
@@ -11593,6 +11589,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
+    private searchFolders;
     createFolder(params: {
         spaceId: string;
         title: string;
@@ -11682,6 +11679,7 @@ export type ConfluenceFolder = {
     parentId: string | null;
     url?: string;
     createdAt?: string;
+    version?: number;
 };
 
 // export: ConfluencePage
@@ -11709,6 +11707,7 @@ export type ConfluencePageDetails = ConfluencePage & {
     modifiedBy?: ConfluenceUser;
     labels?: string[];
     tinyUrl?: string;
+    editUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
 
@@ -11721,10 +11720,12 @@ export declare class ConfluencePoller {
     private timer;
     private handlers;
     private isPolling;
+    private onError;
     constructor(params: {
         client: ConfluenceClient;
         scope: SyncScope;
         intervalMs?: number;
+        onError?: (error: unknown) => void;
     });
     on(handler: PollEventHandler): void;
     off(handler: PollEventHandler): void;
@@ -11912,12 +11913,7 @@ export interface CreateSyncDbOptions {
     adapter?: AdapterType;
     autoMigrate?: boolean;
     walMode?: boolean;
-    enableVectors?: boolean;
-    customSqlitePath?: string;
 }
-
-// export: createSyncStateManager
-export declare function createSyncStateManager(atlcliDir: string, options?: CreateSyncDbOptions): Promise<SyncStateManager>;
 
 // export: createTreePoller
 export declare function createTreePoller(client: ConfluenceClient, ancestorId: string, intervalMs?: number): ConfluencePoller;
@@ -11942,9 +11938,6 @@ export declare const DEFAULT_USER_CACHE_TTL_MS: number;
 
 // export: deleteAttachmentBase
 export declare function deleteAttachmentBase(dir: string, pageId: string, attachmentId: string, extension: string): Promise<void>;
-
-// export: deleteBaseContent
-export declare function deleteBaseContent(dir: string, pageId: string): Promise<void>;
 
 // export: detectLinkChanges
 export declare function detectLinkChanges(dir: string, filePath: string, pageId: string, markdownContent: string): Promise<LinkChangeResult>;
@@ -11992,16 +11985,6 @@ export type DividerLineStyle = "solid" | "dashed" | "dotted" | "sketch" | "fade"
 
 // export: EditorVersion
 export type EditorVersion = "v2" | "v1" | null;
-
-// export: EmbeddingRecord
-export interface EmbeddingRecord {
-    pageId: string;
-    embedding: Float32Array;
-    model: string;
-    dimensions: number;
-    createdAt: string;
-    updatedAt: string;
-}
 
 // export: EmojiSemantics
 export interface EmojiSemantics {
@@ -12448,12 +12431,6 @@ export declare function findBrokenLinks(markdown: string, options: ExtractMarkdo
     adapter: SyncDbAdapter;
 }): Promise<MarkdownLinkWithResolution[]>;
 
-// export: findStaleUsers
-export declare function findStaleUsers(adapter: SyncDbAdapter, ttlMs?: number): Promise<UserRecord[]>;
-
-// export: findUsersWithUnknownStatus
-export declare function findUsersWithUnknownStatus(adapter: SyncDbAdapter): Promise<UserRecord[]>;
-
 // export: FolderChild
 export type FolderChild = {
     id: string;
@@ -12522,12 +12499,6 @@ export declare function getAnchor(target: string): string | null;
 
 // export: getAtlcliPath
 export declare function getAtlcliPath(projectRoot: string): string;
-
-// export: getAttachmentById
-export declare function getAttachmentById(state: AtlcliState, pageId: string, attachmentId: string): AttachmentState | null;
-
-// export: getAttachmentsDir
-export declare function getAttachmentsDir(pageDir: string, pageFilename: string): string;
 
 // export: getAttachmentsDirName
 export declare function getAttachmentsDirName(pageFilename: string): string;
@@ -12776,8 +12747,8 @@ export declare function isImageFile(filename: string): boolean;
 // export: isInitialized
 export declare function isInitialized(dir: string): boolean;
 
-// export: isLargeFile
-export declare function isLargeFile(sizeBytes: number): boolean;
+// export: isLoopbackHost
+export declare function isLoopbackHost(hostname: string): boolean;
 
 // export: isMarkdownPath
 export declare function isMarkdownPath(path: string): boolean;
@@ -12795,7 +12766,6 @@ export declare class JsonAdapter implements SyncDbAdapter {
     private dirty;
     readonly adapterType: AdapterType;
     readonly version = 2;
-    readonly supportsVectors = false;
     constructor(config: JsonAdapterConfig);
     init(): Promise<void>;
     close(): Promise<void>;
@@ -13366,9 +13336,6 @@ export declare function parseExportBlockDocumentV1(value: unknown, budget?: Expo
 // export: parseExportBlocksV1
 export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
 
-// export: parseExportNotesV1
-export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
-
 // export: parseFilePath
 export declare function parseFilePath(relativePath: string): {
     slug: string;
@@ -13432,14 +13399,8 @@ export interface PostgresAdapterConfig {
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
-// export: readAttachmentBase
-export declare function readAttachmentBase(dir: string, pageId: string, attachmentId: string, extension: string): Promise<Buffer | null>;
-
 // export: readBaseContent
 export declare function readBaseContent(dir: string, pageId: string): Promise<string | null>;
-
-// export: readCommentsFile
-export declare function readCommentsFile(commentsPath: string): Promise<PageComments | null>;
 
 // export: readConfig
 export declare function readConfig(dir: string): Promise<AtlcliConfig>;
@@ -13457,9 +13418,6 @@ export declare function removeAttachmentState(state: AtlcliState, pageId: string
 
 // export: removeBackup
 export declare function removeBackup(atlcliDir: string): Promise<boolean>;
-
-// export: removePageState
-export declare function removePageState(state: AtlcliState, pageId: string): void;
 
 // export: renderSemanticDiff
 export declare function renderSemanticDiff(changeSet: ChangeSetV1, options?: SemanticDiffRenderOptions): string;
@@ -13577,13 +13535,6 @@ export declare function shouldIgnore(ig: Ignore | null, relativePath: string): b
 // export: siblingToIndexPath
 export declare function siblingToIndexPath(relativePath: string): string;
 
-// export: SimilarityResult
-export interface SimilarityResult {
-    pageId: string;
-    distance: number;
-    similarity: number;
-}
-
 // export: slugifyTitle
 export declare function slugifyTitle(title: string | undefined | null): string;
 
@@ -13686,7 +13637,6 @@ export declare class SqliteAdapter implements SyncDbAdapter {
     private readonly config;
     private statements;
     readonly adapterType: AdapterType;
-    readonly supportsVectors: boolean;
     get version(): number;
     constructor(config: SqliteAdapterConfig);
     init(): Promise<void>;
@@ -13751,8 +13701,6 @@ export declare class SqliteAdapter implements SyncDbAdapter {
 export interface SqliteAdapterConfig {
     dbPath: string;
     walMode?: boolean;
-    enableVectors?: boolean;
-    customSqlitePath?: string;
 }
 
 // export: StandardCalloutKind
@@ -13839,12 +13787,6 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 // export: storePageLinks
 export declare function storePageLinks(dir: string, pageId: string, storage: string): Promise<void>;
 
-// export: storePageLinksBatch
-export declare function storePageLinksBatch(dir: string, pages: Array<{
-    pageId: string;
-    storage: string;
-}>): Promise<void>;
-
 // export: stripFrontmatter
 export declare function stripFrontmatter(markdown: string): string;
 
@@ -13902,11 +13844,6 @@ export interface SyncDbAdapter {
     importFromJson(data: SyncDbExport): Promise<void>;
     readonly adapterType: AdapterType;
     readonly version: number;
-    readonly supportsVectors: boolean;
-    storeEmbedding?(pageId: string, embedding: Float32Array, model: string): Promise<void>;
-    findSimilar?(embedding: Float32Array, limit: number, threshold?: number): Promise<SimilarityResult[]>;
-    deleteEmbedding?(pageId: string): Promise<void>;
-    hasEmbedding?(pageId: string): Promise<boolean>;
 }
 
 // export: SyncDbAdapterConfig
@@ -13958,45 +13895,6 @@ export type SyncScope = {
 
 // export: SyncState
 export type SyncState = "synced" | "local-modified" | "remote-modified" | "conflict" | "untracked";
-
-// export: SyncStateManager
-export declare class SyncStateManager {
-    private adapter;
-    private atlcliDir;
-    private options;
-    constructor(atlcliDir: string, options?: CreateSyncDbOptions);
-    init(): Promise<void>;
-    close(): Promise<void>;
-    getAdapter(): SyncDbAdapter;
-    getPage(pageId: string): Promise<PageRecord | null>;
-    getPageByPath(path: string): Promise<PageRecord | null>;
-    listPages(filter?: PageFilter): Promise<PageRecord[]>;
-    upsertPage(page: PageRecord): Promise<void>;
-    updatePage(pageId: string, updates: Partial<PageRecord>): Promise<void>;
-    deletePage(pageId: string): Promise<void>;
-    getExistingPaths(): Promise<Set<string>>;
-    getAttachment(attachmentId: string): Promise<AttachmentRecord | null>;
-    listAttachments(pageId: string): Promise<AttachmentRecord[]>;
-    upsertAttachment(attachment: AttachmentRecord): Promise<void>;
-    deleteAttachment(attachmentId: string): Promise<void>;
-    setPageLinks(pageId: string, links: LinkRecord[]): Promise<void>;
-    getOutgoingLinks(pageId: string): Promise<LinkRecord[]>;
-    getIncomingLinks(pageId: string): Promise<LinkRecord[]>;
-    getUser(userId: string): Promise<UserRecord | null>;
-    upsertUser(user: UserRecord): Promise<void>;
-    listUsers(): Promise<UserRecord[]>;
-    setPageContributors(pageId: string, contributors: ContributorRecord[]): Promise<void>;
-    getPageContributors(pageId: string): Promise<ContributorRecord[]>;
-    getLastSync(): Promise<string | null>;
-    setLastSync(timestamp: string): Promise<void>;
-    getMeta(key: string): Promise<string | null>;
-    setMeta(key: string, value: string): Promise<void>;
-    transaction<T>(fn: () => Promise<T>): Promise<T>;
-    static pageRecordToState(record: PageRecord): PageState;
-    static pageStateToRecord(pageId: string, state: PageState, existingRecord?: PageRecord | null): PageRecord;
-    loadLegacyState(): Promise<AtlcliState>;
-    saveLegacyState(state: AtlcliState): Promise<void>;
-}
 
 // export: TableCell
 export interface TableCell {
@@ -14126,9 +14024,6 @@ export interface UserRecord {
 // export: usesSiblingPattern
 export declare function usesSiblingPattern(relativePath: string, existingPaths: Set<string>): boolean;
 
-// export: validateAllLinks
-export declare function validateAllLinks(adapter: SyncDbAdapter, localDir: string): Promise<LinkValidationResult[]>;
-
 // export: validateChartDiagnosticsV1
 export declare function validateChartDiagnosticsV1(diagnostics: readonly ChartDiagnosticV1[]): readonly ChartDiagnosticV1[];
 
@@ -14253,7 +14148,7 @@ export declare class WebhookServer {
     isRunning(): boolean;
     getUrl(): string | null;
     private handleWebhook;
-    private validateSignature;
+    private authenticated;
 }
 
 // export: WebhookServerOptions
@@ -14261,6 +14156,7 @@ export interface WebhookServerOptions {
     port: number;
     path?: string;
     secret?: string;
+    hostname?: string;
     filterPageIds?: Set<string>;
     filterSpaceKeys?: Set<string>;
 }
@@ -15145,6 +15041,7 @@ export declare class ConfluenceClient {
     private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
+    private fetchWithRetry;
     private request;
     private requestV2;
     getCurrentUser(options?: {
@@ -15225,6 +15122,7 @@ export declare class ConfluenceClient {
         title: string;
         spaceKey?: string;
     }>>;
+    private v1NextPath;
     private searchByUrl;
     private parseSearchResult;
     listPageCommentsV1(pageId: string, options: {
@@ -15395,11 +15293,6 @@ export declare class ConfluenceClient {
     }): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
-    getPagesSince(params: {
-        scope: SyncScope;
-        since: string;
-        limit?: number;
-    }): Promise<PageChangeInfo[]>;
     getAllPages(params: {
         scope: SyncScope;
         limit?: number;
@@ -15453,6 +15346,7 @@ export declare class ConfluenceClient {
         name: string;
         url: string;
         events: string[];
+        secret?: string;
     }): Promise<WebhookRegistration>;
     listWebhooks(): Promise<WebhookRegistration[]>;
     deleteWebhook(webhookId: string): Promise<void>;
@@ -15488,6 +15382,7 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    private listComments;
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
@@ -15522,6 +15417,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
+    private searchFolders;
     createFolder(params: {
         spaceId: string;
         title: string;
@@ -15622,6 +15518,7 @@ export type ConfluenceFolder = {
     parentId: string | null;
     url?: string;
     createdAt?: string;
+    version?: number;
 };
 
 // export: ConfluencePage
@@ -15656,6 +15553,7 @@ export type ConfluencePageDetails = ConfluencePage & {
     modifiedBy?: ConfluenceUser;
     labels?: string[];
     tinyUrl?: string;
+    editUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
 
@@ -17111,9 +17009,6 @@ export declare function parseExportBlockDocumentV1(value: unknown, budget?: Expo
 // export: parseExportBlocksV1
 export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
 
-// export: parseExportNotesV1
-export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
-
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -17895,6 +17790,7 @@ export declare class ConfluenceClient {
     private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
+    private fetchWithRetry;
     private request;
     private requestV2;
     getCurrentUser(options?: {
@@ -17975,6 +17871,7 @@ export declare class ConfluenceClient {
         title: string;
         spaceKey?: string;
     }>>;
+    private v1NextPath;
     private searchByUrl;
     private parseSearchResult;
     listPageCommentsV1(pageId: string, options: {
@@ -18145,11 +18042,6 @@ export declare class ConfluenceClient {
     }): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
-    getPagesSince(params: {
-        scope: SyncScope;
-        since: string;
-        limit?: number;
-    }): Promise<PageChangeInfo[]>;
     getAllPages(params: {
         scope: SyncScope;
         limit?: number;
@@ -18203,6 +18095,7 @@ export declare class ConfluenceClient {
         name: string;
         url: string;
         events: string[];
+        secret?: string;
     }): Promise<WebhookRegistration>;
     listWebhooks(): Promise<WebhookRegistration[]>;
     deleteWebhook(webhookId: string): Promise<void>;
@@ -18238,6 +18131,7 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    private listComments;
     listPageInlineCommentsForExport(pageId: string, options?: {
         signal?: AbortSignal;
         maxInlineComments?: number;
@@ -18272,6 +18166,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
+    private searchFolders;
     createFolder(params: {
         spaceId: string;
         title: string;

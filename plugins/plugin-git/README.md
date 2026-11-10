@@ -71,7 +71,7 @@ atlcli git hook remove [dir]
 ### Auto-push on Commit
 
 1. User installs post-commit hook via `atlcli git hook install`
-2. Hook script is created at `.git/hooks/post-commit`
+2. Hook script is created as `post-commit` in the repository's hooks directory (`.git/hooks`, the main repository's hooks in a linked worktree, or `core.hooksPath` when set)
 3. On each commit, hook checks for sync daemon lockfile
 4. If no lockfile, runs `atlcli wiki docs push` to sync to Confluence
 5. Push failures are non-blocking (commit succeeds regardless)
@@ -115,8 +115,7 @@ Updated: file1.md, file2.md, ... and 5 more
 ### Running Tests
 
 ```bash
-cd plugins/plugin-git
-bun test
+bun run test plugins/plugin-git
 ```
 
 ### Plugin Structure
@@ -129,10 +128,9 @@ plugin-git/
     ├── index.ts        # Plugin definition
     ├── auto-commit.ts  # Auto-commit after pull
     ├── git-hooks.ts    # Hook install/remove/status
-    ├── types.ts        # TypeScript types
     └── utils.ts        # Git command utilities
 ```
 
 ## License
 
-MIT
+Apache-2.0

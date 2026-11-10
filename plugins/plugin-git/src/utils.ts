@@ -99,43 +99,6 @@ export async function getGitRoot(dir: string): Promise<string> {
 }
 
 /**
- * Get list of changed files from git status.
- * Returns only untracked and modified files (not staged).
- */
-export async function getGitChanges(dir: string): Promise<FileChange[]> {
-  const { stdout } = await gitExec(dir, [
-    "status",
-    "--porcelain=v1",
-    "-z",
-    "--untracked-files=all",
-    "--",
-    ".",
-  ]);
-
-  if (!stdout.trim()) {
-    return [];
-  }
-
-  const changes: FileChange[] = [];
-  for (const { indexStatus, workTreeStatus, path } of parsePorcelain(stdout)) {
-    if (workTreeStatus === "?" || workTreeStatus === "M" || workTreeStatus === "D") {
-      changes.push({
-        path,
-        status: workTreeStatus as FileChange["status"],
-      });
-    } else if (indexStatus === "?" && workTreeStatus === "?") {
-      // Untracked file
-      changes.push({
-        path,
-        status: "?",
-      });
-    }
-  }
-
-  return changes;
-}
-
-/**
  * Get list of all uncommitted changes (staged + unstaged).
  */
 export async function getAllGitChanges(dir: string): Promise<FileChange[]> {
@@ -174,21 +137,6 @@ export async function getAllGitChanges(dir: string): Promise<FileChange[]> {
 }
 
 /**
- * Stage files for commit.
- */
-export async function gitAdd(dir: string, files: string[] | FileChange[]): Promise<void> {
-  const paths = files.map((f) => (typeof f === "string" ? f : f.path));
-  if (paths.length === 0) return;
-
-  // Add files in batches to avoid command line length limits
-  const batchSize = 50;
-  for (let i = 0; i < paths.length; i += batchSize) {
-    const batch = paths.slice(i, i + batchSize);
-    await gitExec(dir, ["add", "--", ...batch]);
-  }
-}
-
-/**
  * Stage all changes.
  */
 export async function gitAddAll(dir: string, pathspec = "."): Promise<void> {
@@ -209,28 +157,4 @@ export async function gitCommit(
   }
   const { stdout } = await gitExec(dir, args);
   return stdout;
-}
-
-/**
- * Check if there are staged changes ready to commit.
- */
-export async function hasStagedChanges(dir: string): Promise<boolean> {
-  const { stdout } = await gitExec(dir, ["diff", "--cached", "--name-only"]);
-  return stdout.trim().length > 0;
-}
-
-/**
- * Get the current branch name.
- */
-export async function getCurrentBranch(dir: string): Promise<string> {
-  const { stdout } = await gitExec(dir, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  return stdout.trim();
-}
-
-/**
- * Get the short hash of HEAD.
- */
-export async function getHeadHash(dir: string): Promise<string> {
-  const { stdout } = await gitExec(dir, ["rev-parse", "--short", "HEAD"]);
-  return stdout.trim();
 }

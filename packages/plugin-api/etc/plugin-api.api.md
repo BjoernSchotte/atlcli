@@ -39,14 +39,8 @@ export interface CommandDefinition {
 // export: defineCommand
 export declare function defineCommand(command: CommandDefinition): CommandDefinition;
 
-// export: defineFlag
-export declare function defineFlag(flag: FlagDefinition): FlagDefinition;
-
 // export: definePlugin
 export declare function definePlugin(plugin: AtlcliPlugin): AtlcliPlugin;
-
-// export: defineSubcommand
-export declare function defineSubcommand(subcommand: Subcommand): Subcommand;
 
 // export: FlagDefinition
 export interface FlagDefinition {
@@ -71,15 +65,6 @@ export interface PluginHooks {
     beforeCommand?: (ctx: CommandContext) => Promise<void>;
     afterCommand?: (ctx: CommandContext) => Promise<void>;
     onError?: (ctx: CommandContext, error: Error) => Promise<void>;
-}
-
-// export: PluginManifest
-export interface PluginManifest {
-    name: string;
-    version: string;
-    atlcli?: {
-        plugin: boolean;
-    };
 }
 
 // export: PluginMetadata

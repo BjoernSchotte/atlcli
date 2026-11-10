@@ -46,13 +46,7 @@ export type {
   FlagValue,
   PluginHooks,
   PluginMetadata,
-  PluginManifest,
 } from "./types.js";
 
 // Helpers
-export {
-  definePlugin,
-  defineCommand,
-  defineSubcommand,
-  defineFlag,
-} from "./define.js";
+export { definePlugin, defineCommand } from "./define.js";

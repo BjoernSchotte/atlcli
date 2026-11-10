@@ -46,3 +46,42 @@ it("getAllPages (tree scope) follows the next link after a short page", async ()
     expect(cqls).toEqual(["ancestor=42 AND type=page"]);
   } finally { server.stop(true); }
 });
+
+// Cloud emits site-relative next links (`/wiki/rest/api/...`) as well as
+// product-relative ones. Stripping only a leading `/rest/api` requested
+// `/wiki/rest/api/wiki/rest/api/...` and lost every page after the first.
+it("v1 listings follow a site-relative /wiki/rest/api next link", async () => {
+  const paths: string[] = [];
+  const server = Bun.serve({ port: 0, fetch(request) {
+    const url = new URL(request.url);
+    paths.push(url.pathname);
+    const second = url.searchParams.get("cursor") === "next";
+    const next = (path: string) => (second ? {} : { next: `/wiki/rest/api${path}?cursor=next` });
+    if (url.pathname === "/wiki/rest/api/content/search") {
+      return Response.json({ results: [{ id: second ? "2" : "1", title: "P", version: { number: 1 } }], _links: next("/content/search") });
+    }
+    if (url.pathname === "/wiki/rest/api/content") {
+      return Response.json({ results: [{ id: second ? "4" : "3", title: "T" }], _links: next("/content") });
+    }
+    if (url.pathname === "/wiki/rest/api/content/9/child/page") {
+      return Response.json({ results: [{ id: second ? "6" : "5", title: "C" }], _links: next("/content/9/child/page") });
+    }
+    return new Response("unexpected " + url.pathname, { status: 404 });
+  } });
+  try {
+    const c = client(server.port!);
+    expect((await c.getAllPages({ scope: { type: "tree", ancestorId: "42" } })).map((page) => page.id)).toEqual(["1", "2"]);
+    expect((await c.findPagesByTitle("T")).map((page) => page.id)).toEqual(["3", "4"]);
+    expect((await c.getChildrenWithPosition("9")).map((page) => page.id)).toEqual(["5", "6"]);
+    expect(paths.filter((path) => path.includes("/rest/api/wiki"))).toEqual([]);
+  } finally { server.stop(true); }
+});
+
+it("a next link outside the configured REST API is refused", async () => {
+  const server = Bun.serve({ port: 0, fetch: () =>
+    Response.json({ results: [], _links: { next: "https://other.example/wiki/rest/api/content/search?cursor=x" } }) });
+  try {
+    await expect(client(server.port!).getAllPages({ scope: { type: "tree", ancestorId: "42" } }))
+      .rejects.toThrow("outside the configured REST API");
+  } finally { server.stop(true); }
+});

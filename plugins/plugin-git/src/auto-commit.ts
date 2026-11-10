@@ -5,7 +5,7 @@
  */
 
 import { resolve } from "node:path";
-import type { CommandContext } from "./types.js";
+import type { CommandContext } from "@atlcli/plugin-api";
 import {
   isGitRepo,
   getAllGitChanges,

@@ -1,4 +1,4 @@
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 /** Confluence webhook event types */
 export type WebhookEventType =
@@ -32,9 +32,32 @@ export type WebhookHandler = (payload: WebhookPayload) => void | Promise<void>;
 export interface WebhookServerOptions {
   port: number;
   path?: string;
-  secret?: string; // For signature validation
+  /**
+   * Shared secret. When set, every event must carry either
+   * `X-Hub-Signature: sha256=<HMAC-SHA256 of the body>` (Confluence Data Center
+   * webhooks) or `Authorization: Bearer <secret>` (senders that cannot sign,
+   * such as an automation rule's web request).
+   */
+  secret?: string;
+  /**
+   * Interface to bind. Default `127.0.0.1`. Anything but a loopback address
+   * needs a `secret`: {@link WebhookServer.start} throws otherwise.
+   */
+  hostname?: string;
   filterPageIds?: Set<string>; // Only process events for these pages
   filterSpaceKeys?: Set<string>; // Only process events for these spaces
+}
+
+/** Whether `hostname` only accepts connections from this machine. */
+export function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return host === "localhost" || host === "::1" || /^127(\.\d{1,3}){3}$/.test(host);
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  return aBuf.length === bBuf.length && timingSafeEqual(aBuf, bBuf);
 }
 
 /**
@@ -50,6 +73,7 @@ export class WebhookServer {
     this.options = {
       path: "/webhook",
       ...options,
+      hostname: options.hostname ?? "127.0.0.1",
     };
   }
 
@@ -67,10 +91,18 @@ export class WebhookServer {
   start(): void {
     if (this.server) return;
 
+    // Without a secret every caller is trusted, so only this machine may call.
+    if (!this.options.secret && !isLoopbackHost(this.options.hostname!)) {
+      throw new Error(
+        `Webhook server refuses to bind ${this.options.hostname} without a secret; only a loopback address is allowed.`
+      );
+    }
+
     const self = this;
 
     this.server = Bun.serve({
       port: this.options.port,
+      hostname: this.options.hostname,
       async fetch(req) {
         const url = new URL(req.url);
 
@@ -107,7 +139,9 @@ export class WebhookServer {
   /** Get server URL */
   getUrl(): string | null {
     if (!this.server) return null;
-    return `http://localhost:${this.server.port}${this.options.path}`;
+    const bound = this.options.hostname!;
+    const host = isLoopbackHost(bound) ? (bound.includes(":") ? `[${bound}]` : bound) : "localhost";
+    return `http://${host}:${this.server.port}${this.options.path}`;
   }
 
   /** Handle incoming webhook request */
@@ -115,19 +149,19 @@ export class WebhookServer {
     try {
       const body = await req.text();
 
-      // Validate signature if secret is configured
-      if (this.options.secret) {
-        const signature = req.headers.get("X-Hub-Signature");
-        if (!this.validateSignature(body, signature)) {
-          return new Response("Invalid signature", { status: 401 });
-        }
+      if (this.options.secret && !this.authenticated(body, req.headers)) {
+        return new Response("Invalid signature", { status: 401 });
       }
 
-      // Parse payload
-      let payload: WebhookPayload;
+      // Parse payload. JSON that is not an object (null, an array, a number) is
+      // as unusable as text that does not parse.
+      let payload: WebhookPayload | null = null;
       try {
-        payload = JSON.parse(body) as WebhookPayload;
+        payload = JSON.parse(body) as WebhookPayload | null;
       } catch {
+        // rejected below
+      }
+      if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
         return new Response("Invalid JSON", { status: 400 });
       }
 
@@ -167,25 +201,16 @@ export class WebhookServer {
     }
   }
 
-  /** Validate webhook signature (HMAC-SHA256) */
-  private validateSignature(body: string, signature: string | null): boolean {
-    if (!signature || !this.options.secret) return false;
-
-    const expected = createHmac("sha256", this.options.secret)
-      .update(body)
-      .digest("hex");
-
-    // Constant-time comparison
-    const expectedBuf = Buffer.from(`sha256=${expected}`);
-    const signatureBuf = Buffer.from(signature);
-
-    if (expectedBuf.length !== signatureBuf.length) return false;
-
-    let result = 0;
-    for (let i = 0; i < expectedBuf.length; i++) {
-      result |= expectedBuf[i] ^ signatureBuf[i];
+  /** A matching body signature, or the secret itself as a bearer token. */
+  private authenticated(body: string, headers: Headers): boolean {
+    const secret = this.options.secret!;
+    const signature = headers.get("X-Hub-Signature");
+    if (signature !== null) {
+      const expected = createHmac("sha256", secret).update(body).digest("hex");
+      return safeEqual(signature, `sha256=${expected}`);
     }
-    return result === 0;
+    const authorization = headers.get("Authorization");
+    return authorization !== null && safeEqual(authorization, `Bearer ${secret}`);
   }
 }
 

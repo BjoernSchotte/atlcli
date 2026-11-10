@@ -1543,7 +1543,7 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   storage = storage.replace(
     /<a\s+href="([^"]+)"\s*data-card-appearance="(inline|card|embed)"[^>]*>([^<]*)<\/a>/gi,
     (_, url, appearance, text) => {
-      return `<span data-smartlink="true" data-url="${escapeHtml(url)}" data-appearance="${appearance}" data-text="${escapeHtml(text)}">[${escapeHtml(text)}]</span>`;
+      return `<span data-smartlink="true" data-url="${escapeEncoded(url)}" data-appearance="${appearance}" data-text="${escapeEncoded(text)}">[${escapeEncoded(text)}]</span>`;
     }
   );
 
@@ -1551,7 +1551,7 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   storage = storage.replace(
     /<a\s+data-card-appearance="(inline|card|embed)"[^>]*href="([^"]+)"[^>]*>([^<]*)<\/a>/gi,
     (_, appearance, url, text) => {
-      return `<span data-smartlink="true" data-url="${escapeHtml(url)}" data-appearance="${appearance}" data-text="${escapeHtml(text)}">[${escapeHtml(text)}]</span>`;
+      return `<span data-smartlink="true" data-url="${escapeEncoded(url)}" data-appearance="${appearance}" data-text="${escapeEncoded(text)}">[${escapeEncoded(text)}]</span>`;
     }
   );
 
@@ -1560,7 +1560,7 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   storage = storage.replace(
     /<div\s+data-card-appearance="(card|embed)"[^>]*>\s*<a\s+href="([^"]+)"[^>]*>([^<]*)<\/a>\s*<\/div>/gi,
     (_, appearance, url, text) => {
-      return `<div data-smartlink="true" data-url="${escapeHtml(url)}" data-appearance="${appearance}" data-text="${escapeHtml(text)}">[${escapeHtml(text)}]</div>`;
+      return `<div data-smartlink="true" data-url="${escapeEncoded(url)}" data-appearance="${appearance}" data-text="${escapeEncoded(text)}">[${escapeEncoded(text)}]</div>`;
     }
   );
 
@@ -1586,7 +1586,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const title = titleMatch ? titleMatch[1] : "";
       const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
       const body = bodyMatch ? bodyMatch[1] : "";
-      return `<div data-macro="${macroName}" data-title="${escapeHtml(title)}">${body}</div>`;
+      return `<div data-macro="${macroName}" data-title="${escapeEncoded(title)}">${body}</div>`;
     }
   );
 
@@ -1598,7 +1598,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const title = titleMatch ? titleMatch[1] : "Click to expand";
       const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
       const body = bodyMatch ? bodyMatch[1] : "";
-      return `<div data-macro="expand" data-title="${escapeHtml(title)}">${body}</div>`;
+      return `<div data-macro="expand" data-title="${escapeEncoded(title)}">${body}</div>`;
     }
   );
 
@@ -1637,7 +1637,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const titleMatch = inner.match(/<ac:parameter\s+ac:name="title"[^>]*>([^<]*)<\/ac:parameter>/i);
       const color = colorMatch ? colorMatch[1].toLowerCase() : "grey";
       const title = titleMatch ? titleMatch[1] : "";
-      return `<span data-macro="status" data-color="${escapeHtml(color)}" data-title="${escapeHtml(title)}">[${escapeHtml(title)}]</span>`;
+      return `<span data-macro="status" data-color="${escapeEncoded(color)}" data-title="${escapeEncoded(title)}">[${escapeEncoded(title)}]</span>`;
     }
   );
 
@@ -1648,7 +1648,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       // Date can be in parameter with name="" or name="date"
       const dateMatch = inner.match(/<ac:parameter\s+ac:name="[^"]*"[^>]*>([^<]*)<\/ac:parameter>/i);
       const dateValue = dateMatch ? dateMatch[1] : "";
-      return `<span data-macro="date" data-date="${escapeHtml(dateValue)}">${escapeHtml(dateValue)}</span>`;
+      return `<span data-macro="date" data-date="${escapeEncoded(dateValue)}">${escapeEncoded(dateValue)}</span>`;
     }
   );
 
@@ -1656,7 +1656,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
   storage = storage.replace(
     /<time\s+datetime="([^"]+)"[^>]*(?:\/>|><\/time>)/gi,
     (_, dateValue) => {
-      return `<span data-macro="date" data-date="${escapeHtml(dateValue)}">${escapeHtml(dateValue)}</span>`;
+      return `<span data-macro="date" data-date="${escapeEncoded(dateValue)}">${escapeEncoded(dateValue)}</span>`;
     }
   );
 
@@ -1664,7 +1664,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
   storage = storage.replace(
     /<ac:emoticon\s+ac:name="([^"]+)"[^>]*\/>/gi,
     (_, name) => {
-      return `<span data-emoticon="${escapeHtml(name)}">:${escapeHtml(name)}:</span>`;
+      return `<span data-emoticon="${escapeEncoded(name)}">:${escapeEncoded(name)}:</span>`;
     }
   );
 
@@ -1682,7 +1682,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
   storage = storage.replace(
     /<span\s+style="color:\s*([^;"]+);?"[^>]*>([\s\S]*?)<\/span>/gi,
     (_, color, content) => {
-      return `<span data-color="${escapeHtml(color.trim())}">${content}</span>`;
+      return `<span data-color="${escapeEncoded(color.trim())}">${content}</span>`;
     }
   );
 
@@ -1690,7 +1690,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
   storage = storage.replace(
     /<span\s+style="background-color:\s*([^;"]+);?"[^>]*>([\s\S]*?)<\/span>/gi,
     (_, color, content) => {
-      return `<span data-bg-color="${escapeHtml(color.trim())}">${content}</span>`;
+      return `<span data-bg-color="${escapeEncoded(color.trim())}">${content}</span>`;
     }
   );
 
@@ -1701,7 +1701,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       // Anchor name can be in parameter with name="" or name="0"
       const nameMatch = inner.match(/<ac:parameter\s+ac:name="[^"]*"[^>]*>([^<]*)<\/ac:parameter>/i);
       const anchorName = nameMatch ? nameMatch[1] : "";
-      return `<span data-macro="anchor" data-name="${escapeHtml(anchorName)}">\u200B</span>`;
+      return `<span data-macro="anchor" data-name="${escapeEncoded(anchorName)}">\u200B</span>`;
     }
   );
 
@@ -1719,7 +1719,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const count = countMatch ? countMatch[1].toLowerCase() === "true" : false;
       const columns = columnsMatch ? columnsMatch[1] : "";
 
-      return `<span data-macro="jira" data-key="${escapeHtml(key)}" data-showsummary="${showSummary}" data-count="${count}" data-columns="${escapeHtml(columns)}">[${escapeHtml(key)}]</span>`;
+      return `<span data-macro="jira" data-key="${escapeEncoded(key)}" data-showsummary="${showSummary}" data-count="${count}" data-columns="${escapeEncoded(columns)}">[${escapeEncoded(key)}]</span>`;
     }
   );
 
@@ -1737,7 +1737,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const borderColor = borderColorMatch ? borderColorMatch[1] : "";
       const body = bodyMatch ? bodyMatch[1] : "";
 
-      return `<div data-macro="panel" data-title="${escapeHtml(title)}" data-bgcolor="${escapeHtml(bgColor)}" data-bordercolor="${escapeHtml(borderColor)}">${body}</div>`;
+      return `<div data-macro="panel" data-title="${escapeEncoded(title)}" data-bgcolor="${escapeEncoded(bgColor)}" data-bordercolor="${escapeEncoded(borderColor)}">${body}</div>`;
     }
   );
 
@@ -1759,7 +1759,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const collapse = collapseMatch ? collapseMatch[1] : "";
       const code = extractPlainTextBody(inner);
 
-      return `<pre data-macro="code" data-lang="${escapeHtml(lang)}" data-title="${escapeHtml(title)}" data-collapse="${escapeHtml(collapse)}"><code>${escapeHtml(code)}</code></pre>`;
+      return `<pre data-macro="code" data-lang="${escapeEncoded(lang)}" data-title="${escapeEncoded(title)}" data-collapse="${escapeEncoded(collapse)}"><code>${escapeHtml(code)}</code></pre>`;
     }
   );
 
@@ -1784,7 +1784,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const hidden = hiddenMatch ? hiddenMatch[1].toLowerCase() === "true" : false;
       const body = bodyMatch ? bodyMatch[1] : "";
 
-      return `<div data-macro="excerpt" data-name="${escapeHtml(name)}" data-hidden="${hidden}">${body}</div>`;
+      return `<div data-macro="excerpt" data-name="${escapeEncoded(name)}" data-hidden="${hidden}">${body}</div>`;
     }
   );
 
@@ -1803,7 +1803,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const name = nameMatch ? nameMatch[1] : "";
       const noPanel = noPanelMatch ? noPanelMatch[1].toLowerCase() === "true" : false;
 
-      return `<div data-macro="excerpt-include" data-page-id="${escapeHtml(pageId)}" data-page-title="${escapeHtml(pageTitle)}" data-name="${escapeHtml(name)}" data-nopanel="${noPanel}">*[excerpt-include]*</div>`;
+      return `<div data-macro="excerpt-include" data-page-id="${escapeEncoded(pageId)}" data-page-title="${escapeEncoded(pageTitle)}" data-name="${escapeEncoded(name)}" data-nopanel="${noPanel}">*[excerpt-include]*</div>`;
     }
   );
 
@@ -1818,7 +1818,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const pageId = pageIdMatch ? pageIdMatch[1] : "";
       const pageTitle = pageTitleMatch ? pageTitleMatch[1] : "";
 
-      return `<div data-macro="include" data-page-id="${escapeHtml(pageId)}" data-page-title="${escapeHtml(pageTitle)}">*[include]*</div>`;
+      return `<div data-macro="include" data-page-id="${escapeEncoded(pageId)}" data-page-title="${escapeEncoded(pageTitle)}">*[include]*</div>`;
     }
   );
 
@@ -1834,7 +1834,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const include = includeMatch ? includeMatch[1] : "";
       const exclude = excludeMatch ? excludeMatch[1] : "";
 
-      return `<div data-macro="gallery" data-columns="${escapeHtml(columns)}" data-include="${escapeHtml(include)}" data-exclude="${escapeHtml(exclude)}">*[gallery]*</div>`;
+      return `<div data-macro="gallery" data-columns="${escapeEncoded(columns)}" data-include="${escapeEncoded(include)}" data-exclude="${escapeEncoded(exclude)}">*[gallery]*</div>`;
     }
   );
 
@@ -1856,7 +1856,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const sort = sortMatch ? sortMatch[1] : "";
       const old = oldMatch ? oldMatch[1].toLowerCase() === "true" : false;
 
-      return `<div data-macro="attachments" data-patterns="${escapeHtml(patterns)}" data-sort="${escapeHtml(sort)}" data-old="${old}">*[attachments]*</div>`;
+      return `<div data-macro="attachments" data-patterns="${escapeEncoded(patterns)}" data-sort="${escapeEncoded(sort)}" data-old="${old}">*[attachments]*</div>`;
     }
   );
 
@@ -1882,7 +1882,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const height = heightMatch ? heightMatch[1] : "";
       const autostart = autostartMatch ? autostartMatch[1].toLowerCase() === "true" : false;
 
-      return `<div data-macro="multimedia" data-file="${escapeHtml(file)}" data-width="${escapeHtml(width)}" data-height="${escapeHtml(height)}" data-autostart="${autostart}">*[multimedia]*</div>`;
+      return `<div data-macro="multimedia" data-file="${escapeEncoded(file)}" data-width="${escapeEncoded(width)}" data-height="${escapeEncoded(height)}" data-autostart="${autostart}">*[multimedia]*</div>`;
     }
   );
 
@@ -1901,7 +1901,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const width = widthMatch ? widthMatch[1] : "";
       const height = heightMatch ? heightMatch[1] : "";
 
-      return `<div data-macro="widget" data-url="${escapeHtml(url)}" data-width="${escapeHtml(width)}" data-height="${escapeHtml(height)}">*[widget]*</div>`;
+      return `<div data-macro="widget" data-url="${escapeEncoded(url)}" data-width="${escapeEncoded(width)}" data-height="${escapeEncoded(height)}">*[widget]*</div>`;
     }
   );
 
@@ -1916,7 +1916,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const width = widthMatch ? widthMatch[1] : "";
       const body = bodyMatch ? bodyMatch[1] : "";
 
-      return `<div data-macro="column" data-width="${escapeHtml(width)}">${body}</div>`;
+      return `<div data-macro="column" data-width="${escapeEncoded(width)}">${body}</div>`;
     }
   );
 
@@ -1952,7 +1952,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const all = allMatch ? allMatch[1].toLowerCase() === "true" : false;
       const reverse = reverseMatch ? reverseMatch[1].toLowerCase() === "true" : false;
 
-      return `<div data-macro="children" data-page="${escapeHtml(page)}" data-depth="${escapeHtml(depth)}" data-sort="${escapeHtml(sort)}" data-all="${all}" data-reverse="${reverse}">*[children]*</div>`;
+      return `<div data-macro="children" data-page="${escapeEncoded(page)}" data-depth="${escapeEncoded(depth)}" data-sort="${escapeEncoded(sort)}" data-all="${all}" data-reverse="${reverse}">*[children]*</div>`;
     }
   );
 
@@ -1976,7 +1976,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const max = maxMatch ? maxMatch[1] : "";
       const sort = sortMatch ? sortMatch[1] : "";
 
-      return `<div data-macro="content-by-label" data-labels="${escapeHtml(labels)}" data-spaces="${escapeHtml(spaces)}" data-max="${escapeHtml(max)}" data-sort="${escapeHtml(sort)}">*[content-by-label]*</div>`;
+      return `<div data-macro="content-by-label" data-labels="${escapeEncoded(labels)}" data-spaces="${escapeEncoded(spaces)}" data-max="${escapeEncoded(max)}" data-sort="${escapeEncoded(sort)}">*[content-by-label]*</div>`;
     }
   );
 
@@ -1998,7 +1998,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const spaces = spacesMatch ? spacesMatch[1] : "";
       const types = typesMatch ? typesMatch[1] : "";
 
-      return `<div data-macro="recently-updated" data-max="${escapeHtml(max)}" data-spaces="${escapeHtml(spaces)}" data-types="${escapeHtml(types)}">*[recently-updated]*</div>`;
+      return `<div data-macro="recently-updated" data-max="${escapeEncoded(max)}" data-spaces="${escapeEncoded(spaces)}" data-types="${escapeEncoded(types)}">*[recently-updated]*</div>`;
     }
   );
 
@@ -2024,7 +2024,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const expandCollapseAll = expandCollapseAllMatch ? expandCollapseAllMatch[1].toLowerCase() === "true" : false;
       const searchBox = searchBoxMatch ? searchBoxMatch[1].toLowerCase() === "true" : false;
 
-      return `<div data-macro="pagetree" data-root="${escapeHtml(root)}" data-startdepth="${escapeHtml(startDepth)}" data-expandcollapseall="${expandCollapseAll}" data-searchbox="${searchBox}">*[pagetree]*</div>`;
+      return `<div data-macro="pagetree" data-root="${escapeEncoded(root)}" data-startdepth="${escapeEncoded(startDepth)}" data-expandcollapseall="${expandCollapseAll}" data-searchbox="${searchBox}">*[pagetree]*</div>`;
     }
   );
 
@@ -2048,7 +2048,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const location = locationMatch ? locationMatch[1] : "";
       const body = bodyMatch ? bodyMatch[1] : "";
 
-      return `<div data-macro="toc-zone" data-minlevel="${escapeHtml(minLevel)}" data-maxlevel="${escapeHtml(maxLevel)}" data-location="${escapeHtml(location)}">${body}</div>`;
+      return `<div data-macro="toc-zone" data-minlevel="${escapeEncoded(minLevel)}" data-maxlevel="${escapeEncoded(maxLevel)}" data-location="${escapeEncoded(location)}">${body}</div>`;
     }
   );
 
@@ -2064,7 +2064,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const hidden = hiddenMatch ? hiddenMatch[1].toLowerCase() === "true" : false;
       const body = bodyMatch ? bodyMatch[1] : "";
 
-      return `<div data-macro="page-properties" data-id="${escapeHtml(id)}" data-hidden="${hidden}">${body}</div>`;
+      return `<div data-macro="page-properties" data-id="${escapeEncoded(id)}" data-hidden="${hidden}">${body}</div>`;
     }
   );
 
@@ -2086,7 +2086,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const sortBy = sortByMatch ? sortByMatch[1] : "";
       const pageSize = pageSizeMatch ? pageSizeMatch[1] : "";
 
-      return `<div data-macro="page-properties-report" data-labels="${escapeHtml(labels)}" data-spaces="${escapeHtml(spaces)}" data-cql="${escapeHtml(cql)}" data-headings="${escapeHtml(headings)}" data-sortby="${escapeHtml(sortBy)}" data-pagesize="${escapeHtml(pageSize)}">*[page-properties-report]*</div>`;
+      return `<div data-macro="page-properties-report" data-labels="${escapeEncoded(labels)}" data-spaces="${escapeEncoded(spaces)}" data-cql="${escapeEncoded(cql)}" data-headings="${escapeEncoded(headings)}" data-sortby="${escapeEncoded(sortBy)}" data-pagesize="${escapeEncoded(pageSize)}">*[page-properties-report]*</div>`;
     }
   );
 
@@ -2112,7 +2112,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const assignee = assigneeMatch ? assigneeMatch[1] : "";
       const status = statusMatch ? statusMatch[1] : "";
 
-      return `<div data-macro="task-report" data-spaces="${escapeHtml(spaces)}" data-labels="${escapeHtml(labels)}" data-days="${escapeHtml(days)}" data-assignee="${escapeHtml(assignee)}" data-status="${escapeHtml(status)}">*[task-report]*</div>`;
+      return `<div data-macro="task-report" data-spaces="${escapeEncoded(spaces)}" data-labels="${escapeEncoded(labels)}" data-days="${escapeEncoded(days)}" data-assignee="${escapeEncoded(assignee)}" data-status="${escapeEncoded(status)}">*[task-report]*</div>`;
     }
   );
 
@@ -2140,7 +2140,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const spaces = spacesMatch ? spacesMatch[1] : "";
       const style = styleMatch ? styleMatch[1] : "";
 
-      return `<div data-macro="popular-labels" data-count="${escapeHtml(count)}" data-spaces="${escapeHtml(spaces)}" data-style="${escapeHtml(style)}">*[popular-labels]*</div>`;
+      return `<div data-macro="popular-labels" data-count="${escapeEncoded(count)}" data-spaces="${escapeEncoded(spaces)}" data-style="${escapeEncoded(style)}">*[popular-labels]*</div>`;
     }
   );
 
@@ -2157,7 +2157,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const labelsMatch = inner.match(/<ac:parameter\s+ac:name="labels"[^>]*>([^<]*)<\/ac:parameter>/i);
       const labels = labelsMatch ? labelsMatch[1] : "";
 
-      return `<div data-macro="related-labels" data-labels="${escapeHtml(labels)}">*[related-labels]*</div>`;
+      return `<div data-macro="related-labels" data-labels="${escapeEncoded(labels)}">*[related-labels]*</div>`;
     }
   );
 
@@ -2202,7 +2202,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const sort = sortMatch ? sortMatch[1] : "";
       const content = contentMatch ? contentMatch[1] : "";
 
-      return `<div data-macro="blog-posts" data-max="${escapeHtml(max)}" data-spaces="${escapeHtml(spaces)}" data-author="${escapeHtml(author)}" data-labels="${escapeHtml(labels)}" data-time="${escapeHtml(time)}" data-sort="${escapeHtml(sort)}" data-content="${escapeHtml(content)}">*[blog-posts]*</div>`;
+      return `<div data-macro="blog-posts" data-max="${escapeEncoded(max)}" data-spaces="${escapeEncoded(spaces)}" data-author="${escapeEncoded(author)}" data-labels="${escapeEncoded(labels)}" data-time="${escapeEncoded(time)}" data-sort="${escapeEncoded(sort)}" data-content="${escapeHtml(content)}">*[blog-posts]*</div>`;
     }
   );
 
@@ -2224,7 +2224,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const width = widthMatch ? widthMatch[1] : "";
       const theme = themeMatch ? themeMatch[1] : "";
 
-      return `<div data-macro="spaces-list" data-spaces="${escapeHtml(spaces)}" data-width="${escapeHtml(width)}" data-theme="${escapeHtml(theme)}">*[spaces-list]*</div>`;
+      return `<div data-macro="spaces-list" data-spaces="${escapeEncoded(spaces)}" data-width="${escapeEncoded(width)}" data-theme="${escapeEncoded(theme)}">*[spaces-list]*</div>`;
     }
   );
 
@@ -2268,7 +2268,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const order = orderMatch ? orderMatch[1] : "";
       const scope = scopeMatch ? scopeMatch[1] : "";
 
-      return `<div data-macro="contributors" data-mode="${escapeHtml(mode)}" data-limit="${escapeHtml(limit)}" data-showcount="${escapeHtml(showCount)}" data-order="${escapeHtml(order)}" data-scope="${escapeHtml(scope)}">*[contributors]*</div>`;
+      return `<div data-macro="contributors" data-mode="${escapeEncoded(mode)}" data-limit="${escapeEncoded(limit)}" data-showcount="${escapeEncoded(showCount)}" data-order="${escapeEncoded(order)}" data-scope="${escapeEncoded(scope)}">*[contributors]*</div>`;
     }
   );
 
@@ -2285,7 +2285,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const limitMatch = inner.match(/<ac:parameter\s+ac:name="limit"[^>]*>([^<]*)<\/ac:parameter>/i);
       const limit = limitMatch ? limitMatch[1] : "";
 
-      return `<div data-macro="change-history" data-limit="${escapeHtml(limit)}">*[change-history]*</div>`;
+      return `<div data-macro="change-history" data-limit="${escapeEncoded(limit)}">*[change-history]*</div>`;
     }
   );
 
@@ -2302,7 +2302,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
       const paragraphsMatch = inner.match(/<ac:parameter\s+ac:name="paragraphs"[^>]*>([^<]*)<\/ac:parameter>/i);
       const paragraphs = paragraphsMatch ? paragraphsMatch[1] : "";
 
-      return `<div data-macro="loremipsum" data-paragraphs="${escapeHtml(paragraphs)}">*[loremipsum]*</div>`;
+      return `<div data-macro="loremipsum" data-paragraphs="${escapeEncoded(paragraphs)}">*[loremipsum]*</div>`;
     }
   );
 
@@ -2331,44 +2331,33 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
     }
   );
 
-  // Convert ac:image with ri:attachment (image attachments)
-  // Handles: <ac:image ac:width="600"><ri:attachment ri:filename="img.png" ac:alt="Alt text"/></ac:image>
+  // Convert ac:image with ri:attachment (image attachments), whatever the
+  // attribute order and whichever element carries ac:alt:
+  // <ac:image ac:align="center" ac:width="600"><ri:attachment ri:filename="img.png" ac:alt="Alt text"/></ac:image>
   storage = storage.replace(
-    /<ac:image(?:\s+ac:width="(\d+)")?(?:\s+ac:height="(\d+)")?[^>]*>\s*<ri:attachment\s+ri:filename="([^"]+)"(?:\s+ac:alt="([^"]*)")?[^>]*\/>\s*<\/ac:image>/gi,
-    (_, width, height, filename, alt) => {
-      let attrs = `data-attachment="true" data-filename="${escapeHtml(filename)}"`;
-      if (alt) attrs += ` alt="${escapeHtml(alt)}"`;
+    /<ac:image\b([^>]*)>\s*<ri:attachment\b([^>]*?)\/>\s*<\/ac:image>/gi,
+    (match, imageAttrs: string, attachmentAttrs: string) => {
+      const attr = (attrs: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(attrs)?.[1];
+      const filename = attr(attachmentAttrs, "ri:filename");
+      if (!filename) return match;
+      const alt = attr(attachmentAttrs, "ac:alt") ?? attr(imageAttrs, "ac:alt");
+      const width = /^\d+$/.exec(attr(imageAttrs, "ac:width") ?? "")?.[0];
+      const height = /^\d+$/.exec(attr(imageAttrs, "ac:height") ?? "")?.[0];
+
+      let attrs = `data-attachment="true" data-filename="${escapeEncoded(filename)}"`;
+      if (alt) attrs += ` alt="${escapeEncoded(alt)}"`;
       if (width) attrs += ` data-width="${width}"`;
       if (height) attrs += ` data-height="${height}"`;
-      return `<img ${attrs} src="./${escapeHtml(filename)}">`;
-    }
-  );
-
-  // Also handle alternative attribute order and self-closing variations
-  storage = storage.replace(
-    /<ac:image[^>]*>\s*<ri:attachment[^>]*ri:filename="([^"]+)"[^>]*(?:ac:alt="([^"]*)")?[^>]*\/>\s*<\/ac:image>/gi,
-    (match, filename, alt) => {
-      // Skip if already processed
-      if (match.includes("data-attachment")) return match;
-
-      // Extract width/height from the ac:image tag
-      const widthMatch = match.match(/ac:width="(\d+)"/);
-      const heightMatch = match.match(/ac:height="(\d+)"/);
-
-      let attrs = `data-attachment="true" data-filename="${escapeHtml(filename)}"`;
-      if (alt) attrs += ` alt="${escapeHtml(alt)}"`;
-      if (widthMatch) attrs += ` data-width="${widthMatch[1]}"`;
-      if (heightMatch) attrs += ` data-height="${heightMatch[1]}"`;
-      return `<img ${attrs} src="./${escapeHtml(filename)}">`;
+      return `<img ${attrs} src="./${escapeEncoded(filename)}">`;
     }
   );
 
   // Convert ac:link with ri:attachment (file attachment links)
   // Handles: <ac:link><ri:attachment ri:filename="doc.pdf"/><ac:plain-text-link-body><![CDATA[Document]]></ac:plain-text-link-body></ac:link>
   storage = storage.replace(
-    /<ac:link[^>]*>\s*<ri:attachment\s+ri:filename="([^"]+)"[^>]*\/>\s*<ac:plain-text-link-body>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ac:plain-text-link-body>\s*<\/ac:link>/gi,
-    (_, filename, linkText) => {
-      return `<a data-attachment="true" data-filename="${escapeHtml(filename)}" href="./${escapeHtml(filename)}">${escapeHtml(linkText.trim())}</a>`;
+    /<ac:link[^>]*>\s*<ri:attachment\s+ri:filename="([^"]+)"[^>]*\/>\s*<ac:plain-text-link-body>([\s\S]*?)<\/ac:plain-text-link-body>\s*<\/ac:link>/gi,
+    (_, filename, linkBody) => {
+      return `<a data-attachment="true" data-filename="${escapeEncoded(filename)}" href="./${escapeEncoded(filename)}">${escapeHtml(mentionBodyText(linkBody).trim())}</a>`;
     }
   );
 
@@ -2376,7 +2365,7 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
   storage = storage.replace(
     /<ac:link[^>]*>\s*<ri:attachment\s+ri:filename="([^"]+)"[^>]*\/>\s*<\/ac:link>/gi,
     (_, filename) => {
-      return `<a data-attachment="true" data-filename="${escapeHtml(filename)}" href="./${escapeHtml(filename)}">${escapeHtml(filename)}</a>`;
+      return `<a data-attachment="true" data-filename="${escapeEncoded(filename)}" href="./${escapeEncoded(filename)}">${escapeEncoded(filename)}</a>`;
     }
   );
 
@@ -3305,6 +3294,11 @@ function escapeHtml(input: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;");
+}
+
+/** Escape a value captured from storage XML, where it is already entity-encoded. */
+function escapeEncoded(input: string): string {
+  return escapeHtml(decodeHTML(input));
 }
 
 /**

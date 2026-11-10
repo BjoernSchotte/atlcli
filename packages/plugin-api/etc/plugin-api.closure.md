@@ -10,4 +10,4 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (14): AtlcliPlugin, CommandContext, CommandDefinition, FlagDefinition, FlagValue, OutputOptions, PluginHooks, PluginManifest, PluginMetadata, Subcommand, defineCommand, defineFlag, definePlugin, defineSubcommand
+- exported symbols (11): AtlcliPlugin, CommandContext, CommandDefinition, FlagDefinition, FlagValue, OutputOptions, PluginHooks, PluginMetadata, Subcommand, defineCommand, definePlugin

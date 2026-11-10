@@ -383,21 +383,6 @@ export function peekTimer(): { timer: TimerState; elapsedSeconds: number } {
 }
 
 /**
- * Stop the timer and return the elapsed time.
- * Throws if no timer is running.
- *
- * @deprecated Destructive read: the timer state is deleted before the caller
- * has had any chance to persist the elapsed time, so any subsequent failure
- * loses it. Use {@link peekTimer} and call {@link clearTimer} only after the
- * worklog has been confirmed created.
- */
-export function stopTimer(): { timer: TimerState; elapsedSeconds: number } {
-  const result = peekTimer();
-  clearTimer();
-  return result;
-}
-
-/**
  * Cancel the timer without logging time.
  * Throws if no timer is running.
  */

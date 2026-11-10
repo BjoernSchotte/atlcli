@@ -33,7 +33,6 @@ export * from "./storage-change-tree.js";
 export * from "./resolve-mentions.js";
 export * from "./scope.js";
 export * from "./sync-db/index.js";
-export * from "./sync-state-manager.js";
 export * from "./user-fetcher.js";
 export * from "./validation.js";
 export * from "./webhook-server.js";

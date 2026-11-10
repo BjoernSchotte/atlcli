@@ -287,3 +287,25 @@ describe("saveConfig", () => {
     }
   });
 });
+
+// The `storage.sqlite` keys (enableVectors, customSqlitePath) were removed with
+// the embeddings API they configured; config files written for them still load.
+test("loadConfig keeps loading a config with removed or unknown keys", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "atlcli-config-"));
+  try {
+    const file = join(dir, "config.json");
+    const stored = {
+      profiles: {},
+      storage: { adapter: "sqlite", sqlite: { enableVectors: true, customSqlitePath: "/opt/lib/libsqlite3.dylib" } },
+      someFutureKey: 1,
+    };
+    await writeFile(file, JSON.stringify(stored));
+    const script = `import { loadConfig } from ${JSON.stringify(fileURLToPath(new URL("./config.ts", import.meta.url)))}; console.log(JSON.stringify(await loadConfig()));`;
+    const proc = Bun.spawn([process.execPath, "-e", script], { env: { ...process.env, ATLCLI_CONFIG: file }, stdout: "pipe", stderr: "pipe" });
+    const stdout = await new Response(proc.stdout).text();
+    expect(await proc.exited).toBe(0);
+    expect(JSON.parse(stdout)).toEqual(stored);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

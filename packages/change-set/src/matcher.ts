@@ -729,7 +729,8 @@ function diffSemanticTrees(
   return drafts;
 }
 
-function summary(operations: readonly ChangeOperationV1[]): ChangeSetV1["summary"] {
+/** Operation counts by kind, as stored in `ChangeSetV1.summary`. */
+export function summarizeOperationsV1(operations: readonly ChangeOperationV1[]): ChangeSetV1["summary"] {
   const result = { inserts: 0, deletes: 0, modifies: 0, moves: 0, opaque: 0, noOp: false };
   for (const operation of operations) {
     if (operation.kind === "insert" || operation.kind === "collection-add") result.inserts += 1;
@@ -843,7 +844,7 @@ export async function diffSemanticTreesV1(
         status: degraded ? "degraded" : "complete",
         diagnostics: context.diagnostics,
       },
-      summary: summary(operations),
+      summary: summarizeOperationsV1(operations),
       operations,
       limits: { truncated: false, emittedOperations: operations.length },
     });

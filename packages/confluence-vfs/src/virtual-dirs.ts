@@ -431,9 +431,8 @@ export class VirtualDirs {
   }
 
   async labelReaddir(spaceKey: string, label: string): Promise<VfsDirent[]> {
-    const pages = await this.request(() =>
-      this.opts.client.getPagesByLabel(label, { spaceKey, limit: 250 }),
-    );
+    // No limit: the directory lists every page that carries the label.
+    const pages = await this.request(() => this.opts.client.getPagesByLabel(label, { spaceKey }));
     for (const page of pages) {
       this.opts.index.upsert({
         id: page.id,

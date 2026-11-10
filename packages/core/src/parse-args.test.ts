@@ -26,6 +26,17 @@ describe("parseArgs", () => {
     expect(parseArgs(["--updated", "-7d", "--offset", "-2", "--json"]).flags).toEqual({ updated: "-7d", offset: "-2", json: true });
   });
 
+  test("short flags read a dash before a digit like long flags do: a value or a positional, never a flag", () => {
+    expect(parseArgs(["-o", "-5", "-n", "-", "-v"]).flags).toEqual({ o: "-5", n: "-", v: true });
+    expect(parseArgs(["shift", "-5", "--json"])).toEqual({ _: ["shift", "-5"], flags: { json: true } });
+  });
+
+  test("research and audit switches never swallow the next positional", () => {
+    for (const name of ["plan-only", "keep-session", "include-text", "list-rules"]) {
+      expect(parseArgs([`--${name}`, "question"])).toEqual({ _: ["question"], flags: { [name]: true } });
+    }
+  });
+
   test("a following flag still makes the long flag boolean", () => {
     expect(parseArgs(["--dry-run", "--json"]).flags).toEqual({ "dry-run": true, json: true });
   });

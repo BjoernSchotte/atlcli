@@ -100,3 +100,33 @@ describe("pull -> push round-trip fidelity", () => {
     expect(storageToMarkdown(markdownToStorage(md))).toBe(md);
   });
 });
+
+// Values captured from storage XML are already entity-encoded. Escaping them
+// again leaked `&amp;` into the markdown, and the next push stored `&amp;amp;`.
+describe("entity-encoded storage values are not escaped twice", () => {
+  test.each([
+    ['<p><ac:link><ri:attachment ri:filename="a&amp;b.pdf"/><ac:plain-text-link-body><![CDATA[R & D]]></ac:plain-text-link-body></ac:link></p>', "[R & D](./attachments/a&b.pdf)"],
+    ['<p><ac:link><ri:attachment ri:filename="a&amp;b.pdf"/><ac:plain-text-link-body>R &amp; D</ac:plain-text-link-body></ac:link></p>', "[R & D](./attachments/a&b.pdf)"],
+    ['<p><ac:link><ri:attachment ri:filename="a&amp;b.pdf"/></ac:link></p>', "[a&b.pdf](./attachments/a&b.pdf)"],
+    ['<p><ac:image><ri:attachment ri:filename="a&amp;b.png" ac:alt="x &amp; y"/></ac:image></p>', "![x & y](./attachments/a&b.png)"],
+    ['<p><ac:image ac:alt="x &amp; y" ac:width="10"><ri:attachment ri:filename="a&amp;b.png"/></ac:image></p>', "![x & y](./attachments/a&b.png){width=10}"],
+    ['<p><ac:image ac:align="center" ac:width="600" ac:height="20"><ri:attachment ri:version-at-save="1" ri:filename="img.png" /></ac:image></p>', "![](./attachments/img.png){width=600 height=20}"],
+    ['<ac:structured-macro ac:name="multimedia"><ac:parameter ac:name="name"><ri:attachment ri:filename="a&amp;b.mp4" /></ac:parameter></ac:structured-macro>', ':::multimedia file="a&b.mp4"'],
+    ['<p><a href="https://example.atlassian.net/browse/X-1?a=1&amp;b=2" data-card-appearance="inline">T &amp; U</a></p>', "[T & U](https://example.atlassian.net/browse/X-1?a=1&b=2)"],
+  ])("%s", (storage, markdown) => {
+    expect(storageToMarkdown(storage)).toContain(markdown);
+  });
+
+  test.each([
+    '<ac:structured-macro ac:name="info"><ac:parameter ac:name="title">A &amp; B &lt;c&gt; &quot;q&quot;</ac:parameter><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>',
+    '<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">A &amp; B</ac:parameter><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>',
+    '<ac:structured-macro ac:name="panel"><ac:parameter ac:name="title">P &amp; Q</ac:parameter><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>',
+    '<p><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">R &amp; D</ac:parameter></ac:structured-macro></p>',
+    '<ac:structured-macro ac:name="code"><ac:parameter ac:name="title">a &amp; b</ac:parameter><ac:plain-text-body><![CDATA[x &amp; y < z]]></ac:plain-text-body></ac:structured-macro>',
+    '<ac:structured-macro ac:name="multimedia"><ac:parameter ac:name="name"><ri:attachment ri:filename="a&amp;b.mp4" /></ac:parameter></ac:structured-macro>',
+  ])("round-trips %s", (storage) => {
+    const markdown = storageToMarkdown(storage);
+    expect(markdown).not.toContain("&amp;amp;");
+    expect(markdownToStorage(markdown).replace(/\n/g, "")).toBe(storage);
+  });
+});

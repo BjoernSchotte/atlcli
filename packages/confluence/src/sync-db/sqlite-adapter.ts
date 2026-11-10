@@ -33,7 +33,6 @@ export class SqliteAdapter implements SyncDbAdapter {
   private statements: Map<string, Statement> = new Map();
 
   readonly adapterType: AdapterType = "sqlite";
-  readonly supportsVectors: boolean = false;
 
   get version(): number {
     return this.db ? getCurrentSchemaVersion(this.db) : 0;

@@ -1,7 +1,9 @@
 import { describe, test, expect, afterEach } from "bun:test";
+import { createHmac } from "node:crypto";
 import {
   WebhookServer,
   createWebhookServer,
+  isLoopbackHost,
 } from "./webhook-server.js";
 import type {
   WebhookHandler,
@@ -48,7 +50,7 @@ describe("WebhookServer", () => {
       server = createTestServer();
       const url = startServer(server);
 
-      expect(url.hostname).toBe("localhost");
+      expect(url.hostname).toBe("127.0.0.1");
       expect(Number(url.port)).toBeGreaterThan(0);
       expect(url.pathname).toBe("/webhook");
     });
@@ -123,6 +125,75 @@ describe("WebhookServer", () => {
       });
 
       expect(res.status).toBe(400);
+    });
+
+    // `null` parsed fine and then crashed the page filter into a 500.
+    test("returns 400 for JSON that is not an object", async () => {
+      server = createTestServer({ filterPageIds: new Set(["1"]) });
+      const url = startServer(server);
+
+      for (const body of ["null", "[]", "42", '"text"']) {
+        expect((await fetch(url, { method: "POST", body })).status).toBe(400);
+      }
+    });
+
+    test("accepts only a matching HMAC signature", async () => {
+      server = createTestServer({ secret: "fixture-secret" });
+      const url = startServer(server);
+      const body = JSON.stringify({ eventType: "page_updated", timestamp: "" });
+      const good = `sha256=${createHmac("sha256", "fixture-secret").update(body).digest("hex")}`;
+      const post = (signature?: string) =>
+        fetch(url, { method: "POST", body, headers: signature ? { "X-Hub-Signature": signature } : {} });
+
+      expect((await post(good)).status).toBe(200);
+      expect((await post(good.slice(0, -1) + (good.endsWith("0") ? "1" : "0"))).status).toBe(401);
+      expect((await post("sha256=short")).status).toBe(401);
+      // Same character count as the expected header, different byte length.
+      expect((await post("é".repeat(good.length))).status).toBe(401);
+      expect((await post()).status).toBe(401);
+    });
+
+    // A sender that cannot sign the body (an automation rule's web request)
+    // presents the secret as a bearer token instead.
+    test("accepts the secret as a bearer token, and nothing else", async () => {
+      server = createTestServer({ secret: "fixture-secret" });
+      const url = startServer(server);
+      const post = (headers: Record<string, string>) =>
+        fetch(url, { method: "POST", body: JSON.stringify({ eventType: "page_updated" }), headers });
+
+      expect((await post({ Authorization: "Bearer fixture-secret" })).status).toBe(200);
+      expect((await post({ Authorization: "Bearer wrong-secret!!" })).status).toBe(401);
+      expect((await post({ Authorization: "fixture-secret" })).status).toBe(401);
+      // A bad signature is not rescued by a good token.
+      expect(
+        (await post({ Authorization: "Bearer fixture-secret", "X-Hub-Signature": "sha256=00" })).status
+      ).toBe(401);
+    });
+  });
+
+  describe("bind address", () => {
+    // Bun.serve without a hostname listens on every interface.
+    test("binds loopback by default", () => {
+      server = createTestServer();
+      expect(startServer(server).hostname).toBe("127.0.0.1");
+    });
+
+    test("refuses a non-loopback interface without a secret", () => {
+      for (const hostname of ["0.0.0.0", "::", "192.0.2.10"]) {
+        const unauthenticated = createTestServer({ hostname });
+        expect(() => unauthenticated.start()).toThrow(/without a secret/);
+        expect(unauthenticated.isRunning()).toBe(false);
+      }
+    });
+
+    test("binds every interface when a secret is set", () => {
+      server = createTestServer({ hostname: "0.0.0.0", secret: "fixture-secret" });
+      expect(startServer(server).hostname).toBe("localhost");
+    });
+
+    test("isLoopbackHost", () => {
+      for (const host of ["127.0.0.1", "127.8.9.1", "::1", "[::1]", "localhost"]) expect(isLoopbackHost(host)).toBe(true);
+      for (const host of ["0.0.0.0", "::", "192.0.2.10", "127.0.0.1.example.test", ""]) expect(isLoopbackHost(host)).toBe(false);
     });
   });
 

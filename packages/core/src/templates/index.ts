@@ -12,7 +12,6 @@ export * from "./render-exports.js";
 export {
   validateVariableValue,
   validateTemplate,
-  validateVariableValues,
   extractUsedVariables,
 } from "./validation.js";
 export type { VariableValidationResult } from "./validation.js";
