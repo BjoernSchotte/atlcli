@@ -1,5 +1,6 @@
 import {
   normalizePublicationRoutePrefixV1,
+  publicationNamespacedRouteV1,
   normalizePublicationRouteV1,
   publicationLocaleRouteV1,
   normalizePublicationLocaleV1,
@@ -97,7 +98,7 @@ export function starlightPublicationHrefV1(
   i18n: PublicationI18nOptionsV1 | undefined = undefined,
 ): string {
   const namespacedRoute = normalizePublicationRouteV1(
-    `${normalizePublicationRoutePrefixV1(routePrefix)}${normalizePublicationRouteV1(route)}`,
+    publicationNamespacedRouteV1(normalizePublicationRouteV1(route), routePrefix),
   );
   const normalizedRoute = i18n === undefined
     ? namespacedRoute

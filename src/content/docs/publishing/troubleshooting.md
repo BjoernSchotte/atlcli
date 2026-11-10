@@ -15,6 +15,7 @@ into an issue.
 | `page-version-changed` | page changed during discovery | rerun `refresh`; the version fence is working |
 | `page-ambiguous-404` | provider cannot distinguish deletion from restricted access | restore access or investigate before allowing deletion |
 | asset blocked/missing | unsafe scheme, invalid bytes, or missing attachment | inspect the structured asset issue; never allow an unverified URL |
+| `unowned internal URL '<base>/favicon.svg'` or `'<base>/'` during `verify` | the site template links to a file or page the build did not produce; Starlight links a favicon and the site root on every page | add `public/favicon.svg` and a root page (`src/pages/index.astro`) to the Astro project, or remove the link from the template |
 
 ## Astro build failures
 

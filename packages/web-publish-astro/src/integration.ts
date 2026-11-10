@@ -7,6 +7,7 @@ import {
   canonicalPublicationJsonV1,
   negotiatePublicationExperienceV1,
   normalizePublicationRoutePrefixV1,
+  publicationNamespacedRouteV1,
   publicationLocaleRouteV1,
   planPublicationNavigationV1,
   type PublicationDesignTokenValidatorV1,
@@ -243,7 +244,7 @@ function assertResolvedAstroConfig(
 export function publicationRoutePathV1(route: string, routePrefix: string): string {
   const prefix = normalizePublicationRoutePrefixV1(routePrefix);
   if (route === "/") return prefix;
-  return `${prefix}${route}`.replace(/\/$/u, "");
+  return publicationNamespacedRouteV1(route, prefix).replace(/\/$/u, "");
 }
 
 /** Convert a logical route to its namespace-owned, locale-aware Astro route. */

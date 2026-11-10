@@ -393,3 +393,12 @@ describe("planPublicationRoutesV1", () => {
     }), "output-path-collision");
   });
 });
+
+test("a route already inside the namespace is not prefixed twice", async () => {
+  const { publicationNamespacedRouteV1 } = await import("./routes.js");
+  expect(publicationNamespacedRouteV1("/guide/", "/publish")).toBe("/publish/guide/");
+  expect(publicationNamespacedRouteV1("/publish/guide/", "/publish")).toBe("/publish/guide/");
+  expect(publicationNamespacedRouteV1("/publish/", "/publish")).toBe("/publish/");
+  expect(publicationNamespacedRouteV1("/publisher/", "/publish")).toBe("/publish/publisher/");
+  expect(publicationNamespacedRouteV1("/guide/", "")).toBe("/guide/");
+});

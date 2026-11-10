@@ -300,7 +300,7 @@ refreshed under a different edit-link policy.
 | `builder` | literal | yes | Must be `astro-static` |
 | `projectDir` | path string | yes | Operator-owned Astro project containing its own lockfile |
 | `integrationOptions.bundlePath` | path string | yes | Direct-build fallback/config identity; never a public URL |
-| `integrationOptions.routePrefix` | string | yes | Must agree with the site's publication route |
+| `integrationOptions.routePrefix` | string | yes | Must agree with the site's publication route. Routes planned with the same `routes.prefix` are not prefixed a second time |
 | `integrationOptions.experienceId` | string | yes | Must agree with the trusted experience |
 | `trustedLayoutEntrypoint` | path string | no | Static, project-owned layout entrypoint |
 | `outputProfile` | enum | yes | `directory` or `portable-file` |

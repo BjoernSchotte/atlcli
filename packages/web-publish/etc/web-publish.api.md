@@ -664,6 +664,9 @@ export interface PublicationMediaOptionsV1 {
     code: "expressive-code";
 }
 
+// export: publicationNamespacedRouteV1
+export declare function publicationNamespacedRouteV1(route: string, routePrefix: string): string;
+
 // export: PublicationNavigationItemV1
 export interface PublicationNavigationItemV1 {
     sourceId: string;

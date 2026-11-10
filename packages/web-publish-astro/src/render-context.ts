@@ -7,7 +7,7 @@ import {
   type AstroResolvedLinkV1,
 } from "@atlcli/export-blocks-astro";
 import { visitExportBlocksV1, type ExportBlock, type ImageSource } from "@atlcli/export-blocks";
-import { normalizePublicationAnchorReferenceV1, planPublicationAnchorsV1, type PublicationBundleV1, type PublicationPageV1 } from "@atlcli/web-publish";
+import { normalizePublicationAnchorReferenceV1, planPublicationAnchorsV1, publicationNamespacedRouteV1, type PublicationBundleV1, type PublicationPageV1 } from "@atlcli/web-publish";
 
 export interface CreatePublicationRenderContextOptionsV1 {
   page: PublicationPageV1;
@@ -45,7 +45,8 @@ function routeHref(base: string, prefix: string, route: string): string {
     throw new TypeError(`publication route is not safe: ${route}`);
   }
   const normalizedRoute = route === "/" ? "" : route.replace(/^\/+|\/+$/gu, "");
-  return `${base}${prefix}${normalizedRoute ? `/${normalizedRoute}/` : "/"}`;
+  const namespaced = publicationNamespacedRouteV1(normalizedRoute ? `/${normalizedRoute}/` : "/", prefix);
+  return `${base}${namespaced}`;
 }
 
 function outputAssetHref(base: string, path: string): string {

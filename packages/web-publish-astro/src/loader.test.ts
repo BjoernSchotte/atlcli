@@ -343,6 +343,10 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
   try {
     expect(publicationRoutePathV1("/", "/publish")).toBe("/publish");
     expect(publicationRoutePathV1("/guide/", "/publish")).toBe("/publish/guide");
+    // Routes planned with `routes.prefix` already carry the namespace.
+    expect(publicationRoutePathV1("/publish/guide/", "/publish")).toBe("/publish/guide");
+    expect(publicationRoutePathV1("/publish/", "/publish")).toBe("/publish");
+    expect(publicationRoutePathV1("/publisher/", "/publish")).toBe("/publish/publisher");
     await expect(publicationStaticPathsV1({ bundlePath })).resolves.toEqual([{
       params: { slug: "guide" },
       props: { kind: "page", sourceId: "guide" },

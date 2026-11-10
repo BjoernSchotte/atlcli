@@ -80,6 +80,8 @@ test("keeps route identity closed and rejects missing page lookups or untrusted 
   expect(starlightPublicationHrefV1("/", "/publish")).toBe("/publish/");
   expect(starlightPublicationHrefV1("/guide/", "")).toBe("/guide/");
   expect(starlightPublicationHrefV1("/guide/", "/publish", "/docs")).toBe("/docs/publish/guide/");
+  // A route planned with `routes.prefix` is already inside the namespace.
+  expect(starlightPublicationHrefV1("/publish/guide/", "/publish", "/docs")).toBe("/docs/publish/guide/");
   expect(() => createStarlightPublicationNavigationV1({ navigation, routePrefix: "/publish", landingLabel: " " })).toThrow("landingLabel");
   const result = createStarlightPublicationNavigationV1({ navigation, routePrefix: "/publish", landingLabel: "Overview" });
   expect(() => starlightPublicationPageNavigationV1(result, "unknown")).toThrow("no page");
