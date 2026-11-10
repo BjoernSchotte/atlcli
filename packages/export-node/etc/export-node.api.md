@@ -127,6 +127,8 @@ export declare class FileExportArtifactStore implements ExportArtifactStore {
     deleteStaged(ref: string): Promise<void>;
     deleteStagedEpoch(jobId: string, leaseEpoch: number): Promise<ExportByteCleanupResultV1>;
     cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
+    cleanupJobs(jobIds: readonly string[]): Promise<ExportByteCleanupResultV1>;
+    isEpochSettled(jobId: string, leaseEpoch: number): Promise<boolean>;
     commitFinalization(intent: ExportArtifactFinalizationIntentV1): Promise<ExportArtifactV1>;
 }
 
@@ -174,6 +176,7 @@ export declare class FileExportJobStore implements ExportJobStore, ExportJobEven
     create(input: ExportJobCreateV1): Promise<ExportJobSnapshotV1>;
     get(id: string): Promise<ExportJobSnapshotV1 | undefined>;
     getRequest(ref: string): Promise<ExportJobRequestV1 | undefined>;
+    getRequests(refs: readonly string[]): Promise<Array<ExportJobRequestV1 | undefined>>;
     list(query?: ExportJobQueryV1 & {
         createdAfter?: number;
     }): Promise<ExportJobSnapshotV1[]>;
@@ -225,7 +228,7 @@ export declare class FileExportJobStore implements ExportJobStore, ExportJobEven
         result?: import("@atlcli/export-jobs").ExportJobExecutionResultV1;
     } | undefined>;
     resolveExecutorReportPath(reportRef: string): Promise<string | undefined>;
-    cleanupReleasedReportPayloads(jobId: string): Promise<number>;
+    cleanupReleasedReportPayloads(jobIds: string | readonly string[]): Promise<number>;
     acknowledge(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
@@ -319,6 +322,7 @@ export declare class FileExportSpoolStore implements ExportSpoolStore {
         preserve?: readonly SpoolRefV1[];
     }): Promise<ExportByteCleanupResultV1>;
     cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
+    isNamespaceClosed(jobId: string, leaseEpoch: number): Promise<boolean>;
 }
 
 // export: fileOutputSink
@@ -363,12 +367,6 @@ export declare function fileTemplateSource(path: string): TemplateSource;
 
 // export: lazyNodePdfCompiler
 export declare function lazyNodePdfCompiler(): PdfCompilePort;
-
-// export: loadNodePdfCompilerAssets
-export declare function loadNodePdfCompilerAssets(): Promise<{
-    wasm: ArrayBuffer;
-    fonts: Uint8Array[];
-}>;
 
 // export: nodeDocxEnv
 export declare function nodeDocxEnv(options: NodeDocxEnvOptions): ExportEnv;
@@ -448,11 +446,4 @@ export declare function tokenPdfAssetResolver(client: AssetClient, baseUrl: stri
 
 // export: unsupportedAssetFetcher
 export declare function unsupportedAssetFetcher(reason?: string): AssetFetcher;
-
-// export: watchFileExportJobEvents
-export declare function watchFileExportJobEvents(jobs: FileExportJobStore, jobId: string, options?: {
-    afterSeq?: number;
-    pollMs?: number;
-    signal?: AbortSignal;
-}): AsyncIterable<import("@atlcli/export-jobs").ExportJobEventV1>;
 ```

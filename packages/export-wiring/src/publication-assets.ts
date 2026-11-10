@@ -11,6 +11,7 @@ import {
   type PublicationAssetEntryV1,
   type PublicationAssetPolicyV1,
 } from "@atlcli/web-publish";
+import { compareCanonicalKeys } from "./jobs/job-internals.js";
 
 export type PublicationAssetSourceV1 =
   | { kind: "attachment"; pageId: string; filename: string }
@@ -261,7 +262,7 @@ export function deduplicateMaterializedPublicationAssetsV1(
     if (existing.mediaType !== asset.entry.mediaType || !sameBytes(existing.bytes, asset.bytes)) {
       dedupFail("digest-conflict", "same publication asset digest must identify equal bytes and media type");
     }
-    if (filename.localeCompare(existing.canonicalFilename) < 0) {
+    if (compareCanonicalKeys(filename, existing.canonicalFilename) < 0) {
       existing.canonicalFilename = filename;
     }
   }

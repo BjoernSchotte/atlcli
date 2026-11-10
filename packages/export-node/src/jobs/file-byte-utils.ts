@@ -8,6 +8,20 @@ export function logicalDigest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+const KEY_ORDER = new Intl.Collator("en");
+
+/**
+ * Canonical JSON for journal comparisons and digests. Keys sort by pinned
+ * English collation: what the former default-locale `localeCompare` produced
+ * on English hosts, so stored data stays valid and lt/cs/... hosts now agree.
+ */
+export function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  return `{${Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => KEY_ORDER.compare(a, b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
+}
+
 export function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw signal.reason ?? new DOMException("Export byte operation was cancelled.", "AbortError");
 }

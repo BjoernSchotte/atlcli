@@ -12,6 +12,7 @@ import {
   type WikiPdfTemplateDesignV1,
   type WikiPdfTemplateDesignV3,
 } from "@atlcli/template-pack";
+import type { PdfCompleteDesignRevision } from "./catalog-runtime.js";
 import type { PdfTemplateVisualsV1 } from "./template-pack.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -94,7 +95,7 @@ export function createAtlcliTypstTemplateV5(
   design: WikiPdfTemplateDesignV3,
   labels: Record<string, string> = {},
   visuals?: PdfTemplateVisualsV1,
-  revision: "5" | "6" = "5",
+  revision: PdfCompleteDesignRevision = "5",
 ): string {
   const validated = validatePdfTemplateDesignV3(design, "design", {
     availableFonts: PDF_RUNTIME_ASSETS.fonts,
@@ -121,7 +122,8 @@ export function createAtlcliTypstTemplateV5(
       imageGeometryV5: true,
       typographyModelV5: validated.typography,
       ...(validated.compositions.titleBlock?.enabled ? { titleBlockV5: true } : {}),
-      ...(revision === "6" ? { revision6: true } : {}),
+      ...(revision === "5" ? {} : { revision6: true }),
+      ...(revision === "7" ? { revision7: true } : {}),
     },
   );
   return createAtlcliTypstTemplateV4(

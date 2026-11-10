@@ -1,25 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import {
   ByteReservationSemaphoreV1,
-  consumeBoundedByteStreamV1,
   copyExactOwnedBytesV1,
 } from "./bounded-stream.js";
-
-async function* chunks(...values: Uint8Array[]): AsyncIterable<Uint8Array> {
-  yield* values;
-}
 
 async function tick(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
-}
-
-async function waitUntil(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (predicate()) return;
-    await Promise.resolve();
-  }
-  throw new Error("Condition was not reached within the microtask budget.");
 }
 
 describe("ByteReservationSemaphoreV1", () => {
@@ -107,110 +94,5 @@ describe("bounded byte stream", () => {
     expect(copied.byteOffset).toBe(0);
     expect(copied.buffer.byteLength).toBe(copied.byteLength);
     expect(copied.buffer).not.toBe(backing.buffer);
-  });
-
-  it("enforces unknown total length after every chunk and releases capacity", async () => {
-    const semaphore = new ByteReservationSemaphoreV1({ maxBytes: 4, maxReservations: 2 });
-    const consumed: number[][] = [];
-
-    await expect(
-      consumeBoundedByteStreamV1(
-        chunks(new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])),
-        semaphore,
-        { maxChunkBytes: 4, maxTotalBytes: 5 },
-        (chunk) => {
-          consumed.push([...chunk]);
-        },
-      ),
-    ).rejects.toEqual(expect.objectContaining({ code: "stream-too-large" }));
-    expect(consumed).toEqual([[1, 2, 3]]);
-    expect(semaphore.snapshot).toEqual({
-      reservedBytes: 0,
-      activeReservations: 0,
-      queuedReservations: 0,
-    });
-  });
-
-  it("rejects oversized chunks before reserving bytes", async () => {
-    const semaphore = new ByteReservationSemaphoreV1({ maxBytes: 8, maxReservations: 2 });
-    await expect(
-      consumeBoundedByteStreamV1(
-        chunks(new Uint8Array(5)),
-        semaphore,
-        { maxChunkBytes: 4, maxTotalBytes: 8 },
-        () => undefined,
-      ),
-    ).rejects.toEqual(expect.objectContaining({ code: "chunk-too-large" }));
-    expect(semaphore.snapshot.reservedBytes).toBe(0);
-  });
-
-  it("releases a chunk reservation when the consumer throws", async () => {
-    const semaphore = new ByteReservationSemaphoreV1({ maxBytes: 3, maxReservations: 1 });
-    const failure = new Error("backend failed");
-    await expect(
-      consumeBoundedByteStreamV1(
-        chunks(new Uint8Array([1, 2, 3])),
-        semaphore,
-        { maxChunkBytes: 3, maxTotalBytes: 3 },
-        () => {
-          throw failure;
-        },
-      ),
-    ).rejects.toBe(failure);
-    expect(semaphore.snapshot).toEqual({
-      reservedBytes: 0,
-      activeReservations: 0,
-      queuedReservations: 0,
-    });
-  });
-
-  it("propagates AbortSignal while waiting and leaves no reserved bytes", async () => {
-    const semaphore = new ByteReservationSemaphoreV1({ maxBytes: 3, maxReservations: 1 });
-    const occupied = await semaphore.reserve(3);
-    const controller = new AbortController();
-    let consumed = false;
-    const stream = consumeBoundedByteStreamV1(
-      chunks(new Uint8Array([1])),
-      semaphore,
-      { maxChunkBytes: 3, maxTotalBytes: 3 },
-      () => {
-        consumed = true;
-      },
-      { signal: controller.signal },
-    );
-
-    await waitUntil(() => semaphore.snapshot.queuedReservations === 1);
-    expect(semaphore.snapshot.queuedReservations).toBe(1);
-    controller.abort();
-    await expect(stream).rejects.toMatchObject({ name: "AbortError" });
-    expect(consumed).toBe(false);
-    expect(semaphore.snapshot).toEqual({
-      reservedBytes: 3,
-      activeReservations: 1,
-      queuedReservations: 0,
-    });
-
-    occupied.release();
-    expect(semaphore.snapshot.reservedBytes).toBe(0);
-  });
-
-  it("returns deterministic counters and ignores empty source chunks", async () => {
-    const semaphore = new ByteReservationSemaphoreV1({ maxBytes: 2, maxReservations: 1 });
-    const contexts: Array<{ index: number; observedBytes: number }> = [];
-    const result = await consumeBoundedByteStreamV1(
-      chunks(new Uint8Array(), new Uint8Array([1]), new Uint8Array([2, 3])),
-      semaphore,
-      { maxChunkBytes: 2, maxTotalBytes: 3 },
-      (_chunk, context) => {
-        contexts.push(context);
-      },
-    );
-
-    expect(result).toEqual({ byteLength: 3, chunkCount: 2 });
-    expect(contexts).toEqual([
-      { index: 0, observedBytes: 1 },
-      { index: 1, observedBytes: 3 },
-    ]);
-    expect(semaphore.snapshot.reservedBytes).toBe(0);
   });
 });

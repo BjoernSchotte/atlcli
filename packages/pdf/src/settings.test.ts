@@ -7,6 +7,7 @@ import {
   typstSettingsDict,
 } from "./settings.js";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+import { MANUSCRIPT_PDF_TEMPLATE_MANIFEST } from "./curated-templates.js";
 import {
   PDF_TEMPLATE_CAPABILITIES_V2,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V2,
@@ -128,6 +129,32 @@ describe("resolvePdfSettings validation", () => {
 
   it("rejects an invalid accent color", () => {
     expectSettingsError(() => resolvePdfSettings({ accentColor: "not-a-color" }), "accentColor");
+  });
+
+  it("takes the watermark colour and opacity scale from the active template design", () => {
+    const manuscript = resolvePdfSettings(
+      { watermark: { text: "DRAFT" } },
+      { manifest: MANUSCRIPT_PDF_TEMPLATE_MANIFEST },
+    );
+    expect(manuscript.watermark?.color).toBe(
+      MANUSCRIPT_PDF_TEMPLATE_MANIFEST.design!.tokens.colors.watermark!,
+    );
+    expect(manuscript.watermark?.color).not.toBe("#DE350B");
+
+    // An explicit colour still wins over the template's.
+    expect(
+      resolvePdfSettings(
+        { watermark: { text: "DRAFT", color: "#123456" } },
+        { manifest: MANUSCRIPT_PDF_TEMPLATE_MANIFEST },
+      ).watermark?.color,
+    ).toBe("#123456");
+
+    const faint = structuredClone(MANUSCRIPT_PDF_TEMPLATE_MANIFEST);
+    faint.design!.tokens.ratios.watermarkOpacityScale = 50;
+    expect(
+      resolvePdfSettings({ watermark: { text: "DRAFT", opacity: 0.2 } }, { manifest: faint })
+        .watermark?.opacity,
+    ).toBe(0.1);
   });
 
   it("rejects an empty watermark text", () => {

@@ -93,7 +93,7 @@ describe("Recipe V2 installed baseline resolution", () => {
     });
   });
 
-  it("pins the catalog-V4 baseline: the same design, executed as revision 6", async () => {
+  it("pins the catalog-V4 baseline: the same design, authored as revision 7", async () => {
     expect(
       await computePdfTemplateBaselineDigestV1(BUILTIN_PDF_TEMPLATE_BASELINE_V2),
     ).toBe(BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2);
@@ -125,7 +125,7 @@ describe("Recipe V2 installed baseline resolution", () => {
         digest: BUILTIN_PDF_TEMPLATE_BASELINE_DIGEST_V2,
       },
     });
-    expect(resolved.canonicalSource.revision).toBe("6");
+    expect(resolved.canonicalSource.revision).toBe("7");
     expect(resolved.catalog.version).toBe(4);
     expect(resolved.design.compositions.cover).toMatchObject({
       enabled: false,

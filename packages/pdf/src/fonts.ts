@@ -23,6 +23,7 @@
  * (browsers, Bun, Node >= 18); `TextDecoder`/`DataView` are platform globals.
  */
 import type { FontAsset } from "./types.js";
+import { sha256Hex } from "./shared.js";
 
 /** 10 MB hard cap per font file (reject, never truncate). */
 export const MAX_FONT_BYTES = 10 * 1024 * 1024;
@@ -374,19 +375,6 @@ export function parseFontMeta(bytes: Uint8Array): ParsedFontFace[] {
     "unsupported-format",
     `unsupported font magic 0x${magic.toString(16).padStart(8, "0")} — expected TTF, OTF, or TTC`
   );
-}
-
-/** Lowercase hex SHA-256 of `bytes` via WebCrypto (`crypto.subtle.digest`). */
-export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  // Copy into a fresh, ArrayBuffer-backed view so the digest input is a plain
-  // `BufferSource` regardless of the caller's backing store (mirrors the
-  // template-library hash helper in `@atlcli/core`).
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", copy);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 /**

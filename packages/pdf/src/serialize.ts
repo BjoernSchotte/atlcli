@@ -11,6 +11,8 @@ import type {
 import {
   validatePdfTemplateDesignV3,
   type DesignComponentsV3,
+  type DesignPage,
+  type DesignPageV3,
   type WikiPdfTemplateDesignV3,
 } from "@atlcli/template-pack";
 import {
@@ -35,12 +37,20 @@ import { readPdfDesignCapability } from "./design-catalog.js";
 import {
   isCompleteDesignPdfRevision,
   resolvePdfCatalogRuntime,
+  type PdfCompleteDesignRevision,
 } from "./catalog-runtime.js";
 import { safeColor, typstLabel, typstString } from "./escape.js";
-import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
+import {
+  pdfCatalogDesign,
+  resolvePdfSettings,
+  typstSettingsDict,
+  type ResolvedPdfDesign,
+  type ResolvedPdfSettings,
+} from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
 import { resolvePdfFontRequirementsV1 } from "./font-requirements.js";
+import { documentLocale, exportedDateLabel } from "./locale.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import {
   pdfColorContrast,
@@ -469,6 +479,68 @@ export type TableLayoutClass = "normal" | "dense" | "scaled" | "overflow-warned"
  */
 export const PORTRAIT_TEXT_WIDTH_PT = 470;
 export const LANDSCAPE_TEXT_WIDTH_PT = 717;
+
+/**
+ * Usable text width (pt) of the ACTIVE template's page: `initial` for the
+ * document body, `portrait` / `landscape` inside an orientation region
+ * (`set page(flipped: false | true)`).
+ */
+export interface PdfTextWidthsPt {
+  portrait: number;
+  landscape: number;
+  initial: number;
+}
+
+/** The built-in A4 portrait template; the fallback when no design is known. */
+export const BUILTIN_TEXT_WIDTHS_PT: PdfTextWidthsPt = {
+  portrait: PORTRAIT_TEXT_WIDTH_PT,
+  landscape: LANDSCAPE_TEXT_WIDTH_PT,
+  initial: PORTRAIT_TEXT_WIDTH_PT,
+};
+
+const PAPER_SIZE_PT = { a4: [595.276, 841.89], letter: [612, 792] } as const;
+
+// ponytail: an `em` page margin counts as 0 (over-estimates the text width);
+// resolve it against the body size if a template ever ships one.
+function designLengthPt(value: string): number {
+  const magnitude = Number.parseFloat(value);
+  if (value.endsWith("mm")) return (magnitude * 72) / 25.4;
+  return value.endsWith("pt") ? magnitude : 0;
+}
+
+/**
+ * Text widths from the page geometry the template actually emits. A preset
+ * paper is flipped by orientation, so a region's `flipped` is absolute. A
+ * custom format is emitted as explicit width/height already swapped for a
+ * landscape document, and Typst's `flipped: true` swaps THOSE.
+ */
+export function pdfTextWidthsPt(page: DesignPage | DesignPageV3): PdfTextWidthsPt {
+  const margin = page.margin;
+  const margins = "inside" in margin
+    ? designLengthPt(margin.inside) + designLengthPt(margin.outside)
+    : designLengthPt(margin.left) + designLengthPt(margin.right);
+  const textWidth = (edge: number): number => Math.max(1, Math.floor(edge - margins));
+  const landscapeDocument = page.orientation === "landscape";
+  const format = "format" in page ? page.format : { kind: "preset" as const, name: page.size };
+  if (format.kind === "custom") {
+    const width = designLengthPt(format.width);
+    const height = designLengthPt(format.height);
+    const portrait = textWidth(landscapeDocument ? height : width);
+    return { portrait, landscape: textWidth(landscapeDocument ? width : height), initial: portrait };
+  }
+  const [width, height] = PAPER_SIZE_PT[format.name];
+  const portrait = textWidth(width);
+  const landscape = textWidth(height);
+  return { portrait, landscape, initial: landscapeDocument ? landscape : portrait };
+}
+
+/** Text widths of the template an export resolves to (settings + pack). */
+export function resolvePdfTextWidthsPt(
+  settings: ResolvedPdfSettings,
+  options: Pick<PdfSerializeOptions, "templatePack" | "templateManifest">,
+): PdfTextWidthsPt {
+  return pdfTextWidthsPt(resolveDesignV5(options)?.page ?? pdfCatalogDesign(settings).page);
+}
 /** Table cell font size (pt) at normal and the practical readability floor. */
 const TABLE_FONT_SIZE_PT = 9;
 const MIN_TABLE_FONT_SIZE_PT = 7;
@@ -969,6 +1041,35 @@ interface CollectedLabels {
   byBlock: Map<PreparedPdfBlock, string>;
 }
 
+/**
+ * Every child block list the serializer renders for a block, in emission
+ * order. The label passes must see exactly the headings and anchors that are
+ * emitted, or a later duplicate resolves to the wrong dedupe suffix.
+ */
+function nestedBlockLists(block: PreparedPdfBlock): PreparedPdfBlock[][] {
+  switch (block.type) {
+    case "callout":
+    case "expand":
+    case "blockquote":
+    case "orientation":
+      return [block.content];
+    case "list":
+      return block.items.map((item) => item.content);
+    case "layout":
+      return block.columns.map((column) => column.content);
+    case "table":
+      return block.rows.flatMap((row) => row.cells.map((cell) => cell.content));
+    case "divider":
+      return block.label ? [[block.label]] : [];
+    case "unknown":
+      return block.extensionFrames
+        ? block.extensionFrames.map((frame) => frame.content)
+        : block.body ? [block.body] : [];
+    default:
+      return [];
+  }
+}
+
 function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
   const lookup = new Map<string, string>();
   const byBlock = new Map<PreparedPdfBlock, string>();
@@ -993,21 +1094,8 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
           if (!lookup.has(text)) lookup.set(text, label);
           break;
         }
-        case "callout":
-        case "expand":
-        case "blockquote":
-        case "orientation":
-          walkSlugs(block.content);
-          break;
-        case "list":
-          for (const item of block.items) walkSlugs(item.content);
-          break;
-        case "layout":
-          for (const column of block.columns) walkSlugs(column.content);
-          break;
-        case "table":
-          for (const row of block.rows) for (const cell of row.cells) walkSlugs(cell.content);
-          break;
+        default:
+          for (const nested of nestedBlockLists(block)) walkSlugs(nested);
       }
     }
   };
@@ -1036,21 +1124,8 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
           if (!lookup.has(block.name)) lookup.set(block.name, label);
           break;
         }
-        case "callout":
-        case "expand":
-        case "blockquote":
-        case "orientation":
-          walkAnchors(block.content);
-          break;
-        case "list":
-          for (const item of block.items) walkAnchors(item.content);
-          break;
-        case "layout":
-          for (const column of block.columns) walkAnchors(column.content);
-          break;
-        case "table":
-          for (const row of block.rows) for (const cell of row.cells) walkAnchors(cell.content);
-          break;
+        default:
+          for (const nested of nestedBlockLists(block)) walkAnchors(nested);
       }
     }
   };
@@ -1074,21 +1149,21 @@ interface Writer {
   catalogDesign: ResolvedPdfDesign;
   /** Revision-5 semantic component policy; absent keeps revisions 1-4 exact. */
   componentsV5?: DesignComponentsV3;
+  /** Text widths of the active page geometry (table fit, logo envelope). */
+  textWidths: PdfTextWidthsPt;
   /** BCP-47 locale for semantic inline dates. */
   locale: string;
   comments: PdfCommentRegistry;
 }
 
-function resolveComponentsV5(
-  options: PdfSerializeOptions,
-): DesignComponentsV3 | undefined {
+function resolveDesignV5(
+  options: Pick<PdfSerializeOptions, "templatePack" | "templateManifest">,
+): WikiPdfTemplateDesignV3 | undefined {
   const manifest = options.templatePack?.manifest ?? options.templateManifest;
   if (!isCompleteDesignPdfRevision(manifest?.canonicalSource?.revision) || !manifest?.design) {
     return undefined;
   }
-  return validatePdfTemplateDesignV3(
-    manifest.design as WikiPdfTemplateDesignV3,
-  ).components;
+  return validatePdfTemplateDesignV3(manifest.design as WikiPdfTemplateDesignV3);
 }
 
 function serializeDecisionItem(
@@ -1734,7 +1809,7 @@ function serializeBlock(
         columnCount,
         sourceWidths: block.columnWidths,
         longestAtomicToken: longestAtomicTokenLength(block.rows),
-        availableWidth: context.layoutWidthPt ?? PORTRAIT_TEXT_WIDTH_PT,
+        availableWidth: context.layoutWidthPt ?? writer.textWidths.initial,
       });
       if (layout === "scaled") {
         writer.notes.push({
@@ -1839,7 +1914,7 @@ function serializeBlock(
       // `[...]` content argument re-enters markup, so the inner `#table` stays valid.
       const authoredWidthPt = tableWidthPt(
         block.presentation,
-        context.layoutWidthPt ?? PORTRAIT_TEXT_WIDTH_PT,
+        context.layoutWidthPt ?? writer.textWidths.initial,
       );
       const width = authoredWidthPt !== undefined ? `${Number(authoredWidthPt.toFixed(3))}pt` : "100%";
       const blockExpr = `block(width: ${width})[\n${tableBody}\n]`;
@@ -1893,8 +1968,12 @@ function serializeBlock(
       // bodiedRule: the label sits on the rule, which fills the remaining width.
       // The label/line gap reuses the callout glyph-to-text gap token.
       const { alignment } = block.label.presentation ?? {};
+      const labelBlock = { ...block.label, presentation: { ...block.label.presentation, alignment: undefined } };
+      // The copy must emit the label the collect pass assigned to the original.
+      const assignedLabel = writer.anchorByBlock.get(block.label);
+      if (assignedLabel !== undefined) writer.anchorByBlock.set(labelBlock, assignedLabel);
       const label = serializeBlock(
-        { ...block.label, presentation: { ...block.label.presentation, alignment: undefined } },
+        labelBlock,
         writer,
         `${path}.label`,
         context,
@@ -2004,7 +2083,7 @@ function serializeBlock(
       // the landscape text area (spec 003 C6 / T1.6).
       const regionContext: RenderContext = {
         ...context,
-        layoutWidthPt: block.landscape ? LANDSCAPE_TEXT_WIDTH_PT : PORTRAIT_TEXT_WIDTH_PT,
+        layoutWidthPt: block.landscape ? writer.textWidths.landscape : writer.textWidths.portrait,
       };
       const inner = serializeBlocks(block.content, writer, `${path}.content`, regionContext);
       value = `#[\n#set page(flipped: ${block.landscape ? "true" : "false"})\n${inner}\n]`;
@@ -2143,28 +2222,6 @@ function typstDate(date: Date): string {
   return `datetime(year: ${date.getUTCFullYear()}, month: ${date.getUTCMonth() + 1}, day: ${date.getUTCDate()})`;
 }
 
-function exportedDateLabel(date: Date, language?: string, region?: string): string {
-  const locale = [language, region].filter(Boolean).join("-") || "en";
-  return new Intl.DateTimeFormat(locale, {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
-function documentLocale(language?: string, region?: string): string {
-  const requested = language
-    ? region && !language.includes("-") ? `${language}-${region}` : language
-    : "en";
-  try {
-    new Intl.DateTimeFormat(requested);
-    return requested;
-  } catch {
-    return "en";
-  }
-}
-
 export function serializePdfDocument(
   document: PreparedPdfDocument,
   options: PdfSerializeOptions
@@ -2181,7 +2238,8 @@ export function serializePdfDocument(
     ...(options.templatePack !== undefined ? { templatePack: options.templatePack } : {}),
   });
   const collected = collectHeadingLabels(document.blocks);
-  const componentsV5 = resolveComponentsV5(options);
+  const designV5 = resolveDesignV5(options);
+  const componentsV5 = designV5?.components;
   const writer: Writer = {
     sourceMap: [],
     notes: [...document.notes],
@@ -2195,6 +2253,7 @@ export function serializePdfDocument(
       ? settings.design
       : resolvePdfCatalogRuntime(settings.capabilityCatalog).project(settings.design),
     ...(componentsV5 === undefined ? {} : { componentsV5 }),
+    textWidths: pdfTextWidthsPt(designV5?.page ?? pdfCatalogDesign(settings).page),
     locale: documentLocale(options.metadata.language, options.metadata.region),
     comments: new PdfCommentRegistry(),
   };
@@ -2219,7 +2278,7 @@ export function serializePdfDocument(
       ? normalizeRasterAssetV1({
           bytes: settings.logo.bytes,
           mediaType: settings.logo.mediaType,
-          renderEnvelopeWidthPt: PORTRAIT_TEXT_WIDTH_PT,
+          renderEnvelopeWidthPt: writer.textWidths.initial,
           ppi: logoPpi,
         })
       : null;
@@ -2257,7 +2316,7 @@ export function serializePdfDocument(
   }
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
-  const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
+  const exportedLabel = exportedDateLabel(meta);
   const main = String.raw`#import "atlcli.typ": atlcli-doc, atlcli-outline-title, callout, status-badge, table-par, dense-token, dense-link, dense-status-badge, task-item
 
 #show: atlcli-doc.with(meta: (
@@ -2292,7 +2351,7 @@ ${body}${commentAppendix}
             ),
             settings.labels,
             settings.templateVisuals,
-            options.templateManifest!.canonicalSource!.revision as "5" | "6",
+            options.templateManifest!.canonicalSource!.revision as PdfCompleteDesignRevision,
           )
         : createAtlcliTypstTemplate(
             settings.design,

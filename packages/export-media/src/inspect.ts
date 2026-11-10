@@ -161,7 +161,8 @@ export function parseSvgSize(source: string): TargetSize | null {
   if (!open) return null;
   const tag = open[0];
   const num = (attr: string): number | null => {
-    const m = tag.match(new RegExp(`\\b${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
+    // Whitespace-anchored: `\b` would also match `stroke-width=`.
+    const m = tag.match(new RegExp(`\\s${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
     if (!m) return null;
     const raw = (m[1] ?? m[2] ?? "").trim();
     // Accept a bare number or an explicit px length; reject %, em, and friends.
@@ -173,7 +174,7 @@ export function parseSvgSize(source: string): TargetSize | null {
   const w = num("width");
   const h = num("height");
   if (w !== null && h !== null) return { widthPx: Math.round(w), heightPx: Math.round(h) };
-  const vb = tag.match(/\bviewBox\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  const vb = tag.match(/\sviewBox\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
   if (vb) {
     const parts = (vb[1] ?? vb[2] ?? "").trim().split(/[\s,]+/).map(Number);
     if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {

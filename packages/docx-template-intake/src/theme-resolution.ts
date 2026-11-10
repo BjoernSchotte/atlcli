@@ -1,8 +1,3 @@
-export const DOCX_THEME_RESOLUTION_RULE_V1 = {
-  id: "atlcli.docx-theme-resolution",
-  version: "1",
-} as const;
-
 export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
 export type DocxThemeFontFamilyV1 = "major" | "minor";
 
@@ -147,13 +142,13 @@ export function canonicalDocxThemeDefinition(
     Object.fromEntries(
       Object.entries(value)
         .map(([key, item]) => [key, canonicalRgb(item) ?? item.trim()])
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => left.localeCompare(right, "en"))
     );
   const fonts = (family: Partial<Record<DocxFontScriptV1, string>>) =>
     Object.fromEntries(
       Object.entries(family)
         .map(([script, value]) => [script, value.trim()])
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => left.localeCompare(right, "en"))
     ) as Partial<Record<DocxFontScriptV1, string>>;
   return {
     colors: entries(theme.colors),
@@ -162,7 +157,7 @@ export function canonicalDocxThemeDefinition(
           colorMapping: Object.fromEntries(
             Object.entries(theme.colorMapping)
               .map(([key, value]) => [key, value.trim()])
-              .sort(([left], [right]) => left.localeCompare(right))
+              .sort(([left], [right]) => left.localeCompare(right, "en"))
           ),
         }
       : {}),

@@ -601,7 +601,9 @@ function svgDimensions(source: string): DocxVisualDimensionsV1 | undefined {
   const root = /<svg\b([^>]*)>/i.exec(source)?.[1] ?? "";
   const numeric = (name: string): number | undefined => {
     const value = new RegExp(
-      String.raw`\b${name}\s*=\s*["']\s*(\d+(?:\.\d+)?)`,
+      // Whitespace-anchored: `\b` would also match `stroke-width=`. A bare
+      // number or px only; other units fall through to the viewBox.
+      String.raw`\s${name}\s*=\s*["']\s*(\d+(?:\.\d+)?)(?:px)?\s*["']`,
       "i"
     ).exec(root)?.[1];
     if (!value) return undefined;
@@ -614,7 +616,7 @@ function svgDimensions(source: string): DocxVisualDimensionsV1 | undefined {
   const height = numeric("height");
   if (width && height) return { width, height, unit: "pixel" };
   const viewBox =
-    /\bviewBox\s*=\s*["']\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/i.exec(
+    /\sviewBox\s*=\s*["']\s*(-?\d+(?:\.\d+)?)[\s,]+(-?\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)[\s,]+(\d+(?:\.\d+)?)/i.exec(
       root
     );
   if (!viewBox) return undefined;
@@ -1154,10 +1156,9 @@ function parseVisualPart(
     }
     if (
       current &&
-      depth === sceneDepth &&
-      ((DRAWING_WORD_URIS.has(tag.uri) &&
-        (tag.local === "inline" || tag.local === "anchor")) ||
-        (tag.uri === VML_URI && tag.local === "shape"))
+      // Whatever element opened the scene (inline, anchor, v:shape, or a bare
+      // v:textbox) closes it: at the scene's depth this is its end tag.
+      depth === sceneDepth
     ) {
       scenes.push(current);
       current = undefined;
@@ -1589,7 +1590,7 @@ function inferRoles(
   }
   return suggestions.sort((left, right) =>
     `${left.sceneId}:${left.role}`.localeCompare(
-      `${right.sceneId}:${right.role}`
+      `${right.sceneId}:${right.role}`, "en"
     )
   );
 }
@@ -1732,7 +1733,7 @@ async function verifyAssets(
         handle,
       })
     )
-    .sort((left, right) => left.sha256.localeCompare(right.sha256));
+    .sort((left, right) => left.sha256.localeCompare(right.sha256, "en"));
   return {
     byPart,
     assets,
@@ -1957,7 +1958,7 @@ export async function analyzeDocxVisualArchive(
     }
   }
   const scenes = [...scenesById.values()].sort((left, right) =>
-    left.id.localeCompare(right.id)
+    left.id.localeCompare(right.id, "en")
   );
   const roleSuggestions = inferRoles(
     scenes,

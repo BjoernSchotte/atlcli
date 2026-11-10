@@ -18,17 +18,10 @@ import { decodeSvgSource, findSvgSafetyViolation } from "@atlcli/confluence";
 import { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
 import {
   PDF_TEMPLATE_WRITERS_V1,
+  svgDimensions,
   type PdfTemplateAssetSlotV1,
 } from "./template-pack.js";
-
-export async function sha256PdfTemplateBytes(
-  bytes: Uint8Array
-): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
-}
+import { sha256Hex } from "./shared.js";
 
 export function pdfTemplateAssetExtension(
   mediaType: string
@@ -63,17 +56,9 @@ export function pdfTemplateAssetDimensions(
     };
   }
   if (mediaType === "image/svg+xml") {
-    const source = decodeSvgSource(bytes);
-    const width = Number(/\bwidth=["'](\d+(?:\.\d+)?)["']/u.exec(source)?.[1]);
-    const height = Number(/\bheight=["'](\d+(?:\.\d+)?)["']/u.exec(source)?.[1]);
-    if (
-      Number.isFinite(width) &&
-      width > 0 &&
-      Number.isFinite(height) &&
-      height > 0
-    ) {
-      return { width, height, unit: "pixel" };
-    }
+    // The pack verifier's own rule, so a built descriptor always verifies.
+    const size = svgDimensions(decodeSvgSource(bytes));
+    if (size) return { ...size, unit: "pixel" };
   }
   if (
     mediaType === "image/jpeg" &&
@@ -112,7 +97,7 @@ export async function validatePdfTemplateAssetPreflight(
   if (!/^[a-f0-9]{64}$/u.test(asset.sha256)) {
     throw new Error(`Asset ${asset.slot} has an invalid SHA-256`);
   }
-  if ((await sha256PdfTemplateBytes(asset.bytes)) !== asset.sha256) {
+  if ((await sha256Hex(asset.bytes)) !== asset.sha256) {
     throw new Error(`Asset ${asset.slot} SHA-256 does not match its bytes`);
   }
   const dimensions = pdfTemplateAssetDimensions(asset.mediaType, asset.bytes);
@@ -271,7 +256,7 @@ export function materializePdfTemplateAssetFields(
   const decorations: WikiPdfTemplatePageDecorationV1[] = [];
   const files: Record<string, Uint8Array> = {};
   for (const asset of [...assets].sort((left, right) =>
-    left.slot.localeCompare(right.slot)
+    left.slot.localeCompare(right.slot, "en")
   )) {
     const slot = asset.slot as PdfTemplateAssetSlotV1;
     const descriptorId = identity.descriptorId(asset);

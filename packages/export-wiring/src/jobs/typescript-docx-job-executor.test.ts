@@ -438,6 +438,7 @@ describe("createTypescriptDocxExportJobExecutor", () => {
   });
 
   it("binds durable request options instead of trusting resolveInput", async () => {
+    let macroContexts = 0;
     const setup = executorOptions({
       resolveInput: async () => ({
         details,
@@ -445,7 +446,7 @@ describe("createTypescriptDocxExportJobExecutor", () => {
         embedImages: true,
         updateFields: "always",
         captionLang: "de",
-        macros: { registry: {} as never, contextFor: (() => ({})) as never },
+        macros: { registry: {} as never, live: true, contextFor: (() => { macroContexts += 1; return {}; }) as never },
       }),
     });
     const req = await request({
@@ -460,6 +461,9 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     const context = executionContext(setup.order);
     await createTypescriptDocxExportJobExecutor(setup.options).execute(req, context.context);
     expect(setup.ready.prepared?.updateFields).toBe("never");
+    // resolveMacros:false turns off only the live renderers; the macro pass
+    // (pure renderers: TOC, excerpts, table layout) still runs.
+    expect(macroContexts).toBeGreaterThan(0);
     expect(setup.ready.prepared?.baseNotes.some((note) => note.code === "field-refresh-suppressed")).toBe(false);
     expect(readPart(context.artifactBytes()!, "word/document.xml")).toContain("request-name.docx");
     expect(readPart(context.artifactBytes()!, "word/document.xml")).not.toContain("wrong.docx");

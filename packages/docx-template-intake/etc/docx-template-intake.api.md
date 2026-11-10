@@ -32,11 +32,7 @@ export declare function analyzeDocxTemplate(bytes: Uint8Array, options?: {
 }): Promise<DocxTemplateFactsV1>;
 
 // export: analyzeDocxTemplateForCatalog
-export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: {
-    catalog: TemplateCapabilityCatalogV1;
-    bundledFontFamilies: readonly string[];
-    progress?: (event: TemplateImportProgressEventV1) => void;
-}): Promise<DocxCatalogAnalysisV1>;
+export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: CatalogAnalysisOptions): Promise<DocxCatalogAnalysisV1>;
 
 // export: analyzeDocxTemplateImport
 export declare function analyzeDocxTemplateImport(bytes: Uint8Array, options: AnalyzeDocxTemplateImportOptionsV1): Promise<DocxTemplateImportApplicationResultV1>;
@@ -135,12 +131,6 @@ export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/
 // export: DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1
 export declare const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1: "wiki.pdf-template-docx-application/v1";
 
-// export: DOCX_THEME_RESOLUTION_RULE_V1
-export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
-    readonly id: "atlcli.docx-theme-resolution";
-    readonly version: "1";
-};
-
 // export: DOCX_VISUAL_ANALYSIS_RULE_V1
 export declare const DOCX_VISUAL_ANALYSIS_RULE_V1: {
     readonly id: "atlcli.docx-visual-analysis";
@@ -212,15 +202,6 @@ export interface DocxCentralColorInputV1 {
 
 // export: DocxDecorationKindV1
 export type DocxDecorationKindV1 = "footer" | "header";
-
-// export: DocxDirectFormattingAggregateV1
-export interface DocxDirectFormattingAggregateV1 {
-    role: Exclude<DocxSemanticStyleRoleV1, "table">;
-    properties: ResolvedDocxStylePropertiesV1;
-    count: number;
-    totalCount: number;
-    evidence: TemplateEvidenceV1;
-}
 
 // export: DocxFontScriptV1
 export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
@@ -484,7 +465,6 @@ export interface DocxTemplateMatchingInputV1 {
     sections: DocxSectionResolutionV1;
     bundledFontFamilies: readonly string[];
     centralColors?: readonly DocxCentralColorInputV1[];
-    directFormatting?: readonly DocxDirectFormattingAggregateV1[];
     progress?: (event: TemplateImportProgressEventV1) => void;
 }
 
@@ -886,9 +866,6 @@ export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handle
     }): void;
     text?(characters: number): void;
 }, limits?: DocxXmlLimitsV1): XmlPartScanV1;
-
-// export: TEMPLATE_INTAKE_MESSAGE_NAMESPACE
-export declare const TEMPLATE_INTAKE_MESSAGE_NAMESPACE: "ATLCLI_PDF_TEMPLATE_";
 
 // export: TEMPLATE_INTAKE_MESSAGES_V1
 export declare const TEMPLATE_INTAKE_MESSAGES_V1: {
@@ -1069,11 +1046,7 @@ export declare function analyzeDocxTemplate(bytes: Uint8Array, options?: {
 }): Promise<DocxTemplateFactsV1>;
 
 // export: analyzeDocxTemplateForCatalog
-export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: {
-    catalog: TemplateCapabilityCatalogV1;
-    bundledFontFamilies: readonly string[];
-    progress?: (event: TemplateImportProgressEventV1) => void;
-}): Promise<DocxCatalogAnalysisV1>;
+export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: CatalogAnalysisOptions): Promise<DocxCatalogAnalysisV1>;
 
 // export: analyzeDocxTemplateImport
 export declare function analyzeDocxTemplateImport(bytes: Uint8Array, options: AnalyzeDocxTemplateImportOptionsV1): Promise<DocxTemplateImportApplicationResultV1>;
@@ -1172,12 +1145,6 @@ export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/
 // export: DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1
 export declare const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1: "wiki.pdf-template-docx-application/v1";
 
-// export: DOCX_THEME_RESOLUTION_RULE_V1
-export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
-    readonly id: "atlcli.docx-theme-resolution";
-    readonly version: "1";
-};
-
 // export: DOCX_VISUAL_ANALYSIS_RULE_V1
 export declare const DOCX_VISUAL_ANALYSIS_RULE_V1: {
     readonly id: "atlcli.docx-visual-analysis";
@@ -1249,15 +1216,6 @@ export interface DocxCentralColorInputV1 {
 
 // export: DocxDecorationKindV1
 export type DocxDecorationKindV1 = "footer" | "header";
-
-// export: DocxDirectFormattingAggregateV1
-export interface DocxDirectFormattingAggregateV1 {
-    role: Exclude<DocxSemanticStyleRoleV1, "table">;
-    properties: ResolvedDocxStylePropertiesV1;
-    count: number;
-    totalCount: number;
-    evidence: TemplateEvidenceV1;
-}
 
 // export: DocxFontScriptV1
 export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
@@ -1521,7 +1479,6 @@ export interface DocxTemplateMatchingInputV1 {
     sections: DocxSectionResolutionV1;
     bundledFontFamilies: readonly string[];
     centralColors?: readonly DocxCentralColorInputV1[];
-    directFormatting?: readonly DocxDirectFormattingAggregateV1[];
     progress?: (event: TemplateImportProgressEventV1) => void;
 }
 
@@ -1923,9 +1880,6 @@ export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handle
     }): void;
     text?(characters: number): void;
 }, limits?: DocxXmlLimitsV1): XmlPartScanV1;
-
-// export: TEMPLATE_INTAKE_MESSAGE_NAMESPACE
-export declare const TEMPLATE_INTAKE_MESSAGE_NAMESPACE: "ATLCLI_PDF_TEMPLATE_";
 
 // export: TEMPLATE_INTAKE_MESSAGES_V1
 export declare const TEMPLATE_INTAKE_MESSAGES_V1: {
@@ -2106,11 +2060,7 @@ export declare function analyzeDocxTemplate(bytes: Uint8Array, options?: {
 }): Promise<DocxTemplateFactsV1>;
 
 // export: analyzeDocxTemplateForCatalog
-export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: {
-    catalog: TemplateCapabilityCatalogV1;
-    bundledFontFamilies: readonly string[];
-    progress?: (event: TemplateImportProgressEventV1) => void;
-}): Promise<DocxCatalogAnalysisV1>;
+export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: CatalogAnalysisOptions): Promise<DocxCatalogAnalysisV1>;
 
 // export: analyzeDocxTemplateImport
 export declare function analyzeDocxTemplateImport(bytes: Uint8Array, options: AnalyzeDocxTemplateImportOptionsV1): Promise<DocxTemplateImportApplicationResultV1>;
@@ -2209,12 +2159,6 @@ export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/
 // export: DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1
 export declare const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1: "wiki.pdf-template-docx-application/v1";
 
-// export: DOCX_THEME_RESOLUTION_RULE_V1
-export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
-    readonly id: "atlcli.docx-theme-resolution";
-    readonly version: "1";
-};
-
 // export: DOCX_VISUAL_ANALYSIS_RULE_V1
 export declare const DOCX_VISUAL_ANALYSIS_RULE_V1: {
     readonly id: "atlcli.docx-visual-analysis";
@@ -2286,15 +2230,6 @@ export interface DocxCentralColorInputV1 {
 
 // export: DocxDecorationKindV1
 export type DocxDecorationKindV1 = "footer" | "header";
-
-// export: DocxDirectFormattingAggregateV1
-export interface DocxDirectFormattingAggregateV1 {
-    role: Exclude<DocxSemanticStyleRoleV1, "table">;
-    properties: ResolvedDocxStylePropertiesV1;
-    count: number;
-    totalCount: number;
-    evidence: TemplateEvidenceV1;
-}
 
 // export: DocxFontScriptV1
 export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
@@ -2558,7 +2493,6 @@ export interface DocxTemplateMatchingInputV1 {
     sections: DocxSectionResolutionV1;
     bundledFontFamilies: readonly string[];
     centralColors?: readonly DocxCentralColorInputV1[];
-    directFormatting?: readonly DocxDirectFormattingAggregateV1[];
     progress?: (event: TemplateImportProgressEventV1) => void;
 }
 
@@ -2960,9 +2894,6 @@ export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handle
     }): void;
     text?(characters: number): void;
 }, limits?: DocxXmlLimitsV1): XmlPartScanV1;
-
-// export: TEMPLATE_INTAKE_MESSAGE_NAMESPACE
-export declare const TEMPLATE_INTAKE_MESSAGE_NAMESPACE: "ATLCLI_PDF_TEMPLATE_";
 
 // export: TEMPLATE_INTAKE_MESSAGES_V1
 export declare const TEMPLATE_INTAKE_MESSAGES_V1: {
@@ -3143,11 +3074,7 @@ export declare function analyzeDocxTemplate(bytes: Uint8Array, options?: {
 }): Promise<DocxTemplateFactsV1>;
 
 // export: analyzeDocxTemplateForCatalog
-export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: {
-    catalog: TemplateCapabilityCatalogV1;
-    bundledFontFamilies: readonly string[];
-    progress?: (event: TemplateImportProgressEventV1) => void;
-}): Promise<DocxCatalogAnalysisV1>;
+export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: CatalogAnalysisOptions): Promise<DocxCatalogAnalysisV1>;
 
 // export: analyzeDocxTemplateImport
 export declare function analyzeDocxTemplateImport(bytes: Uint8Array, options: AnalyzeDocxTemplateImportOptionsV1): Promise<DocxTemplateImportApplicationResultV1>;
@@ -3246,12 +3173,6 @@ export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/
 // export: DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1
 export declare const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1: "wiki.pdf-template-docx-application/v1";
 
-// export: DOCX_THEME_RESOLUTION_RULE_V1
-export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
-    readonly id: "atlcli.docx-theme-resolution";
-    readonly version: "1";
-};
-
 // export: DOCX_VISUAL_ANALYSIS_RULE_V1
 export declare const DOCX_VISUAL_ANALYSIS_RULE_V1: {
     readonly id: "atlcli.docx-visual-analysis";
@@ -3323,15 +3244,6 @@ export interface DocxCentralColorInputV1 {
 
 // export: DocxDecorationKindV1
 export type DocxDecorationKindV1 = "footer" | "header";
-
-// export: DocxDirectFormattingAggregateV1
-export interface DocxDirectFormattingAggregateV1 {
-    role: Exclude<DocxSemanticStyleRoleV1, "table">;
-    properties: ResolvedDocxStylePropertiesV1;
-    count: number;
-    totalCount: number;
-    evidence: TemplateEvidenceV1;
-}
 
 // export: DocxFontScriptV1
 export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
@@ -3595,7 +3507,6 @@ export interface DocxTemplateMatchingInputV1 {
     sections: DocxSectionResolutionV1;
     bundledFontFamilies: readonly string[];
     centralColors?: readonly DocxCentralColorInputV1[];
-    directFormatting?: readonly DocxDirectFormattingAggregateV1[];
     progress?: (event: TemplateImportProgressEventV1) => void;
 }
 
@@ -3997,9 +3908,6 @@ export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handle
     }): void;
     text?(characters: number): void;
 }, limits?: DocxXmlLimitsV1): XmlPartScanV1;
-
-// export: TEMPLATE_INTAKE_MESSAGE_NAMESPACE
-export declare const TEMPLATE_INTAKE_MESSAGE_NAMESPACE: "ATLCLI_PDF_TEMPLATE_";
 
 // export: TEMPLATE_INTAKE_MESSAGES_V1
 export declare const TEMPLATE_INTAKE_MESSAGES_V1: {

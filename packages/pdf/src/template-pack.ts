@@ -50,6 +50,7 @@ import { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilitie
 import { createAtlcliTypstTemplate } from "./template.js";
 import { createAtlcliTypstTemplateV4 } from "./template-v4.js";
 import { createAtlcliTypstTemplateV5 } from "./template-v5.js";
+import { sha256Hex } from "./shared.js";
 
 export const PDF_TEMPLATE_ASSET_SLOTS_V1 = [
   "asset.logo",
@@ -85,6 +86,13 @@ export const PDF_CANONICAL_SOURCE_REVISION_4 = "4";
 export const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 /** Revision-5 renderer executing Catalog V4 (cover/closing-page toggles). */
 export const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
+/**
+ * Revision 6 with decorations scoped by the physical page, like the running
+ * header and footer. Revisions 5/6 scope them by the page counter, so a
+ * `pageNumbers.start` (or body restart) that changes its parity puts
+ * odd/even decorations on the opposite pages.
+ */
+export const PDF_CANONICAL_SOURCE_REVISION_7 = "7";
 /** Durable DOCX-derived authoring remains pinned to its characterized renderer. */
 export const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION =
   PDF_CANONICAL_SOURCE_REVISION_3;
@@ -98,6 +106,7 @@ export const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS = [
   PDF_CANONICAL_SOURCE_REVISION_4,
   PDF_CANONICAL_SOURCE_REVISION_5,
   PDF_CANONICAL_SOURCE_REVISION_6,
+  PDF_CANONICAL_SOURCE_REVISION_7,
 ] as const;
 
 export type PdfTemplateManifestV5 = TemplateManifest<WikiPdfTemplateDesignV3>;
@@ -183,9 +192,6 @@ export interface PdfTemplateRuntimeV1 {
   manifest: AnyPdfTemplateManifest;
   runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
   canonicalSource: PdfVerifiedCanonicalSourceV1;
-  assetBytes: Readonly<
-    Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>
-  >;
   /** Backward-compatible alias for the verified canonical source. */
   entrySource: string;
   assets: Readonly<
@@ -274,6 +280,10 @@ const CANONICAL_REVISION_CONTRACTS: Readonly<
     catalogRequired: true,
   },
   [PDF_CANONICAL_SOURCE_REVISION_6]: {
+    runtime: PDF_CATALOG_RUNTIME_V4,
+    catalogRequired: true,
+  },
+  [PDF_CANONICAL_SOURCE_REVISION_7]: {
     runtime: PDF_CATALOG_RUNTIME_V4,
     catalogRequired: true,
   },
@@ -901,11 +911,18 @@ function jpegDimensions(bytes: Uint8Array): { width: number; height: number } | 
   return undefined;
 }
 
-function svgDimensions(source: string): { width: number; height: number } | undefined {
+/**
+ * Intrinsic SVG size in whole pixels: the root `<svg>` tag's own width/height
+ * attributes, else its viewBox. Shared by the descriptor builder and the pack
+ * verifier, which compare the two for equality.
+ */
+export function svgDimensions(source: string): { width: number; height: number } | undefined {
   const root = /<svg\b([^>]*)>/i.exec(source)?.[1] ?? "";
   const number = (name: string): number | undefined => {
+    // Whitespace-anchored: `\b` would also match `stroke-width=`. A bare
+    // number or a px length only; `%`, `em` and friends defer to the viewBox.
     const raw = new RegExp(
-      String.raw`\b${name}\s*=\s*["']\s*(\d+(?:\.\d+)?)`,
+      String.raw`\s${name}\s*=\s*["']\s*(\d+(?:\.\d+)?)(?:px)?\s*["']`,
       "i"
     ).exec(root)?.[1];
     if (!raw) return undefined;
@@ -916,7 +933,7 @@ function svgDimensions(source: string): { width: number; height: number } | unde
   const height = number("height");
   if (width && height) return { width, height };
   const viewBox =
-    /\bviewBox\s*=\s*["']\s*-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/i.exec(
+    /\sviewBox\s*=\s*["']\s*-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/i.exec(
       root
     );
   return viewBox
@@ -997,14 +1014,6 @@ function actualAsset(
     );
   }
   return dimensions;
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const copy = new Uint8Array(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", copy.buffer);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
 }
 
 function extension(mediaType: TemplateAssetMediaTypeV1): string {
@@ -1097,6 +1106,7 @@ function canonicalSourceFor(
       );
     case "5":
     case "6":
+    case "7":
       return createAtlcliTypstTemplateV5(
         manifest.design as WikiPdfTemplateDesignV3,
         { ...labels },
@@ -1170,14 +1180,6 @@ export function clonePdfTemplateRuntime(
     manifest: structuredClone(runtime.manifest),
     runtimeSnapshot: structuredClone(runtime.runtimeSnapshot),
     canonicalSource: structuredClone(runtime.canonicalSource),
-    assetBytes: Object.freeze(
-      Object.fromEntries(
-        Object.entries(assets).map(([slot, asset]) => [
-          slot,
-          new Uint8Array(asset.bytes),
-        ])
-      )
-    ),
     entrySource: runtime.canonicalSource.source,
     assets,
     decorations: structuredClone(runtime.decorations),
@@ -1418,14 +1420,6 @@ export async function validatePdfTemplatePack(
       source: regenerated,
       sha256: sourceSha256,
     },
-    assetBytes: Object.freeze(
-      Object.fromEntries(
-        Object.entries(acceptedAssets).map(([slot, asset]) => [
-          slot,
-          new Uint8Array(asset.bytes),
-        ])
-      )
-    ),
     entrySource: regenerated,
     assets: acceptedAssets,
     decorations,
@@ -1495,7 +1489,7 @@ export function buildUniformPdfPageBorderV1(
       );
     }
     const ordered = [...section.sides].sort((left, right) =>
-      left.side.localeCompare(right.side)
+      left.side.localeCompare(right.side, "en")
     );
     if (
       ordered.length !== 4 ||

@@ -292,7 +292,7 @@ export async function analyzeDocxOpcArchive(
 ): Promise<DocxOpcFactsV1> {
   const entries = (Object.values(zip.files) as unknown as ZipEntry[])
     .filter(({ dir }) => !dir)
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => left.name.localeCompare(right.name, "en"));
   const partNames = new Set(entries.map(({ name }) => name));
   const parts: OpcPartFactV1[] = entries.map((entry) => ({
     partRef: entry.name,
@@ -426,11 +426,11 @@ export async function analyzeDocxOpcArchive(
     emitProgress(options.progress, completed, entries.length);
   }
   relationships.sort((left, right) =>
-    left.relationshipFingerprint.localeCompare(right.relationshipFingerprint)
+    left.relationshipFingerprint.localeCompare(right.relationshipFingerprint, "en")
   );
   diagnostics.sort((left, right) =>
     `${left.code}:${JSON.stringify(left.params)}`.localeCompare(
-      `${right.code}:${JSON.stringify(right.params)}`
+      `${right.code}:${JSON.stringify(right.params)}`, "en"
     )
   );
   return {

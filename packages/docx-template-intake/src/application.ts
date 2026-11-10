@@ -22,12 +22,10 @@ import {
   type TemplateCapabilityCatalogV1,
 } from "@atlcli/template-pack";
 import { sha256Hex } from "@atlcli/core";
-import {
-  analyzeDocxTemplateForCatalog,
-} from "./design-analysis.js";
+import { analyzeDocxTemplateForCatalogWithArchive } from "./design-analysis.js";
 import { DOCX_PDF_MAPPING_RULE_V1 } from "./matching.js";
 import {
-  analyzeDocxVisualAssets,
+  analyzeDocxVisualArchive,
   DOCX_VISUAL_ANALYSIS_RULE_V1,
   type DocxVisualAnalysisV1,
   type DocxVisualPrivateSidecarV1,
@@ -285,17 +283,22 @@ export async function analyzeDocxTemplateImport(
   bytes: Uint8Array,
   options: AnalyzeDocxTemplateImportOptionsV1
 ): Promise<DocxTemplateImportApplicationResultV1> {
-  const catalogAnalysis = await analyzeDocxTemplateForCatalog(bytes, {
+  const {
+    analysis: catalogAnalysis,
+    archive,
+    opc,
+  } = await analyzeDocxTemplateForCatalogWithArchive(bytes, {
     catalog: options.catalog,
     bundledFontFamilies: options.bundledFontFamilies,
     ...(options.progress ? { progress: options.progress } : {}),
   });
   const visual = options.metadataOnly
     ? undefined
-    : await analyzeDocxVisualAssets(bytes, {
+    : await analyzeDocxVisualArchive(archive, opc, {
         capabilities: options.assetCapabilities,
         assetStore: options.assetStore,
         sections: catalogAnalysis.sections,
+        sourceDigest: catalogAnalysis.sourceDigest,
       });
   const projected = visual
     ? await projectVisualCandidates(
@@ -309,7 +312,7 @@ export async function analyzeDocxTemplateImport(
     ...(visual?.analysis.diagnostics ?? []),
   ].sort((left, right) =>
     `${left.code}:${canonicalCapabilityJson(left.params)}`.localeCompare(
-      `${right.code}:${canonicalCapabilityJson(right.params)}`
+      `${right.code}:${canonicalCapabilityJson(right.params)}`, "en"
     )
   );
   const candidates = [

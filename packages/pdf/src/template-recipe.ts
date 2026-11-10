@@ -39,7 +39,6 @@ import {
   PDF_RECIPE_TEMPLATE_ASSET_IDENTITY_V1,
   materializePdfTemplateAssetFields,
   pdfTemplateAssetExtension,
-  sha256PdfTemplateBytes,
   validatePdfTemplateAssetPreflight,
 } from "./template-assets.js";
 import {
@@ -47,6 +46,7 @@ import {
   resolvePdfTemplateRecipeV2Design,
   type PdfTemplateBaselineRegistryV1,
 } from "./recipe-baselines.js";
+import { sha256Hex } from "./shared.js";
 
 const encoder = new TextEncoder();
 const ASSET_SLOTS = new Set<string>(PDF_TEMPLATE_ASSET_SLOTS_V1);
@@ -304,7 +304,7 @@ export async function materializePdfTemplateRecipeV1(
 
   return {
     bytes: new Uint8Array(bytes),
-    packDigest: await sha256PdfTemplateBytes(bytes),
+    packDigest: await sha256Hex(bytes),
     manifest: structuredClone(loaded.manifest) as TemplateManifest,
     canonicalTypst,
     runtimeSnapshot: structuredClone(loaded.runtimeSnapshot),
@@ -411,7 +411,7 @@ export async function materializePdfTemplateRecipeV2(
 
   return {
     bytes: new Uint8Array(bytes),
-    packDigest: await sha256PdfTemplateBytes(bytes),
+    packDigest: await sha256Hex(bytes),
     manifest: structuredClone(loaded.manifest) as PdfTemplateManifestV5,
     canonicalTypst,
     runtimeSnapshot: structuredClone(loaded.runtimeSnapshot),

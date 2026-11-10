@@ -461,6 +461,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 // export: PDF_CANONICAL_SOURCE_REVISION_6
 export declare const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_7
+export declare const PDF_CANONICAL_SOURCE_REVISION_7 = "7";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -498,7 +501,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "3",
     "4",
     "5",
-    "6"
+    "6",
+    "7"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -659,6 +663,9 @@ export interface PdfCompileResult {
     compilerVersion: string;
     fontEvidence?: PdfFontLoadEvidenceV1;
 }
+
+// export: PdfCompleteDesignRevision
+export type PdfCompleteDesignRevision = "5" | "6" | "7";
 
 // export: PdfDesignResolutionTraceEntry
 export interface PdfDesignResolutionTraceEntry {
@@ -992,7 +999,6 @@ export interface PdfTemplateRuntimeV1 {
     manifest: AnyPdfTemplateManifest;
     runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
     canonicalSource: PdfVerifiedCanonicalSourceV1;
-    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
     entrySource: string;
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
@@ -1031,6 +1037,13 @@ export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" 
 export interface PdfTemplateVisualsV1 {
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
+// export: PdfTextWidthsPt
+export interface PdfTextWidthsPt {
+    portrait: number;
+    landscape: number;
+    initial: number;
 }
 
 // export: PdfTheme
@@ -1277,6 +1290,7 @@ export interface PreparePdfOptions {
     };
     imageQuality?: ExportImageQualityV1;
     rasterNormalizer?: RasterNormalizerPortV1;
+    textWidthsPt?: PdfTextWidthsPt;
 }
 
 // export: renderPreparedPdfExport
@@ -1400,7 +1414,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     catalog: TemplateCapabilityCatalogReferenceV1;
     canonicalSource: {
         api: "wiki.pdf-canonical-typst";
-        revision: "5" | "6";
+        revision: PdfCompleteDesignRevision;
     };
     compilerRange: string;
     design: WikiPdfTemplateDesignV3;
@@ -2042,6 +2056,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 // export: PDF_CANONICAL_SOURCE_REVISION_6
 export declare const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_7
+export declare const PDF_CANONICAL_SOURCE_REVISION_7 = "7";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -2079,7 +2096,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "3",
     "4",
     "5",
-    "6"
+    "6",
+    "7"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -2240,6 +2258,9 @@ export interface PdfCompileResult {
     compilerVersion: string;
     fontEvidence?: PdfFontLoadEvidenceV1;
 }
+
+// export: PdfCompleteDesignRevision
+export type PdfCompleteDesignRevision = "5" | "6" | "7";
 
 // export: PdfDesignResolutionTraceEntry
 export interface PdfDesignResolutionTraceEntry {
@@ -2573,7 +2594,6 @@ export interface PdfTemplateRuntimeV1 {
     manifest: AnyPdfTemplateManifest;
     runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
     canonicalSource: PdfVerifiedCanonicalSourceV1;
-    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
     entrySource: string;
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
@@ -2612,6 +2632,13 @@ export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" 
 export interface PdfTemplateVisualsV1 {
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
+// export: PdfTextWidthsPt
+export interface PdfTextWidthsPt {
+    portrait: number;
+    landscape: number;
+    initial: number;
 }
 
 // export: PdfTheme
@@ -2858,6 +2885,7 @@ export interface PreparePdfOptions {
     };
     imageQuality?: ExportImageQualityV1;
     rasterNormalizer?: RasterNormalizerPortV1;
+    textWidthsPt?: PdfTextWidthsPt;
 }
 
 // export: renderPreparedPdfExport
@@ -2981,7 +3009,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     catalog: TemplateCapabilityCatalogReferenceV1;
     canonicalSource: {
         api: "wiki.pdf-canonical-typst";
-        revision: "5" | "6";
+        revision: PdfCompleteDesignRevision;
     };
     compilerRange: string;
     design: WikiPdfTemplateDesignV3;
@@ -3623,6 +3651,9 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 // export: PDF_CANONICAL_SOURCE_REVISION_6
 export declare const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_7
+export declare const PDF_CANONICAL_SOURCE_REVISION_7 = "7";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
@@ -3660,7 +3691,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "3",
     "4",
     "5",
-    "6"
+    "6",
+    "7"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -3821,6 +3853,9 @@ export interface PdfCompileResult {
     compilerVersion: string;
     fontEvidence?: PdfFontLoadEvidenceV1;
 }
+
+// export: PdfCompleteDesignRevision
+export type PdfCompleteDesignRevision = "5" | "6" | "7";
 
 // export: PdfDesignResolutionTraceEntry
 export interface PdfDesignResolutionTraceEntry {
@@ -4154,7 +4189,6 @@ export interface PdfTemplateRuntimeV1 {
     manifest: AnyPdfTemplateManifest;
     runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
     canonicalSource: PdfVerifiedCanonicalSourceV1;
-    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
     entrySource: string;
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
@@ -4193,6 +4227,13 @@ export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" 
 export interface PdfTemplateVisualsV1 {
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
+// export: PdfTextWidthsPt
+export interface PdfTextWidthsPt {
+    portrait: number;
+    landscape: number;
+    initial: number;
 }
 
 // export: PdfTheme
@@ -4439,6 +4480,7 @@ export interface PreparePdfOptions {
     };
     imageQuality?: ExportImageQualityV1;
     rasterNormalizer?: RasterNormalizerPortV1;
+    textWidthsPt?: PdfTextWidthsPt;
 }
 
 // export: renderPreparedPdfExport
@@ -4562,7 +4604,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     catalog: TemplateCapabilityCatalogReferenceV1;
     canonicalSource: {
         api: "wiki.pdf-canonical-typst";
-        revision: "5" | "6";
+        revision: PdfCompleteDesignRevision;
     };
     compilerRange: string;
     design: WikiPdfTemplateDesignV3;
@@ -4785,6 +4827,7 @@ export interface AtlcliTypstTemplateOptions {
     typographyModelV5?: DesignTypography;
     titleBlockV5?: boolean;
     revision6?: boolean;
+    revision7?: boolean;
 }
 
 // export: buildUniformPdfPageBorderV1
@@ -4829,6 +4872,9 @@ export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 // export: BUILTIN_PDF_TEMPLATES
 export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
 
+// export: BUILTIN_TEXT_WIDTHS_PT
+export declare const BUILTIN_TEXT_WIDTHS_PT: PdfTextWidthsPt;
+
 // export: canonicalPdfTemplateBaselineV1
 export declare function canonicalPdfTemplateBaselineV1(baseline: PdfTemplateBaselineContentV1): string;
 
@@ -4853,7 +4899,7 @@ export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesign
 export declare function createAtlcliTypstTemplateV4(design: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, baseSource?: string): string;
 
 // export: createAtlcliTypstTemplateV5
-export declare function createAtlcliTypstTemplateV5(design: WikiPdfTemplateDesignV3, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, revision?: "5" | "6"): string;
+export declare function createAtlcliTypstTemplateV5(design: WikiPdfTemplateDesignV3, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, revision?: PdfCompleteDesignRevision): string;
 
 // export: DEFAULT_PDF_THEME
 export declare const DEFAULT_PDF_THEME: Readonly<PdfTheme>;
@@ -5004,14 +5050,14 @@ export declare const PDF_CANONICAL_SOURCE_REVISION_5 = "5";
 // export: PDF_CANONICAL_SOURCE_REVISION_6
 export declare const PDF_CANONICAL_SOURCE_REVISION_6 = "6";
 
+// export: PDF_CANONICAL_SOURCE_REVISION_7
+export declare const PDF_CANONICAL_SOURCE_REVISION_7 = "7";
+
 // export: PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION
 export declare const PDF_DOCX_AUTHORING_CANONICAL_SOURCE_REVISION = "3";
 
 // export: PDF_MAX_ASSET_BYTES
 export declare const PDF_MAX_ASSET_BYTES: number;
-
-// export: PDF_MAX_TOTAL_ASSET_BYTES
-export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_SCAN_CHUNK_BYTES
 export declare const PDF_SCAN_CHUNK_BYTES: number;
@@ -5023,7 +5069,8 @@ export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "3",
     "4",
     "5",
-    "6"
+    "6",
+    "7"
 ];
 
 // export: PDF_TEMPLATE_ASSET_SLOTS_V1
@@ -5222,7 +5269,6 @@ export interface PdfTemplateRuntimeV1 {
     manifest: AnyPdfTemplateManifest;
     runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
     canonicalSource: PdfVerifiedCanonicalSourceV1;
-    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
     entrySource: string;
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
@@ -5246,6 +5292,16 @@ export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" 
 export interface PdfTemplateVisualsV1 {
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
+// export: pdfTextWidthsPt
+export declare function pdfTextWidthsPt(page: DesignPage | DesignPageV3): PdfTextWidthsPt;
+
+// export: PdfTextWidthsPt
+export interface PdfTextWidthsPt {
+    portrait: number;
+    landscape: number;
+    initial: number;
 }
 
 // export: PdfVerifiedCanonicalSourceV1
@@ -5275,6 +5331,7 @@ export interface PreparePdfOptions {
     };
     imageQuality?: ExportImageQualityV1;
     rasterNormalizer?: RasterNormalizerPortV1;
+    textWidthsPt?: PdfTextWidthsPt;
 }
 
 // export: preservePdfSourceCellColor
@@ -5303,6 +5360,9 @@ export declare function readPdfDesignCapabilityFromCatalogV2<T = unknown>(design
 
 // export: readPdfDesignCapabilityV2
 export declare function readPdfDesignCapabilityV2<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
+
+// export: renderEnvelopeWidthPt
+export declare function renderEnvelopeWidthPt(blocks: ExportBlock[], widths?: PdfTextWidthsPt): number;
 
 // export: ResolvedPdfTemplateAssetV1
 export interface ResolvedPdfTemplateAssetV1 {
@@ -5339,7 +5399,7 @@ export interface ResolvedPdfTemplateRecipeV2 {
     catalog: TemplateCapabilityCatalogReferenceV1;
     canonicalSource: {
         api: "wiki.pdf-canonical-typst";
-        revision: "5" | "6";
+        revision: PdfCompleteDesignRevision;
     };
     compilerRange: string;
     design: WikiPdfTemplateDesignV3;
@@ -5349,6 +5409,9 @@ export interface ResolvedPdfTemplateRecipeV2 {
 // export: resolvePdfTemplateRecipeV2Design
 export declare function resolvePdfTemplateRecipeV2Design(value: unknown, registry?: PdfTemplateBaselineRegistryV1): Promise<ResolvedPdfTemplateRecipeV2>;
 
+// export: resolvePdfTextWidthsPt
+export declare function resolvePdfTextWidthsPt(settings: ResolvedPdfSettings, options: Pick<PdfSerializeOptions, "templatePack" | "templateManifest">): PdfTextWidthsPt;
+
 // export: resolvePdfTheme
 export declare function resolvePdfTheme(options?: PdfThemeOptions): PdfTheme;
 
@@ -5357,6 +5420,12 @@ export declare function safeColor(value: string | undefined, fallback?: string):
 
 // export: serializePdfDocument
 export declare function serializePdfDocument(document: PreparedPdfDocument, options: PdfSerializeOptions): PdfSourceBundle;
+
+// export: svgDimensions
+export declare function svgDimensions(source: string): {
+    width: number;
+    height: number;
+} | undefined;
 
 // export: TableLayoutClass
 export type TableLayoutClass = "normal" | "dense" | "scaled" | "overflow-warned";
@@ -5424,6 +5493,7 @@ export interface AtlcliTypstTemplateOptions {
     typographyModelV5?: DesignTypography;
     titleBlockV5?: boolean;
     revision6?: boolean;
+    revision7?: boolean;
 }
 
 // export: createAtlcliTypstTemplate

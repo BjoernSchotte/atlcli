@@ -35,6 +35,7 @@ import { FileExportArtifactStore } from "./file-artifact-store.js";
 import { FileExportJobStore } from "./file-job-store.js";
 import { FileExportLock } from "./file-lock.js";
 import { openDurableTemp } from "./atomic-fs.js";
+import { canonical } from "./file-byte-utils.js";
 import { reconcileStaleExportJobs } from "./reconcile.js";
 import { sweepFileExportJobRetentionV1 } from "./retention.js";
 
@@ -1210,5 +1211,58 @@ describe("file export persistence", () => {
     expect((await stat(join(dir, "journal"))).mode & 0o777).toBe(0o700);
     const head = (await import("node:fs/promises")).readdir(join(dir, "journal")).then((names) => names.find((name) => name.endsWith(".json"))!);
     expect((await stat(join(dir, "journal", await head))).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe("file export recovery cost", () => {
+  it("sorts canonical JSON keys independently of the host locale", () => {
+    // English collation, pinned: lt sorts y before k, cs sorts ch after h.
+    expect(canonical({ k: 1, y: 2, i: 3, h: 4, ch: 5, d: 6, B: 7, a: 8, c: 9, _x: 10 }))
+      .toBe('{"_x":10,"a":8,"B":7,"c":9,"ch":5,"d":6,"h":4,"i":3,"k":1,"y":2}');
+  });
+
+  it("does not repeat the per-job epoch cleanup on every later reconcile", async () => {
+    let now = 10; const dir = await root(); const p = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    for (const id of ["old-a", "old-b"]) {
+      await p.jobs.create({ request: request(id) });
+      const claimed = (await p.jobs.claimNext({ ids: [id], ownerId: "dead", now, leaseDurationMs: 10 }))!;
+      await p.spool.put({ jobId: id, leaseEpoch: claimed.leaseEpoch, namespace: "ready-docx", key: "checkpoint" }, bytes("checkpoint"), p.spoolLimits);
+    }
+    now = 21; await reconcileStaleExportJobs(p.jobs, p, now);
+    const spoolCleanup = spyOn(p.spool, "deleteNamespace"); const artifactCleanup = spyOn(p.artifacts, "deleteStagedEpoch");
+    const acquire = spyOn(FileExportLock.prototype, "acquire");
+    try {
+      await reconcileStaleExportJobs(p.jobs, p, now);
+      expect(spoolCleanup).not.toHaveBeenCalled(); expect(artifactCleanup).not.toHaveBeenCalled();
+      expect(acquire.mock.calls.map(([options]) => options?.label).filter((label) => label?.endsWith("-cleanup"))).toEqual([]);
+    } finally { spoolCleanup.mockRestore(); artifactCleanup.mockRestore(); acquire.mockRestore(); }
+    // Only the closed epoch counts as settled; a later epoch still gets its sweep.
+    expect(await p.artifacts.isEpochSettled("old-a", 1)).toBe(true);
+    expect(await p.artifacts.isEpochSettled("old-a", 2)).toBe(false);
+  });
+
+  it("cleans released payloads and reads requests in one batch per sweep", async () => {
+    let now = 10; const dir = await root(); const p = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    for (const id of ["one", "two", "three"]) await p.jobs.create({ request: request(id) });
+    const acquire = spyOn(FileExportLock.prototype, "acquire");
+    try {
+      await sweepFileExportJobRetentionV1(p, now);
+      const sweepLocks = acquire.mock.calls.length; acquire.mockClear();
+      await p.jobs.create({ request: request("four") }); acquire.mockClear();
+      await sweepFileExportJobRetentionV1(p, now);
+      expect(acquire.mock.calls.length).toBe(sweepLocks);
+
+      acquire.mockClear();
+      await p.artifacts.cleanupJobs(["one", "two", "three"]);
+      expect(acquire.mock.calls.map(([options]) => options?.label)).toEqual(["artifact-cleanup"]);
+    } finally { acquire.mockRestore(); }
+    const closedDir = join(dir, "artifacts", "closed");
+    const markers = async (): Promise<string[]> => Promise.all((await readdir(closedDir)).sort().map((name) => readFile(join(closedDir, name), "utf8")));
+    const before = await markers(); expect(before).toHaveLength(3);
+    now = 99; await p.artifacts.cleanupJobs(["one", "two", "three"]);
+    expect(await markers()).toEqual(before);
+    await expect(p.artifacts.stage("two", 1, { mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename: "late.docx", byteLength: 3,
+      sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", bytes: bytes("abc") })).rejects.toThrow("closed");
+    expect(await p.jobs.getRequests(["request:missing", (await p.jobs.get("one"))!.requestRef])).toMatchObject([undefined, { id: "one" }]);
   });
 });

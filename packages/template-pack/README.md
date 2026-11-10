@@ -1,12 +1,12 @@
 # @atlcli/template-pack
 
 Pure byte-in/byte-out functions for the `.wiki-pdf-template` container
-(spec 007): pack/unpack/validate a template payload plus manifest with a
+(spec 007): pack/unpack a template payload plus manifest with a
 deterministic zip layout and sha256 payload integrity. Shared by the Typst
 and DOCX engines and any external template tooling.
 
 - **Entry points:** `.` / `./node` / `./browser` (identical isomorphic
-  surface) — `packTemplate`, `unpackTemplate`, `validatePack`, the
+  surface) — `packTemplate`, `unpackTemplate`, `validateManifest`, the
   `TemplateManifest` types, and engine-neutral visual asset/decorations
   contracts.
 - **Runtime:** Node ≥ 26.13, Bun, and browsers (PizZip + WebCrypto only).

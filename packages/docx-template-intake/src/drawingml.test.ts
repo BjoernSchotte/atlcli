@@ -66,6 +66,68 @@ describe("DrawingML and page-scene resolution", () => {
     ]);
   });
 
+  test("a v:textbox outside a v:shape closes its scene instead of swallowing the rest of the part", async () => {
+    const result = await analyzeDocxVisualAssets(
+      visualDocx({
+        document: wordDocument(
+          `<w:p><w:r><w:pict><v:rect><v:textbox><w:txbxContent/></v:textbox></v:rect></w:pict></w:r></w:p>${inlineDrawing("rImage")}`
+        ),
+        documentRelationships: imageRelationships([
+          { id: "rImage", target: "media/image.png" },
+        ]),
+        entries: { "word/media/image.png": png(300, 200) },
+      }),
+      {
+        capabilities: TEST_VISUAL_CAPABILITIES,
+        assetStore: new TrackingAssetStore(),
+        sections: await singleSection(),
+      }
+    );
+
+    expect(result.analysis.scenes.map(({ kind }) => kind)).toEqual([
+      "textbox",
+      "picture",
+    ]);
+  });
+
+  test("SVG size comes from the root width/height (not stroke-width) with a viewBox fallback", async () => {
+    const sources = [
+      `<svg xmlns="http://www.w3.org/2000/svg" stroke-width="3" width="120" height="60"><path d="M0 0"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" stroke-width="3" viewBox="0,0,640,480"><path d="M0 0"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 300 150"><path d="M0 0"/></svg>`,
+    ];
+    const result = await analyzeDocxVisualAssets(
+      visualDocx({
+        document: wordDocument(
+          sources.map((_, index) => inlineDrawing(`rSvg${index}`)).join("")
+        ),
+        documentRelationships: imageRelationships(
+          sources.map((_, index) => ({
+            id: `rSvg${index}`,
+            target: `media/image-${index}.svg`,
+          }))
+        ),
+        entries: Object.fromEntries(
+          sources.map((source, index) => [
+            `word/media/image-${index}.svg`,
+            new TextEncoder().encode(source),
+          ])
+        ),
+      }),
+      {
+        capabilities: TEST_VISUAL_CAPABILITIES,
+        assetStore: new TrackingAssetStore(),
+        sections: await singleSection(),
+      }
+    );
+
+    expect(
+      result.analysis.assets
+        .map(({ dimensions }) => `${dimensions?.width}x${dimensions?.height}`)
+        .sort()
+    ).toEqual(["120x60", "300x150", "640x480"]);
+  });
+
   test("preserves complete independent anchor axes, simplePos, effects, xfrm, flips, and units", async () => {
     const result = await analyzeDocxVisualAssets(
       visualDocx({

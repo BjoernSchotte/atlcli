@@ -253,6 +253,12 @@ interface InternalContext extends SerializeContext {
    */
   bookmarks: { next: number; used: Set<string> };
   /**
+   * Sanitized targets of every in-document anchor link. A heading without an
+   * explicit anchor (single-page export) gets a bookmark only when its text is
+   * one of them, so a TOC macro or `#Heading` link lands instead of dangling.
+   */
+  linkedAnchors: Set<string>;
+  /**
    * Per-document caption ordinals: SEQ SEQUENCE NAME → how many captions of
    * that sequence have been emitted so far. Read + incremented by
    * {@link captionXml}, which stamps the next value into the caption's SEQ
@@ -682,6 +688,34 @@ function placeMarker(frag: string, markerRun: string): string {
 // in `@atlcli/confluence` (`computeHeadingOffset`, imported above) — the single
 // home of the min-heading scan both this engine and the PDF engine consume.
 
+/** A heading's visible text, flattened the way the PDF engine keys its labels. */
+function headingPlainText(nodes: readonly InlineNode[]): string {
+  return nodes
+    .map((node) => {
+      switch (node.type) {
+        case "text":
+          return node.text;
+        case "link":
+          return headingPlainText(node.content);
+        case "mention":
+          return `@${mentionDisplayText(node)}`;
+        case "date":
+          return formatAdfDateTimestamp(node.timestamp);
+        case "status":
+          return statusDisplayText(node);
+        case "smartCard":
+          return smartCardDisplayText(node.card);
+        case "media":
+          return inlineMediaDisplayText(node);
+        case "lineBreak":
+          return " ";
+        case "placeholder":
+          return "";
+      }
+    })
+    .join("");
+}
+
 /**
  * Kick off every deferrable cost up front (perf): image asset fetches and
  * diagram render/rasterize runs start through the seams' `prefetch` hooks.
@@ -693,10 +727,13 @@ function placeMarker(frag: string, markerRun: string): string {
  * Archive mutation order (and thus relationship-id allocation) is untouched:
  * prefetch hooks produce bytes/fragments only.
  */
-function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
+function prefetchBlocks(blocks: ExportBlock[], ctx: InternalContext): void {
   const walkInline = (nodes: InlineNode[]): void => {
     for (const node of nodes) {
       if (node.type === "link") {
+        if (node.target.kind === "anchor") {
+          ctx.linkedAnchors.add(sanitizeAnchorId(node.target.anchor));
+        }
         walkInline(node.content);
       } else if (node.type === "media" && node.source) {
         try {
@@ -807,6 +844,7 @@ export async function serializeBlocks(
     numbering: ctx.numbering ?? new NumberingAllocator({ abstractNumId: 0, numId: 0 }),
     comments: ctx.comments ?? new WordCommentRegistry(),
     bookmarks: { next: 1, used: new Set() },
+    linkedAnchors: new Set(),
     captionSeq: new Map<string, number>(),
     emittedHeadingStyles: new Set<string>(),
     container: "body",
@@ -889,6 +927,15 @@ async function serializeBlock(
         const name = uniqueAnchorId(block.explicitAnchor, ctx.bookmarks.used);
         ctx.bookmarks.used.add(name);
         return `${bookmarkStart(id, name)}${headingPara}${bookmarkEnd(id)}`;
+      }
+      // No explicit anchor (single-page export): a link that names this
+      // heading by its text still needs a bookmark to land on. First
+      // occurrence wins, as in the PDF engine.
+      const textAnchor = sanitizeAnchorId(headingPlainText(block.content));
+      if (ctx.linkedAnchors.has(textAnchor) && !ctx.bookmarks.used.has(textAnchor)) {
+        const id = ctx.bookmarks.next++;
+        ctx.bookmarks.used.add(textAnchor);
+        return `${bookmarkStart(id, textAnchor)}${headingPara}${bookmarkEnd(id)}`;
       }
       return headingPara;
     }

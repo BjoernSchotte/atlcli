@@ -402,10 +402,14 @@ export declare function scrollTableLayoutRenderer(): MacroRenderer;
 // export: slugifyHeading
 export declare function slugifyHeading(text: string): string;
 
+// export: TocAnchorTarget
+export type TocAnchorTarget = "document" | "web";
+
 // export: tocFromHeadings
 export declare function tocFromHeadings(blocks: ExportBlock[], opts?: {
     minLevel?: number;
     maxLevel?: number;
+    target?: TocAnchorTarget;
 }): ExportBlock[];
 
 // export: tocRenderer

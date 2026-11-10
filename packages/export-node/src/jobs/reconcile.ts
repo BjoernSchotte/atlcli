@@ -47,29 +47,14 @@ export async function reconcileStaleExportJobs(
   const inactive = await jobs.list({ includeDismissed: true, limit: 500 });
   for (const job of inactive) {
     if (job.lease || job.leaseEpoch <= 0) continue;
+    // An earlier start already closed this epoch and removed its staged
+    // output: skip the two locks, fsyncs and directory scans per historical job.
+    if (
+      await stores.spool.isNamespaceClosed(job.id, job.leaseEpoch) &&
+      await stores.artifacts.isEpochSettled(job.id, job.leaseEpoch)
+    ) continue;
     const preserveSpoolRefs = await stores.spool.listNamespaceRefs(job.id, job.leaseEpoch);
     await cleanupAbandonedExportAttempt(stores, job.id, job.leaseEpoch, { preserveSpoolRefs });
   }
   return result;
-}
-
-/** Polling is the correctness path; fs.watch is deliberately not treated as durable truth. */
-export async function* watchFileExportJobEvents(
-  jobs: FileExportJobStore,
-  jobId: string,
-  options: { afterSeq?: number; pollMs?: number; signal?: AbortSignal } = {},
-): AsyncIterable<import("@atlcli/export-jobs").ExportJobEventV1> {
-  let sequence = options.afterSeq ?? 0; const pollMs = options.pollMs ?? 100;
-  for (;;) {
-    options.signal?.throwIfAborted();
-    const page = await jobs.readEvents(jobId, { afterSeq: sequence, limit: 500 });
-    for (const event of page.events) { sequence = Math.max(sequence, event.seq); yield event; }
-    const snapshot = await jobs.get(jobId); if (!snapshot) return;
-    if (["succeeded", "failed", "cancelled", "interrupted"].includes(snapshot.state) && page.events.length === 0) return;
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = (): void => { clearTimeout(timer); reject(options.signal?.reason ?? new DOMException("Aborted", "AbortError")); };
-      const timer = setTimeout(() => { options.signal?.removeEventListener("abort", onAbort); resolve(); }, pollMs);
-      options.signal?.addEventListener("abort", onAbort, { once: true });
-    });
-  }
 }

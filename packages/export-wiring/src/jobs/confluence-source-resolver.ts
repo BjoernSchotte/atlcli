@@ -26,6 +26,7 @@ import {
   type ConfluenceSourcePlanCheckpointV1,
   type PersistedConfluenceSourcePlanV1,
 } from "./confluence-source-plan-checkpoint.js";
+import { throwIfAborted } from "./job-internals.js";
 
 /** Metadata-only context supplied to host source ports. */
 export interface ConfluenceSourceReadContextV1 {
@@ -195,10 +196,6 @@ export class ConfluenceSourceResolutionError extends Error {
     this.name = "ConfluenceSourceResolutionError";
     this.sourceFailureKind = sourceFailureKind;
   }
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  signal.throwIfAborted();
 }
 
 function withRootSnapshot(

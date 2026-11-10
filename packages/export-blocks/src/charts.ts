@@ -377,8 +377,24 @@ function validateAxis(axis: ChartAxisV1 | undefined, label: string): void {
   }
 }
 
-/** Validate and defensively clone a chart model before it crosses a renderer boundary. */
+/** Models this module validated. They are deep-frozen, so membership cannot go stale. */
+const VALIDATED_MODELS = new WeakSet<object>();
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) deepFreeze(child);
+  }
+  return value;
+}
+
+/**
+ * Validate and defensively clone a chart model before it crosses a renderer
+ * boundary. The clone is frozen; handing it to another boundary (digest,
+ * scene, SVG) returns it as is instead of validating and cloning it again.
+ */
 export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
+  if (model && VALIDATED_MODELS.has(model)) return model;
   if (!model || model.schema !== "atlcli.chart/1") throw new ChartValidationErrorV1("unsupported chart schema");
   if (!CHART_KINDS_V1.includes(model.kind)) throw new ChartValidationErrorV1(`unsupported chart kind: ${String(model.kind)}`);
   for (const [key, value] of Object.entries(model)) {
@@ -479,7 +495,9 @@ export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
   }
   const encoded = new TextEncoder().encode(JSON.stringify(model));
   if (encoded.byteLength > CHART_LIMITS_V1.maxPayloadBytes) throw new ChartValidationErrorV1("chart payload exceeds limits");
-  return structuredClone(model);
+  const validated = deepFreeze(structuredClone(model));
+  VALIDATED_MODELS.add(validated);
+  return validated;
 }
 
 export function chartModelDigestV1(model: ChartModelV1): string {

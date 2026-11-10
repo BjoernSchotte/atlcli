@@ -363,7 +363,11 @@ export interface MacroExportContext {
    * for hosts that do not compose chapters — a renderer then links absolutely.
    */
   pageScope?: MacroPageScope;
-  /** Recursion guards, shared across include-style renderers. */
+  /**
+   * Recursion guards for include-style renderers, owned by the host: `visited`
+   * holds the `page#excerpt` keys already on the current include chain.
+   * Renderers only read them (the resolver expands a single level).
+   */
   depth: number;
   visited: Set<string>;
   /** Checked cooperatively between port calls (see resolve.ts). */

@@ -26,6 +26,7 @@ import type {
   PreparedPdfAsset,
 } from "./types.js";
 import { validatePdfOutput } from "./validate.js";
+import { sha256Hex } from "./shared.js";
 
 export interface PdfTemplatePreviewModelV1 {
   baseline: TemplateManifest;
@@ -81,7 +82,7 @@ function visualAssets(
     });
   }
   return [...byPath.values()].sort((left, right) =>
-    left.path.localeCompare(right.path)
+    left.path.localeCompare(right.path, "en")
   );
 }
 
@@ -367,7 +368,7 @@ function contactSheetBundle(
   model: PdfTemplatePreviewModelV1
 ): PdfSourceBundle {
   const reviewAssets = [...(model.reviewAssets ?? [])].sort((left, right) =>
-    left.id.localeCompare(right.id)
+    left.id.localeCompare(right.id, "en")
   );
   const acceptedAssets = Object.values(model.currentPack?.assets ?? {})
     .filter(
@@ -421,16 +422,6 @@ document text, relationship identifiers, or source alt text.
     sourceMap: [],
     notes: [],
   };
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new Uint8Array(bytes).buffer
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
 }
 
 export class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {

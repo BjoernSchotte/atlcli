@@ -63,8 +63,10 @@ async function reconcileTemplatePackReachability(
   now: number,
 ): Promise<void> {
   const references: TemplatePackReachabilityV1[] = [];
-  for (const snapshot of await listCompleteJobHistory(persistence)) {
-    const request = await persistence.jobs.getRequest(snapshot.requestRef);
+  const history = await listCompleteJobHistory(persistence);
+  const requests = await persistence.jobs.getRequests(history.map((snapshot) => snapshot.requestRef));
+  for (const [index, snapshot] of history.entries()) {
+    const request = requests[index];
     if (request?.format !== "pdf" || request.template.kind !== "pack") continue;
     references.push({
       jobId: snapshot.id,
@@ -85,14 +87,11 @@ async function reconcileReleasedPayloads(
   persistence: FileExportJobPersistenceV1,
   snapshots: readonly ExportJobSnapshotV1[],
 ): Promise<void> {
-  for (const snapshot of snapshots) {
-    if (snapshot.artifactReleasedAt !== undefined) {
-      await persistence.artifacts.cleanupJob(snapshot.id);
-    }
-    if (snapshot.reportReleasedAt !== undefined) {
-      await persistence.jobs.cleanupReleasedReportPayloads(snapshot.id);
-    }
-  }
+  // Batched: one lock and one scan per store, not one per historical job.
+  const released = (key: "artifactReleasedAt" | "reportReleasedAt"): string[] =>
+    snapshots.filter((snapshot) => snapshot[key] !== undefined).map((snapshot) => snapshot.id);
+  await persistence.artifacts.cleanupJobs(released("artifactReleasedAt"));
+  await persistence.jobs.cleanupReleasedReportPayloads(released("reportReleasedAt"));
 }
 
 async function reconcilePendingTombstones(

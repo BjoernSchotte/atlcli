@@ -27,6 +27,24 @@ import {
   buildProductiveExportTelemetryV1,
 } from "./productive-telemetry.js";
 import { sha256Utf8 } from "./incremental-sha256.js";
+import {
+  canonicalJson,
+  nonNegativeFinite,
+  nonNegativeSafeInteger,
+  progress,
+  publishTelemetry,
+  sameEstimate,
+  sameReportSummary,
+  serialProgressChannel,
+  sha256Hex,
+  throwIfAborted,
+  topReportCodes,
+  validateEstimate,
+} from "./job-internals.js";
+
+function canonical(value: unknown): string {
+  return canonicalJson(value, "DOCX checkpoint metadata");
+}
 
 const DOCX_MEDIA_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
@@ -234,46 +252,6 @@ export class DocxRenderRestartLimitError extends Error {
   }
 }
 
-function abortReason(signal: AbortSignal): unknown {
-  return signal.reason ?? new DOMException("DOCX export job was cancelled.", "AbortError");
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw abortReason(signal);
-}
-
-function nonNegativeSafeInteger(value: number, path: string): void {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new RangeError(`${path} must be a non-negative safe integer.`);
-  }
-}
-
-function nonNegativeFinite(value: number, path: string): void {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new RangeError(`${path} must be a non-negative finite number.`);
-  }
-}
-
-function validateEstimate(estimate: ResourceEstimateV1): void {
-  nonNegativeSafeInteger(estimate.heapBytes, "estimate.heapBytes");
-  nonNegativeSafeInteger(estimate.spoolBytes, "estimate.spoolBytes");
-  nonNegativeSafeInteger(estimate.outputBytes, "estimate.outputBytes");
-  nonNegativeSafeInteger(estimate.rasterPixels, "estimate.rasterPixels");
-  if (!(["measured", "estimated", "unknown"] as const).includes(estimate.confidence)) {
-    throw new RangeError("estimate.confidence is invalid.");
-  }
-}
-
-function sameEstimate(left: ResourceEstimateV1, right: ResourceEstimateV1): boolean {
-  return (
-    left.heapBytes === right.heapBytes &&
-    left.spoolBytes === right.spoolBytes &&
-    left.outputBytes === right.outputBytes &&
-    left.rasterPixels === right.rasterPixels &&
-    left.confidence === right.confidence
-  );
-}
-
 function sameTemplate(left: DocxTemplateBindingV1, right: DocxTemplateBindingV1): boolean {
   return (
     left.recordKey === right.recordKey &&
@@ -351,19 +329,6 @@ function sameCheckpointExceptAttempts(
   );
 }
 
-async function sha256Hex(bytes: Uint8Array, signal?: AbortSignal): Promise<string> {
-  if (signal) throwIfAborted(signal);
-  const source =
-    bytes.buffer instanceof ArrayBuffer &&
-    bytes.byteOffset === 0 &&
-    bytes.byteLength === bytes.buffer.byteLength
-      ? bytes.buffer
-      : bytes.slice().buffer;
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", source));
-  if (signal) throwIfAborted(signal);
-  return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
-}
-
 async function* boundedDocxOutput(
   source: AsyncIterable<Uint8Array>,
   maxBytes: number,
@@ -396,33 +361,6 @@ function exactOwnedBytes(bytes: Uint8Array): Uint8Array {
     return bytes;
   }
   return bytes.slice();
-}
-
-function canonical(value: unknown, ancestors = new Set<object>()): string {
-  if (value === null || typeof value !== "object") {
-    if (typeof value === "number" && !Number.isFinite(value)) {
-      throw new Error("DOCX checkpoint metadata contains a non-finite number.");
-    }
-    return JSON.stringify(value);
-  }
-  if (ancestors.has(value)) throw new Error("DOCX checkpoint metadata contains a cycle.");
-  ancestors.add(value);
-  try {
-    if (Array.isArray(value)) {
-      return `[${value.map((entry) => canonical(entry, ancestors)).join(",")}]`;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new Error("DOCX checkpoint metadata must contain only plain data objects.");
-    }
-    return `{${Object.entries(value as Record<string, unknown>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry, ancestors)}`)
-      .join(",")}}`;
-  } finally {
-    ancestors.delete(value);
-  }
 }
 
 async function fingerprintPreparedDocxExport(
@@ -552,13 +490,6 @@ function selectDocxPackagingMode(
   return lowerBound >= threshold ? "stream" : "memory";
 }
 
-function sameReportSummary(
-  left: ExportReportSummaryV1 | undefined,
-  right: ExportReportSummaryV1,
-): boolean {
-  return left !== undefined && canonical(left) === canonical(right);
-}
-
 function reportSummary(report: ExportReport): ExportReportSummaryV1 {
   const issues = { info: 0, warning: 0, error: 0 };
   const codes = new Map<string, number>();
@@ -568,10 +499,7 @@ function reportSummary(report: ExportReport): ExportReportSummaryV1 {
   }
   return {
     issues,
-    topCodes: [...codes]
-      .map(([code, count]) => ({ code, count }))
-      .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code))
-      .slice(0, 20),
+    topCodes: topReportCodes(codes),
     completeness: report.complete ? "complete" : "partial",
   };
 }
@@ -653,14 +581,6 @@ function validateResultIntent(
   }
 }
 
-async function publishTelemetry(
-  context: ExportJobExecutionContext,
-  telemetry: ExportJobResultTelemetryV1,
-): Promise<void> {
-  await context.updateStats(telemetry.stats);
-  for (const issue of telemetry.issues) await context.appendEvent(issue);
-}
-
 function validateExecutionResult(
   result: ExportJobExecutionResultV1,
   context: ExportJobExecutionContext,
@@ -681,17 +601,6 @@ function validateExecutionResult(
     throw new Error("DOCX result store returned invalid, unfenced, or mismatched metadata.");
   }
   return result;
-}
-
-function progress(
-  context: ExportJobExecutionContext,
-  now: () => number,
-  stage: "discover" | "fetch" | "compose" | "assets" | "render" | "validate" | "commit",
-  done: number,
-  total: number | null,
-  detail: string,
-): Promise<void> {
-  return context.updateProgress({ stage, done, total, detail, updatedAt: now() });
 }
 
 function instrumentEngineInput(
@@ -754,7 +663,12 @@ function instrumentEngineInput(
     updateFields: request.options.updateFields,
     captionLang: request.options.captionLang,
     codeTheme: resolveCodeThemeId(request.options.codeTheme),
-    macros: request.options.resolveMacros ? input.macros : undefined,
+    // `resolveMacros: false` (`--no-live-macros` / the panel toggle) suppresses
+    // only the live renderers; pure ones (TOC, excerpts, table layout) still run.
+    macros:
+      input.macros && !request.options.resolveMacros
+        ? { ...input.macros, live: false }
+        : input.macros,
     assets,
     rasterizer,
   };
@@ -764,19 +678,14 @@ function engineProgress(
   context: ExportJobExecutionContext,
   now: () => number,
 ): { callback: ExportProgressCallback; settled: () => Promise<void> } {
-  let pending = Promise.resolve();
-  const callback: ExportProgressCallback = (event) => {
-    const stage = event.phase === "assets" ? "assets" : "compose";
-    pending = pending.then(() =>
-      context.updateProgress({
-        stage,
-        done: event.done,
-        total: event.total,
-        updatedAt: now(),
-      }),
-    );
-  };
-  return { callback, settled: () => pending };
+  return serialProgressChannel<Parameters<ExportProgressCallback>[0]>((event) =>
+    context.updateProgress({
+      stage: event.phase === "assets" ? "assets" : "compose",
+      done: event.done,
+      total: event.total,
+      updatedAt: now(),
+    }),
+  );
 }
 
 /** Create the host-neutral TypeScript DOCX executor for one claimed outer job. */

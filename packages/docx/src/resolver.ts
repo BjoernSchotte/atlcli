@@ -155,10 +155,14 @@ export interface ResolveResult {
   unsupportedNames: string[];
 }
 
-/** Extract the quoted format argument from `…("dd.MM.yyyy")`, if any. */
+/**
+ * Extract the quoted format argument from `…("dd.MM.yyyy")`, if any. Only the
+ * OUTER quote pair delimits it: a SimpleDateFormat literal (`"dd 'de' MMMM"`)
+ * carries quotes of its own.
+ */
 function parseArg(raw: string): string | undefined {
-  const m = raw.match(/\(\s*["']([^"']*)["']\s*\)/);
-  return m ? m[1] : undefined;
+  const m = raw.match(/\(\s*(["'])(.*)\1\s*\)/s);
+  return m ? m[2] : undefined;
 }
 
 function capitalizeFirst(s: string): string {
@@ -283,6 +287,9 @@ export function resolveOne(
   }
 }
 
+/** The page's own Page Properties macros, parsed once per page, not per placeholder. */
+const ownPageProperties = new WeakMap<object, PagePropertiesMacro[]>();
+
 /**
  * Resolve `$scroll.pageproperty.(…)` (G4).
  *
@@ -307,7 +314,11 @@ function resolvePageProperty(
     return "";
   }
 
-  const own = parsePageProperties(ctx.details.storage ?? "");
+  let own = ownPageProperties.get(ctx.details);
+  if (!own) {
+    own = parsePageProperties(ctx.details.storage ?? "");
+    ownPageProperties.set(ctx.details, own);
+  }
   let value = lookupPageProperty(own, args.key, args.macroId);
 
   if (value === undefined && args.fallbackEnabled) {

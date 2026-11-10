@@ -461,7 +461,7 @@ export async function resolveDocxStyles(
   const styles: ResolvedDocxStyleV1[] = [];
   let revisionsPresent = false;
   for (const [ordinal, style] of [...input.styles]
-    .sort((left, right) => left.styleId.localeCompare(right.styleId))
+    .sort((left, right) => left.styleId.localeCompare(right.styleId, "en"))
     .entries()) {
     const resolved = await resolve(style);
     const styleFingerprint =
@@ -536,7 +536,7 @@ export async function resolveDocxStyles(
   }
   const unique = [
     ...new Map(diagnostics.map((item) => [diagnosticKey(item), item])).values(),
-  ].sort((left, right) => diagnosticKey(left).localeCompare(diagnosticKey(right)));
+  ].sort((left, right) => diagnosticKey(left).localeCompare(diagnosticKey(right), "en"));
   return {
     rule: DOCX_STYLE_RESOLUTION_RULE_V1,
     styles,

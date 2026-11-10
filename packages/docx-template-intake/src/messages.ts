@@ -1,7 +1,5 @@
 import type { TemplateDiagnosticV1 } from "@atlcli/pdf-template-authoring";
 
-export const TEMPLATE_INTAKE_MESSAGE_NAMESPACE = "ATLCLI_PDF_TEMPLATE_" as const;
-
 export interface MessageParameterSchemaV1 {
   type: "integer" | "string";
   minimum?: number;

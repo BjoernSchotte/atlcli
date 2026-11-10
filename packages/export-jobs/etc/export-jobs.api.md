@@ -16,25 +16,13 @@ export declare function bindExportJobArtifacts(store: ExportArtifactStore, jobId
 // export: bindExportJobSpool
 export declare function bindExportJobSpool(store: ExportSpoolStore, jobId: string, leaseEpoch: number, limits: SpoolWriteLimitsV1): ExportJobSpool;
 
-// export: BoundedByteChunkContextV1
-export interface BoundedByteChunkContextV1 {
-    index: number;
-    observedBytes: number;
-}
-
 // export: BoundedByteErrorCodeV1
-export type BoundedByteErrorCodeV1 = "invalid-limit" | "invalid-byte-length" | "reservation-too-large" | "chunk-too-large" | "stream-too-large" | "invalid-chunk";
+export type BoundedByteErrorCodeV1 = "invalid-limit" | "invalid-byte-length" | "reservation-too-large" | "invalid-chunk";
 
 // export: BoundedByteErrorV1
 export declare class BoundedByteErrorV1 extends Error {
     readonly code: BoundedByteErrorCodeV1;
     constructor(code: BoundedByteErrorCodeV1, message: string);
-}
-
-// export: BoundedByteStreamLimitsV1
-export interface BoundedByteStreamLimitsV1 {
-    maxChunkBytes: number;
-    maxTotalBytes: number;
 }
 
 // export: ByteReservationLimitsV1
@@ -94,22 +82,11 @@ export declare function compareExportActivityRowsV1(left: ExportActivityRowV1, r
 // export: CompletenessMode
 export type CompletenessMode = "strict" | "partial";
 
-// export: consumeBoundedByteStreamV1
-export declare function consumeBoundedByteStreamV1(source: AsyncIterable<Uint8Array>, semaphore: ByteReservationSemaphoreV1, limits: BoundedByteStreamLimitsV1, consume: (chunk: Uint8Array, context: BoundedByteChunkContextV1) => void | Promise<void>, options?: {
-    signal?: AbortSignal;
-}): Promise<{
-    byteLength: number;
-    chunkCount: number;
-}>;
-
 // export: copyExactOwnedBytesV1
 export declare function copyExactOwnedBytesV1(chunk: Uint8Array): Uint8Array;
 
 // export: createEmptyExportJobStatsV1
 export declare function createEmptyExportJobStatsV1(): ExportJobStatsV1;
-
-// export: decideResourceAdmission
-export declare function decideResourceAdmission(estimate: ResourceEstimateV1, available: ResourceCapacityV1, options: ResourceAdmissionOptionsV1): ResourceAdmissionDecisionV1;
 
 // export: DELIVERED_ARTIFACT_RETENTION_MS_V1
 export declare const DELIVERED_ARTIFACT_RETENTION_MS_V1: number;
@@ -143,16 +120,6 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
         captionLang?: string;
     };
 }
-
-// export: EvictionReasonV1
-export type EvictionReasonV1 = "expired-temp" | "regenerable-preview" | "released-terminal-artifact" | "terminal-diagnostic-grace-elapsed";
-
-// export: EXPORT_JOB_METRICS_V1
-export declare const EXPORT_JOB_METRICS_V1: readonly [
-    "storage.spoolPeakBytes",
-    "memory.heapPeakBytes",
-    "memory.rendererPeakBytes"
-];
 
 // export: EXPORT_RESOURCE_NAMES_V1
 export declare const EXPORT_RESOURCE_NAMES_V1: readonly [
@@ -1379,16 +1346,6 @@ export interface PendingArtifactV1 {
 // export: planExportJobLifecycleRetentionV1
 export declare function planExportJobLifecycleRetentionV1(snapshots: readonly ExportJobSnapshotV1[], now: number): ExportJobLifecycleRetentionPlanV1;
 
-// export: PlannedEvictionV1
-export interface PlannedEvictionV1 {
-    ref: string;
-    byteLength: number;
-    reason: EvictionReasonV1;
-}
-
-// export: planRetentionEviction
-export declare function planRetentionEviction(occupants: readonly RetentionOccupantV1[], policy: RetentionPolicyV1): RetentionEvictionPlanV1;
-
 // export: prepareExportArtifactFinalizationIntent
 export declare function prepareExportArtifactFinalizationIntent(input: ExportJobFinalizeV1): ExportArtifactFinalizationIntentV1;
 
@@ -1416,28 +1373,6 @@ export declare function reconcileTombstonedExportJobCleanup(jobStore: ExportJobS
 // export: releaseExportJobRetention
 export declare function releaseExportJobRetention(snapshot: ExportJobSnapshotV1, input: ExportJobRetentionInputV1): ExportJobSnapshotV1;
 
-// export: ResourceAdmissionDecisionV1
-export interface ResourceAdmissionDecisionV1 {
-    admitted: boolean;
-    confidence: ResourceEstimateV1["confidence"];
-    shortfalls: ResourceShortfallV1[];
-}
-
-// export: ResourceAdmissionOptionsV1
-export interface ResourceAdmissionOptionsV1 {
-    workKind: "export" | "preview";
-    queuedExports: number;
-}
-
-// export: ResourceCapacityV1
-export interface ResourceCapacityV1 {
-    heapBytes: number;
-    spoolBytes: number;
-    outputBytes: number;
-    rasterPixels: number;
-    heavyRenderSlots: number;
-}
-
 // export: ResourceEstimateV1
 export interface ResourceEstimateV1 {
     heapBytes: number;
@@ -1447,50 +1382,8 @@ export interface ResourceEstimateV1 {
     confidence: "measured" | "estimated" | "unknown";
 }
 
-// export: ResourceShortfallKindV1
-export type ResourceShortfallKindV1 = "heapBytes" | "spoolBytes" | "outputBytes" | "rasterPixels" | "heavyRenderSlots";
-
-// export: ResourceShortfallV1
-export interface ResourceShortfallV1 {
-    resource: ResourceShortfallKindV1;
-    required: number;
-    available: number;
-    shortfall: number;
-    reason: "capacity" | "reserved-for-export";
-}
-
 // export: resumePreparedExportArtifactFinalization
 export declare function resumePreparedExportArtifactFinalization(ports: ExportArtifactFinalizationPorts, jobId: string, hooks?: ExportArtifactFinalizationFaultHooks): Promise<ExportArtifactV1 | undefined>;
-
-// export: RetentionEvictionPlanV1
-export interface RetentionEvictionPlanV1 {
-    evictions: PlannedEvictionV1[];
-    reclaimedBytes: number;
-    shortfallBytes: number;
-}
-
-// export: RetentionOccupantKindV1
-export type RetentionOccupantKindV1 = "temp" | "checkpoint" | "preview" | "artifact";
-
-// export: RetentionOccupantV1
-export interface RetentionOccupantV1 {
-    ref: string;
-    kind: RetentionOccupantKindV1;
-    byteLength: number;
-    jobState?: ExportJobState;
-    finishedAt?: number;
-    deliveredAt?: number;
-    dismissedAt?: number;
-    expiresAt?: number;
-    regenerable?: boolean;
-}
-
-// export: RetentionPolicyV1
-export interface RetentionPolicyV1 {
-    now: number;
-    bytesNeeded: number;
-    diagnosticGraceMs: number;
-}
 
 // export: SpoolObjectV1
 export interface SpoolObjectV1 {

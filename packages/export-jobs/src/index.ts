@@ -31,7 +31,6 @@ export type {
   ExportJobStatsV1,
 } from "./statistics.js";
 export {
-  EXPORT_JOB_METRICS_V1,
   createEmptyExportJobStatsV1,
 } from "./statistics.js";
 export type {
@@ -161,9 +160,7 @@ export type {
   ExportJobReplayConflictCodeV1,
 } from "./replay.js";
 export {
-  decideResourceAdmission,
   orderExportQueue,
-  planRetentionEviction,
   projectExportBadge,
 } from "./policy.js";
 export {
@@ -181,17 +178,6 @@ export type {
   QueueJobV1,
   BadgeJobV1,
   ExportBadgeProjectionV1,
-  RetentionOccupantKindV1,
-  RetentionOccupantV1,
-  RetentionPolicyV1,
-  EvictionReasonV1,
-  PlannedEvictionV1,
-  RetentionEvictionPlanV1,
-  ResourceShortfallKindV1,
-  ResourceCapacityV1,
-  ResourceAdmissionOptionsV1,
-  ResourceShortfallV1,
-  ResourceAdmissionDecisionV1,
 } from "./policy.js";
 export {
   ExportJobValidationError,
@@ -206,7 +192,6 @@ export { bindExportJobArtifacts, bindExportJobSpool } from "./bound-stores.js";
 export {
   ByteReservationSemaphoreV1,
   BoundedByteErrorV1,
-  consumeBoundedByteStreamV1,
   copyExactOwnedBytesV1,
 } from "./bounded-stream.js";
 export type {
@@ -214,8 +199,6 @@ export type {
   ByteReservationSnapshotV1,
   ByteReservationV1,
   BoundedByteErrorCodeV1,
-  BoundedByteStreamLimitsV1,
-  BoundedByteChunkContextV1,
 } from "./bounded-stream.js";
 export {
   cleanupAbandonedExportAttempt,

@@ -238,14 +238,28 @@ function resolveBoundedNumber(
   return value;
 }
 
-function resolveWatermark(watermark: PdfWatermarkSettings): ResolvedPdfWatermark {
+/**
+ * The active template's design supplies the default colour
+ * (`tokens.colors.watermark`) and scales the opacity
+ * (`tokens.ratios.watermarkOpacityScale`, a percentage); an explicit
+ * `watermark.color` still wins.
+ */
+function resolveWatermark(
+  watermark: PdfWatermarkSettings,
+  catalogDesign: ResolvedPdfDesign,
+): ResolvedPdfWatermark {
   if (typeof watermark.text !== "string" || watermark.text.trim() === "") {
     reject("watermark.text", watermark.text, "must be a non-empty string");
   }
+  const opacityScale = (catalogDesign.tokens.ratios.watermarkOpacityScale ?? 100) / 100;
   return {
     text: watermark.text,
-    color: resolveColor(watermark.color, DEFAULT_PDF_WATERMARK_COLOR, "watermark.color"),
-    opacity: resolveBoundedNumber(
+    color: resolveColor(
+      watermark.color,
+      catalogDesign.tokens.colors.watermark ?? DEFAULT_PDF_WATERMARK_COLOR,
+      "watermark.color",
+    ),
+    opacity: opacityScale * resolveBoundedNumber(
       watermark.opacity,
       DEFAULT_PDF_WATERMARK_OPACITY,
       { min: 0, minInclusive: false, max: 1 },
@@ -388,7 +402,6 @@ export function resolvePdfSettings(
       alt: packLogo.reference.alt,
     });
   }
-  if (options.watermark !== undefined) resolved.watermark = resolveWatermark(options.watermark);
 
   const manifest =
     context.templatePack?.manifest ??
@@ -404,6 +417,9 @@ export function resolvePdfSettings(
   resolved.ignoredDesignCapabilities = designResolution.ignoredCapabilities;
   resolved.capabilityCatalogDigest = designResolution.capabilityCatalogDigest;
   resolved.capabilityCatalog = designResolution.capabilityCatalog;
+  if (options.watermark !== undefined) {
+    resolved.watermark = resolveWatermark(options.watermark, pdfCatalogDesign(resolved));
+  }
   resolved.labels = resolveTemplateLabels(manifest, context.locale, context.region);
   if (context.templatePack) {
     resolved.templateVisuals = {
@@ -419,19 +435,6 @@ export function resolvePdfSettings(
 
   resolvedSettings.add(resolved);
   return resolved;
-}
-
-/**
- * Build the resolved design: the manifest's design with declared bindings
- * applied and the theme's ink/paper injected. Pure — never mutates the
- * manifest's design.
- */
-export function resolveTemplateDesign(
-  manifest: AnyPdfTemplateManifest,
-  values: ResolvedPdfSettings,
-  themeOptions?: PdfThemeOptions
-): ResolvedPdfDesign {
-  return resolveTemplateDesignWithTrace(manifest, values, themeOptions).design;
 }
 
 export interface ResolvedTemplateDesignWithTrace {
@@ -860,6 +863,21 @@ function emittableLength(value: string, path: string): string {
 }
 
 /**
+ * The resolved design as the renderer reads it. Revision 5+ retains its
+ * complete design in the pack snapshot and exposes a deliberately narrow
+ * V1-shaped runtime-settings projection; re-projecting that adapter through
+ * the V3 complete-design validator would be a category error. Older catalogs
+ * project through their own runtime.
+ */
+export function pdfCatalogDesign(
+  resolved: Pick<ResolvedPdfSettings, "design" | "capabilityCatalog">,
+): ResolvedPdfDesign {
+  return resolved.capabilityCatalog.version >= 3
+    ? resolved.design
+    : resolvePdfCatalogRuntime(resolved.capabilityCatalog).project(resolved.design);
+}
+
+/**
  * Emit the resolved settings as a Typst dictionary literal. Every host-supplied
  * string is escaped through `typstString`.
  *
@@ -890,13 +908,7 @@ export function typstSettingsDict(
       "must match the exact resolved capability catalog identity"
     );
   }
-  // Revision 5 retains its complete design in the pack snapshot and exposes a
-  // deliberately narrow V1-shaped runtime-settings projection. Re-projecting
-  // that adapter through the V3 complete-design validator would be a category
-  // error; its exact V3 identity was checked above and at manifest import.
-  const catalogDesign = completeDesign
-    ? resolved.design
-    : resolvePdfCatalogRuntime(resolved.capabilityCatalog).project(resolved.design);
+  const catalogDesign = pdfCatalogDesign(resolved);
   const designLines: string[] = [
     "  design: (",
     "    branding: (",

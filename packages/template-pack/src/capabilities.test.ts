@@ -205,3 +205,28 @@ describe("template capability catalog V1", () => {
     );
   });
 });
+
+describe("canonical capability JSON is independent of the default locale", () => {
+  // Lithuanian collates "y" between "i" and "j"; Czech collates "ch" after "h".
+  const value = { y: 1, j: 2, i: 3, ch: 4, h: 5, d: 6, Z: 7, a: 8, "a.b": 9, a_b: 10, "a-b": 11 };
+  const expected =
+    '{"a":8,"a_b":10,"a-b":11,"a.b":9,"ch":4,"d":6,"h":5,"i":3,"j":2,"y":1,"Z":7}';
+
+  it("keeps the ordering existing digests were produced with under English", () => {
+    expect(canonicalCapabilityJson(value)).toBe(expected);
+  });
+
+  it.each(["lt", "cs"])("sorts identically when the default locale is %s", (locale) => {
+    const original = String.prototype.localeCompare;
+    // Simulate a process whose default locale is not English: every call
+    // that names no locale collates with this one.
+    String.prototype.localeCompare = function (this: string, that: string, locales?: Intl.LocalesArgument) {
+      return original.call(this, that, locales ?? locale);
+    } as typeof original;
+    try {
+      expect(canonicalCapabilityJson(value)).toBe(expected);
+    } finally {
+      String.prototype.localeCompare = original;
+    }
+  });
+});

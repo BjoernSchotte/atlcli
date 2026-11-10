@@ -38,6 +38,7 @@ import {
   type TargetSize,
 } from "@atlcli/export-media";
 import { isPrecompressedRasterPart } from "./opc-stream.js";
+import { addRelationship, ensureContentTypeDefault, relsPathFor } from "./opc-parts.js";
 
 // Inspection, sizing, and raster budgets moved to `@atlcli/export-media`
 // (issue #118 Phase 1) so the PDF and DOCX engines share one implementation.
@@ -373,10 +374,6 @@ interface MediaEntry {
 }
 
 const DOCUMENT_PART = "word/document.xml";
-const CT_PATH = "[Content_Types].xml";
-const EMPTY_RELS =
-  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
 
 /**
  * Embeds images into one document's PizZip archive. Construct once per export:
@@ -606,37 +603,18 @@ export class ImageEmbedder {
     const existing = entry.relIds.get(relsPath);
     if (existing) return existing;
 
-    const rels = this.zip.file(relsPath)?.asText() ?? EMPTY_RELS;
-    // Match both quote styles, like the settings-part surgery in export.ts.
-    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((m) => Number(m[1]));
-    const relId = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
-    this.zip.file(
-      relsPath,
-      rels.replace(
-        "</Relationships>",
-        `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${entry.filename}"/></Relationships>`
-      )
+    const relId = addRelationship(
+      this.zip,
+      partPath,
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+      `media/${entry.filename}`
     );
     entry.relIds.set(relsPath, relId);
     return relId;
   }
 }
 
-/** `word/header1.xml` → `word/_rels/header1.xml.rels` (OPC rels convention). */
-export function relsPathFor(partPath: string): string {
-  const slash = partPath.lastIndexOf("/");
-  const dir = slash === -1 ? "" : partPath.slice(0, slash + 1);
-  const base = slash === -1 ? partPath : partPath.slice(slash + 1);
-  return `${dir}_rels/${base}.rels`;
-}
-
-/** Add a `<Default Extension=…>` to `[Content_Types].xml` unless present. */
-export function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void {
-  const ct = zip.file(CT_PATH)?.asText();
-  if (!ct) return; // not a Word package — unzipDocx would have rejected it
-  if (new RegExp(`<Default[^>]+Extension="${ext}"`, "i").test(ct)) return;
-  zip.file(CT_PATH, ct.replace("</Types>", `<Default Extension="${ext}" ContentType="${mime}"/></Types>`));
-}
+export { ensureContentTypeDefault, relsPathFor };
 
 /**
  * Highest `wp:docPr`/`pic:cNvPr` id anywhere in the template's XML parts, so

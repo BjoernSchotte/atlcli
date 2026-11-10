@@ -638,13 +638,17 @@ function extractDesignInput(
   };
 }
 
-/** Secure one-unzip DOCX -> resolved design facts pipeline. */
-export async function resolveDocxTemplateDesign(
+/** One unzip + one OPC pass; the archive is handed on for the visual pass. */
+async function resolveDesignWithArchive(
   bytes: Uint8Array,
   options: {
     progress?: (event: TemplateImportProgressEventV1) => void;
-  } = {}
-): Promise<ResolvedDocxDesignV1> {
+  }
+): Promise<{
+  design: ResolvedDocxDesignV1;
+  archive: ReturnType<typeof unzipDocx>;
+  opc: DocxOpcFactsV1;
+}> {
   const sourceBytes = new Uint8Array(bytes);
   const sourceDigest = await sha256Hex(sourceBytes);
   const zip = unzipDocx(sourceBytes, DOCX_TEMPLATE_INTAKE_BUDGET);
@@ -666,26 +670,49 @@ export async function resolveDocxTemplateDesign(
     ...sections.diagnostics,
   ];
   return {
-    schema: DOCX_RESOLVED_DESIGN_SCHEMA_V1,
-    sourceDigest,
-    facts,
-    styles,
-    theme: extracted.theme,
-    sections,
-    diagnostics,
+    design: {
+      schema: DOCX_RESOLVED_DESIGN_SCHEMA_V1,
+      sourceDigest,
+      facts,
+      styles,
+      theme: extracted.theme,
+      sections,
+      diagnostics,
+    },
+    archive: zip,
+    opc,
   };
 }
 
-/** Secure one-unzip DOCX -> catalog candidates convenience API for every host. */
-export async function analyzeDocxTemplateForCatalog(
+/** Secure one-unzip DOCX -> resolved design facts pipeline. */
+export async function resolveDocxTemplateDesign(
   bytes: Uint8Array,
   options: {
-    catalog: TemplateCapabilityCatalogV1;
-    bundledFontFamilies: readonly string[];
     progress?: (event: TemplateImportProgressEventV1) => void;
-  }
-): Promise<DocxCatalogAnalysisV1> {
-  const design = await resolveDocxTemplateDesign(bytes, {
+  } = {}
+): Promise<ResolvedDocxDesignV1> {
+  return (await resolveDesignWithArchive(bytes, options)).design;
+}
+
+interface CatalogAnalysisOptions {
+  catalog: TemplateCapabilityCatalogV1;
+  bundledFontFamilies: readonly string[];
+  progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
+/**
+ * @internal The catalog analysis plus the archive it opened, so the import
+ * flow's visual pass does not unzip and index the same DOCX a second time.
+ */
+export async function analyzeDocxTemplateForCatalogWithArchive(
+  bytes: Uint8Array,
+  options: CatalogAnalysisOptions
+): Promise<{
+  analysis: DocxCatalogAnalysisV1;
+  archive: ReturnType<typeof unzipDocx>;
+  opc: DocxOpcFactsV1;
+}> {
+  const { design, archive, opc } = await resolveDesignWithArchive(bytes, {
     progress: options.progress,
   });
   const matching = await matchDocxTemplate({
@@ -698,9 +725,22 @@ export async function analyzeDocxTemplateForCatalog(
     progress: options.progress,
   });
   return {
-    ...design,
-    schema: DOCX_CATALOG_ANALYSIS_SCHEMA_V1,
-    diagnostics: [...design.diagnostics, ...matching.diagnostics],
-    matching,
+    analysis: {
+      ...design,
+      schema: DOCX_CATALOG_ANALYSIS_SCHEMA_V1,
+      diagnostics: [...design.diagnostics, ...matching.diagnostics],
+      matching,
+    },
+    archive,
+    opc,
   };
+}
+
+/** Secure one-unzip DOCX -> catalog candidates convenience API for every host. */
+export async function analyzeDocxTemplateForCatalog(
+  bytes: Uint8Array,
+  options: CatalogAnalysisOptions
+): Promise<DocxCatalogAnalysisV1> {
+  return (await analyzeDocxTemplateForCatalogWithArchive(bytes, options))
+    .analysis;
 }

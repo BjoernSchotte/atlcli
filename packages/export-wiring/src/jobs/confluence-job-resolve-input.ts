@@ -19,6 +19,7 @@ import {
 import type { PdfExportJobEngineInputV1 } from "./pdf-job-executor.js";
 import type { TypescriptDocxExportJobEngineInputV1 } from "./typescript-docx-job-executor.js";
 import type { ConfluenceSourcePlanStoreV1 } from "./confluence-source-plan-checkpoint.js";
+import { serialProgressChannel } from "./job-internals.js";
 
 type SharedSourceOptionsV1 = Pick<
   ResolveConfluenceSourceOptionsV1,
@@ -175,13 +176,10 @@ function sourceProgressChannel(
   settled(): Promise<void>;
 } {
   if (!options.onProgress) return { settled: async () => {} };
-  let pending = Promise.resolve();
-  return {
-    callback(progress) {
-      pending = pending.then(() => options.onProgress!(request, context, progress));
-    },
-    settled: () => pending,
-  };
+  const onProgress = options.onProgress;
+  return serialProgressChannel<ConfluenceSourceProgressV1>((progress) =>
+    onProgress(request, context, progress),
+  );
 }
 
 async function resolveSourceWithProgressV1(

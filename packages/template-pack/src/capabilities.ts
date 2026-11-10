@@ -542,7 +542,7 @@ function sortJson(value: unknown): unknown {
   if (isRecord(value)) {
     return Object.fromEntries(
       Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => left.localeCompare(right, "en"))
         .map(([key, child]) => [key, sortJson(child)])
     );
   }

@@ -18,8 +18,8 @@ import {
 import { BUILTIN_PDF_TEMPLATE_BASELINE_V1 } from "./recipe-baselines.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import type { PdfTemplateManifestV5 } from "./template-pack.js";
-import { preparePdfDocument } from "./prepare.js";
-import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
+import { preparePdfDocument, renderEnvelopeWidthPt } from "./prepare.js";
+import { mapPdfDiagnostics, pdfTextWidthsPt, serializePdfDocument } from "./serialize.js";
 import type { PreparedPdfBlock } from "./types.js";
 
 const metadata = {
@@ -1723,6 +1723,25 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
   });
 
+  it("counts headings inside an unresolved macro body and a divider label when deduping labels", async () => {
+    const intro = { type: "heading" as const, level: 2 as const, content: [{ type: "text" as const, text: "Intro" }] };
+    const blocks: ExportBlock[] = [
+      { type: "unknown", macroName: "third-party", body: [intro] },
+      { type: "divider", label: intro },
+      intro,
+      // Sanitizes to the suffix the third "Intro" heading emits.
+      { type: "anchor", name: "intro-3" },
+      { type: "anchor", name: "intro-2" },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    const labels = [...bundle.main.matchAll(/<([a-z0-9-]+)>/g)].map((m) => m[1]);
+    expect(labels).toEqual(expect.arrayContaining(["intro", "intro-2", "intro-3"]));
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
   it("dedupes distinct anchor names that sanitize identically (duplicate labels are a compile error)", async () => {
     const blocks: ExportBlock[] = [
       { type: "anchor", name: "A B" },
@@ -2728,6 +2747,107 @@ describe("serialize — T1.6 table header repeat", () => {
       expect(main).toContain(fixture.stroke);
       expect(main).not.toContain("#h(0pt, weak: true)");
     }
+  });
+});
+
+describe("template watermark colour", () => {
+  it("reaches the document for a complete-design (revision 5) template", () => {
+    const { main } = serializePdfDocument(
+      { blocks: [], assets: [], notes: [] },
+      {
+        metadata,
+        settings: { watermark: { text: "DRAFT" } },
+        templateManifest: revision5Manifest((design) => {
+          design.tokens.colors.watermark = "#0A6B5C";
+        }),
+      },
+    );
+    expect(main).toContain('color: "#0A6B5C"');
+  });
+});
+
+describe("export date label", () => {
+  const label = (language: string, region?: string): string =>
+    serializePdfDocument(
+      { blocks: [], assets: [], notes: [] },
+      { metadata: { ...metadata, language, ...(region ? { region } : {}) } },
+    ).main.match(/exported-label: "([^"]*)"/)![1]!;
+
+  it("falls back to English for a locale Intl rejects instead of throwing", () => {
+    expect(label("de_DE")).toBe("July 16, 2026");
+  });
+
+  it("does not append the region to a language that already carries one", () => {
+    expect(label("de-AT", "DE")).toBe("16. Juli 2026");
+    expect(label("de", "DE")).toBe("16. Juli 2026");
+  });
+});
+
+describe("page geometry drives the usable text width", () => {
+  const scalingTable: ExportBlock = {
+    type: "table",
+    rows: [{
+      cells: Array.from({ length: 20 }, () => ({
+        header: false,
+        colspan: 1,
+        rowspan: 1,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "ABCD" }] }] as ExportBlock[],
+      })),
+    }],
+  };
+  const noAssets = { resolve: async () => { throw new Error("no assets"); } };
+
+  it("derives the built-in widths and follows paper, orientation and margins", () => {
+    expect(pdfTextWidthsPt(BUILTIN_PDF_TEMPLATE_MANIFEST.design!.page)).toEqual({
+      portrait: 470,
+      landscape: 717,
+      initial: 470,
+    });
+    expect(pdfTextWidthsPt({
+      size: "letter",
+      orientation: "landscape",
+      margin: { top: "10mm", bottom: "10mm", left: "36pt", right: "36pt" },
+    })).toEqual({ portrait: 540, landscape: 720, initial: 720 });
+    // A custom format is emitted as explicit, already oriented width/height;
+    // a `flipped: true` region swaps those.
+    expect(pdfTextWidthsPt({
+      format: { kind: "custom", width: "300pt", height: "500pt" },
+      orientation: "landscape",
+      binding: "left",
+      margin: { mode: "logical", top: "10pt", bottom: "10pt", inside: "30pt", outside: "20pt" },
+    })).toEqual({ portrait: 450, landscape: 250, initial: 450 });
+  });
+
+  it("classifies a table against a landscape document's text width", async () => {
+    const prepared = await preparePdfDocument([scalingTable], noAssets);
+    const codes = (settings?: { orientation: "landscape" }): string[] =>
+      serializePdfDocument(prepared, { metadata, ...(settings ? { settings } : {}) })
+        .notes.map((note) => note.code);
+    expect(codes()).toContain("table-text-scaled");
+    expect(codes({ orientation: "landscape" })).not.toContain("table-text-scaled");
+  });
+
+  it("flips an orientation region back to the portrait width", async () => {
+    const prepared = await preparePdfDocument(
+      [{ type: "orientation", landscape: false, content: [scalingTable] }],
+      noAssets,
+    );
+    const { notes } = serializePdfDocument(prepared, {
+      metadata,
+      settings: { orientation: "landscape" },
+    });
+    expect(notes.map((note) => note.code)).toContain("table-text-scaled");
+  });
+
+  it("sizes the image render envelope to the widest page in the document", () => {
+    const landscape = { portrait: 470, landscape: 717, initial: 717 };
+    expect(renderEnvelopeWidthPt([], landscape)).toBe(717);
+    expect(renderEnvelopeWidthPt([])).toBe(470);
+    expect(renderEnvelopeWidthPt([{ type: "orientation", landscape: true, content: [] }])).toBe(717);
+    expect(renderEnvelopeWidthPt(
+      [{ type: "orientation", landscape: false, content: [] }],
+      { portrait: 900, landscape: 500, initial: 500 },
+    )).toBe(900);
   });
 });
 

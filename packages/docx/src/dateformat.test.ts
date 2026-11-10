@@ -60,4 +60,12 @@ describe("formatDatePlaceholder", () => {
   it("uses the argument when present", () => {
     expect(formatDatePlaceholder(D, "dd.MM.yyyy").text).toBe("14.07.2026");
   });
+  it("defaults to the LOCAL day, the same one the pattern tokens print", () => {
+    // Just after and just before local midnight: in any zone off UTC one of
+    // them is a different UTC day.
+    for (const d of [new Date(2026, 6, 14, 0, 30), new Date(2026, 6, 14, 23, 30)]) {
+      expect(formatDatePlaceholder(d).text).toBe("2026-07-14");
+      expect(formatSimpleDate(d, "EEEE").text).toBe("2026-07-14");
+    }
+  });
 });

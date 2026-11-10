@@ -4,8 +4,8 @@
  * `unpackTemplate` is the canonical reader and the owner of the size-cap
  * constants folder 011's security-hardening task imports (rather than
  * re-declaring). It does structural integrity only — the semantic import gate
- * is {@link import("./manifest.js").validateManifest}, run separately by
- * {@link import("./validate.js").validatePack}.
+ * is {@link import("./manifest.js").validateManifest}, run separately by the
+ * importing host.
  *
  * Hard rejections (all throw {@link TemplatePackError}):
  *   - outer archive over {@link MAX_TEMPLATE_PACK_BYTES} (checked before unzip);

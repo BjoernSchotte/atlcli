@@ -42,6 +42,8 @@ import {
 export const DOCX_PDF_MAPPING_RULE_V1 = {
   id: "atlcli.docx-to-pdf",
   version: "1",
+  // No matcher reads these thresholds any more; they stay because the rule
+  // object is embedded in every stored candidate and so in analysis digests.
   directFormatting: {
     minimumOccurrences: 5,
     minimumDominance: 0.7,
@@ -54,14 +56,6 @@ export interface DocxCentralColorInputV1 {
   locator: string;
 }
 
-export interface DocxDirectFormattingAggregateV1 {
-  role: Exclude<DocxSemanticStyleRoleV1, "table">;
-  properties: ResolvedDocxStylePropertiesV1;
-  count: number;
-  totalCount: number;
-  evidence: TemplateEvidenceV1;
-}
-
 export interface DocxTemplateMatchingInputV1 {
   analysisDigest: string;
   catalog: TemplateCapabilityCatalogV1;
@@ -70,7 +64,6 @@ export interface DocxTemplateMatchingInputV1 {
   sections: DocxSectionResolutionV1;
   bundledFontFamilies: readonly string[];
   centralColors?: readonly DocxCentralColorInputV1[];
-  directFormatting?: readonly DocxDirectFormattingAggregateV1[];
   progress?: (event: TemplateImportProgressEventV1) => void;
 }
 
@@ -275,8 +268,7 @@ export async function matchDocxTemplate(
   const total =
     input.styles.styles.length +
     (input.centralColors?.length ?? 3) +
-    input.sections.sections.length +
-    (input.directFormatting?.length ?? 0);
+    input.sections.sections.length;
   emitProgress(input.progress, 0, total);
   let completed = 0;
 
@@ -630,56 +622,16 @@ export async function matchDocxTemplate(
     });
   }
 
-  for (const aggregate of input.directFormatting ?? []) {
-    completed += 1;
-    emitProgress(input.progress, Math.min(completed, total), total);
-    const ratio =
-      aggregate.totalCount > 0 ? aggregate.count / aggregate.totalCount : 0;
-    if (
-      aggregate.count <
-        DOCX_PDF_MAPPING_RULE_V1.directFormatting.minimumOccurrences ||
-      ratio < DOCX_PDF_MAPPING_RULE_V1.directFormatting.minimumDominance
-    ) {
-      continue;
-    }
-    await add({
-      conceptCode: ROLE_CONCEPT[aggregate.role],
-      concept: `direct.${aggregate.role}`,
-      scope: "document",
-      groupId: `group:direct.${aggregate.role}`,
-      groupAtomic: true,
-      writes: roleMetricWrites(aggregate.role, aggregate.properties),
-      rank: 200,
-      kind: "token",
-      valueNature: "inferred",
-      confidence: "corroborated",
-      compatibility: "native",
-      adoption: "review",
-      evidence: [aggregate.evidence],
-      explanations: [
-        mappingExplanation(
-          "DOCX_MAPPING_DIRECT_FORMAT_DOMINANCE",
-          {
-            count: aggregate.count,
-            ratio: Number(ratio.toFixed(4)),
-            role: aggregate.role,
-          },
-          [aggregate.evidence.id]
-        ),
-      ],
-    });
-  }
-
   const uniqueDiagnostics = [
     ...new Map(
       diagnostics.map((item) => [diagnosticsKey(item), item])
     ).values(),
   ].sort((left, right) =>
-    diagnosticsKey(left).localeCompare(diagnosticsKey(right))
+    diagnosticsKey(left).localeCompare(diagnosticsKey(right), "en")
   );
   candidates.sort((left, right) =>
-    left.semanticKey.localeCompare(right.semanticKey) ||
-    left.candidateFingerprint.localeCompare(right.candidateFingerprint)
+    left.semanticKey.localeCompare(right.semanticKey, "en") ||
+    left.candidateFingerprint.localeCompare(right.candidateFingerprint, "en")
   );
   emitProgress(input.progress, total, total);
   return {

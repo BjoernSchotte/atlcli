@@ -1,5 +1,6 @@
 import type { ExportArtifactV1 } from "./artifact.js";
 import type { ExportJobFinalizeV1 } from "./store-contracts.js";
+import { canonical } from "./internal.js";
 
 /** Durable, immutable authorization to finish one already-staged artifact. */
 export interface ExportArtifactFinalizationIntentV1 {
@@ -68,15 +69,6 @@ export class ExportArtifactFinalizationConflict extends Error {
 
 function clone<T>(value: T): T {
   return structuredClone(value);
-}
-
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entry]) => entry !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b));
-  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}`;
 }
 
 function assertFiniteTime(value: number, label: string): void {

@@ -34,7 +34,6 @@ import {
   type TemplateRuntimeAssetV1,
 } from "./contracts.js";
 import {
-  reconcileTemplateDecisions,
   resolveTemplateLayers,
 } from "./core.js";
 
@@ -133,7 +132,7 @@ function cloneFiles(
   return Object.freeze(
     Object.fromEntries(
       Object.entries(files)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => left.localeCompare(right, "en"))
         .map(([path, bytes]) => [path, new Uint8Array(bytes)])
     )
   );
@@ -297,7 +296,7 @@ function acceptedAssetHandles(
         { kind: "accept-asset" }
       > => decision.kind === "accept-asset"
     )
-    .sort((left, right) => left.role.localeCompare(right.role))
+    .sort((left, right) => left.role.localeCompare(right.role, "en"))
     .map((decision) => {
       if (!decision.useConfirmed || !decision.rightsConfirmed) {
         fail(
@@ -529,7 +528,7 @@ export async function buildTemplateProject(
           { sha256, mediaType, accessibility, rendering },
         ])
         .sort(([left], [right]) =>
-          String(left).localeCompare(String(right))
+          String(left).localeCompare(String(right), "en")
         )
     ),
   };
@@ -664,15 +663,11 @@ export interface PrepareTemplateProjectUndoInputV1 {
 export async function prepareTemplateProjectUndo(
   input: PrepareTemplateProjectUndoInputV1
 ): Promise<TemplateProjectStateV1> {
-  const reconciliation = reconcileTemplateDecisions(input.targetDecisions, {
-    candidates: input.current.analysis.candidates,
-    sourceDigest: input.current.analysis.sourceDigest,
-    mappingVersion: input.current.analysis.mappingVersion,
-    catalogDigest: input.catalog.digest,
-  });
+  // Reconciliation never rewrites decisions; `resolveTemplateLayers` derives
+  // their staleness against the current analysis.
   const decisions: TemplateDecisionStateV1 = immutableJson({
     schema: TEMPLATE_DECISION_STATE_SCHEMA_V1,
-    decisions: reconciliation.decisions.decisions,
+    decisions: input.targetDecisions.decisions,
     preview: {},
   });
   const snapshot = await resolveTemplateLayers({
@@ -733,15 +728,11 @@ export async function assertPreparedTemplateProjectUndo(
 export async function reanalyzeTemplateProject(
   input: ReanalyzeTemplateProjectInputV1
 ): Promise<TemplateProjectStateV1> {
-  const reconciliation = reconcileTemplateDecisions(input.current.decisions, {
-    candidates: input.analysis.candidates,
-    sourceDigest: input.analysis.sourceDigest,
-    mappingVersion: input.analysis.mappingVersion,
-    catalogDigest: input.catalog.digest,
-  });
+  // Frozen intent is kept as is; `resolveTemplateLayers` marks each decision
+  // current or stale against the new analysis.
   const decisions: TemplateDecisionStateV1 = immutableJson({
     schema: TEMPLATE_DECISION_STATE_SCHEMA_V1,
-    decisions: reconciliation.decisions.decisions,
+    decisions: input.current.decisions.decisions,
     preview: {},
   });
   const snapshot = await resolveTemplateLayers({

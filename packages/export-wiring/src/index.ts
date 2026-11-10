@@ -101,8 +101,5 @@ export { buildMacroResolutionOptions, createMacroRegistry } from "./macro-option
 export type { BuildMacroOptionsArgs } from "./macro-options.js";
 
 // --- Background-export source orchestration ---
-export * from "./jobs/checkpointed-source-pipeline.js";
 export * from "./jobs/confluence-job-resolve-input.js";
 export * from "./jobs/confluence-source-resolver.js";
-export * from "./jobs/streamed-asset.js";
-export * from "./jobs/web-macro-resolution.js";
