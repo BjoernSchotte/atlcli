@@ -3,8 +3,6 @@ import {
   OutputOptions,
   fail,
   buildConfluenceUrl,
-  getConfluenceBaseUrl,
-  parseConfluencePageRef,
   getActiveProfile,
   getFlag,
   hasFlag,
@@ -27,6 +25,7 @@ import {
   initJinja,
 } from "@atlcli/core";
 import { assertCliAuthSupported } from "./session-guard.js";
+import { isPageUrl, pageUrlResolver, resolvePageUrlFlags } from "./page-url-flags.js";
 import copyPagesScript from "../builtin-scripts/copy-pages.script" with { type: "text" };
 import { parseTemplateFlags, parseVarAssignments, TEMPLATE_FLAGS_HELP, templateValuesFrom } from "./template-flags.js";
 import {
@@ -208,32 +207,16 @@ async function getConversionOptions(
 }
 
 /**
- * `--id` (and `page open <page>`) take a page URL of the profile's site as
- * well as the id: the URL becomes its page id here, once, for every
- * subcommand. A `?focusedCommentId=` in it is kept for the commands that show
+ * `--id`, `--parent` (and `page open <page>`) take a page URL of the
+ * profile's site as well as the id: the URL becomes its page id here, once,
+ * for every subcommand. A `?focusedCommentId=` in it is kept for the commands that show
  * comments (`get`, `comments list`).
  */
 async function resolvePageUrls(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const isUrl = (value: string | undefined): value is string => !!value && /^https?:\/\//i.test(value.trim());
-  const id = getFlag(flags, "id");
-  const positional = args[0] === "open" ? args[1] : undefined;
-  if (!isUrl(id) && !isUrl(positional)) return;
-  const profileName = getFlag(flags, "profile");
-  const profile = getActiveProfile(await loadConfig(), profileName);
-  if (!profile) {
-    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
-  }
-  const resolve = (url: string) => {
-    const ref = parseConfluencePageRef(getConfluenceBaseUrl(profile), url);
-    if ("error" in ref) fail(opts, 1, ERROR_CODES.USAGE, ref.error);
-    return ref;
-  };
-  if (isUrl(id)) {
-    const ref = resolve(id);
-    flags.id = ref.pageId;
-    if (ref.commentId) (flags as any)._focusedComment = ref.commentId;
-  }
-  if (isUrl(positional)) args[1] = resolve(positional).pageId;
+  // `comments reply --parent` names a comment, not a page.
+  const refs = await resolvePageUrlFlags(flags, args[0] === "comments" ? ["id"] : ["id", "parent"], opts);
+  if (refs.id?.commentId) (flags as any)._focusedComment = refs.id.commentId;
+  if (args[0] === "open" && isPageUrl(args[1])) args[1] = (await pageUrlResolver(flags, opts))(args[1]).pageId;
 }
 
 /** The comment a page URL pointed at (`?focusedCommentId=`), or `--comment`. */

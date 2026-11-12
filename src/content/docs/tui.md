@@ -179,6 +179,9 @@ A link to a comment opens the **comments** tab with that comment's thread first 
 | "That URL carries no page id" | A title URL (`/display/SPACE/Title`) or a space URL | Copy the page's `…/pages/<id>/…` URL, or type the id |
 | `f` says the page links to no other page | The page has only external links or attachments | `O` opens the page in the browser |
 | "… was not found in …" after `f` | The link names a page by title, and that page was renamed or deleted | Search for it with `/` |
+| "Page … was not found (deleted, or not visible to you)." | The URL or link points to a page that is gone, or that your account may not see | `Backspace` returns; check the link in the browser with `O` |
+
+In the page text, a link to another Confluence page shows as its text followed by `↗`.
 
 ## Mouse
 

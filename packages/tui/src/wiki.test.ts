@@ -3,7 +3,7 @@ import { handleKey } from "./app.js";
 import { expandNode } from "./commands.js";
 import { topOverlay } from "./state.js";
 import { commands, setup, type TestSetup } from "./testing.js";
-import { commentThreads, editBlockReason, linkTargetCql, loadPage, loadSearch, openPage, pageLinks, parentSearchCql, readablePage, searchCql, selectionContext, wiki } from "./wiki.js";
+import { commentThreads, editBlockReason, loadPage, loadSearch, openPage, pageLinks, parentSearchCql, readablePage, searchCql, selectionContext, wiki } from "./wiki.js";
 
 const press = (t: TestSetup, ...keys: string[]) => {
   for (const key of keys) {
@@ -20,6 +20,10 @@ describe("helpers", () => {
 
   test("readablePage shows preserved macros as their label and drops converter escapes", () => {
     expect(readablePage(":::confluence jira\n<!--raw\n<x/>\n-->\n*[jira macro]*\n:::\n\n1\\. Intro")).toBe("*[jira macro]*\n\n1. Intro");
+  });
+
+  test("readablePage shows a page link as its text, not its page: target", () => {
+    expect(readablePage("See [the \\[old\\] spec](page:DOCS/API%20Spec) and [site](https://example.com).")).toBe("See the [old] spec ↗ and [site](https://example.com).");
   });
 
   test("words search the default space, CQL passes through", () => {
@@ -200,6 +204,17 @@ describe("links and comments of a page", () => {
     ]);
   });
 
+  test("pageLinks: links relative to the site count too", () => {
+    const storage = '<p><a href="/wiki/spaces/DOC/pages/10003/Rel?focusedCommentId=7&amp;y=1"><strong>relative</strong></a> <a href="/browse/AB-1">an issue</a></p>';
+    expect(pageLinks(storage, BASE)).toEqual([{ label: "relative", pageId: "10003", commentId: "7" }]);
+  });
+
+  test("a page that is gone says so in words, other errors stay as they are", async () => {
+    const { t } = wikiSetup({ getPageDetails: () => Promise.reject(new Error("Confluence API error (404): [response body omitted: logBody policy]")) });
+    await loadPage(t.ctx, "999");
+    expect(t.ctx.store.get().wiki.details["999"]).toEqual({ status: "error", error: "Page 999 was not found (deleted, or not visible to you)." });
+  });
+
   test("commentThreads: footer threads first, replies in order, inline with its text", () => {
     const threads = commentThreads(pageComments() as never, (s) => s.replace(/<[^>]+>/g, ""));
     expect(threads).toEqual([
@@ -273,24 +288,24 @@ describe("opening pages by URL and link", () => {
     expect(t.ctx.store.get().wiki.back).toEqual([]);
   });
 
-  test("f follows a link by title: the target is looked up in the page's space and opened", async () => {
-    const cqls: string[] = [];
-    const { t } = nav({ searchPages: (cql: string) => (cqls.push(cql), cql.includes("title =") ? [{ id: "42", title: "API Spec", spaceKey: "DOC" }] : [{ id: "10", title: "Page 10", spaceKey: "DOC", version: 3 }]) });
+  test("f follows a link by title: the target is looked up in the page's space (not over the search index) and opened", async () => {
+    const { t } = nav({ findPagesByTitle: () => [{ id: "42", title: "API Spec", spaceKey: "DOC" }] });
     await loadSearch(t.ctx, "Recent", "type = page");
     await t.settle();
     press(t, "f");
     const picker = topOverlay(t.ctx.store.get());
     expect(picker?.kind === "picker" && picker.items).toEqual([{ id: "0", label: "API Spec", hint: "API Spec" }]);
+    const searches = t.calls.filter((c) => c.method === "searchPages").length;
     press(t, "return");
     await t.settle();
-    expect(cqls.at(-1)).toBe(linkTargetCql("API Spec", "DOC"));
-    expect(cqls.at(-1)).toBe(`type = page AND space = "DOC" AND title = "API Spec"`);
+    expect(t.calls.find((c) => c.method === "findPagesByTitle")?.args).toEqual(["API Spec", { spaceKey: "DOC", limit: 1 }]);
+    expect(t.calls.filter((c) => c.method === "searchPages")).toHaveLength(searches);
     expect(t.ctx.store.get().wiki.list.items).toEqual([expect.objectContaining({ id: "42" })]);
     expect(t.ctx.store.get().wiki.back).toHaveLength(1);
   });
 
   test("a link whose target is gone says so and stays on the page", async () => {
-    const { t } = nav({ searchPages: (cql: string) => (cql.includes("title =") ? [] : [{ id: "10", title: "Page 10", spaceKey: "DOC", version: 3 }]) });
+    const { t } = nav({ findPagesByTitle: () => [] });
     await loadSearch(t.ctx, "Recent", "type = page");
     await t.settle();
     press(t, "f", "return");

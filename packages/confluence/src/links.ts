@@ -87,7 +87,9 @@ export function classifyLink(target: string): LinkType {
     target.startsWith("http://") ||
     target.startsWith("https://") ||
     target.startsWith("mailto:") ||
-    target.startsWith("ftp://")
+    target.startsWith("ftp://") ||
+    // A Confluence page reference (`[text](page:SPACE/Title)`): no file path to resolve or check.
+    target.startsWith("page:")
   ) {
     return "external";
   }

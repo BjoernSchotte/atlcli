@@ -124,6 +124,7 @@ import {
 import type { Ignore } from "@atlcli/confluence/internal";
 import { readAttachmentFile, resolveAttachmentFile } from "./docs-attachments.js";
 import { handleSync } from "./sync.js";
+import { resolvePageUrlFlags } from "./page-url-flags.js";
 import { unknownSubcommand } from "./unknown-subcommand.js";
 import { checkTemplateRender } from "./template-render-check.js";
 import { parseVarFlags } from "./page.js";
@@ -343,6 +344,8 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
   }
 
   const sub = args[0];
+  // Flags that name a page take a page URL of the profile's site as well as the id.
+  await resolvePageUrlFlags(flags, ["page-id", "ancestor", "parent"], opts);
   switch (sub) {
     case "init":
       await handleInit(args.slice(1), flags, opts);

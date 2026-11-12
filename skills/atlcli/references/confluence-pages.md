@@ -86,7 +86,8 @@ atlcli wiki page children --id 12345 --limit 100 --json
 edit around it. Every page verb identifies its target with `--id`, which takes
 the page id or a page URL of the profile's site (`…/pages/<id>/…`,
 `…?pageId=<id>`, a short `…/x/<code>` link); a URL of another site or one
-without a page id fails with a usage error. Page IDs come from
+without a page id fails with a usage error. `--parent`, `wiki export <page>`
+and `wiki docs --page-id/--ancestor/--parent` take such URLs too. Page IDs come from
 `wiki search`, `wiki page list`, or the `atlcli.id` frontmatter of a synced
 Markdown file.
 

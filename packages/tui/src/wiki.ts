@@ -29,6 +29,8 @@ export function readablePage(markdown: string): string {
   return (
     markdown
       .replace(/^:::confluence ([^\n]+)\n(?:<!--raw\n[\s\S]*?\n-->\n)?\*\[([^\]]*)\]\*\n:::$/gm, (_m, _name, label) => `*[${label}]*`)
+      // A link to another page reads as its text with a mark; its `page:` target is for `f`, not for reading.
+      .replace(/(?<!!)\[((?:\\.|[^\]\\])*)\]\(page:[^)\s]*\)/g, "$1 ↗")
       // The converter escapes punctuation that would otherwise start markdown ("1\. Title"); the viewer shows it literally.
       .replace(/\\([.\-+#!()[\]_*`>|~])/g, "$1")
   );
@@ -45,6 +47,12 @@ export function searchCql(query: string, space?: string): string {
 export function pageLinks(storage: string, confluenceBaseUrl: string): PageLink[] {
   const links: PageLink[] = [];
   const seen = new Set<string>();
+  const add = (link: PageLink) => {
+    const key = [link.pageId, link.spaceKey, link.title, link.commentId].join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    links.push(link);
+  };
   for (const link of parseStorageLinks(storage)) {
     let found: PageLink | undefined;
     if (link.type === "internal") {
@@ -58,13 +66,21 @@ export function pageLinks(storage: string, confluenceBaseUrl: string): PageLink[
       const ref = parseConfluencePageRef(confluenceBaseUrl, link.externalUrl.replace(/&amp;/g, "&"));
       if (!("error" in ref)) found = { label: link.linkText || link.externalUrl, ...ref };
     }
-    if (!found) continue;
-    const key = [found.pageId, found.spaceKey, found.title, found.commentId].join("|");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    links.push(found);
+    if (found) add(found);
+  }
+  // Links relative to the site (`href="/wiki/spaces/…"`), which the storage link parser leaves out.
+  for (const [, href, body] of storage.matchAll(/<a\s+[^>]*href="(\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const url = new URL(href!.replace(/&amp;/g, "&"), confluenceBaseUrl).href;
+    const ref = parseConfluencePageRef(confluenceBaseUrl, url);
+    if (!("error" in ref)) add({ label: body!.replace(/<[^>]*>/g, "").trim() || url, ...ref });
   }
   return links;
+}
+
+/** A failed page or comment load in words: a 404 is a page that is gone or hidden, whatever the API calls it. */
+export function loadError(err: unknown, id: string): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return /\b404\b/.test(message) ? `Page ${id} was not found (deleted, or not visible to you).` : message;
 }
 
 /** The page's comments as threads for reading: footer comments first, then inline ones, replies in order. */
@@ -174,7 +190,7 @@ export function loadPage(ctx: Ctx, id: string, force = false): Promise<void> {
       list: { ...w.list, items: w.list.items.map((r) => (r.id === id ? { ...r, title: page.title, spaceKey: page.spaceKey ?? r.spaceKey, version: value.version } : r)) },
     }));
   })()
-    .catch((err) => setWiki(ctx, (w) => ({ details: { ...w.details, [id]: { status: "error", error: err instanceof Error ? err.message : String(err) } } })))
+    .catch((err) => setWiki(ctx, (w) => ({ details: { ...w.details, [id]: { status: "error", error: loadError(err, id) } } })))
     .finally(() => details.delete(id));
   details.set(id, request);
   return request;
@@ -193,7 +209,7 @@ export function loadComments(ctx: Ctx, id: string, force = false): Promise<void>
     const value = commentThreads(all, (storage) => readablePage(storageToMarkdown(storage, { baseUrl: client.getInstanceUrl() }).trim()));
     setWiki(ctx, (w) => ({ comments: { ...w.comments, [id]: { status: "ok", value } } }));
   })()
-    .catch((err) => setWiki(ctx, (w) => ({ comments: { ...w.comments, [id]: { status: "error", error: err instanceof Error ? err.message : String(err) } } })))
+    .catch((err) => setWiki(ctx, (w) => ({ comments: { ...w.comments, [id]: { status: "error", error: loadError(err, id) } } })))
     .finally(() => threads.delete(id));
   threads.set(id, request);
   return request;
@@ -249,11 +265,6 @@ function openByUrl(ctx: Ctx): void {
   });
 }
 
-/** CQL for a page link that names its target by title. */
-export function linkTargetCql(title: string, space?: string): string {
-  return `type = page${space ? ` AND space = ${JSON.stringify(space)}` : ""} AND title = ${JSON.stringify(title)}`;
-}
-
 function followLink(ctx: Ctx): void {
   const row = selectedPage(ctx.store.get());
   const detail = row ? ctx.store.get().wiki.details[row.id] : undefined;
@@ -274,7 +285,8 @@ function followLink(ctx: Ctx): void {
       let pageId = link.pageId;
       if (!pageId && link.title) {
         const space = link.spaceKey ?? spaceKey;
-        const found = await ctx.task("Finding the page…", () => ctx.opts.confluence.searchPages(linkTargetCql(link.title!, space), 1));
+        // The content endpoint, not CQL: the search index lags a page's creation by minutes.
+        const found = await ctx.task("Finding the page…", () => ctx.opts.confluence.findPagesByTitle(link.title!, { spaceKey: space, limit: 1 }));
         if (!found) return;
         pageId = found[0]?.id;
         if (!pageId) return ctx.toast("error", `"${link.title}" was not found${space ? ` in ${space}` : ""} (renamed, deleted, or not visible to you).`);

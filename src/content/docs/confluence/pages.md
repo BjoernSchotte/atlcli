@@ -59,7 +59,7 @@ Options:
 
 ### Page URLs instead of IDs
 
-Every `wiki page` command takes a page URL where it takes `--id`, so a link copied from the browser or a chat works as it is:
+Every `wiki page` command takes a page URL where it takes `--id` (and `--parent`), so a link copied from the browser or a chat works as it is. The same holds for `wiki export <page>` and for `--page-id`, `--ancestor` and `--parent` of `wiki docs`:
 
 ```bash
 # Minimal: the page a link points to
