@@ -192,6 +192,12 @@ export interface CommandData {
 // export: configureLogging
 export declare function configureLogging(options: LoggerOptions): void;
 
+// export: ConfluencePageRef
+export interface ConfluencePageRef {
+    pageId: string;
+    commentId?: string;
+}
+
 // export: ConsoleLogSink
 export declare class ConsoleLogSink implements LogSink {
     private minLevel;
@@ -214,6 +220,9 @@ export declare function createTemplateScope(input?: {
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
+
+// export: decodeTinyLink
+export declare function decodeTinyLink(code: string): string | undefined;
 
 // export: DEFAULT_PATTERN_REGISTRY
 export declare const DEFAULT_PATTERN_REGISTRY: PatternRegistry;
@@ -374,6 +383,11 @@ export interface LogSink {
     configure?(options: LoggerOptions): void;
     reset?(): void;
 }
+
+// export: parseConfluencePageRef
+export declare function parseConfluencePageRef(confluenceBaseUrl: string, input: string): ConfluencePageRef | {
+    error: string;
+};
 
 // export: parseVarsFile
 export declare function parseVarsFile(yamlText: string): VarsFile;
@@ -885,6 +899,12 @@ export type Config = {
 // export: configureLogging
 export declare function configureLogging(options: LoggerOptions): void;
 
+// export: ConfluencePageRef
+export interface ConfluencePageRef {
+    pageId: string;
+    commentId?: string;
+}
+
 // export: ConsoleLogSink
 export declare class ConsoleLogSink implements LogSink {
     private minLevel;
@@ -907,6 +927,9 @@ export declare function createTemplateScope(input?: {
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
+
+// export: decodeTinyLink
+export declare function decodeTinyLink(code: string): string | undefined;
 
 // export: DEFAULT_PATTERN_REGISTRY
 export declare const DEFAULT_PATTERN_REGISTRY: PatternRegistry;
@@ -1313,6 +1336,11 @@ export type OutputOptions = {
 
 // export: parseArgs
 export declare function parseArgs(argv: string[]): ParsedArgs;
+
+// export: parseConfluencePageRef
+export declare function parseConfluencePageRef(confluenceBaseUrl: string, input: string): ConfluencePageRef | {
+    error: string;
+};
 
 // export: ParsedArgs
 export type ParsedArgs = {
@@ -2147,6 +2175,12 @@ export interface CommandData {
 // export: configureLogging
 export declare function configureLogging(options: LoggerOptions): void;
 
+// export: ConfluencePageRef
+export interface ConfluencePageRef {
+    pageId: string;
+    commentId?: string;
+}
+
 // export: ConsoleLogSink
 export declare class ConsoleLogSink implements LogSink {
     private minLevel;
@@ -2169,6 +2203,9 @@ export declare function createTemplateScope(input?: {
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
+
+// export: decodeTinyLink
+export declare function decodeTinyLink(code: string): string | undefined;
 
 // export: DEFAULT_PATTERN_REGISTRY
 export declare const DEFAULT_PATTERN_REGISTRY: PatternRegistry;
@@ -2329,6 +2366,11 @@ export interface LogSink {
     configure?(options: LoggerOptions): void;
     reset?(): void;
 }
+
+// export: parseConfluencePageRef
+export declare function parseConfluencePageRef(confluenceBaseUrl: string, input: string): ConfluencePageRef | {
+    error: string;
+};
 
 // export: parseVarsFile
 export declare function parseVarsFile(yamlText: string): VarsFile;
@@ -2918,6 +2960,12 @@ export type Config = {
 // export: configureLogging
 export declare function configureLogging(options: LoggerOptions): void;
 
+// export: ConfluencePageRef
+export interface ConfluencePageRef {
+    pageId: string;
+    commentId?: string;
+}
+
 // export: ConsoleLogSink
 export declare class ConsoleLogSink implements LogSink {
     private minLevel;
@@ -2940,6 +2988,9 @@ export declare function createTemplateScope(input?: {
 
 // export: decodeBase64
 export declare function decodeBase64(encoded: string): string;
+
+// export: decodeTinyLink
+export declare function decodeTinyLink(code: string): string | undefined;
 
 // export: DEFAULT_PATTERN_REGISTRY
 export declare const DEFAULT_PATTERN_REGISTRY: PatternRegistry;
@@ -3346,6 +3397,11 @@ export type OutputOptions = {
 
 // export: parseArgs
 export declare function parseArgs(argv: string[]): ParsedArgs;
+
+// export: parseConfluencePageRef
+export declare function parseConfluencePageRef(confluenceBaseUrl: string, input: string): ConfluencePageRef | {
+    error: string;
+};
 
 // export: ParsedArgs
 export type ParsedArgs = {

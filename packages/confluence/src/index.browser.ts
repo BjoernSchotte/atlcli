@@ -19,6 +19,7 @@
 export * from "./client.js";
 export * from "./attachment-delivery.js";
 export * from "./comment-text.js";
+export * from "./comment-thread.js";
 export * from "./page-body.js";
 export * from "./page-diff-source.js";
 export * from "./page-body-to-blocks.js";

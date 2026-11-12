@@ -23,11 +23,11 @@ export function viewNodes(views: TuiView[], area: TuiArea): Omit<TreeNode, "dept
     .map((v) => ({ id: `v:${v.name}`, label: v.name, kind: "view", expandable: false, data: { name: v.name, [area === "jira" ? "jql" : "cql"]: v.query } }));
 }
 
-/** The list's query when it can be saved: JQL in Jira, CQL in the wiki (not a page's children). */
+/** The list's query when it can be saved: JQL in Jira, CQL in the wiki (not a page's children or a page opened by link). */
 export function savableQuery(state: AppState): string | undefined {
   const query = state[state.area].list.query.trim();
   if (!query) return undefined;
-  if (state.area === "wiki" && /^(children|space):/.test(query)) return undefined;
+  if (state.area === "wiki" && /^(children|space|page):/.test(query)) return undefined;
   return query;
 }
 

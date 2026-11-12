@@ -92,7 +92,12 @@ atlcli wiki export 12345678 --template corporate --output ./report.docx
 
 # Export using space:title format
 atlcli wiki export "DOCS:Architecture Overview" -t report -o ./arch.docx
+
+# Export the page a URL points to (page URL, ?pageId=, or short /x/ link)
+atlcli wiki export "https://acme.atlassian.net/wiki/spaces/DOCS/pages/12345678/Report" -o ./report.docx
 ```
+
+A URL must belong to the site of the profile in use; a URL of another site is refused instead of exporting a page with the same id from the wrong site.
 
 ## ADF source selection and rollback
 

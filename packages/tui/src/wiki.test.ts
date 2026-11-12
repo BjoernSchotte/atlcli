@@ -3,11 +3,11 @@ import { handleKey } from "./app.js";
 import { expandNode } from "./commands.js";
 import { topOverlay } from "./state.js";
 import { commands, setup, type TestSetup } from "./testing.js";
-import { editBlockReason, loadPage, loadSearch, parentSearchCql, readablePage, searchCql, wiki } from "./wiki.js";
+import { commentThreads, editBlockReason, loadPage, loadSearch, openPage, pageLinks, parentSearchCql, readablePage, searchCql, selectionContext, wiki } from "./wiki.js";
 
 const press = (t: TestSetup, ...keys: string[]) => {
   for (const key of keys) {
-    const named = ["return", "escape", "tab", "space", "up", "down"].includes(key);
+    const named = ["return", "escape", "tab", "space", "up", "down", "backspace"].includes(key);
     handleKey({ ctx: t.ctx, commands: commands(), keymap: {} }, named ? { name: key } : { name: key.toLowerCase(), sequence: key, shift: key !== key.toLowerCase() });
   }
 };
@@ -20,6 +20,10 @@ describe("helpers", () => {
 
   test("readablePage shows preserved macros as their label and drops converter escapes", () => {
     expect(readablePage(":::confluence jira\n<!--raw\n<x/>\n-->\n*[jira macro]*\n:::\n\n1\\. Intro")).toBe("*[jira macro]*\n\n1. Intro");
+  });
+
+  test("readablePage shows a page link as its text, not its page: target", () => {
+    expect(readablePage("See [the \\[old\\] spec](page:DOCS/API%20Spec) and [site](https://example.com).")).toBe("See the [old] spec ↗ and [site](https://example.com).");
   });
 
   test("words search the default space, CQL passes through", () => {
@@ -165,5 +169,174 @@ describe("editing", () => {
     await t.settle();
     expect(added).toEqual([["10", ["b"]]]);
     expect(removed).toEqual([["10", "a"]]);
+  });
+});
+
+const BASE = "https://example.atlassian.net/wiki";
+
+const comment = (id: string, body: string, replies: unknown[] = [], extra: Record<string, unknown> = {}) => ({
+  id,
+  author: { displayName: "Ann Lee", accountId: "a1" },
+  created: "2026-11-12T10:00:00.000Z",
+  body: `<p>${body}</p>`,
+  status: "open",
+  replies,
+  ...extra,
+});
+
+const pageComments = () => ({
+  pageId: "10",
+  lastSynced: "",
+  footerComments: [comment("20001", "Looks <strong>good</strong>", [comment("20002", "Thanks")])],
+  inlineComments: [comment("30001", "Please clarify", [], { textSelection: "important phrase", status: "resolved" })],
+});
+
+describe("links and comments of a page", () => {
+  test("pageLinks: page references and links to this site's pages, not other links", () => {
+    const storage =
+      '<p><ac:link><ri:page ri:content-title="API Spec" ri:space-key="DOCS"/><ac:plain-text-link-body><![CDATA[the spec]]></ac:plain-text-link-body></ac:link>' +
+      `<a href="${BASE}/spaces/DOC/pages/10002/API+Specification?focusedCommentId=20001&amp;x=1">a comment</a>` +
+      `<a href="${BASE}/spaces/DOC/pages/10002/API+Specification?focusedCommentId=20001&amp;x=1">again</a>` +
+      '<a href="https://example.com">elsewhere</a><a href="https://other.atlassian.net/wiki/spaces/X/pages/5">other site</a></p>';
+    expect(pageLinks(storage, BASE)).toEqual([
+      { label: "the spec", pageId: undefined, title: "API Spec", spaceKey: "DOCS" },
+      { label: "a comment", pageId: "10002", commentId: "20001" },
+    ]);
+  });
+
+  test("pageLinks: links relative to the site count too", () => {
+    const storage = '<p><a href="/wiki/spaces/DOC/pages/10003/Rel?focusedCommentId=7&amp;y=1"><strong>relative</strong></a> <a href="/browse/AB-1">an issue</a></p>';
+    expect(pageLinks(storage, BASE)).toEqual([{ label: "relative", pageId: "10003", commentId: "7" }]);
+  });
+
+  test("a page that is gone says so in words, other errors stay as they are", async () => {
+    const { t } = wikiSetup({ getPageDetails: () => Promise.reject(new Error("Confluence API error (404): [response body omitted: logBody policy]")) });
+    await loadPage(t.ctx, "999");
+    expect(t.ctx.store.get().wiki.details["999"]).toEqual({ status: "error", error: "Page 999 was not found (deleted, or not visible to you)." });
+  });
+
+  test("commentThreads: footer threads first, replies in order, inline with its text", () => {
+    const threads = commentThreads(pageComments() as never, (s) => s.replace(/<[^>]+>/g, ""));
+    expect(threads).toEqual([
+      {
+        id: "20001",
+        kind: "footer",
+        resolved: false,
+        comments: [
+          { id: "20001", author: "Ann Lee", created: "2026-11-12T10:00:00.000Z", text: "Looks good", depth: 0 },
+          { id: "20002", author: "Ann Lee", created: "2026-11-12T10:00:00.000Z", text: "Thanks", depth: 1 },
+        ],
+      },
+      { id: "30001", kind: "inline", resolved: true, selection: "important phrase", comments: [expect.objectContaining({ id: "30001", depth: 0 })] },
+    ]);
+  });
+
+  test("selectionContext: the line the commented text stands in", () => {
+    expect(selectionContext("# Title\n\nThis carries an important phrase here.", "important phrase")).toBe("This carries an important phrase here.");
+    expect(selectionContext("important phrase", "important phrase")).toBeUndefined();
+    expect(selectionContext("Text", "gone")).toBeUndefined();
+  });
+});
+
+describe("opening pages by URL and link", () => {
+  const linked = '<p>See <ac:link><ri:page ri:content-title="API Spec"/></ac:link></p>';
+  const nav = (extra: Record<string, (...args: never[]) => unknown> = {}) =>
+    wikiSetup({
+      getPageDetails: (id: string) => ({ ...page(id, 3, id === "10" ? linked : "<p>Spec</p>"), title: id === "10" ? "Page 10" : "API Spec" }),
+      getAllComments: () => pageComments(),
+      ...extra,
+    });
+
+  test("o opens a page URL: the page becomes the list, backspace returns to the list before", async () => {
+    const { t } = nav();
+    await loadSearch(t.ctx, "Recent", "type = page");
+    await t.settle();
+    press(t, "o");
+    t.ctx.store.set((s) => ({ ...s, overlays: [{ ...(topOverlay(s) as Extract<typeof s.overlays[number], { kind: "prompt" }>), value: `${BASE}/spaces/DOC/pages/77/Other` }] }));
+    press(t, "return");
+    await t.settle();
+    const w = t.ctx.store.get().wiki;
+    expect(w.list).toMatchObject({ query: "page:77", items: [{ id: "77", title: "API Spec" }] });
+    expect(w.details["77"]?.status).toBe("ok");
+    expect(t.ctx.store.get().focus).toBe("detail");
+    press(t, "backspace");
+    expect(t.ctx.store.get().wiki.list).toMatchObject({ title: "Recent", query: "type = page", items: [{ id: "10" }] });
+    expect(t.ctx.store.get().wiki.back).toEqual([]);
+    // Opened again, the page is already loaded: its row still carries the title (live: it showed "Page 77").
+    await openPage(t.ctx, { pageId: "77" });
+    expect(t.ctx.store.get().wiki.list.items).toEqual([{ id: "77", title: "API Spec", spaceKey: "DOC", version: 3 }]);
+  });
+
+  test("a URL with focusedCommentId opens the comments with that comment focused", async () => {
+    const { t } = nav();
+    await openPage(t.ctx, { pageId: "10", commentId: "20002" });
+    await t.settle();
+    const w = t.ctx.store.get().wiki;
+    expect(w.tab).toBe("comments");
+    expect(w.focusedComment).toEqual({ pageId: "10", commentId: "20002" });
+    expect(t.calls.find((c) => c.method === "getAllComments")?.args).toEqual(["10", { authorNames: true }]);
+    expect(w.comments["10"]).toMatchObject({ status: "ok", value: [{ id: "20001" }, { id: "30001" }] });
+  });
+
+  test("a URL of another site is refused with a message, nothing is opened", async () => {
+    const { t } = nav();
+    press(t, "o");
+    t.ctx.store.set((s) => ({ ...s, overlays: [{ ...(topOverlay(s) as Extract<typeof s.overlays[number], { kind: "prompt" }>), value: "https://other.atlassian.net/wiki/spaces/X/pages/5" }] }));
+    press(t, "return");
+    await t.settle();
+    expect(t.toasts().at(-1)).toMatchObject({ kind: "error", text: expect.stringContaining("Not on this profile's Confluence site") });
+    expect(t.ctx.store.get().wiki.back).toEqual([]);
+  });
+
+  test("f follows a link by title: the target is looked up in the page's space (not over the search index) and opened", async () => {
+    const { t } = nav({ findPagesByTitle: () => [{ id: "42", title: "API Spec", spaceKey: "DOC" }] });
+    await loadSearch(t.ctx, "Recent", "type = page");
+    await t.settle();
+    press(t, "f");
+    const picker = topOverlay(t.ctx.store.get());
+    expect(picker?.kind === "picker" && picker.items).toEqual([{ id: "0", label: "API Spec", hint: "API Spec" }]);
+    const searches = t.calls.filter((c) => c.method === "searchPages").length;
+    press(t, "return");
+    await t.settle();
+    expect(t.calls.find((c) => c.method === "findPagesByTitle")?.args).toEqual(["API Spec", { spaceKey: "DOC", limit: 1 }]);
+    expect(t.calls.filter((c) => c.method === "searchPages")).toHaveLength(searches);
+    expect(t.ctx.store.get().wiki.list.items).toEqual([expect.objectContaining({ id: "42" })]);
+    expect(t.ctx.store.get().wiki.back).toHaveLength(1);
+  });
+
+  test("a link whose target is gone says so and stays on the page", async () => {
+    const { t } = nav({ findPagesByTitle: () => [] });
+    await loadSearch(t.ctx, "Recent", "type = page");
+    await t.settle();
+    press(t, "f", "return");
+    await t.settle();
+    expect(t.toasts().at(-1)?.text).toContain(`"API Spec" was not found in DOC`);
+    expect(t.ctx.store.get().wiki.list.items[0]?.id).toBe("10");
+  });
+
+  test("the comments load when their tab shows, and reloading a page opened by link does not search", async () => {
+    const { t } = nav();
+    await openPage(t.ctx, { pageId: "10" });
+    await t.settle();
+    expect(t.calls.some((c) => c.method === "getAllComments")).toBe(false);
+    press(t, ".");
+    await t.settle();
+    expect(t.ctx.store.get().wiki.tab).toBe("comments");
+    expect(t.calls.filter((c) => c.method === "getAllComments")).toHaveLength(1);
+    const searches = t.calls.filter((c) => c.method === "searchPages").length;
+    await wiki.refresh(t.ctx);
+    await t.settle();
+    expect(t.calls.filter((c) => c.method === "searchPages")).toHaveLength(searches);
+    expect(t.ctx.store.get().wiki.details["10"]?.status).toBe("ok");
+    expect(t.calls.filter((c) => c.method === "getAllComments")).toHaveLength(2);
+  });
+
+  test("atlcli tui <page>: init shows the page, with the first list to go back to", async () => {
+    const { t } = nav({ listSpaces: () => [] });
+    (t.ctx.opts as { open?: string }).open = `${BASE}/x/LIA7Vw`;
+    await wiki.init(t.ctx);
+    await t.settle();
+    expect(t.ctx.store.get().wiki.list.query).toBe("page:1463517228");
+    expect(t.ctx.store.get().wiki.back).toHaveLength(1);
   });
 });

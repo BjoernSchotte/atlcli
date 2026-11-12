@@ -78,7 +78,7 @@ describe("atlcli tui", () => {
     const proc = Bun.spawn([process.execPath, "--conditions=development", "run", CLI, "tui", "--help"], { stdout: "pipe", stderr: "pipe", env: { ...process.env, ATLCLI_DISABLE_UPDATE_CHECK: "1" } });
     const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
     expect(code).toBe(0);
-    expect(stdout).toContain("atlcli tui [--area jira|wiki]");
+    expect(stdout).toContain("atlcli tui [<page-url|page-id>] [--area jira|wiki]");
     expect(stdout).toContain("ctrl+k");
   });
 });

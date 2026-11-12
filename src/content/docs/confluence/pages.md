@@ -52,10 +52,39 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--id` | Page ID (required) |
+| `--id` | Page ID or page URL (required) |
 | `--version` | Get specific version |
 | `--expand` | Include: `body`, `version`, `ancestors` |
 | `--json` | JSON output |
+
+### Page URLs instead of IDs
+
+Every `wiki page` command takes a page URL where it takes `--id` (and `--parent`), so a link copied from the browser or a chat works as it is. The same holds for `wiki export <page>` and for `--page-id`, `--ancestor` and `--parent` of `wiki docs`:
+
+```bash
+# Minimal: the page a link points to
+atlcli wiki page get --id "https://acme.atlassian.net/wiki/spaces/DOCS/pages/10001/Design+Review"
+
+# A link to a comment: the page plus that comment's thread
+atlcli wiki page get --id "https://acme.atlassian.net/wiki/spaces/DOCS/pages/10001/Design+Review?focusedCommentId=20001"
+```
+
+| URL form | Example |
+|----------|---------|
+| Page URL | `…/wiki/spaces/DOCS/pages/10001/Design+Review` |
+| Page id in the query (legacy Cloud, Data Center) | `…/pages/viewpage.action?pageId=10001` |
+| Short link | `…/wiki/x/LIA7Vw` |
+
+With `?focusedCommentId=<id>`, `get` adds `focusedComment` to its output: `{ "id", "found": true, "kind": "footer" | "inline", "thread" }`, where `thread` is the first comment of the thread with its replies. A comment that no longer exists gives `{ "id", "found": false, "message" }`; the page is returned either way. See [Comments](comments.md#open-a-comment-link) for the thread on its own.
+
+:::caution
+The URL must belong to the site of the profile in use.
+:::
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Not on this profile's Confluence site (…)` | The URL is from another site than the active profile | Pass `--profile <name>` for that site |
+| `That URL carries no page id (…)` | A title URL (`/display/SPACE/Title`) or a space URL | Open the page in the browser and copy its `…/pages/<id>/…` URL, or use the id |
 
 ## Create Page
 

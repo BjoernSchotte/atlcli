@@ -161,8 +161,27 @@ Saved views show in the navigator under **Saved views**, filters under **Favouri
 | `L` | Labels | |
 | `m` | Move under another page | Searches the space's pages by title |
 | `v` | Compare with an earlier version | A diff between that version and the current one |
+| `o` | Open a page by URL or id | Paste a page URL of this site; a URL with `?focusedCommentId=` opens that comment |
+| `f` | Follow a link | Lists the page's links to other Confluence pages; `Enter` opens one |
+| `Backspace` | Back | Returns to the list the page was opened from; repeat to go back further |
 
-The detail pane has two tabs (`.` and `,` switch): **page**, the page as markdown, and **info**: title, space, id, version, when and by whom it was last updated, labels, and whether it can be edited here.
+The detail pane has three tabs (`.` and `,` switch): **page**, the page as markdown; **comments**, the footer and inline comment threads; and **info**: title, space, id, version, when and by whom it was last updated, labels, and whether it can be edited here.
+
+#### Opening links
+
+A page opened with `o` or `f` (or given on the command line) shows as a list of its own, **Opened page**. `Backspace` returns to where you came from, one step per page.
+
+A link to a comment opens the **comments** tab with that comment's thread first and the comment marked with `▶`. An inline comment shows the text it is about and the line of the page it stands in. If the comment no longer exists, the tab says so and shows the page's other comments.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| "Not on this profile's Confluence site" | The URL is from another site | Start the TUI with `--profile` for that site |
+| "That URL carries no page id" | A title URL (`/display/SPACE/Title`) or a space URL | Copy the page's `…/pages/<id>/…` URL, or type the id |
+| `f` says the page links to no other page | The page has only external links or attachments | `O` opens the page in the browser |
+| "… was not found in …" after `f` | The link names a page by title, and that page was renamed or deleted | Search for it with `/` |
+| "Page … was not found (deleted, or not visible to you)." | The URL or link points to a page that is gone, or that your account may not see | `Backspace` returns; check the link in the browser with `O` |
+
+In the page text, a link to another Confluence page shows as its text followed by `↗`.
 
 ## Mouse
 
@@ -233,6 +252,7 @@ These settings also apply:
 
 | Flag | Meaning |
 |---|---|
+| `<page-url\|page-id>` | Start in the wiki on this Confluence page (first argument) |
 | `--area jira\|wiki` | Start area |
 | `--jql <query>` | First Jira list (default: your open issues) |
 | `--project <key>` | Project for the navigator's boards and epics |
@@ -257,6 +277,14 @@ atlcli tui --area wiki --space DOCS
 ```
 
 Search with `/`, edit with `e`, check the diff, save with `y`.
+
+Open a link from a discussion, read the comment it points to, and follow the page's links:
+
+```bash
+atlcli tui "https://acme.atlassian.net/wiki/spaces/DOCS/pages/10001/Design+Review?focusedCommentId=20001"
+```
+
+The comment's thread shows first. `,` switches to the page, `f` lists its links, `Backspace` comes back.
 
 ## Troubleshooting
 

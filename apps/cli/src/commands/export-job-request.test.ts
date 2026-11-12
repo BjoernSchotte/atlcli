@@ -173,3 +173,18 @@ describe("durable CLI export job requests", () => {
     expect(request.options.codeTheme).toBe("github-light");
   });
 });
+
+describe("a page URL as the export source", () => {
+  const locator = (ref: string) => buildCliExportSource(parseExportRequest(ref, {}), profile).locator;
+
+  test("page URLs and short links of the profile's site give the page id", () => {
+    expect(locator("https://example.atlassian.net/wiki/spaces/DOCS/pages/10001/Design+Review?focusedCommentId=20001")).toEqual({ kind: "page-id", id: "10001" });
+    expect(locator("https://example.atlassian.net/wiki/pages/viewpage.action?pageId=10002")).toEqual({ kind: "page-id", id: "10002" });
+    expect(locator("https://example.atlassian.net/wiki/x/LIA7Vw")).toEqual({ kind: "page-id", id: "1463517228" });
+  });
+
+  test("a URL of another site, or one without a page id, is refused instead of exported from the wrong site", () => {
+    expect(() => locator("https://other.atlassian.net/wiki/spaces/DOCS/pages/10001")).toThrow("Not on this profile's Confluence site");
+    expect(() => locator("https://example.atlassian.net/wiki/display/DOCS/Design+Review")).toThrow("no page id");
+  });
+});

@@ -353,6 +353,45 @@ On Server and Data Center, mentions point at a user key. atlcli writes it with a
 
 When you pull or diff a page, atlcli fills in the display name of each mentioned user. Confluence often stores a mention without one, so atlcli looks the user up once per run. If the lookup fails, for example for a deleted user, the mention keeps its ID as the name: `@[557058:abcd-efgh-ijkl](557058:abcd-efgh-ijkl)`. When you push such a mention, atlcli writes it without link text, so Confluence shows the user's current name.
 
+## Page Links
+
+A link to another Confluence page names its target by title, not by URL. Confluence keeps such a link working when the page is renamed or moved. In markdown it is a link with a `page:` target:
+
+```markdown
+See [the spec](page:DOCS/API%20Specification) for details.
+```
+
+| Form | Points to |
+|------|-----------|
+| `[text](page:Title)` | A page in the same space |
+| `[text](page:SPACE/Title)` | A page in another space |
+| `[text](page:SPACE/Title#Anchor)` | A heading or anchor on that page |
+| `[text](page:Title?id=12345)` | Title and page id, when Confluence stores both |
+| `[text](page:?id=12345)` | A page known only by its id |
+
+Each part is URL-encoded: a space is `%20`, a slash in a title is `%2F`, parentheses are `%28` and `%29`. Escape square brackets in the link text with a backslash.
+
+A realistic example with a cross-space link, an anchor and a link in a table:
+
+```markdown
+Read [Design Review (v2)](page:ARCH/Design%20Review%20%28v2%29#Decisions) first.
+
+| Topic | Page |
+|-------|------|
+| API | [API Specification](page:API%20Specification) |
+```
+
+When the link text equals the page title, atlcli writes the link without text of its own, so Confluence shows the page's current title.
+
+:::caution
+Before this syntax existed, a pull dropped these links from the markdown, and pushing that file removed them from the page. Pull pages with such links again before you edit them.
+:::
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| The link shows as text `[x](page:…)` on the page | The target has no title and no id, or is not validly encoded | Encode the title (`%20` for spaces) |
+| Confluence shows the link as broken | No page with that title exists in that space | Check the title and add the space key: `page:SPACE/Title` |
+
 ## Status Macro
 
 Inline status labels:
