@@ -3,6 +3,8 @@ import {
   OutputOptions,
   fail,
   buildConfluenceUrl,
+  getConfluenceBaseUrl,
+  parseConfluencePageRef,
   getActiveProfile,
   getFlag,
   hasFlag,
@@ -40,8 +42,10 @@ import {
   buildPageDiffChangeSetV1,
   renderSemanticDiff,
   commentBodyToText,
+  findCommentThread,
   FooterComment,
   InlineComment,
+  type PageComments,
   findAtlcliDir,
   moveToFirst,
   moveToLast,
@@ -68,6 +72,7 @@ export async function handlePage(args: string[], flags: Record<string, string | 
   }
 
   const sub = args[0];
+  await resolvePageUrls(args, flags, opts);
   switch (sub) {
     case "get":
       await handleGet(flags, opts);
@@ -202,6 +207,52 @@ async function getConversionOptions(
   };
 }
 
+/**
+ * `--id` (and `page open <page>`) take a page URL of the profile's site as
+ * well as the id: the URL becomes its page id here, once, for every
+ * subcommand. A `?focusedCommentId=` in it is kept for the commands that show
+ * comments (`get`, `comments list`).
+ */
+async function resolvePageUrls(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  const isUrl = (value: string | undefined): value is string => !!value && /^https?:\/\//i.test(value.trim());
+  const id = getFlag(flags, "id");
+  const positional = args[0] === "open" ? args[1] : undefined;
+  if (!isUrl(id) && !isUrl(positional)) return;
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(await loadConfig(), profileName);
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
+  }
+  const resolve = (url: string) => {
+    const ref = parseConfluencePageRef(getConfluenceBaseUrl(profile), url);
+    if ("error" in ref) fail(opts, 1, ERROR_CODES.USAGE, ref.error);
+    return ref;
+  };
+  if (isUrl(id)) {
+    const ref = resolve(id);
+    flags.id = ref.pageId;
+    if (ref.commentId) (flags as any)._focusedComment = ref.commentId;
+  }
+  if (isUrl(positional)) args[1] = resolve(positional).pageId;
+}
+
+/** The comment a page URL pointed at (`?focusedCommentId=`), or `--comment`. */
+function focusedCommentId(flags: Record<string, string | boolean | string[]>): string | undefined {
+  return getFlag(flags, "comment") ?? ((flags as any)._focusedComment as string | undefined);
+}
+
+export type FocusedComment =
+  | { id: string; found: true; kind: "footer" | "inline"; thread: FooterComment | InlineComment }
+  | { id: string; found: false; message: string };
+
+/** The thread of the comment a link points at; a comment that is gone says so and leaves the page usable. */
+export function focusedComment(comments: PageComments, id: string): FocusedComment {
+  const thread = findCommentThread(comments, id);
+  return thread
+    ? { id, found: true, kind: thread.kind, thread: thread.root }
+    : { id, found: false, message: `Comment ${id} is not on this page (deleted, or not visible to you).` };
+}
+
 async function handleGet(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
@@ -209,7 +260,12 @@ async function handleGet(flags: Record<string, string | boolean | string[]>, opt
   }
   const client = await getClient(flags, opts);
   const page = await client.getPage(id);
-  output({ schemaVersion: "1", page }, opts);
+  const focus = focusedCommentId(flags);
+  if (!focus) {
+    output({ schemaVersion: "1", page }, opts);
+    return;
+  }
+  output({ schemaVersion: "1", page, focusedComment: focusedComment(await client.getAllComments(id, { authorNames: true }), focus) }, opts);
 }
 
 async function handleList(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -1095,15 +1151,26 @@ async function handleCommentsList(flags: Record<string, string | boolean | strin
   }
 
   const client = await getClient(flags, opts);
-  const comments = await client.getAllComments(id);
+  const comments = await client.getAllComments(id, { authorNames: true });
+  const focusId = focusedCommentId(flags);
+  const focus = focusId ? focusedComment(comments, focusId) : undefined;
 
   if (opts.json) {
-    output({ schemaVersion: "1", ...comments }, opts);
+    output({ schemaVersion: "1", ...comments, ...(focus ? { focusedComment: focus } : {}) }, opts);
     return;
   }
 
   // Get page title for display
   const page = await client.getPage(id);
+  if (focus?.found) {
+    // A link to one comment shows its thread, the comment itself marked.
+    output(`\nComment ${focus.id} on "${page.title}"`, opts);
+    output("─".repeat(60), opts);
+    if (focus.kind === "inline") formatInlineCommentForDisplay(focus.thread as InlineComment, opts, 0, focus.id);
+    else formatCommentForDisplay(focus.thread, opts, 0, focus.id);
+    return;
+  }
+  if (focus) output(`${focus.message} The page's comments:`, opts);
   const footerCount = comments.footerComments.length;
   const inlineCount = comments.inlineComments.length;
 
@@ -1354,7 +1421,8 @@ async function handleCommentsDelete(flags: Record<string, string | boolean | str
 function formatCommentForDisplay(
   comment: FooterComment,
   opts: OutputOptions,
-  indent: number
+  indent: number,
+  focus?: string
 ): void {
   const prefix = "  ".repeat(indent);
   const author = comment.author.displayName;
@@ -1362,33 +1430,40 @@ function formatCommentForDisplay(
   const status = comment.status === "resolved" ? " [resolved]" : "";
   const body = commentBodyToText(comment.body);
 
-  output(`${prefix}• ${author} (${date})${status}`, opts);
+  output(`${prefix}${comment.id === focus ? "▶" : "•"} ${author} (${date})${status}`, opts);
   output(`${prefix}  ${body}`, opts);
 
   for (const reply of comment.replies) {
-    formatCommentForDisplay(reply, opts, indent + 1);
+    formatCommentForDisplay(reply, opts, indent + 1, focus);
   }
+}
+
+/** The text an inline comment is about: the v2 read API reports it as `inlineOriginalSelection`, `textSelection` only on create. */
+export function inlineSelection(comment: InlineComment): string | undefined {
+  return comment.textSelection || comment.inlineOriginalSelection || undefined;
 }
 
 function formatInlineCommentForDisplay(
   comment: InlineComment,
   opts: OutputOptions,
-  indent: number
+  indent: number,
+  focus?: string
 ): void {
   const prefix = "  ".repeat(indent);
   const author = comment.author.displayName;
   const date = new Date(comment.created).toLocaleDateString();
   const status = comment.status === "resolved" ? " [resolved]" : "";
   const body = commentBodyToText(comment.body);
-  const selection = comment.textSelection ? `"${comment.textSelection}"` : "(no selection)";
+  const selected = inlineSelection(comment);
+  const selection = selected ? `"${selected}"` : "(no selection)";
 
   if (indent === 0) {
     output(`${prefix}• On: ${selection}`, opts);
   }
-  output(`${prefix}  ${author} (${date})${status}: ${body}`, opts);
+  output(`${prefix}${comment.id === focus ? "▶ " : "  "}${author} (${date})${status}: ${body}`, opts);
 
   for (const reply of comment.replies) {
-    formatInlineCommentForDisplay(reply, opts, indent + 1);
+    formatInlineCommentForDisplay(reply, opts, indent + 1, focus);
   }
 }
 
@@ -1939,7 +2014,8 @@ function commentsHelp(): string {
 atlcli wiki page comments <command>
 
 Commands:
-  list --id <id>                         List all comments (default)
+  list --id <id|url> [--comment <cid>]   List all comments (default); with --comment, or a
+                                         URL with ?focusedCommentId=, only that comment's thread
   add --id <id> <text>                   Add a footer comment
   reply --id <id> --parent <cid> <text>  Reply to a comment
   add-inline --id <id> --selection <s>   Add inline comment on text
@@ -1955,6 +2031,7 @@ Options:
 
 Examples:
   atlcli wiki page comments --id 12345
+  atlcli wiki page comments --id "https://acme.atlassian.net/wiki/spaces/DOCS/pages/10001/Design+Review?focusedCommentId=20001"
   atlcli wiki page comments add --id 12345 "Looks good!"
   atlcli wiki page comments add --id 12345 --file comment.md
   atlcli wiki page comments reply --id 12345 --parent 67890 "Thanks!"
@@ -2318,7 +2395,7 @@ function pageHelp(): string {
   return `atlcli wiki page <command>
 
 Commands:
-  get --id <id>
+  get --id <id|url>                    A URL with ?focusedCommentId= adds that comment's thread
   list [--cql <query>] [--limit <n>] [--label <label>] [--space <key>]
   create --space <key> --title <title> (--body <file> | --template <name> [--var k=v ...])
   update --id <id> [--body <file>] [--title <title>]
@@ -2347,7 +2424,7 @@ Commands:
   diff --id <id> --from <n> [--to <n>] Compare any two versions
   restore --id <id> --version <n> --confirm  Restore to version
   comments <list|add|reply|...>        Manage page comments
-  open <id>                            Open page in browser
+  open <id|url>                        Open page in browser
   link-issue --id <id> --issue <key>   Link a Jira issue to this page
   issues --id <id> [--project <key>]   List Jira issues linked to this page
   unlink-issue --issue <key> --id <id> Remove Jira issue link from page
@@ -2379,8 +2456,12 @@ ${TEMPLATE_FLAGS_HELP}
 
 Move/Sort targets can be file paths (./docs/page.md) or page IDs.
 
+--id takes the page id or a page URL of the profile's site (…/pages/<id>/…,
+…?pageId=<id>, or a short …/x/<code> link).
+
 Examples:
   atlcli wiki page list --label architecture
+  atlcli wiki page get --id "https://acme.atlassian.net/wiki/spaces/DOCS/pages/10001/Design+Review?focusedCommentId=20001"
   atlcli wiki page move --id 12345 --parent 67890
   atlcli wiki page move ./docs/setup.md --before ./docs/intro.md
   atlcli wiki page move ./docs/appendix.md --last

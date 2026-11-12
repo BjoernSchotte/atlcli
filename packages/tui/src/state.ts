@@ -227,7 +227,7 @@ export interface JiraState {
   columns: Record<number, JiraBoardColumn[]>;
 }
 
-export type WikiTab = "page" | "info";
+export type WikiTab = "page" | "comments" | "info";
 
 export interface WikiPageRow {
   id: string;
@@ -249,12 +249,51 @@ export interface PageDetail {
   updated?: string;
   /** Why the page cannot be edited as markdown, if it cannot. */
   editBlocked?: string;
+  /** Links to other Confluence pages, in page order (`f` follows one). */
+  links: PageLink[];
 }
+
+/** A link to another page: by id when the page says it, else by title (in `spaceKey`, or the page's own space). */
+export interface PageLink {
+  label: string;
+  pageId?: string;
+  title?: string;
+  spaceKey?: string;
+  /** The comment the link points at (`?focusedCommentId=`). */
+  commentId?: string;
+}
+
+export interface WikiComment {
+  id: string;
+  author: string;
+  created: string;
+  /** Body as markdown. */
+  text: string;
+  /** 0 for the thread's first comment, 1 for a reply to it, … */
+  depth: number;
+}
+
+/** A footer comment or an inline comment with its replies, flattened in reading order. */
+export interface WikiThread {
+  id: string;
+  kind: "footer" | "inline";
+  resolved: boolean;
+  /** Inline: the commented text. */
+  selection?: string;
+  comments: WikiComment[];
+}
+
 
 export interface WikiState {
   nav: TreeState;
   list: ListState<WikiPageRow>;
   details: Record<string, Loadable<PageDetail>>;
+  /** Comment threads by page id, loaded when the comments tab shows. */
+  comments: Record<string, Loadable<WikiThread[]>>;
+  /** The comment a link pointed at: its thread shows first, the comment marked. */
+  focusedComment?: { pageId: string; commentId: string };
+  /** Lists left by opening a page (`o`) or following a link (`f`), oldest first; `backspace` returns to the last. */
+  back: ListState<WikiPageRow>[];
   tab: WikiTab;
 }
 
@@ -292,7 +331,7 @@ export function initialState(area: TuiArea = "jira"): AppState {
     log: [],
     views: [],
     jira: { done: [], nav: emptyTree(), list: emptyList("Issues"), details: {}, tab: "details", view: "list", columns: {} },
-    wiki: { nav: emptyTree(), list: emptyList("Pages"), details: {}, tab: "page" },
+    wiki: { nav: emptyTree(), list: emptyList("Pages"), details: {}, comments: {}, back: [], tab: "page" },
   };
 }
 

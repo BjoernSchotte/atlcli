@@ -1,4 +1,4 @@
-import { ERROR_CODES, fail, getActiveProfile, getFlag, hasFlag, loadConfig, output, resolveDefaults, saveConfig, type OutputOptions, type TuiSettings, type TuiViewSetting } from "@atlcli/core";
+import { ERROR_CODES, fail, getActiveProfile, getConfluenceBaseUrl, getFlag, hasFlag, loadConfig, output, resolveDefaults, parseConfluencePageRef, saveConfig, type OutputOptions, type TuiSettings, type TuiViewSetting } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { JiraClient, resolveStatusMap } from "@atlcli/jira";
 import type { TuiColumn, TuiConfig, TuiView } from "@atlcli/tui";
@@ -9,10 +9,14 @@ import { editInEditor } from "./jira-input.js";
 import { assertCliAuthSupported } from "./session-guard.js";
 
 export function tuiHelp(): string {
-  return `atlcli tui [--area jira|wiki] [--jql <query>] [--project <key>] [--board <id>] [--space <key>] [--profile <name>]
+  return `atlcli tui [<page-url|page-id>] [--area jira|wiki] [--jql <query>] [--project <key>] [--board <id>] [--space <key>] [--profile <name>]
 
 A fullscreen terminal UI for working in Jira and Confluence: browse, read,
 triage and edit issues and pages, with keyboard and mouse.
+
+With a Confluence page URL (or page id) it starts in the wiki on that page; a
+URL with ?focusedCommentId= opens that comment's thread. In the wiki, o opens
+another URL, f follows a link of the page, backspace goes back.
 
 Options:
   --area <jira|wiki>  Start area (default: jira, or tui.area in the config)
@@ -81,7 +85,7 @@ export function withProfileViews(all: TuiViewSetting[] | undefined, profile: str
 }
 
 export async function handleTui(
-  _args: string[],
+  args: string[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
@@ -99,8 +103,10 @@ export async function handleTui(
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     fail(opts, 1, ERROR_CODES.USAGE, "atlcli tui needs an interactive terminal.");
   }
-  const area = getFlag(flags, "area");
+  const open = args[0];
+  const area = getFlag(flags, "area") ?? (open ? "wiki" : undefined);
   if (area !== undefined && area !== "jira" && area !== "wiki") fail(opts, 1, ERROR_CODES.USAGE, "--area must be jira or wiki.");
+  if (open && area !== "wiki") fail(opts, 1, ERROR_CODES.USAGE, "A page opens in the wiki; drop --area jira.");
   const boardFlag = getFlag(flags, "board");
   if (boardFlag !== undefined && !/^\d+$/.test(boardFlag)) fail(opts, 1, ERROR_CODES.USAGE, "--board must be a board id.");
 
@@ -109,6 +115,9 @@ export async function handleTui(
   const profile = getActiveProfile(config, profileName);
   if (!profile) fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   assertCliAuthSupported(profile, opts);
+  // A URL of another site fails here, before the terminal goes fullscreen.
+  const page = open ? parseConfluencePageRef(getConfluenceBaseUrl(profile), open) : undefined;
+  if (page && "error" in page) fail(opts, 1, ERROR_CODES.USAGE, page.error);
   let tui: TuiConfig;
   let views: TuiView[];
   try {
@@ -133,6 +142,7 @@ export async function handleTui(
     project: getFlag(flags, "project") ?? defaults.project,
     board: boardFlag !== undefined ? Number(boardFlag) : defaults.board,
     space: getFlag(flags, "space") ?? defaults.space,
+    open,
     doneStatuses: Object.keys(statusMap).filter((status) => statusMap[status] === "done"),
     config: tui,
     openUrl,

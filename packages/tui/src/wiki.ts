@@ -3,13 +3,15 @@
  * from CQL or a page's children, and the page as markdown. Edits go through
  * the same conversion as `docs push`, show a diff and check the version.
  */
-import { markdownToStorage, storageToMarkdown, type ConfluenceClient } from "@atlcli/confluence";
+import { markdownToStorage, storageToMarkdown, type ConfluenceClient, type PageComments } from "@atlcli/confluence";
+import { parseStorageLinks } from "@atlcli/confluence/internal";
+import { parseConfluencePageRef, type ConfluencePageRef } from "@atlcli/core";
 import type { AreaModule } from "./commands.js";
 import { expandNode, updateNav } from "./commands.js";
 import type { Command, Ctx } from "./keymap.js";
 import { logged, record, type Argv } from "./log.js";
 import { VIEWS_GROUP, viewNodes, viewsGroup } from "./saved-views.js";
-import { pushOverlay, setChildren, withItems, type AppState, type Overlay, type PageDetail, type PickerItem, type TreeNode, type WikiPageRow } from "./state.js";
+import { pushOverlay, setChildren, withItems, type AppState, type Overlay, type PageDetail, type PageLink, type PickerItem, type TreeNode, type WikiComment, type WikiPageRow, type WikiTab, type WikiThread } from "./state.js";
 
 const MAX = 100;
 
@@ -37,6 +39,58 @@ export function searchCql(query: string, space?: string): string {
   const q = query.trim();
   if (/[=~]|\b(AND|OR|ORDER BY)\b/.test(q)) return q;
   return `type = page${space ? ` AND space = ${JSON.stringify(space)}` : ""} AND text ~ ${JSON.stringify(q.replace(/"/g, ""))} ORDER BY lastmodified DESC`;
+}
+
+/** A page's links to other Confluence pages: page references, and plain links to page URLs of this site. */
+export function pageLinks(storage: string, confluenceBaseUrl: string): PageLink[] {
+  const links: PageLink[] = [];
+  const seen = new Set<string>();
+  for (const link of parseStorageLinks(storage)) {
+    let found: PageLink | undefined;
+    if (link.type === "internal") {
+      found = {
+        label: link.linkText || link.targetPageTitle || `Page ${link.targetPageId}`,
+        pageId: link.targetPageId ?? undefined,
+        title: link.targetPageTitle ?? undefined,
+        spaceKey: link.targetSpaceKey ?? undefined,
+      };
+    } else if (link.type === "external" && link.externalUrl) {
+      const ref = parseConfluencePageRef(confluenceBaseUrl, link.externalUrl.replace(/&amp;/g, "&"));
+      if (!("error" in ref)) found = { label: link.linkText || link.externalUrl, ...ref };
+    }
+    if (!found) continue;
+    const key = [found.pageId, found.spaceKey, found.title, found.commentId].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push(found);
+  }
+  return links;
+}
+
+/** The page's comments as threads for reading: footer comments first, then inline ones, replies in order. */
+export function commentThreads(all: PageComments, toMarkdown: (storage: string) => string): WikiThread[] {
+  type Node = PageComments["footerComments"][number];
+  const flat = (comment: Node, depth: number): WikiComment[] => [
+    { id: comment.id, author: comment.author.displayName, created: comment.created, text: toMarkdown(comment.body), depth },
+    ...comment.replies.flatMap((reply) => flat(reply, depth + 1)),
+  ];
+  return [
+    ...all.footerComments.map((c): WikiThread => ({ id: c.id, kind: "footer", resolved: c.status === "resolved", comments: flat(c, 0) })),
+    ...all.inlineComments.map((c): WikiThread => ({
+      id: c.id,
+      kind: "inline",
+      resolved: c.status === "resolved",
+      selection: c.textSelection || c.inlineOriginalSelection || undefined,
+      comments: flat(c, 0),
+    })),
+  ];
+}
+
+/** The line of the page an inline comment's text stands in, when the page still has it and it says more than the text. */
+export function selectionContext(markdown: string, selection: string | undefined): string | undefined {
+  if (!selection) return undefined;
+  const line = markdown.split("\n").find((l) => l.includes(selection))?.trim();
+  return line && line !== selection ? line : undefined;
 }
 
 const pageUrl = (ctx: Ctx, row: { id: string; spaceKey?: string }) =>
@@ -110,6 +164,7 @@ export function loadPage(ctx: Ctx, id: string, force = false): Promise<void> {
       version: page.version ?? 1,
       markdown,
       labels: labels.map((l) => l.name),
+      links: pageLinks(page.storage, client.getInstanceUrl()),
       author: page.modifiedBy?.displayName || undefined,
       updated: page.modified ?? page.lastModified,
       editBlocked: editBlockReason(markdown),
@@ -125,7 +180,121 @@ export function loadPage(ctx: Ctx, id: string, force = false): Promise<void> {
   return request;
 }
 
+const threads = new Map<string, Promise<void>>();
+
+/** Loads (or reloads) a page's comments with their authors' names. */
+export function loadComments(ctx: Ctx, id: string, force = false): Promise<void> {
+  const known = ctx.store.get().wiki.comments[id];
+  if (!force && known && known.status !== "error") return threads.get(id) ?? Promise.resolve();
+  if (!known) setWiki(ctx, (w) => ({ comments: { ...w.comments, [id]: { status: "loading" } } }));
+  const client = ctx.opts.confluence;
+  const request = (async () => {
+    const all = await client.getAllComments(id, { authorNames: true });
+    const value = commentThreads(all, (storage) => readablePage(storageToMarkdown(storage, { baseUrl: client.getInstanceUrl() }).trim()));
+    setWiki(ctx, (w) => ({ comments: { ...w.comments, [id]: { status: "ok", value } } }));
+  })()
+    .catch((err) => setWiki(ctx, (w) => ({ comments: { ...w.comments, [id]: { status: "error", error: err instanceof Error ? err.message : String(err) } } })))
+    .finally(() => threads.delete(id));
+  threads.set(id, request);
+  return request;
+}
+
 export const selectedPage = (s: AppState): WikiPageRow | undefined => s.wiki.list.items[s.wiki.list.selected];
+
+export const WIKI_TABS: WikiTab[] = ["page", "comments", "info"];
+
+/** Shows a detail tab; the comments load the first time their tab shows. */
+export function showTab(ctx: Ctx, tab: WikiTab): void {
+  setWiki(ctx, () => ({ tab }));
+  const row = selectedPage(ctx.store.get());
+  if (tab === "comments" && row) void loadComments(ctx, row.id);
+}
+
+// ============ Open by URL, follow links, back ============
+
+/**
+ * Shows a page that is not in the list (opened by URL or id, or reached over
+ * a link) as a list of its own; the list left behind is kept for `back`. A
+ * link to a comment opens the comments with that thread first.
+ */
+export async function openPage(ctx: Ctx, ref: ConfluencePageRef, title = `Page ${ref.pageId}`): Promise<void> {
+  ctx.store.set((s) => ({
+    ...s,
+    focus: "detail",
+    wiki: {
+      ...s.wiki,
+      back: [...s.wiki.back, s.wiki.list],
+      tab: ref.commentId ? "comments" : "page",
+      focusedComment: ref.commentId ? { pageId: ref.pageId, commentId: ref.commentId } : undefined,
+    },
+  }));
+  // A page seen before has its row at hand; otherwise the title is a placeholder until `loadPage` puts the real one in.
+  const known = ctx.store.get().wiki.details[ref.pageId];
+  const row: WikiPageRow = known?.status === "ok" ? { id: ref.pageId, title: known.value.title, spaceKey: known.value.spaceKey, version: known.value.version } : { id: ref.pageId, title };
+  await loadRows(ctx, "Opened page", `page:${ref.pageId}`, async () => [row]);
+}
+
+function openByUrl(ctx: Ctx): void {
+  open(ctx, {
+    kind: "prompt",
+    title: "Open a page: URL or id",
+    value: "",
+    placeholder: "https://…/wiki/spaces/DOCS/pages/10001/…?focusedCommentId=20001",
+    onSubmit: (value) => {
+      if (!value.trim()) return;
+      const ref = parseConfluencePageRef(ctx.opts.confluence.getInstanceUrl(), value);
+      if ("error" in ref) return ctx.toast("error", ref.error);
+      return openPage(ctx, ref);
+    },
+  });
+}
+
+/** CQL for a page link that names its target by title. */
+export function linkTargetCql(title: string, space?: string): string {
+  return `type = page${space ? ` AND space = ${JSON.stringify(space)}` : ""} AND title = ${JSON.stringify(title)}`;
+}
+
+function followLink(ctx: Ctx): void {
+  const row = selectedPage(ctx.store.get());
+  const detail = row ? ctx.store.get().wiki.details[row.id] : undefined;
+  if (!row || detail?.status !== "ok") return;
+  const { links, spaceKey } = detail.value;
+  if (links.length === 0) return ctx.toast("info", "This page links to no other Confluence page.");
+  open(ctx, {
+    kind: "picker",
+    title: `Follow a link of "${detail.value.title}"`,
+    items: links.map((l, i) => ({ id: String(i), label: l.label, hint: l.title ? [l.spaceKey, l.title].filter(Boolean).join(" · ") : `page ${l.pageId}${l.commentId ? " · comment" : ""}` })),
+    query: "",
+    selected: 0,
+    multi: false,
+    marked: [],
+    allowFree: false,
+    onSubmit: async ([index]) => {
+      const link = links[Number(index)]!;
+      let pageId = link.pageId;
+      if (!pageId && link.title) {
+        const space = link.spaceKey ?? spaceKey;
+        const found = await ctx.task("Finding the page…", () => ctx.opts.confluence.searchPages(linkTargetCql(link.title!, space), 1));
+        if (!found) return;
+        pageId = found[0]?.id;
+        if (!pageId) return ctx.toast("error", `"${link.title}" was not found${space ? ` in ${space}` : ""} (renamed, deleted, or not visible to you).`);
+      }
+      if (pageId) await openPage(ctx, { pageId, commentId: link.commentId }, link.title ?? link.label);
+    },
+  });
+}
+
+/** Returns to the list a page was opened from. */
+function goBack(ctx: Ctx): void {
+  const { back } = ctx.store.get().wiki;
+  const origin = back[back.length - 1];
+  if (!origin) return;
+  // A load still in flight belongs to the list being left.
+  listSeq++;
+  listAbort?.abort();
+  setWiki(ctx, (w) => ({ back: w.back.slice(0, -1), focusedComment: undefined, list: { ...origin, loading: false } }));
+  wiki.select(ctx);
+}
 
 const open = (ctx: Ctx, overlay: Overlay) => ctx.store.set((s) => pushOverlay(s, overlay));
 
@@ -369,6 +538,8 @@ async function versions(ctx: Ctx): Promise<void> {
 
 const onPage = ["list", "detail"] as Command["focus"];
 
+const tabBy = (ctx: Ctx, by: 1 | -1): WikiTab => WIKI_TABS[(WIKI_TABS.indexOf(ctx.store.get().wiki.tab) + by + WIKI_TABS.length) % WIKI_TABS.length]!;
+
 const wikiCommands: Command[] = [
   {
     id: "wiki.search",
@@ -394,8 +565,19 @@ const wikiCommands: Command[] = [
   { id: "wiki.labels", title: "Labels", keys: ["L"], area: "wiki", focus: onPage, bar: "labels", run: labels },
   { id: "wiki.move", title: "Move the page under another page", keys: ["m"], area: "wiki", focus: onPage, run: move },
   { id: "wiki.versions", title: "Compare with an earlier version", keys: ["v"], area: "wiki", focus: onPage, bar: "versions", run: versions },
-  { id: "wiki.tab.next", title: "Next detail tab", keys: ["."], area: "wiki", run: (ctx) => setWiki(ctx, (w) => ({ tab: w.tab === "page" ? "info" : "page" })) },
-  { id: "wiki.tab.prev", title: "Previous detail tab", keys: [","], area: "wiki", run: (ctx) => setWiki(ctx, (w) => ({ tab: w.tab === "page" ? "info" : "page" })) },
+  { id: "wiki.open", title: "Open a page by URL or id", keys: ["o"], area: "wiki", bar: "open url", run: openByUrl },
+  { id: "wiki.follow", title: "Follow a link to another page", keys: ["f"], area: "wiki", focus: onPage, bar: "follow", run: followLink },
+  {
+    id: "wiki.back",
+    title: "Back to where the page was opened from",
+    keys: ["backspace"],
+    area: "wiki",
+    bar: "back",
+    enabled: (s) => s.wiki.back.length > 0,
+    run: goBack,
+  },
+  { id: "wiki.tab.next", title: "Next detail tab", keys: ["."], area: "wiki", run: (ctx) => showTab(ctx, tabBy(ctx, 1)) },
+  { id: "wiki.tab.prev", title: "Previous detail tab", keys: [","], area: "wiki", run: (ctx) => showTab(ctx, tabBy(ctx, -1)) },
 ];
 
 const query = (id: string, label: string, cql: string): Omit<TreeNode, "depth" | "parent"> => ({ id, label, kind: "query", expandable: false, data: { cql } });
@@ -426,6 +608,12 @@ export const wiki: AreaModule = {
       await expandNode(ctx, wiki, node);
     }
     await list;
+    // `atlcli tui <page>`: the page, with the first list to go back to.
+    if (ctx.opts.open) {
+      const ref = parseConfluencePageRef(ctx.opts.confluence.getInstanceUrl(), ctx.opts.open);
+      if ("error" in ref) ctx.toast("error", ref.error);
+      else await openPage(ctx, ref);
+    }
   },
 
   async expand(ctx, node) {
@@ -441,21 +629,25 @@ export const wiki: AreaModule = {
 
   select(ctx) {
     const row = selectedPage(ctx.store.get());
-    if (row) void loadPage(ctx, row.id);
+    if (!row) return;
+    void loadPage(ctx, row.id);
+    if (ctx.store.get().wiki.tab === "comments") void loadComments(ctx, row.id);
   },
 
   async refresh(ctx, quiet = false) {
     const s = ctx.store.get();
     // Quiet (auto-refresh): the detail stays until its new version is there.
-    if (!quiet) setWiki(ctx, () => ({ details: {} }));
+    if (!quiet) setWiki(ctx, () => ({ details: {}, comments: {} }));
     // The node the list came from (the navigator may have moved on since).
     const [kind, id] = s.wiki.list.query.split(":", 2) as [string, string | undefined];
     const children = kind === "children" || kind === "space";
     const node = children ? s.wiki.nav.nodes[kind === "space" ? `sp:${id}` : `p:${id}`] : undefined;
     if (children && node) await showNode(ctx, node);
+    // A page opened by URL or link is its own list: only the page reloads.
+    else if (kind === "page") wiki.select(ctx);
     else if (!children) await loadSearch(ctx, s.wiki.list.title, s.wiki.list.query);
     const row = selectedPage(ctx.store.get());
-    if (quiet && row) await loadPage(ctx, row.id, true);
+    if (quiet && row) await Promise.all([loadPage(ctx, row.id, true), ...(s.wiki.tab === "comments" ? [loadComments(ctx, row.id, true)] : [])]);
   },
 
   itemId: (s, i) => s.wiki.list.items[i]?.id,

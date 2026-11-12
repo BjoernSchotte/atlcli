@@ -19,6 +19,8 @@ export function stubClient<T>(impl: Record<string, (...args: never[]) => unknown
         if (prop === "deploymentType") return impl.deploymentType ? (impl.deploymentType as unknown as () => string)() : "cloud";
         if (prop === "siteUrl") return "https://example.atlassian.net";
         if (prop === "then") return undefined;
+        // Synchronous on the real client; URLs are parsed against it.
+        if (prop === "getInstanceUrl") return () => (impl.getInstanceUrl ? (impl.getInstanceUrl as unknown as () => string)() : "https://example.atlassian.net/wiki");
         return async (...args: unknown[]) => {
           calls.push({ method: prop, args });
           const fn = impl[prop];

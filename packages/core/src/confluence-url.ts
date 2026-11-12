@@ -45,6 +45,13 @@ export function buildConfluenceUrl(profile: ConfluenceProfile, path = ""): strin
   return `${baseUrl}/${path.replace(/^\/+/, "")}`;
 }
 
+/** Whether `url` lives under the Confluence root `base` (same origin, below its path). */
+function isUnderBase(base: URL, url: URL): boolean {
+  if (url.origin !== base.origin) return false;
+  const basePath = base.pathname.replace(/\/+$/, "");
+  return !basePath || url.pathname === basePath || url.pathname.startsWith(`${basePath}/`);
+}
+
 /**
  * Identify a Confluence page URL belonging to this profile.
  *
@@ -55,17 +62,61 @@ export function buildConfluenceUrl(profile: ConfluenceProfile, path = ""): strin
  */
 export function isConfluencePageUrl(profile: ConfluenceProfile, candidate: string): boolean {
   try {
-    const base = new URL(getConfluenceBaseUrl(profile));
-    const url = new URL(candidate);
-    if (url.origin !== base.origin) return false;
-
-    const basePath = base.pathname.replace(/\/+$/, "");
-    if (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) {
-      return false;
-    }
-
+    if (!isUnderBase(new URL(getConfluenceBaseUrl(profile)), new URL(candidate))) return false;
     return extractEntityFromUrl(candidate)?.product === "confluence";
   } catch {
     return false;
   }
+}
+
+/** A page, and the comment a link points at (`?focusedCommentId=`), if any. */
+export interface ConfluencePageRef {
+  pageId: string;
+  commentId?: string;
+}
+
+/**
+ * The page id a tiny link (`/x/{code}`) stands for: the code is the id's
+ * little-endian bytes in URL-safe base64 with the trailing zero bytes dropped.
+ */
+export function decodeTinyLink(code: string): string | undefined {
+  if (!/^[A-Za-z0-9_-]{1,12}$/.test(code)) return undefined;
+  try {
+    // Confluence swaps "+" for "_" and "/" for "-" (not the RFC 4648 alphabet).
+    const bytes = atob(code.replace(/_/g, "+").replace(/-/g, "/"));
+    let id = 0n;
+    for (let i = bytes.length - 1; i >= 0; i--) id = (id << 8n) | BigInt(bytes.charCodeAt(i));
+    return id > 0n ? id.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A page id, or a page URL of the Confluence site at `confluenceBaseUrl`
+ * ({@link getConfluenceBaseUrl}), as the page it names and the comment the
+ * link focuses. A URL of another site, or one without a page id in it, is an
+ * error that says so: the id must never be looked up on the wrong site.
+ */
+export function parseConfluencePageRef(confluenceBaseUrl: string, input: string): ConfluencePageRef | { error: string } {
+  const ref = input.trim();
+  if (/^\d+$/.test(ref)) return { pageId: ref };
+  let url: URL;
+  let base: URL;
+  try {
+    base = new URL(confluenceBaseUrl);
+    url = new URL(ref);
+  } catch {
+    return { error: `"${ref}" is neither a page id nor a page URL.` };
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return { error: `"${ref}" is neither a page id nor a page URL.` };
+  if (!isUnderBase(base, url)) {
+    return { error: `Not on this profile's Confluence site (${normalizeUrl(confluenceBaseUrl)}): ${url.origin}${url.pathname}. Use the profile of that site.` };
+  }
+  const tiny = /^\/x\/([^/]+)\/?$/.exec(url.pathname.slice(base.pathname.replace(/\/+$/, "").length));
+  const entity = extractEntityFromUrl(ref);
+  const pageId = tiny ? decodeTinyLink(tiny[1]!) : entity?.product === "confluence" && entity.type === "page" ? entity.pageId : undefined;
+  if (!pageId) return { error: `That URL carries no page id (${url.pathname}). Use a page URL like …/pages/<id>/…, or the page id.` };
+  const commentId = url.searchParams.get("focusedCommentId") ?? "";
+  return /^\d+$/.test(commentId) ? { pageId, commentId } : { pageId };
 }

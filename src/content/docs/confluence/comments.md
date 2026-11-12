@@ -33,8 +33,32 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--id` | Page ID (required) |
+| `--id` | Page ID or page URL (required) |
+| `--comment` | Show only the thread of this comment |
 | `--json` | JSON output |
+
+### Open a Comment Link
+
+A link to a comment (`?focusedCommentId=…`, as Confluence puts it in notifications and "Copy link") shows that comment's thread, the comment itself marked with `▶`. Footer comments, inline comments and replies all work:
+
+```bash
+atlcli wiki page comments --id "https://acme.atlassian.net/wiki/spaces/DOCS/pages/10001/Design+Review?focusedCommentId=20002"
+```
+
+```text
+Comment 20002 on "Design Review"
+────────────────────────────────────────────────────────────
+• Ann Lee (11/12/2026)
+  Should we split this section?
+  ▶ Bob Ray (11/12/2026)
+    Yes, see the API page.
+```
+
+With the page id, `--comment` does the same: `atlcli wiki page comments --id 10001 --comment 20002`. For an inline comment the thread starts with the text it is about (`On: "important phrase"`).
+
+With `--json`, the full comment list is returned with a `focusedComment` object added (`found`, `kind`, `thread`).
+
+If the comment no longer exists (deleted, or not visible to you), the command says so and lists the page's other comments instead of failing.
 
 ### Add Comment
 

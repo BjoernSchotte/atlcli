@@ -48,6 +48,8 @@ export interface TuiOptions {
   board?: number;
   /** Default Confluence space. */
   space?: string;
+  /** A Confluence page to show at start: its id, or a page URL of this site (`?focusedCommentId=` opens that comment). */
+  open?: string;
   /** Statuses `flow.statusMap` counts as done although Jira's category is not Done ("Fertig"). */
   doneStatuses?: string[];
   config?: TuiConfig;
