@@ -4532,12 +4532,13 @@ export class ConfluenceClient {
    */
   async getAllComments(
     pageId: string,
-    options: { limit?: number } = {}
+    options: { limit?: number; authorNames?: boolean } = {}
   ): Promise<PageComments> {
     const [footerComments, inlineComments] = await Promise.all([
       this.getFooterComments(pageId, options),
       this.getInlineComments(pageId, options),
     ]);
+    if (options.authorNames) await this.nameCommentAuthors([...footerComments, ...inlineComments]);
 
     return {
       pageId,
@@ -4545,6 +4546,27 @@ export class ConfluenceClient {
       footerComments,
       inlineComments,
     };
+  }
+
+  /**
+   * The v2 comment resources carry only the author's account id; this puts the
+   * display name in its place. An author who cannot be looked up keeps the id.
+   */
+  private async nameCommentAuthors(comments: BaseComment[]): Promise<void> {
+    const all: BaseComment[] = [];
+    const collect = (list: BaseComment[]) => {
+      for (const comment of list) {
+        all.push(comment);
+        collect(comment.replies);
+      }
+    };
+    collect(comments);
+    const ids = [...new Set(all.map((c) => c.author.accountId).filter((id): id is string => !!id))];
+    const users = await this.getUsersBulk(ids).catch(() => new Map<string, UserInfo | null>());
+    for (const comment of all) {
+      const name = comment.author.accountId ? users.get(comment.author.accountId)?.displayName : undefined;
+      if (name) comment.author.displayName = name;
+    }
   }
 
   /**

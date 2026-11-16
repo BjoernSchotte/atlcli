@@ -35,8 +35,8 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--space` | Space key (required) |
-| `--page-id` | Sync single page by ID |
-| `--ancestor` | Sync tree under specific page |
+| `--page-id` | Sync single page by ID or page URL |
+| `--ancestor` | Sync tree under specific page (ID or page URL) |
 
 :::note[Where to run subsequent commands]
 `init` creates the `.atlcli/` folder inside the directory you pass. Every later command (`pull`, `push`, `status`, `sync`, ...) then either takes that same path or walks up from your current directory to find the nearest `.atlcli/`. In practice: pass the same path you used for `init`, or `cd` into it and drop the path argument.

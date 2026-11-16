@@ -83,7 +83,11 @@ atlcli wiki page children --id 12345 --limit 100 --json
 
 `wiki page get` returns the body as Confluence storage XHTML under
 `page.storage`, not Markdown. See the update caveat below before planning an
-edit around it. Every page verb identifies its target with `--id`. Page IDs come from
+edit around it. Every page verb identifies its target with `--id`, which takes
+the page id or a page URL of the profile's site (`…/pages/<id>/…`,
+`…?pageId=<id>`, a short `…/x/<code>` link); a URL of another site or one
+without a page id fails with a usage error. `--parent`, `wiki export <page>`
+and `wiki docs --page-id/--ancestor/--parent` take such URLs too. Page IDs come from
 `wiki search`, `wiki page list`, or the `atlcli.id` frontmatter of a synced
 Markdown file.
 
@@ -210,6 +214,8 @@ Labels are positional and variadic. The CQL form is a bulk write and needs
 
 ```bash
 atlcli wiki page comments --id 12345 --json
+atlcli wiki page comments --id 12345 --comment 67890 --json
+atlcli wiki page comments --id 'https://acme.atlassian.net/wiki/spaces/DOCS/pages/12345/Title?focusedCommentId=67890' --json
 atlcli wiki page comments add --id 12345 'Looks good!' --json
 atlcli wiki page comments add --id 12345 --file ./comment.md --json
 atlcli wiki page comments reply --id 12345 --parent 67890 'Thanks!' --json
@@ -218,6 +224,13 @@ atlcli wiki page comments resolve --comment 67890 --json
 atlcli wiki page comments reopen --comment 67890 --json
 atlcli wiki page comments delete --comment 67890 --confirm --json
 ```
+
+A comment link (`?focusedCommentId=`) or `--comment <id>` on `comments list`
+adds `focusedComment` to the JSON: `{ id, found: true, kind, thread }` with the
+thread's first comment and its replies, or `{ id, found: false, message }` when
+the comment is gone (exit code stays 0, the list is still returned).
+`wiki page get` with a comment link adds the same object next to `page`.
+Comment authors carry their display name.
 
 Comment text is Markdown, converted to storage format; `--file` reads it from a
 file. `--match-index <n>` selects which occurrence of `--selection` an inline

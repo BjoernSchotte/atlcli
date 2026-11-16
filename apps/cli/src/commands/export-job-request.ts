@@ -3,7 +3,7 @@ import {
   resolveCodeThemeId,
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
-import type { Profile } from "@atlcli/core";
+import { getConfluenceBaseUrl, parseConfluencePageRef, type Profile } from "@atlcli/core";
 import type {
   DocxExportJobRequestV1,
   ExportSourceV1,
@@ -14,16 +14,18 @@ import type {
 } from "@atlcli/export-jobs";
 import type { ParsedExportRequest } from "./export-request.js";
 
-function sourceLocator(request: ParsedExportRequest): ExportSourceV1["locator"] {
+function sourceLocator(request: ParsedExportRequest, profile: Profile): ExportSourceV1["locator"] {
   if (request.scopeKind === "space") {
     return { kind: "space-key", spaceKey: request.spaceKey! };
   }
   const ref = request.pageRef!;
-  if (/^\d+$/.test(ref)) return { kind: "page-id", id: ref };
-  if (ref.startsWith("http://") || ref.startsWith("https://")) {
-    const id = ref.match(/pages\/(\d+)/)?.[1] ?? ref.match(/[?&]pageId=(\d+)/)?.[1];
-    if (id) return { kind: "page-id", id };
+  if (/^https?:\/\//i.test(ref.trim())) {
+    // The same rules as `wiki page --id <url>`: short links work, a URL of another site is refused.
+    const page = parseConfluencePageRef(getConfluenceBaseUrl(profile), ref);
+    if ("error" in page) throw new Error(page.error);
+    return { kind: "page-id", id: page.pageId };
   }
+  if (/^\d+$/.test(ref)) return { kind: "page-id", id: ref };
   return { kind: "content-key", value: ref };
 }
 
@@ -58,7 +60,7 @@ export function buildCliExportSource(
   return {
     kind: "confluence",
     siteOrigin: siteOrigin(profile),
-    locator: sourceLocator(request),
+    locator: sourceLocator(request, profile),
     scope,
     ...(request.labels ? { labels: request.labels } : {}),
     completenessMode: request.completenessMode,

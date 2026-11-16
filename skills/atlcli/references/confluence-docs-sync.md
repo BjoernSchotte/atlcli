@@ -268,7 +268,10 @@ A pulled file can contain syntax the sections above never ask you to write:
   from the page. The `*[<name> macro]*` line is a label, not content.
 - Some constructs round-trip as inline syntax rather than `:::` blocks:
   `{date:2026-01-15}`, `{#anchor-name}`, `@[Display Name](accountId)` (pull
-  writes the user's display name), `{color:red}…{color}`, and
+  writes the user's display name), `[text](page:SPACE/Title#anchor)` for a
+  link to another Confluence page (space, `?id=<pageId>` and anchor optional,
+  every part URL-encoded; **keep the `page:` target as pulled**, rewriting it
+  to a URL turns the page link into an external link), `{color:red}…{color}`, and
   `{bg:yellow}…{bg}`, and `{status:green}Done{status}` for a status lozenge.
   Jira issue macros come back as ordinary Markdown links
   (`[PROJ-101](…/browse/PROJ-101)`); the legacy `{jira:PROJ-101}` form is

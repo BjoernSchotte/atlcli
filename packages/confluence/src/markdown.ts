@@ -1146,6 +1146,23 @@ ${md.render(trimmedContent).trim()}
     return placeholder;
   });
 
+  // Handle page links: [text](page:SPACE/Title#anchor). Here, where inline code is set aside.
+  processed = processed.replace(PAGE_LINK_REGEX, (match, escapedText: string, target: string) => {
+    const ref = parsePageLinkTarget(target);
+    if (!ref) return match;
+    const text = escapedText.replace(/\\(.)/g, "$1");
+    const placeholder = `ATLCLIINLINE${placeholderIndex++}X`;
+    const attrs =
+      (ref.id ? ` ri:content-id="${escapeHtml(ref.id)}"` : "") +
+      (ref.title ? ` ri:content-title="${escapeHtml(ref.title)}"` : "") +
+      (ref.space ? ` ri:space-key="${escapeHtml(ref.space)}"` : "");
+    // A link named like its page gets no link body, so Confluence shows the live title.
+    const body = !text || text === (ref.title ?? pageLinkLabel(ref)) ? "" : `<ac:plain-text-link-body>${cdataSection(text)}</ac:plain-text-link-body>`;
+    const html = `<ac:link${ref.anchor ? ` ac:anchor="${escapeHtml(ref.anchor)}"` : ""}><ri:page${attrs} />${body}</ac:link>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Convert Atlassian URLs to smart links if baseUrl is provided
   // Matches: [text](url) or [text](url)<!--card--> or [text](url)<!--embed-->
   if (options?.baseUrl) {
@@ -1356,6 +1373,52 @@ const EMOTICON_REGEX = /:([a-z0-9_][-a-z0-9_]*|[+-]1):/gi;
  * The account-id is typically in format like "123456:abcd-efgh-ijkl" or "admin"
  */
 const MENTION_REGEX = /@\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
+
+/**
+ * A link to another Confluence page (`<ac:link><ri:page …/></ac:link>`), which
+ * names its target by title, space and/or id rather than by URL. In markdown:
+ * `[text](page:SPACE/Title?id=123#anchor)`; the space (same space when
+ * absent), the id and the anchor are optional and every part is URI-encoded.
+ */
+interface PageLinkRef {
+  id?: string;
+  title?: string;
+  space?: string;
+  anchor?: string;
+}
+
+const PAGE_LINK_REGEX = /(?<!!)\[((?:\\.|[^\]\\])*)\]\(page:([^)\s]*)\)/g;
+
+/** Groups: 1 = `ac:link` attributes, 2 = `ri:page` attributes, 3 = plain-text body, 4 = rich body. */
+const STORAGE_PAGE_LINK_PATTERN =
+  /<ac:link\b([^>]*)>\s*<ri:page\b([^>]*?)\s*(?:\/>|>\s*<\/ri:page>)\s*(?:<ac:plain-text-link-body>([\s\S]*?)<\/ac:plain-text-link-body>|<ac:link-body>([\s\S]*?)<\/ac:link-body>)?\s*<\/ac:link>/gi;
+
+// Parentheses would end the markdown link target; the rest is what encodeURIComponent leaves alone.
+const encodePageLinkPart = (part: string) => encodeURIComponent(part).replace(/[()]/g, (c) => `%${c.charCodeAt(0).toString(16)}`);
+
+function pageLinkTarget(ref: PageLinkRef): string {
+  return (
+    "page:" +
+    (ref.space && ref.title ? `${encodePageLinkPart(ref.space)}/` : "") +
+    (ref.title ? encodePageLinkPart(ref.title) : "") +
+    (ref.id ? `?id=${encodePageLinkPart(ref.id)}` : "") +
+    (ref.anchor ? `#${encodePageLinkPart(ref.anchor)}` : "")
+  );
+}
+
+/** The target after `page:`; undefined when it names no page or is not validly encoded. */
+function parsePageLinkTarget(target: string): PageLinkRef | undefined {
+  const match = /^(?:([^/?#]+)\/)?([^/?#]*)(?:\?id=([^#]*))?(?:#(.*))?$/.exec(target);
+  if (!match) return undefined;
+  try {
+    const [space, title, id, anchor] = match.slice(1).map((part) => (part ? decodeURIComponent(part) : undefined));
+    return title || id ? { id, title, space, anchor } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const pageLinkLabel = (ref: PageLinkRef) => ref.title ?? `Page ${ref.id}`;
 
 /**
  * Regex for colored text: {color:red}text{color} or {color:#FF0000}text{color}
@@ -2369,6 +2432,24 @@ function convertStorageElements(storage: string, options?: ConversionOptions): s
     }
   );
 
+  // Convert links to other pages. Runs after the macros: a page reference
+  // inside a macro parameter (include, children) or a preserved macro is theirs.
+  storage = storage.replace(STORAGE_PAGE_LINK_PATTERN, (match, linkAttrs: string, pageAttrs: string, plainBody?: string, richBody?: string) => {
+    const attr = (attrs: string, name: string) => {
+      const value = new RegExp(`\\s${name}="([^"]*)"`).exec(attrs)?.[1];
+      return value ? decodeHTML(value) : undefined;
+    };
+    const ref: PageLinkRef = {
+      id: attr(pageAttrs, "ri:content-id"),
+      title: attr(pageAttrs, "ri:content-title"),
+      space: attr(pageAttrs, "ri:space-key"),
+      anchor: attr(linkAttrs, "ac:anchor"),
+    };
+    if (!ref.title && !ref.id) return match;
+    const body = plainBody !== undefined ? mentionBodyText(plainBody) : richBody !== undefined ? decodeHTML(richBody.replace(/<[^>]*>/g, "")) : "";
+    return `<a data-page-link="${escapeHtml(pageLinkTarget(ref))}">${escapeHtml(body.trim() || pageLinkLabel(ref))}</a>`;
+  });
+
   return storage;
 }
 
@@ -2783,6 +2864,17 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const filename = (node as any).getAttribute?.("data-filename") || "";
       const linkText = content.trim() || filename;
       return `[${linkText}](./attachments/${filename})`;
+    },
+  });
+
+  // Handle links to other pages: <a data-page-link="page:SPACE/Title">text</a>
+  service.addRule("pageLink", {
+    filter: (node) => {
+      return node.nodeName === "A" && !!(node as any).getAttribute?.("data-page-link");
+    },
+    replacement: (_content, node) => {
+      const text = String((node as any).textContent ?? "");
+      return `[${text.replace(/[\\[\]]/g, "\\$&")}](${(node as any).getAttribute("data-page-link")})`;
     },
   });
 

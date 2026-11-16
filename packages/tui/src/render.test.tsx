@@ -198,3 +198,57 @@ describe("board view and command log", () => {
     expect(frame).toContain("$ atlcli jira issue transition --key=AB-1 '--to=In Progress' --profile=test");
   });
 });
+
+describe("wiki comments", () => {
+  const thread = (id: string, body: string, replies: unknown[] = [], extra: Record<string, unknown> = {}) => ({
+    id,
+    author: { displayName: "Ann Lee", accountId: "a1" },
+    created: "2026-11-12T10:00:00.000Z",
+    body: `<p>${body}</p>`,
+    status: "open",
+    replies,
+    ...extra,
+  });
+  const wikiStub = () =>
+    setup({ search: () => ({ issues: [] }) }, { area: "wiki" }, {
+      getPageDetails: (id: string) => ({ id, title: "Design Review", spaceKey: "DOC", version: 2, storage: "<p>This carries an important phrase here.</p>" }),
+      mentionNames: () => new Map(),
+      getLabels: () => [],
+      getAllComments: () => ({
+        pageId: "10",
+        lastSynced: "",
+        footerComments: [thread("20001", "First footer comment")],
+        inlineComments: [thread("30001", "Please clarify", [thread("30002", "Clarified now")], { textSelection: "important phrase" })],
+      }),
+    });
+
+  test("a link to a comment shows its thread first, the comment marked, with the text it is about", async () => {
+    const t = wikiStub();
+    const s = await show(t);
+    const { openPage } = await import("./wiki.js");
+    await openPage(t.ctx, { pageId: "10", commentId: "30002" });
+    await t.settle();
+    await s.renderOnce();
+    const frame = s.captureCharFrame();
+    expect(frame).toContain("comments 2");
+    expect(frame).toContain(`On: "important phrase"`);
+    expect(frame).toContain("│ This carries an important phrase here.");
+    expect(frame).toContain("▶ Ann Lee · 2026-11-12");
+    expect(frame).toContain("Other comments on this page:");
+    // The linked (inline) thread comes before the footer thread it would otherwise follow.
+    expect(frame.indexOf("Clarified now")).toBeLessThan(frame.indexOf("First footer comment"));
+  });
+
+  test("a comment that is gone says so and still shows the page's comments", async () => {
+    const t = wikiStub();
+    const s = await show(t);
+    const { openPage } = await import("./wiki.js");
+    await openPage(t.ctx, { pageId: "10", commentId: "99999" });
+    await t.settle();
+    await s.renderOnce();
+    const frame = s.captureCharFrame();
+    expect(frame).toContain("Comment 99999 is not on this page");
+    expect(frame).toContain("First footer comment");
+    expect(frame).not.toContain("▶");
+  });
+});

@@ -197,6 +197,7 @@ atlcli wiki page list --space <key>          # List pages in space
 atlcli wiki page list --cql <query>          # Filter with CQL
 atlcli wiki page list --label <name>         # Filter by label
 atlcli wiki page get --id <id>               # Get page content
+atlcli wiki page get --id <page-url>         # --id takes a page URL too; ?focusedCommentId= adds that thread
 atlcli wiki page get --id <id> --version <n> # Get specific version
 atlcli wiki page create --space <key> --title <title> --body <file>
 atlcli wiki page create --space <key> --title <title> --body <file> --parent <id>
@@ -286,6 +287,7 @@ high-memory fallback.
 ```bash
 # Footer comments
 atlcli wiki page comments list --id <id>
+atlcli wiki page comments list --id <id> --comment <comment-id>   # Only that comment's thread
 atlcli wiki page comments add --id <id> "Comment text"
 atlcli wiki page comments reply --id <id> --parent <comment-id> "Reply text"
 atlcli wiki page comments update --id <id> --comment <comment-id> "Updated text"
@@ -1129,6 +1131,7 @@ atlcli tui                                     # Jira: your open issues
 atlcli tui --project ABC --board 42            # Navigator on that project and board
 atlcli tui --jql 'project = ABC AND sprint IN openSprints()'
 atlcli tui --area wiki --space DOCS            # Wiki: that space's page tree
+atlcli tui <page-url|page-id>                  # Wiki: that page; a comment link opens its thread
 ```
 
 Needs an interactive terminal; it fails in CI or a pipe. See [Terminal UI](../tui.md).

@@ -746,6 +746,17 @@ export interface CommentAuthor {
 // export: commentBodyToText
 export declare function commentBodyToText(storageBody: string): string;
 
+// export: CommentThread
+export type CommentThread = {
+    kind: "footer";
+    root: FooterComment;
+    comment: FooterComment;
+} | {
+    kind: "inline";
+    root: InlineComment;
+    comment: InlineComment;
+};
+
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
 
@@ -1195,7 +1206,9 @@ export declare class ConfluenceClient {
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
+        authorNames?: boolean;
     }): Promise<PageComments>;
+    private nameCommentAuthors;
     private parseFooterComment;
     private parseInlineComment;
     createFooterComment(params: {
@@ -2231,6 +2244,9 @@ export interface FetchExportTreeResult {
     complete: boolean;
     sourceSummary: TreeSourceSummary;
 }
+
+// export: findCommentThread
+export declare function findCommentThread(comments: PageComments, commentId: string): CommentThread | undefined;
 
 // export: FindPageAttachmentByFilenameInputV1
 export interface FindPageAttachmentByFilenameInputV1 {
@@ -4304,6 +4320,17 @@ export interface CommentAuthor {
 // export: commentBodyToText
 export declare function commentBodyToText(storageBody: string): string;
 
+// export: CommentThread
+export type CommentThread = {
+    kind: "footer";
+    root: FooterComment;
+    comment: FooterComment;
+} | {
+    kind: "inline";
+    root: InlineComment;
+    comment: InlineComment;
+};
+
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
 
@@ -4753,7 +4780,9 @@ export declare class ConfluenceClient {
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
+        authorNames?: boolean;
     }): Promise<PageComments>;
+    private nameCommentAuthors;
     private parseFooterComment;
     private parseInlineComment;
     createFooterComment(params: {
@@ -5789,6 +5818,9 @@ export interface FetchExportTreeResult {
     complete: boolean;
     sourceSummary: TreeSourceSummary;
 }
+
+// export: findCommentThread
+export declare function findCommentThread(comments: PageComments, commentId: string): CommentThread | undefined;
 
 // export: FindPageAttachmentByFilenameInputV1
 export interface FindPageAttachmentByFilenameInputV1 {
@@ -7862,6 +7894,17 @@ export interface CommentAuthor {
 // export: commentBodyToText
 export declare function commentBodyToText(storageBody: string): string;
 
+// export: CommentThread
+export type CommentThread = {
+    kind: "footer";
+    root: FooterComment;
+    comment: FooterComment;
+} | {
+    kind: "inline";
+    root: InlineComment;
+    comment: InlineComment;
+};
+
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
 
@@ -8311,7 +8354,9 @@ export declare class ConfluenceClient {
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
+        authorNames?: boolean;
     }): Promise<PageComments>;
+    private nameCommentAuthors;
     private parseFooterComment;
     private parseInlineComment;
     createFooterComment(params: {
@@ -9347,6 +9392,9 @@ export interface FetchExportTreeResult {
     complete: boolean;
     sourceSummary: TreeSourceSummary;
 }
+
+// export: findCommentThread
+export declare function findCommentThread(comments: PageComments, commentId: string): CommentThread | undefined;
 
 // export: FindPageAttachmentByFilenameInputV1
 export interface FindPageAttachmentByFilenameInputV1 {
@@ -11132,6 +11180,17 @@ export interface CommentAuthor {
 // export: commentBodyToText
 export declare function commentBodyToText(storageBody: string): string;
 
+// export: CommentThread
+export type CommentThread = {
+    kind: "footer";
+    root: FooterComment;
+    comment: FooterComment;
+} | {
+    kind: "inline";
+    root: InlineComment;
+    comment: InlineComment;
+};
+
 // export: compareLinkSets
 export declare function compareLinkSets(oldLinks: MarkdownLinkWithResolution[], newLinks: MarkdownLinkWithResolution[]): {
     added: MarkdownLinkWithResolution[];
@@ -11562,7 +11621,9 @@ export declare class ConfluenceClient {
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
+        authorNames?: boolean;
     }): Promise<PageComments>;
+    private nameCommentAuthors;
     private parseFooterComment;
     private parseInlineComment;
     createFooterComment(params: {
@@ -12430,6 +12491,9 @@ export declare function findAtlcliDir(startPath: string): string | null;
 export declare function findBrokenLinks(markdown: string, options: ExtractMarkdownLinksOptions & {
     adapter: SyncDbAdapter;
 }): Promise<MarkdownLinkWithResolution[]>;
+
+// export: findCommentThread
+export declare function findCommentThread(comments: PageComments, commentId: string): CommentThread | undefined;
 
 // export: FolderChild
 export type FolderChild = {
@@ -14941,6 +15005,17 @@ export interface CommentAuthor {
 // export: commentBodyToText
 export declare function commentBodyToText(storageBody: string): string;
 
+// export: CommentThread
+export type CommentThread = {
+    kind: "footer";
+    root: FooterComment;
+    comment: FooterComment;
+} | {
+    kind: "inline";
+    root: InlineComment;
+    comment: InlineComment;
+};
+
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
 
@@ -15390,7 +15465,9 @@ export declare class ConfluenceClient {
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
+        authorNames?: boolean;
     }): Promise<PageComments>;
+    private nameCommentAuthors;
     private parseFooterComment;
     private parseInlineComment;
     createFooterComment(params: {
@@ -16426,6 +16503,9 @@ export interface FetchExportTreeResult {
     complete: boolean;
     sourceSummary: TreeSourceSummary;
 }
+
+// export: findCommentThread
+export declare function findCommentThread(comments: PageComments, commentId: string): CommentThread | undefined;
 
 // export: FindPageAttachmentByFilenameInputV1
 export interface FindPageAttachmentByFilenameInputV1 {
@@ -18139,7 +18219,9 @@ export declare class ConfluenceClient {
     }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
+        authorNames?: boolean;
     }): Promise<PageComments>;
+    private nameCommentAuthors;
     private parseFooterComment;
     private parseInlineComment;
     createFooterComment(params: {
